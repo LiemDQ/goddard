@@ -1,0 +1,3 @@
+cantera
+numpy
+pint
