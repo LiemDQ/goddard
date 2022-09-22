@@ -1,5 +1,23 @@
 import numpy as np
 import cantera as ct
+import pint
+
+def to_si(quant: pint.Quantity):
+    '''
+    Convert pint Quantity to magnitude in base SI units.
+    '''
+    return quant.to_base_units().magnitude
+
+def extract_reaction_species(filename: str, fuel: ct.Solution, oxidizer: ct.Solution):
+    '''
+    Extract candidate reactants, based on the elements contained in the fuel and oxidizer.
+    '''
+    elements = [*fuel.element_names, *oxidizer.element_names]
+    full_species = ct.Species.list_from_file(filename)
+
+    return [S for S in full_species if all(x in elements for x in S.composition)]
+
+
 
 def get_thermo_derivatives(gas):
     '''Gets thermo derivatives based on shifting equilibrium. 
