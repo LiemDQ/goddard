@@ -11,3 +11,17 @@ def calculate_c_star(gamma, temperature, molecular_weight):
         np.power(2 / (gamma + 1), -(gamma + 1) / (2*(gamma - 1)))
         )
 
+def calculate_mach_number(gamma, expansion_ratio):
+    pass
+
+def calculate_isp():
+    pass
+
+def calculate_isp_vac():
+    pass
+
+def calculate_pressure_ratio():
+    pass
+
+def calculate_expansion_ratio():
+    pass
