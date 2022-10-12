@@ -1,3 +1,4 @@
 cantera
 numpy
 pint
+matplotlib
