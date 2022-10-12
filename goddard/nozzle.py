@@ -7,13 +7,15 @@ ratio is constant, which holds for frozen flow but not for equilibrium flow.
 import numpy as np
 from scipy.optimize import brentq
 import cantera as ct 
-from thermo import get_thermo_derivatives, get_thermo_properties, to_si
+from thermo import get_thermo_derivatives, get_thermo_properties
+from utils import to_si
 from pint import Quantity
 
-def calculate_throat_conditions(gas: ct.Solution, p_chamber: Quantity, gamma_chamber):
+def calculate_throat_conditions(gas: ct.Solution, P_chamber: Quantity, gas_chamber: ct.Solution, gamma_chamber):
     '''
     Assumptions: 
     - Flow is isentropic
+    - Equilibrium flow
     '''
     P_throat = P_chamber / np.power((gamma_chamber + 1)/2., gamma_chamber/(gamma_chamber-1))
     # CEA defaults
@@ -32,22 +34,23 @@ def calculate_throat_conditions(gas: ct.Solution, p_chamber: Quantity, gamma_cha
             break
 
         P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
-        gas.SPX = entropy_chamber, to_si(P_throat), mole_fractions_chamber
+        gas.SPX = gas_chamber.s, to_si(P_throat), gas_chamber.X
         gas.equilibrate('SP')
         derivs = get_thermo_derivatives(gas)
-        dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(
-            gas, derivs[0], derivs[1], derivs[2]
-        )
+        dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas)
 
-        velocity = _get_velocity(gas, enthalpy_chamber)
-        sonic_velocity = _get_sonic_velocity(gas, gamma_s)
+        velocity = _calculate_velocity(gas, gas_chamber.h)
+        sonic_velocity = _calculate_sonic_velocity(gas, gamma_s)
         M = velocity/sonic_velocity
 
         residual = np.abs(1.0 - 1/M**2)
     
     return gas
 
-def calculate_exit_conditions(gas_throat: ct.Solution, area_ratio, p_chamber, gamma_s, velocity, filename = 'nasa_gas.yaml'):
+def calculate_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas_chamber: ct.Solution, gamma_s, velocity):
+    '''
+    Calculate exit conditions, based on expansion area ratio.
+    '''
     A_mdot_thr = gas_throat.T / (gas_throat.P * velocity * gas_throat.mean_molecular_weight) #remains constant
     #TODO: some filename passing to ensure that the exit gas uses the same file as the throat gas
     gas_exit = ct.Solution(thermo=gas_throat.thermo_model, species=gas_throat.species())
@@ -55,9 +58,9 @@ def calculate_exit_conditions(gas_throat: ct.Solution, area_ratio, p_chamber, ga
 
     
     pressure_ratio = np.exp(gamma_s + 1.4 * np.log(area_ratio)) #initial guess
-    p_exit = to_si(p_chamber)/pressure_ratio
+    p_exit = to_si(P_chamber)/pressure_ratio
 
-    gas_exit.SP = entropy_chamber, p_exit
+    gas_exit.SP = gas_chamber.s, p_exit
     gas_exit.equilibrate('SP')
 
     Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight)/A_mdot_thr
@@ -73,11 +76,9 @@ def calculate_exit_conditions(gas_throat: ct.Solution, area_ratio, p_chamber, ga
             break
 
         derivs = get_thermo_derivatives(gas_exit)
-        dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(
-            gas_exit, derivs[0], derivs[1], derivs[2]
-        )
-        velocity = _get_velocity(gas_exit, enthalpy_chamber)
-        sonic_velocity = _get_sonic_velocity(gas_exit, gamma_s)
+        dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas_exit)
+        velocity = _calculate_velocity(gas_exit, gas_chamber.h)
+        sonic_velocity = _calculate_sonic_velocity(gas_exit, gamma_s)
 
         Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight) / A_mdot_thr
         dlogp_dlogA = gamma_s * velocity** 2 / (velocity**2 - sonic_velocity**2)
@@ -85,22 +86,37 @@ def calculate_exit_conditions(gas_throat: ct.Solution, area_ratio, p_chamber, ga
         log_pinf_pe = np.log(pressure_ratio) + residual
 
         pressure_ratio = np.exp(log_pinf_pe)
-        p_exit = to_si(p_chamber) /  pressure_ratio
+        p_exit = to_si(P_chamber) /  pressure_ratio
 
-        gas_exit.SP = entropy_chamber, p_exit
+        gas_exit.SP = gas_chamber.s, p_exit
         gas_exit.equilibrate('SP')
     
     return gas_exit
 
+def calculate_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
+    pass
 
-def _get_velocity(gas: ct.Solution, enthalpy):
-    return np.sqrt(2*(enthalpy - gas.enthalpy_mass))
+def calculate_throat_conditions_frozen(gas: ct.Mixture, p_chamber: Quantity, gamma_chamber):
+    pass
 
-def _get_sonic_velocity(gas: ct.Solution, gamma):
-    return np.sqrt(ct.gas_constant,* gas.T * gamma / gas.mean_molecular_weight)
+def calculate_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, gamma_s, velocity):
+    pass
+
+def calculate_exit_conditions_pressure_ratio_frozen():
+    pass
+
+def _calculate_velocity(gas: ct.Mixture, stagnation_enthalpy):
+    '''
+    Velocity in isentropic supersonic flow can be found from the difference in enthalpy
+    between two points. 
+    '''
+    return np.sqrt(2*(stagnation_enthalpy - gas.enthalpy_mass))
+
+def _calculate_sonic_velocity(gas: ct.Solution, gamma):
+    return np.sqrt(ct.gas_constant * gas.T * gamma / gas.mean_molecular_weight)
 
 
-def calculate_c_star(gamma, temperature, molecular_weight):
+def calculate_cstar(gamma, temperature, molecular_weight):
     '''
     Calculate the C* value for a given combustion temperature and set of gas properties. C* is also known as the characteristic velocity,
     and is a measure of the energy present in the fluid as a result of combustion. It is used as a metric for engine performance independent
@@ -135,14 +151,24 @@ def calculate_area_ratio_from_mach(gamma, M):
     '''
     return 1/M * ((1+ (gamma-1)/2*M**2) /((gamma+1)/2))**((gamma+1)/(2*(gamma-1)))
 
-def calculate_isp():
-    pass
+def calculate_isp(gas, gamma, enthalpy):
+    '''
+    Calculate specific impulse given an exhaust gas thermodynamic state and combustion chamber enthalpy. 
+    '''
+    derivs = get_thermo_derivatives(gas)
+    velocity = _calculate_velocity(gas, enthalpy)
+    cstar = calculate_cstar(gamma, gas.T, gas.mean_molecular_weight)
+    CF = velocity/cstar
+    g0 = 9.80655 #gravitational acceleration
+    return velocity, velocity/g0
+    
 
-def calculate_isp_vac():
-    pass
+def calculate_isp_vac(gas, isp):
+    '''
+    Ivac also includes the thrust from pressure forces. This assumes isp is provided in (m/s)
+    and not s.
+    '''
+    ivac = isp + gas.T * ct.gas_constant / (isp * gas.mean_molecular_weight)
+    g0 = 9.80655 #gravitational acceleration
 
-def calculate_pressure_ratio():
-    pass
-
-def calculate_expansion_ratio():
-    pass
+    return ivac, ivac/g0

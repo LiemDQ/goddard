@@ -2,25 +2,12 @@ import numpy as np
 import cantera as ct
 import pint
 
-def to_si(quant: pint.Quantity):
-    '''
-    Convert pint Quantity to magnitude in base SI units.
-    '''
-    return quant.to_base_units().magnitude
-
-def extract_reaction_species(filename: str, fuel: ct.Solution, oxidizer: ct.Solution):
-    '''
-    Extract candidate reactants, based on the elements contained in the fuel and oxidizer.
-    '''
-    elements = [*fuel.element_names, *oxidizer.element_names]
-    full_species = ct.Species.list_from_file(filename)
-
-    return [S for S in full_species if all(x in elements for x in S.composition)]
-
-
+def speed_of_sound(gas: ct.Mixture, gamma: float) -> float: 
+    return np.sqrt(ct.gas_constant * gas.T * gamma / gas.mean_molecular_weight)
 
 def get_thermo_derivatives(gas):
-    '''Gets thermo derivatives based on shifting equilibrium. 
+    '''
+    Gets thermo derivatives based on shifting equilibrium. 
 
     Taken from https://kyleniemeyer.github.io/rocket-propulsion/thermochemistry/cea_cantera.html. Cantera calculates
     thermodynamic properties, such as the specific heat, based on an assumption of frozen (i.e. invariant) composition, whereas
@@ -92,7 +79,7 @@ def get_thermo_derivatives(gas):
     
     return dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T
 
-def get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
+def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
     '''Calculates specific heats, volume derivatives, and specific heat ratio.
     
     Based on shifting equilibrium for mixtures.
@@ -128,3 +115,7 @@ def get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
     gamma_s = -gamma/dlogV_dlogP_T
     
     return dlogV_dlogT_P, dlogV_dlogP_T, spec_heat_p, gamma_s
+
+def get_thermo_properties(gas):
+    derivs = get_thermo_derivatives(gas)
+    return _get_thermo_properties(gas, *derivs)
