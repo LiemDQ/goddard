@@ -86,27 +86,42 @@ class CombustionAnalysis:
         gas_chamber = utils.extract_reaction_species(self.fuel, self.oxidizer)
 
         mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (gas_chamber, 0.0)])
-
+        
+        # get chamber composition
         mixture.equilibrate('HP')
-
+        
         gas_chamber()
 
-        # TODO: this approach is only valid for equilibrium flow
         _,_,_,gamma = thermo.get_thermo_properties(gas_chamber)
         cstar = nz.calculate_cstar(gamma, gas_chamber.T, gas_chamber.mean_molecular_weight)
 
-        gas_throat = utils.copy_solution(gas_chamber)
+        if self.combustor.is_frozen == NozzleType.FROZEN:
+            gas_throat = utils.copy_solution(gas_chamber)
+            gas_throat = nz.calculate_throat_conditions_frozen(gas_throat, self.chamber_pressure, gas_chamber, gamma)
+            gas_throat()
+            sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
 
-        gas_throat = nz.calculate_throat_conditions(gas_throat, self.chamber_pressure, gas_chamber, gamma)
-        gas_throat()
-        sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
 
-        gas_exit = utils.copy_solution(gas_throat)
+            gas_exit = utils.copy_solution(gas_throat)
+            gas_exit = nz.calculate_exit_conditions_frozen(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
+            
+        elif self.combustor.is_frozen == NozzleType.EQ:
 
-        gas_exit = nz.calculate_exit_conditions(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
+            gas_throat = utils.copy_solution(gas_chamber)
+
+            gas_throat = nz.calculate_throat_conditions(gas_throat, self.chamber_pressure, gas_chamber, gamma)
+            gas_throat()
+            sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
+
+            gas_exit = utils.copy_solution(gas_throat)
+
+            gas_exit = nz.calculate_exit_conditions(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
+        else:
+            raise NotImplementedError
         isp = nz.calculate_isp(gas_exit, gamma, gas_chamber.h)
         
         isp_vac = nz.calculate_isp_vac(gas_exit, isp[0])[0]
+
 
         gas_exit()
 

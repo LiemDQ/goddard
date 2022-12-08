@@ -12,10 +12,14 @@ def calc_isp_sl(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=Fals
     '''
     Calculate sea-level specific impulse.
     '''
-    analysis = CombustionAnalysis(pressure, fuel, oxidizer, of_ratio, expansion_ratio, CombustorArgs())
-    result = analysis.run()
+    if frozen:
+        nt = NozzleType.FROZEN
+    else:
+        nt = NozzleType.EQ
 
-    isp = result.get_isp()
+    analysis = CombustionAnalysis(pressure, fuel, oxidizer, of_ratio, expansion_ratio, CombustorArgs(is_frozen=nt))
+    result = analysis.run()
+    isp = result.get_isp() 
 
     if not return_as_seconds:
         return isp

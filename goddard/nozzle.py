@@ -8,7 +8,7 @@ import numpy as np
 from scipy.optimize import brentq
 import cantera as ct 
 from thermo import get_thermo_derivatives, get_thermo_properties
-from utils import to_si
+from utils import to_si, copy_solution
 from pint import Quantity
 
 def calculate_throat_conditions(gas: ct.Solution, P_chamber: Quantity, gas_chamber: ct.Solution, gamma_chamber):
@@ -56,8 +56,8 @@ def calculate_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas
     gas_exit = ct.Solution(thermo=gas_throat.thermo_model, species=gas_throat.species())
     gas_exit.SPX = gas_throat.SPX
 
-    
-    pressure_ratio = np.exp(gamma_s + 1.4 * np.log(area_ratio)) #initial guess
+    #TODO: initial guess only valid for area ratios > 2
+    pressure_ratio = np.exp(gamma_s + 1.4 * np.log(area_ratio)) #initial guess 
     p_exit = to_si(P_chamber)/pressure_ratio
 
     gas_exit.SP = gas_chamber.s, p_exit
@@ -96,13 +96,118 @@ def calculate_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas
 def calculate_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
     pass
 
-def calculate_throat_conditions_frozen(gas: ct.Mixture, p_chamber: Quantity, gamma_chamber):
-    pass
+def calculate_throat_conditions_frozen(gas: ct.Mixture, P_chamber: Quantity, gas_chamber: ct.Mixture, gamma_chamber):
+    """
+    Throat conditions for frozen flow. See Gordon & McBride, 1994, Section 6.5.2.
+    """
+    P_throat = P_chamber / np.power((gamma_chamber + 1)/2., gamma_chamber/(gamma_chamber-1))
+    # CEA defaults
+    max_iter_throat = 5
+    tolerance_throat = 0.4e-4
 
-def calculate_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, gamma_s, velocity):
-    pass
+    gamma_s = gamma_chamber
+    
+    M = 1.0 # throat mach is 1.0 by definition
+    num_iter = 0
+    residual = 1
+    while residual > tolerance_throat:
+        num_iter += 1
+        if num_iter == max_iter_throat:
+            # TODO: show error message
+            break
 
-def calculate_exit_conditions_pressure_ratio_frozen():
+        P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
+        gas.SPX = gas_chamber.s, to_si(P_throat), gas_chamber.X
+        # unlike with the equilibrium calculation, the gas mixture is never equilibrated
+        # and thus gamma never changes
+
+        # gas.equilibrate('SP')
+        # derivs = get_thermo_derivatives(gas)
+        velocity = _calculate_velocity(gas, gas_chamber.h)
+        sonic_velocity = _calculate_sonic_velocity(gas, gamma_s)
+        M = velocity/sonic_velocity
+
+        residual = np.abs(1.0 - 1/M**2)
+    
+    return gas
+
+
+
+def calculate_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, gas_chamber: ct.Solution, gamma_s, velocity):
+    """
+    See Gordon & McBride, 1994, Section 6.5.
+    """
+    A_mdot_thr = gas_throat.T / (gas_throat.P * velocity * gas_throat.mean_molecular_weight) #remains constant
+    # we iterate to obtain the nozzle exit temperature 
+    T_e = gas_chamber.T #initial guess
+    gas_exit = copy_solution(gas_throat)
+
+    gamma_s = gas_exit.cp/gas_exit.cv
+    
+    pressure_ratio = np.exp(gamma_s + 1.4 * np.log(area_ratio)) #initial guess 
+    p_exit = to_si(p_chamber)/pressure_ratio
+    gas_exit.TPX = T_e, p_exit, gas_exit.X
+
+    gamma_s = gas_exit.cp/gas_exit.cv
+
+    dlnT = (gas_chamber.s - gas_exit.s)/gas_exit.cp
+
+    dlogT_tolerance = 0.5e-4
+    maxiter = 8
+    n = 0
+    while np.abs(dlnT) >= dlogT_tolerance:
+        n += 1
+        if n >= maxiter:
+            #TODO: error message
+            break
+
+        gas_exit.TPX = T_e, p_exit, gas_exit.X
+        dlnT = (gas_chamber.s - gas_exit.s)/gas_exit.cp
+        gamma_s = gas_exit.cp/gas_exit.cv
+
+        velocity = _calculate_velocity(gas_exit, gas_chamber.h)
+        sonic_velocity = _calculate_sonic_velocity(gas_exit, gamma_s)
+        Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight) / A_mdot_thr
+        dlogp_dlogA = gamma_s * velocity** 2 / (velocity**2 - sonic_velocity**2)
+        residual = dlogp_dlogA * (np.log(area_ratio) - np.log(Ae_At))
+        log_pinf_pe = np.log(pressure_ratio) + residual
+
+        pressure_ratio = np.exp(log_pinf_pe)
+        p_exit = to_si(p_chamber) /  pressure_ratio
+        
+        lnT_e = np.log(T_e) + dlnT
+        T_e = np.exp(lnT_e)
+
+    return gas_exit
+    
+def calculate_exit_conditions_pressure_ratio_frozen(gas_throat: ct.Mixture, pressure_ratio, p_chamber, gas_chamber: ct.Solution, velocity):
+    # we iterate to obtain the nozzle exit temperature 
+    
+    T_e = gas_chamber.T #initial guess
+    gas_exit = copy_solution(gas_throat)
+    gas_exit.P = p_chamber / pressure_ratio
+
+    dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas_exit)
+    dlnT = (gas_chamber.s - gas_exit.s)/cp
+
+    dlogT_residual = 0.5e-4
+    maxiter = 8
+    n = 0
+    while np.abs(dlnT) >= dlogT_residual:
+        n += 1
+        if n >= maxiter:
+            break
+        
+        lnT_e = np.log(T_e) + dlnT
+        T_e = np.exp(lnT_e)
+        gas_exit.TP = T_e, gas_exit.P
+
+        _,_,cp,_ = get_thermo_properties(gas_exit)
+        dlnT = (gas_chamber.s - gas_exit.s)/cp
+    
+    return gas_exit
+
+def _estimate_pressure_ratio():
     pass
 
 def _calculate_velocity(gas: ct.Mixture, stagnation_enthalpy):
