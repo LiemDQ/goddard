@@ -1,0 +1,147 @@
+from dataclasses import dataclass
+import re
+
+
+class Nasa9Thermo:
+    name = "NASA9"
+    def __init__(self, temperature_ranges, data) -> None:
+        self.temperature_ranges = temperature_ranges
+        self.data = data
+    
+    def __repr__(self) -> str:
+        return f"temperature ranges: {self.temperature_ranges}\ndata: {self.data}"
+
+class ConstCpThermo:
+    name = "constant-cp"
+    def __init__(self, T0, h0) -> None:
+        self.T0 = T0
+        self.h0 = h0 
+    
+    def __repr__(self) -> str:
+        return f"T0:{self.T0}\nh0:{self.h0}"
+
+class CtSpecies:
+    def __init__(self, name: str, composition, thermo) -> None:
+        self.name = name
+        self.composition = composition
+        self.thermo = thermo
+
+    def __repr__(self) -> str:
+        return f"{self.name}\n{self.composition}\n{self.thermo}"
+
+def parse_name(line: str):
+    name_and_id = line.split()
+    return name_and_id[0]
+
+def parse_physical_params(params: str):
+    values = params.split()
+
+    # first value is False for gases, True otherwise
+    # second value is molecular weight
+    # third value is enthalpy of formation at 298.15K
+    return bool(values[0]), float(values[1]), float(values[2])
+
+def parse_coeffs(file):
+    def parse_coeff_value(coeff_str: str):
+        is_negative: bool = coeff_str.startswith("-")
+        value = float(coeff_str[1:12])
+        decimal = int(coeff_str[13:])
+        final_value = value* 10**decimal
+        if is_negative:
+            final_value *= -1
+            
+        return final_value
+
+
+    line1 = file.readline()
+    l1_entries = line1.split()
+    T0 = l1_entries[0]
+    T1 = l1_entries[1]
+    deltaH = l1_entries[-1] #to my knowledge, this is not used by Cantera.
+
+    coeffs = []
+    line2 = file.readline()
+    for n in range(5):
+        begin = n*16
+        end = (n+1)*16
+        coeffs.append(parse_coeff_value(line2[begin:end]))
+
+    line3 = file.readline()
+    for n in range(5):
+        if n == 2: #skip 3rd entry
+            continue
+        begin = n*16
+        end = (n+1)*16
+        coeffs.append(parse_coeff_value(line3[begin:end]))
+    
+    return T0, T1, coeffs
+
+def parse_formula(formula: str):
+    element_dict = {}
+    elements = formula.split()
+    print(elements)
+    main_element = elements[0]
+    for element in elements[1:]:
+        #separate the numbers from the letters
+        split = re.split('([a-zA-Z]+)', element)
+        print(split)
+        if split[0] == 0:
+                break
+        if len(split) == 1:
+            element_dict[main_element] = split[0]
+            break
+        else:
+            element_dict[split[1]] = split[0]
+
+    return element_dict
+
+
+def parse_const_cp(file):
+    #get reference temperature
+    T0 = file.readline().split()[0]
+    return T0
+
+
+def parse_species(file) -> CtSpecies:
+    name = parse_name(file.readline())
+    line = file.readline()
+    num_intervals = int(line[0:2])
+    formula = parse_formula(line[10:50])
+    _,_,h0 = parse_physical_params(line[50:])
+
+    if num_intervals == 0:
+        T0 = parse_const_cp(file)
+        thermo = ConstCpThermo(T0, h0)
+    else:
+        temp_range = []
+        coeff_data = []
+        for n in range(num_intervals):
+            T0, T1, coeffs = parse_coeffs(file)
+            temp_range.append(T0)
+            coeff_data.append(coeffs)
+            if n == num_intervals - 1:
+                temp_range.append(T1)
+        thermo = Nasa9Thermo(temp_range, coeff_data)
+    
+    return CtSpecies(name, formula, thermo)
+
+def reached_last_line(file) -> bool:
+    pos = file.tell()
+    is_last = file.readline().startswith("END REACTANTS")
+    file.seek(pos)
+    return is_last
+
+if __name__ == "__main__":
+    filename = "./nasa9.dat"
+    results = []
+    with open(filename, 'r') as f:
+        #skip gases and condensed species
+        while not f.readline().startswith("END PRODUCTS"):
+            continue
+        
+        while not reached_last_line(f):
+            results.append(parse_species(f))
+
+
+    for species in results:
+        print(species)
