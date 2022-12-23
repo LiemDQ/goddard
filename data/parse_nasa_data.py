@@ -79,20 +79,21 @@ def parse_coeffs(file):
 def parse_formula(formula: str):
     element_dict = {}
     elements = formula.split()
-    print(elements)
-    main_element = elements[0]
+    current_element = elements[0]
     for element in elements[1:]:
         #separate the numbers from the letters
         split = re.split('([a-zA-Z]+)', element)
-        print(split)
+        # print(split)
         if split[0] == 0:
                 break
+
+        element_dict[current_element] = split[0]
         if len(split) == 1:
-            element_dict[main_element] = split[0]
             break
         else:
-            element_dict[split[1]] = split[0]
-
+            current_element = split[1]
+    
+    print(element_dict)
     return element_dict
 
 
