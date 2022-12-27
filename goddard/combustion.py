@@ -79,7 +79,9 @@ class CombustionAnalysis:
         #normalize to molar basis
         #TODO: this assumes that mixture ratio is a single value as opposed to an iterable.
         molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
+        print(f"Molar ratio: {molar_ratio}")
         moles_ox = molar_ratio / (1 + molar_ratio)
+        print(f"Moles ox: {moles_ox}")
         moles_f = 1 - moles_ox
 
         #
@@ -87,14 +89,15 @@ class CombustionAnalysis:
 
         mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (gas_chamber, 0.0)])
         
-        # get chamber composition
+        # solve for combustion chamber composition
         mixture.equilibrate('HP')
-        
+        print("CHAMBER CONDITIONS: ")
         gas_chamber()
 
         _,_,_,gamma = thermo.get_thermo_properties(gas_chamber)
         cstar = nz.calculate_cstar(gamma, gas_chamber.T, gas_chamber.mean_molecular_weight)
-
+        
+        print("THROAT CONDITIONS: ")
         if self.combustor.is_frozen == NozzleType.FROZEN:
             gas_throat = utils.copy_solution(gas_chamber)
             gas_throat = nz.calculate_throat_conditions_frozen(gas_throat, self.chamber_pressure, gas_chamber, gamma)
@@ -121,8 +124,8 @@ class CombustionAnalysis:
         isp = nz.calculate_isp(gas_exit, gamma, gas_chamber.h)
         
         isp_vac = nz.calculate_isp_vac(gas_exit, isp[0])[0]
-
-
+        
+        print("EXIT CONDITIONS: ")
         gas_exit()
 
         point = CombustionPoint(

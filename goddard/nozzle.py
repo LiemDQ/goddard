@@ -153,7 +153,7 @@ def calculate_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamb
     dlnT = (gas_chamber.s - gas_exit.s)/gas_exit.cp
 
     dlogT_tolerance = 0.5e-4
-    maxiter = 8
+    maxiter = 50
     n = 0
     while np.abs(dlnT) >= dlogT_tolerance:
         n += 1
@@ -177,6 +177,8 @@ def calculate_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamb
         
         lnT_e = np.log(T_e) + dlnT
         T_e = np.exp(lnT_e)
+
+    print(f"number of iterations: {n}")
 
     return gas_exit
     
@@ -213,7 +215,7 @@ def _estimate_pressure_ratio():
 def _calculate_velocity(gas: ct.Mixture, stagnation_enthalpy):
     '''
     Velocity in isentropic supersonic flow can be found from the difference in enthalpy
-    between two points. 
+    between the gas in motion and the stagnation enthalpy. 
     '''
     return np.sqrt(2*(stagnation_enthalpy - gas.enthalpy_mass))
 
@@ -247,7 +249,9 @@ def calculate_mach_from_area_ratio_supersonic(gamma, ratio):
     There are two possible solutions for a given ratio (one subsonic, one supersonic). 
     This function always returns the supersonic solution.
     '''
-    upper_mach_limit = 10,000,000.0
+
+    #ideally, should be inf, but this would not converge for certain ill-conditioned edge cases.
+    upper_mach_limit = 10,000,000.0 
     return brentq(lambda mach: calculate_area_ratio_from_mach(gamma, mach)-ratio, 1.0, upper_mach_limit)
 
 def calculate_area_ratio_from_mach(gamma, M):
