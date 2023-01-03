@@ -1,0 +1,101 @@
+
+
+         NASA-GLENN CHEMICAL EQUILIBRIUM PROGRAM CEA2, FEBRUARY 5, 2004
+                   BY  BONNIE MCBRIDE AND SANFORD GORDON
+      REFS: NASA RP-1311, PART I, 1994 AND NASA RP-1311, PART II, 1996
+
+ *******************************************************************************
+
+  
+ ### CEA analysis performed on Mon 26-Dec-2022 19:51:14
+  
+ # Problem Type: "Rocket" (Infinite Area Combustor)
+  
+ prob case=t______________5076 ro equilibrium
+  
+ # Pressure (1 value):
+ p,psia= 3000
+ # Supersonic Area Ratio (3 values):
+ supar= 3, 15, 35
+  
+ # Oxidizer/Fuel Wt. ratio (1 value):
+ o/f= 2.6
+  
+ # You selected the following fuels and oxidizers:
+ reac
+ fuel Jet-A(L)          wt%=100.0000
+ oxid O2(L)             wt%=100.0000
+  
+ # You selected these options for output:
+ # short version of output
+ output short
+ # Proportions of any products will be expressed as Mass Fractions.
+ output massf
+ # Heat will be expressed as siunits
+ output siunits
+  
+ # Input prepared by this script:/var/www/sites/cearun.grc.nasa.gov/cgi-bin/CEARU
+ N/prepareInputFile.cgi
+  
+ ### IMPORTANT:  The following line is the end of your CEA input file!
+ end
+
+              THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM
+
+           COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR
+
+ Pin =  3000.0 PSIA
+ CASE = t______________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        Jet-A(L)                     1.0000000         0.000      0.000
+ OXIDANT     O2(L)                        1.0000000    -12979.000     90.170
+
+ O/F=    2.60000  %FUEL= 27.777778  R,EQ.RATIO= 1.305672  PHI,EQ.RATIO= 1.305672
+
+                 CHAMBER   THROAT     EXIT     EXIT     EXIT
+ Pinf/P            1.0000   1.7345   13.686   115.89   346.36
+ P, BAR            206.84   119.25   15.114   1.7849  0.59718
+ T, K             3918.53  3709.80  3023.57  2313.65  1942.56
+ RHO, KG/CU M    1.4993 1 9.2556 0 1.5039 0 2.3728-1 9.4738-2
+ H, KJ/KG         -292.94 -1027.22 -3383.07 -5258.33 -6014.10
+ U, KJ/KG        -1672.52 -2315.65 -4388.02 -6010.54 -6644.46
+ G, KJ/KG        -43240.8 -41687.3 -36521.9 -30616.4 -27304.9
+ S, KJ/(KG)(K)    10.9602  10.9602  10.9602  10.9602  10.9602
+
+ M, (1/n)          23.616   23.940   25.015   25.574   25.623
+ (dLV/dLP)t      -1.04059 -1.03542 -1.01424 -1.00116 -1.00016
+ (dLV/dLT)p        1.6545   1.6057   1.3017   1.0310   1.0047
+ Cp, KJ/(KG)(K)    5.7959   5.6644   4.1467   2.2244   1.9616
+ GAMMAs            1.1438   1.1398   1.1384   1.1823   1.2002
+ SON VEL,M/SEC     1256.2   1211.8   1069.6    943.1    869.8
+ MACH NUMBER        0.000    1.000    2.324    3.342    3.889
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   3.0000   15.000   35.000
+ CSTAR, M/SEC               1844.1   1844.1   1844.1   1844.1
+ CF                         0.6571   1.3481   1.7088   1.8343
+ Ivac, M/SEC                2275.0   2890.3   3390.0   3569.0
+ Isp, M/SEC                 1211.8   2486.0   3151.3   3382.7
+
+ MASS FRACTIONS
+
+ *CO              0.37852  0.36634  0.32431  0.29714  0.28392
+ *CO2             0.28184  0.30106  0.36723  0.40993  0.43070
+ COOH             0.00010  0.00006  0.00001  0.00000  0.00000
+ *H               0.00114  0.00098  0.00047  0.00009  0.00002
+ HCO              0.00008  0.00004  0.00000  0.00000  0.00000
+ HO2              0.00025  0.00015  0.00001  0.00000  0.00000
+ *H2              0.00665  0.00640  0.00582  0.00644  0.00737
+ HCOOH            0.00002  0.00001  0.00000  0.00000  0.00000
+ H2O              0.24848  0.25630  0.27937  0.28496  0.27786
+ H2O2             0.00005  0.00003  0.00000  0.00000  0.00000
+ *O               0.00829  0.00631  0.00135  0.00002  0.00000
+ *OH              0.04843  0.04076  0.01570  0.00134  0.00012
+ *O2              0.02616  0.02154  0.00572  0.00009  0.00000
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
+
+ NOTE. WEIGHT FRACTION OF FUEL IN TOTAL FUELS AND OF OXIDANT IN TOTAL OXIDANTS

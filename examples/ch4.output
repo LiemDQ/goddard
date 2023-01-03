@@ -1,0 +1,106 @@
+ *******************************************************************************
+
+         NASA-GLENN CHEMICAL EQUILIBRIUM PROGRAM CEA2, FEBRUARY 5, 2004
+                   BY  BONNIE MCBRIDE AND SANFORD GORDON
+      REFS: NASA RP-1311, PART I, 1994 AND NASA RP-1311, PART II, 1996
+
+ *******************************************************************************
+
+
+
+  
+ ### CEA analysis performed on Mon 26-Dec-2022 23:53:00
+  
+ # Problem Type: "Rocket" (Infinite Area Combustor)
+  
+ prob case=t______________5076 ro equilibrium
+  
+ # Pressure (1 value):
+ p,psia= 3000
+ # Supersonic Area Ratio (3 values):
+ supar= 3, 15, 35
+  
+ # Oxidizer/Fuel Wt. ratio (1 value):
+ o/f= 3.5
+  
+ # You selected the following fuels and oxidizers:
+ reac
+ fuel CH4(L)            wt%=100.0000
+ oxid O2(L)             wt%=100.0000
+  
+ # You selected these options for output:
+ # short version of output
+ output short
+ # Proportions of any products will be expressed as Mass Fractions.
+ output massf
+ # Heat will be expressed as siunits
+ output siunits
+  
+ # Input prepared by this script:/var/www/sites/cearun.grc.nasa.gov/cgi-bin/CEARU
+ N/prepareInputFile.cgi
+  
+ ### IMPORTANT:  The following line is the end of your CEA input file!
+ end
+
+
+
+
+
+              THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM
+
+           COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR
+
+ Pin =  3000.0 PSIA
+ CASE = t______________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        CH4(L)                       1.0000000    -89233.000    111.643
+ OXIDANT     O2(L)                        1.0000000    -12979.000     90.170
+
+ O/F=    3.50000  %FUEL= 22.222222  R,EQ.RATIO= 1.139790  PHI,EQ.RATIO= 1.139790
+
+                 CHAMBER   THROAT     EXIT     EXIT     EXIT
+ Pinf/P            1.0000   1.7294   13.485   111.76   330.88
+ P, BAR            206.84   119.61   15.338   1.8507  0.62513
+ T, K             3704.87  3517.27  2900.95  2277.00  1934.41
+ RHO, KG/CU M    1.4942 1 9.2139 0 1.4921 0 2.3466-1 9.3498-2
+ H, KJ/KG        -1551.54 -2285.85 -4662.62 -6582.70 -7372.83
+ U, KJ/KG        -2935.83 -3583.95 -5690.57 -7371.38 -8041.43
+ G, KJ/KG        -44791.4 -43336.3 -38519.8 -33157.8 -29949.5
+ S, KJ/(KG)(K)    11.6711  11.6711  11.6711  11.6711  11.6711
+
+ M, (1/n)          22.253   22.529   23.464   24.005   24.056
+ (dLV/dLP)t      -1.03515 -1.03103 -1.01438 -1.00135 -1.00017
+ (dLV/dLT)p        1.6054   1.5648   1.3209   1.0382   1.0053
+ Cp, KJ/(KG)(K)    6.2602   6.1422   4.8254   2.5750   2.1975
+ GAMMAs            1.1347   1.1314   1.1283   1.1677   1.1888
+ SON VEL,M/SEC     1253.3   1211.9   1077.0    959.7    891.5
+ MACH NUMBER        0.000    1.000    2.316    3.305    3.827
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   3.0000   15.000   35.000
+ CSTAR, M/SEC               1852.4   1852.4   1852.4   1852.4
+ CF                         0.6542   1.3466   1.7124   1.8420
+ Ivac, M/SEC                2283.0   2906.5   3420.7   3608.1
+ Isp, M/SEC                 1211.9   2494.4   3172.1   3412.1
+
+
+ MASS FRACTIONS
+
+ *CO              0.20865  0.19723  0.15605  0.12829  0.11876
+ *CO2             0.28167  0.29966  0.36443  0.40806  0.42303
+ COOH             0.00007  0.00004  0.00000  0.00000  0.00000
+ *H               0.00076  0.00064  0.00030  0.00006  0.00001
+ HCO              0.00003  0.00002  0.00000  0.00000  0.00000
+ HO2              0.00031  0.00019  0.00002  0.00000  0.00000
+ *H2              0.00623  0.00583  0.00466  0.00457  0.00515
+ HCOOH            0.00001  0.00001  0.00000  0.00000  0.00000
+ H2O              0.40935  0.41826  0.44539  0.45667  0.45281
+ H2O2             0.00007  0.00004  0.00000  0.00000  0.00000
+ *O               0.00628  0.00485  0.00120  0.00003  0.00000
+ *OH              0.05134  0.04328  0.01773  0.00203  0.00022
+ *O2              0.03523  0.02994  0.01020  0.00030  0.00001
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
