@@ -203,52 +203,8 @@ def get_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, ga
 
         pressure_ratio = np.exp(log_pinf_pe)
         p_exit = to_si(p_chamber) /  pressure_ratio
-        # print(f"Pressure ratio: {pressure_ratio}")
-        
-        
-        # gas_exit()
-        # print("////////////////////////////")
+
     
-
-    # while np.abs(dlnT) >= dlogT_tolerance:
-    #     n += 1
-    #     if n >= maxiter:
-    #         #TODO: error message
-    #         break
-    #     gas_exit.TPX = T_e, p_exit, gas_exit.X
-    #     print(f"Iteration: {n}")
-    #     gas_exit()
-    #     dlnT = (gas_chamber.entropy_mass - gas_exit.entropy_mass)/gas_exit.cp_mass
-    #     print(f"Temperature residual: {dlnT}")
-    #     gamma_s = gas_exit.cp/gas_exit.cv
-
-    #     velocity = _get_velocity(gas_exit, gas_chamber.enthalpy_mass)
-    #     sonic_velocity = _get_sonic_velocity(gas_exit, gamma_s)
-
-    #     Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight) / A_mdot_thr
-    #     dlogp_dlogA = gamma_s * velocity**2 / (velocity**2 - sonic_velocity**2)
-    #     residual = dlogp_dlogA * (np.log(area_ratio) - np.log(Ae_At))
-
-    #     print(f"Velocity: {velocity}")
-    #     print(f"Gamma: {gamma_s}")
-    #     print(f"Sonic velocity: {sonic_velocity}")
-    #     print(f"dlogp_dlogA: {dlogp_dlogA}")
-
-    #     print(f"Ae_at: {Ae_At}")
-    #     print(f"Pressure residual: {residual}")
-    #     log_pinf_pe = np.log(pressure_ratio) + residual
-
-        
-
-
-    #     pressure_ratio = np.exp(log_pinf_pe)
-    #     print(f"Pressure ratio: {pressure_ratio}")
-    #     p_exit = to_si(p_chamber) /  pressure_ratio
-        
-    #     lnT_e = np.log(T_e) + dlnT
-    #     T_e = np.exp(lnT_e)
-    #     print(f"T_exit: {T_e}")
-    #     print("////////////////////////////")
 
     print(f"number of iterations: {n}")
 
@@ -344,7 +300,7 @@ def get_isp(gas, gamma, enthalpy):
     return velocity, velocity/g0
     
 
-def calculate_isp_vac(gas, isp):
+def get_ivac(gas, isp):
     '''
     Ivac also includes the thrust from pressure forces. This assumes isp is provided in (m/s)
     and not s.

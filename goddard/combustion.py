@@ -46,13 +46,16 @@ class CombustionResult:
 
     def get_isp(self):
         return [point.isp for point in self.points]
+    
+    def get_ivac(self):
+        return [point.ivac for point in self.points]
 
 @dataclass
 class CombustionPoint:
     M: float
     CF: float
     isp: float
-    isp_vac: float
+    ivac: float
     expansion_ratio: float
     pressure_ratio: float
     exhaust_gas: ct.Solution
@@ -122,7 +125,7 @@ class CombustionAnalysis:
             raise NotImplementedError
         isp = nz.get_isp(gas_exit, gamma, gas_chamber.h)
         
-        isp_vac = nz.calculate_isp_vac(gas_exit, isp[0])[0]
+        isp_vac = nz.get_ivac(gas_exit, isp[0])
         
         print("EXIT CONDITIONS: ")
         gas_exit()
