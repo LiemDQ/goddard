@@ -1,0 +1,30 @@
+### CEA analysis performed on Mon 05-Jun-2023 01:25:19
+
+# Problem Type: "Rocket" (Infinite Area Combustor) 
+
+prob case=ddd____________2851 ro equilibrium frozen    
+
+# Pressure (1 value):
+p,psia= 3000
+# Supersonic Area Ratio (3 values):
+supar= 3, 15, 35
+
+# Oxidizer/Fuel Wt. ratio (1 value):
+o/f= 2.6
+
+# You selected the following fuels and oxidizers:
+reac
+fuel C6H6(L)           wt%=100.0000  t,k= 293.150 
+oxid O2(L)             wt%=100.0000 
+
+# You selected these options for output:
+# long version of output
+# Proportions of any products will be expressed as Mass Fractions.
+output massf
+# Heat will be expressed as siunits
+output siunits
+
+# Input prepared by this script:/var/www/sites/cearun.grc.nasa.gov/cgi-bin/CEARUN/prepareInputFile.cgi
+
+### IMPORTANT:  The following line is the end of your CEA input file!
+end
