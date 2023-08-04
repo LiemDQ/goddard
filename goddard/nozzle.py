@@ -96,8 +96,19 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas_chamb
     
     return gas_exit
 
-def get_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
-    pass
+def get_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, P_chamber, pressure_ratio):
+    """
+    Calculate equilibrium exit conditions, given a pressure ratio.
+    """
+    P_exit = P_chamber / pressure_ratio
+    gas_exit = ct.Solution(thermo=gas_throat.thermo_model, species=gas_throat.species())
+    gas_exit.SPX = gas_throat.SPX
+
+    gas_exit.SP = gas_throat.s, P_exit
+    gas_exit.equilibrate('SP')
+
+    return gas_exit
+    
 
 def get_throat_conditions_frozen(gas: ct.Mixture, P_chamber: Quantity, gas_chamber: ct.Mixture, gamma_chamber):
     """
@@ -171,7 +182,6 @@ def get_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, ga
         if n == maxiter:
             #TODO: error message if nozzle fails to converge
             break
-        # print(f"Iteration: {n}")
         m = 0
         dlnT = 1000
         while np.abs(dlnT) >= dlogT_tolerance:
@@ -181,7 +191,6 @@ def get_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, ga
             gas_exit.TPX = T_e, p_exit, gas_exit.X
             dlnT = (gas_chamber.s - gas_exit.s)/gas_exit.cp
             T_e = np.exp(np.log(T_e) + dlnT)
-            # print(f"T_exit: {T_e}")
 
         gamma_s = gas_exit.cp/gas_exit.cv #gamma_s = gamma for frozen flow
         velocity = _get_velocity(gas_exit, gas_chamber.h)
@@ -206,9 +215,10 @@ def get_exit_conditions_frozen(gas_throat: ct.Mixture, area_ratio, p_chamber, ga
 
     
 
-    print(f"number of iterations: {n}")
+    # print(f"number of iterations: {n}")
 
     return gas_exit
+
     
 def get_exit_conditions_pressure_ratio_frozen(gas_throat: ct.Mixture, pressure_ratio, p_chamber, gas_chamber: ct.Solution, velocity):
     # we iterate to obtain the nozzle exit temperature 
@@ -288,14 +298,12 @@ def get_area_ratio_from_mach_num(gamma, M):
     '''
     return 1/M * ((1+ (gamma-1)/2*M**2) /((gamma+1)/2))**((gamma+1)/(2*(gamma-1)))
 
-def get_isp(gas, gamma, enthalpy):
+def get_isp(gas, enthalpy):
     '''
     Calculate specific impulse given an exhaust gas thermodynamic state and combustion chamber enthalpy. 
     '''
     derivs = get_thermo_derivatives(gas)
     velocity = _get_velocity(gas, enthalpy)
-    cstar = get_cstar(gamma, gas.T, gas.mean_molecular_weight)
-    CF = velocity/cstar
     g0 = 9.80655 #gravitational acceleration
     return velocity, velocity/g0
     

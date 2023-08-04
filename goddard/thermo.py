@@ -69,14 +69,6 @@ def get_thermo_derivatives(gas):
     for i in range(gas.n_elements):
         coeff_matrix[2*gas.n_elements+1, gas.n_elements+1+i] = np.sum(stoich_coeffs[i, :] * moles)
     right_hand_side[2*gas.n_elements+1] = np.sum(moles)
-
-    # print("DEBUG:")
-    # print(f"{coeff_matrix}")
-    # print("Moles")
-    # print(f"{moles}")
-    # print("Enthalpies")
-    # print(f"{gas.standard_enthalpies_RT}")
-    # print("------------------")
     
     derivs = np.linalg.solve(coeff_matrix, right_hand_side)
 
@@ -103,17 +95,7 @@ def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
     for i, elem in enumerate(gas.element_names):
         for j, sp in enumerate(gas.species_names):
             stoich_coeffs[i,j] = gas.n_atoms(sp, elem)
-    
-    # print("DEBUG PROPERTIES:")
-    # print("Moles")
-    # print(f"{moles}")
-    # print("Enthalpies")
-    # print(f"{gas.standard_enthalpies_RT}")
-    # print("Heat capacities")
-    # print(f"{gas.standard_cp_R}")
-    # print(f"Volume: {gas.v}")
-    # print(f"R: {ct.gas_constant}")
-    # print("------------------")
+
 
     spec_heat_p = ct.gas_constant * (
         np.sum([dpi_dlogT_P[i] * 
@@ -134,10 +116,9 @@ def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
 
     gamma = spec_heat_p / spec_heat_v
     gamma_s = -gamma/dlogV_dlogP_T
-    print(f"{gamma_s}, {spec_heat_p}")
+
     return dlogV_dlogT_P, dlogV_dlogP_T, spec_heat_p, gamma_s
 
 def get_thermo_properties(gas):
     derivs = get_thermo_derivatives(gas)
-    print(derivs)
     return _get_thermo_properties(gas, *derivs)

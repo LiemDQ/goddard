@@ -1,5 +1,7 @@
 import pint
 import cantera as ct
+from collections.abc import Iterable
+import numpy as np
 
 #Earth gravitational acceleration
 g0 = 9.8067 
@@ -35,6 +37,19 @@ def extract_reaction_species(
     return ct.Solution(thermo='IdealGas', species=species)
 
 def copy_solution(solution: ct.Solution) -> ct.Solution:
+    """
+    Create a deep copy of a Cantera Solution object. 
+    """
     result = ct.Solution(thermo=solution.thermo_model, species=solution.species())
     result.SPX = solution.SPX
     return result
+
+def cea_input_to_combustion_params(filename):
+    pass
+
+def _to_np_array(x):
+    try:
+        _ = iter(x)
+        return np.array(x)
+    except:
+        return x

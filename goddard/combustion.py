@@ -4,7 +4,8 @@ import nozzle as nz
 from enum import Enum, auto
 from dataclasses import dataclass
 import cantera as ct
-
+import numpy as np
+from collections.abc import Iterable
 
 class NozzleType(Enum):
     EQ = auto()
@@ -12,11 +13,14 @@ class NozzleType(Enum):
     KINETIC = auto()
 
 class CombustorArgs:
-    def __init__(self, CR = 0, flux_ratio = 0, use_CR = True, is_frozen = NozzleType.EQ):
+    def __init__(self, CR = 0, flux_ratio = 0, use_CR = True, nozzle_type = NozzleType.EQ):
+        """
+        CR: contraction ratio
+        """
         self.CR = CR
         self.flux_ratio = flux_ratio
         self.use_CR = use_CR
-        self.is_frozen = is_frozen
+        self.nozzle_type = nozzle_type
     
     def __repr__(self) -> str:
         #TODO proper implementation of repr
@@ -30,7 +34,7 @@ class CombustionResult:
         cstar,
         fuel,
         oxidizer,
-        points,
+        conditions,
         ):
         self.nozzle_type = nozzle_type
         self.of_ratio = of_ratio
@@ -39,16 +43,18 @@ class CombustionResult:
         self.phi_ratio = 0
         self.fuel = fuel
         self.oxidizer = oxidizer
-        self.points = points
+        self.nozzle_conditions = conditions
 
-    def report(self):
-        pass
+    def full_output(self):
+        output = ""
+        # section 1: inputs
+        return output
 
     def get_isp(self):
-        return [point.isp for point in self.points]
+        return [point.isp for point in self.nozzle_conditions]
     
     def get_ivac(self):
-        return [point.ivac for point in self.points]
+        return [point.ivac for point in self.nozzle_conditions]
 
 @dataclass
 class CombustionPoint:
@@ -60,25 +66,31 @@ class CombustionPoint:
     pressure_ratio: float
     exhaust_gas: ct.Solution
 
+class NozzleConditions:
+    pass
 
 class CombustionAnalysis:
     def __init__(
         self,
-        chamber_pressure,
+        Pcs,
         fuel: ct.Solution,
         oxidizer: ct.Solution,
-        mixture_ratio,
-        exit_conditions,
+        MRs,
+        expRs,
         combustor: CombustorArgs
         ):
-        self.chamber_pressure = chamber_pressure
-        self.fuel = fuel
-        self.oxidizer = oxidizer
-        self.mixture_ratio = mixture_ratio
-        self.exit_conditions = exit_conditions
+        self.fuel = utils.copy_solution(fuel) #avoids mutating state outside of the analysis object
+        self.oxidizer = utils.copy_solution(oxidizer)
+        
+
+        self.chamber_pressure = np.array(Pcs)
+        self.mixture_ratio = np.array(MRs)
+        self.exit_conditions = np.array(expRs)
+
         self.combustor = combustor
     
     def run(self) -> CombustionResult:
+        
         #normalize to molar basis
         #TODO: this assumes that mixture ratio is a single value as opposed to an iterable.
         molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
@@ -87,6 +99,9 @@ class CombustionAnalysis:
         print(f"Moles ox: {moles_ox}")
         moles_f = 1 - moles_ox
 
+        # Generate results matrix
+        # nesting order: Pc -> MR -> ExpR
+
         #
         gas_chamber = utils.extract_reaction_species(self.fuel, self.oxidizer)
 
@@ -94,17 +109,17 @@ class CombustionAnalysis:
         
         # solve for combustion chamber composition
         mixture.equilibrate('HP',solver="gibbs")
-        print("CHAMBER CONDITIONS: ")
-        gas_chamber()
+        # print("CHAMBER CONDITIONS: ")
+        # gas_chamber()
 
         _,_,_,gamma = thermo.get_thermo_properties(gas_chamber)
         cstar = nz.get_cstar(gamma, gas_chamber.T, gas_chamber.mean_molecular_weight)
         
-        print("THROAT CONDITIONS: ")
-        if self.combustor.is_frozen == NozzleType.FROZEN:
+        # print("THROAT CONDITIONS: ")
+        if self.combustor.nozzle_type == NozzleType.FROZEN:
             gas_throat = utils.copy_solution(gas_chamber)
             gas_throat = nz.get_throat_conditions_frozen(gas_throat, self.chamber_pressure, gas_chamber, gamma)
-            gas_throat()
+            # gas_throat()
             sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
 
 
@@ -112,10 +127,10 @@ class CombustionAnalysis:
             gas_exit = nz.get_exit_conditions_frozen(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
             # gas_exit()
             
-        elif self.combustor.is_frozen == NozzleType.EQ:
+        elif self.combustor.nozzle_type == NozzleType.EQ:
             gas_throat = utils.copy_solution(gas_chamber)
             gas_throat = nz.get_throat_conditions(gas_throat, self.chamber_pressure, gas_chamber, gamma)
-            gas_throat()
+            # gas_throat()
             sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
 
             gas_exit = utils.copy_solution(gas_throat)
@@ -123,7 +138,7 @@ class CombustionAnalysis:
             # gas_exit()
         else:
             raise NotImplementedError
-        isp = nz.get_isp(gas_exit, gamma, gas_chamber.h)
+        isp = nz.get_isp(gas_exit, gas_chamber.h)
         
         isp_vac = nz.get_ivac(gas_exit, isp[0])
         
