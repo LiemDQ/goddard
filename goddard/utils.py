@@ -1,5 +1,6 @@
 import pint
 import cantera as ct
+import numpy as np
 
 #Earth gravitational acceleration
 g0 = 9.8067 
@@ -15,6 +16,38 @@ def to_si(quant: pint.Quantity):
 
 def species_list_to_dict(species_list):
     return {species.name:species for species in species_list}
+
+def process_text_input(text: str):
+    """
+    String format: CH3OH(L):0.4|C2H5OH(L):0.6|mass
+
+    """
+    input_species = text.split("|")
+    composition_type = "mass"
+    last = input_species[-1]
+    if last == "mass" or last == "mole":
+        composition_type = last
+        input_species.pop()
+    species_dict = {}
+    for species in input_species:
+        s = species.split(":")
+        name = s[0]
+        if len(s) > 2:
+            raise ValueError("Encountered multiple ':' following a species name. Is the input string correctly formatted?")
+        elif len(s) == 2:
+            composition = s[1]
+        else:
+            composition = None
+        species_dict[name] = composition
+    
+    return composition_type, species_dict
+    
+
+def normalize_compositions(species_dict: dict[str, float]):
+    total = sum(species_dict.values())
+    species_dict.update((k, v/total) for k,v in species_dict.items())
+    #TODO: handle cases where some of the compositions are None
+    return species_dict
 
 def extract_reaction_species(
     fuel: ct.Solution, 

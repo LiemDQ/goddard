@@ -4,6 +4,7 @@ import nozzle as nz
 from enum import Enum, auto
 from dataclasses import dataclass
 import cantera as ct
+import numpy as np
 
 
 class NozzleType(Enum):
@@ -82,12 +83,14 @@ class CombustionAnalysis:
         #normalize to molar basis
         #TODO: this assumes that mixture ratio is a single value as opposed to an iterable.
         molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
+        
         print(f"Molar ratio: {molar_ratio}")
         moles_ox = molar_ratio / (1 + molar_ratio)
+        
         print(f"Moles ox: {moles_ox}")
         moles_f = 1 - moles_ox
 
-        #
+        
         gas_chamber = utils.extract_reaction_species(self.fuel, self.oxidizer)
 
         mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (gas_chamber, 0.0)])
