@@ -19,15 +19,23 @@ def species_list_to_dict(species_list):
 
 def process_text_input(text: str):
     """
-    String format: CH3OH(L):0.4|C2H5OH(L):0.6|mass
-
+    String format: CH3OH(L):0.4|C2H5OH(L):0.6|T293.0|mass
     """
     input_species = text.split("|")
     composition_type = "mass"
-    last = input_species[-1]
-    if last == "mass" or last == "mole":
-        composition_type = last
-        input_species.pop()
+    temperature = 0.0
+    if len(input_species) > 1: #potentially extract temperature and composition type data
+        last = input_species[-1]
+        second_last = input_species[-2]
+
+        if last == "mass" or last == "mole": #case 1: composition type is specified
+            composition_type = last
+            input_species.pop()
+            if second_last[0] == "T" and second_last[1].isdigit():
+                temperature = float(second_last[1:])
+        elif last[0] == "T" and last[1].isdigit(): # case 2: composition type is not specified, temperature is specified
+            temperature = float(last[1:])
+      
     species_dict = {}
     for species in input_species:
         s = species.split(":")
@@ -37,17 +45,37 @@ def process_text_input(text: str):
         elif len(s) == 2:
             composition = s[1]
         else:
-            composition = None
+            if len(input_species) > 1:
+                raise ValueError(f"Composition of multi-species mixture was not specified properly. Expected a value for {name}, but none was found.")
+            composition = 1.0 #if composition is not specified, then it is the balance of the remaining compositions
         species_dict[name] = composition
     
-    return composition_type, species_dict
+    return species_dict, temperature, composition_type
     
 
-def normalize_compositions(species_dict: dict[str, float]):
-    total = sum(species_dict.values())
-    species_dict.update((k, v/total) for k,v in species_dict.items())
-    #TODO: handle cases where some of the compositions are None
-    return species_dict
+def normalize_compositions(species: dict[str, float]):
+    total = sum(species.values())
+    species.update((k, v/total) for k,v in species.items())
+    
+    return species
+
+def generate_solution(input_species_dict: dict[str, float], composition_type: str, temperature: float, reactant_file = reactant_files[2]):
+    species_dict = species_list_to_dict(ct.Species.list_from_file(reactant_file))
+    
+    input_species = [species_dict[name] for name in input_species_dict.keys()]
+
+    solution = ct.Solution(thermo="IdealGas", species = input_species)
+    #Could add optional function parameter to support non-ideal gas models
+    if composition_type == "mass":
+        solution.Y = input_species_dict
+    elif composition_type == "mole":
+        solution.X = input_species_dict
+    else:
+        raise ValueError("Composition type must be one of either 'mass' or 'mole'.")
+    
+    solution.T = temperature
+    return solution
+
 
 def extract_reaction_species(
     fuel: ct.Solution, 
