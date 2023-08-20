@@ -23,7 +23,7 @@ def process_text_input(text: str):
     """
     input_species = text.split("|")
     composition_type = "mass"
-    temperature = 0.0
+    temperature = 273.15 #default is 0 degC
     if len(input_species) > 1: #potentially extract temperature and composition type data
         last = input_species[-1]
         second_last = input_species[-2]
@@ -33,8 +33,10 @@ def process_text_input(text: str):
             input_species.pop()
             if second_last[0] == "T" and second_last[1].isdigit():
                 temperature = float(second_last[1:])
+                input_species.pop()
         elif last[0] == "T" and last[1].isdigit(): # case 2: composition type is not specified, temperature is specified
             temperature = float(last[1:])
+            input_species.pop()
       
     species_dict = {}
     for species in input_species:
@@ -59,23 +61,33 @@ def normalize_compositions(species: dict[str, float]):
     
     return species
 
-def generate_solution(input_species_dict: dict[str, float], composition_type: str, temperature: float, reactant_file = reactant_files[2]):
+def generate_solution(input_species_dict: dict[str, float], temperature: float, pressure: float, composition_type: str, reactant_file = reactant_files[0]):
     species_dict = species_list_to_dict(ct.Species.list_from_file(reactant_file))
     
     input_species = [species_dict[name] for name in input_species_dict.keys()]
 
     solution = ct.Solution(thermo="IdealGas", species = input_species)
     #Could add optional function parameter to support non-ideal gas models
+    #TODO: add check on the valid temperature range for the thermodynamic correlations, and give an error if the 
+    #temperature is out of bounds
     if composition_type == "mass":
-        solution.Y = input_species_dict
+        solution.TPY = temperature, pressure, input_species_dict
     elif composition_type == "mole":
-        solution.X = input_species_dict
+        solution.TPX = temperature, pressure, input_species_dict
     else:
         raise ValueError("Composition type must be one of either 'mass' or 'mole'.")
     
-    solution.T = temperature
+    
     return solution
 
+def generate_solution_from_text_input(text: str, pressure: float):
+    species, temperature, comp_type = process_text_input(text)
+    species = normalize_compositions(species)
+
+    return generate_solution(species, temperature, pressure, comp_type)
+
+def set_species_file(filename: str):
+    reactant_files.append(filename)
 
 def extract_reaction_species(
     fuel: ct.Solution, 

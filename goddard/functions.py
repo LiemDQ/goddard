@@ -35,6 +35,32 @@ def calc_isp_vac(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=Fal
     else:
         return list(map(lambda i: i[1], ivac))
 
+def get_isp(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
+    fuel = utils.generate_solution_from_text_input(fuel, utils.to_si(pressure))
+    oxidizer = utils.generate_solution_from_text_input(oxidizer, utils.to_si(pressure))
+
+    result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
+    isp = result.get_isp()
+
+    if not output_in_seconds:
+        return isp
+    else:
+        return list(map(lambda i: i[1], isp)) #why are we doing this?
+
+
+def get_isp_vac(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
+    fuel = utils.generate_solution_from_text_input(fuel, utils.to_si(pressure))
+    oxidizer = utils.generate_solution_from_text_input(oxidizer, utils.to_si(pressure))
+
+    result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
+    ivac = result.get_ivac()
+
+    if not output_in_seconds:
+        return ivac
+    else:
+        return list(map(lambda i: i[1], ivac)) #why are we doing this?
+
+
 def _get_isp(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=False):
     if frozen:
         nt = NozzleType.FROZEN
