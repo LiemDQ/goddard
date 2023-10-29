@@ -11,7 +11,7 @@ from thermo import get_thermo_derivatives, get_thermo_properties
 from utils import to_si, copy_solution
 from pint import Quantity
 
-def get_throat_conditions(gas: ct.Solution, P_chamber: Quantity, gas_chamber: ct.Solution, gamma_chamber):
+def get_throat_conditions(gas: ct.Solution, P_chamber: float, gas_chamber: ct.Solution, gamma_chamber: float):
     '''
     Assumptions: 
     - Flow is isentropic
@@ -36,7 +36,7 @@ def get_throat_conditions(gas: ct.Solution, P_chamber: Quantity, gas_chamber: ct
 
         P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
         # print(f"P_throat: {to_si(P_throat)}")
-        gas.SPX = gas_chamber.s, to_si(P_throat), gas_chamber.X
+        gas.SPX = gas_chamber.s, P_throat, gas_chamber.X
         gas.equilibrate('SP')
         derivs = get_thermo_derivatives(gas)
         dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas)
@@ -50,7 +50,7 @@ def get_throat_conditions(gas: ct.Solution, P_chamber: Quantity, gas_chamber: ct
     
     return gas
 
-def get_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas_chamber: ct.Solution, gamma_s, velocity):
+def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: float, gas_chamber: ct.Solution, gamma_s, velocity):
     '''
     Calculate exit conditions, based on expansion area ratio.
     '''
@@ -61,7 +61,7 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas_chamb
 
     #TODO: initial guess only valid for area ratios > 2
     pressure_ratio = np.exp(gamma_s + 1.4 * np.log(area_ratio)) #initial guess 
-    p_exit = to_si(P_chamber)/pressure_ratio
+    p_exit = P_chamber/pressure_ratio
 
     gas_exit.SP = gas_chamber.s, p_exit
     gas_exit.equilibrate('SP')
@@ -99,7 +99,7 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio, P_chamber, gas_chamb
 def get_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
     pass
 
-def get_throat_conditions_frozen(gas: ct.Mixture, P_chamber: Quantity, gas_chamber: ct.Mixture, gamma_chamber):
+def get_throat_conditions_frozen(gas: ct.Mixture, P_chamber: float, gas_chamber: ct.Mixture, gamma_chamber: float):
     """
     Throat conditions for frozen flow. See Gordon & McBride, 1994, Section 6.5.2.
     """
@@ -120,7 +120,7 @@ def get_throat_conditions_frozen(gas: ct.Mixture, P_chamber: Quantity, gas_chamb
             break
 
         P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
-        gas.SPX = gas_chamber.s, to_si(P_throat), gas_chamber.X
+        gas.SPX = gas_chamber.s, P_throat, gas_chamber.X
         # unlike with the equilibrium calculation, the gas mixture is never equilibrated
         # and thus gamma never changes
 

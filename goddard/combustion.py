@@ -72,7 +72,7 @@ class CombustionAnalysis:
         exit_conditions,
         combustor: CombustorArgs
         ):
-        self.chamber_pressure = chamber_pressure
+        self.chamber_pressure = utils.to_si(chamber_pressure)
         self.fuel = fuel
         self.oxidizer = oxidizer
         self.mixture_ratio = mixture_ratio
@@ -82,6 +82,7 @@ class CombustionAnalysis:
     def run(self) -> CombustionResult:
         #normalize to molar basis
         #TODO: this assumes that mixture ratio is a single value as opposed to an iterable.
+        
         molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
         
         print(f"Molar ratio: {molar_ratio}")
@@ -89,8 +90,6 @@ class CombustionAnalysis:
         
         print(f"Moles ox: {moles_ox}")
         moles_f = 1 - moles_ox
-
-        
         gas_chamber = utils.extract_reaction_species(self.fuel, self.oxidizer)
 
         mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (gas_chamber, 0.0)])
@@ -151,8 +150,6 @@ class CombustionAnalysis:
             self.oxidizer,
             [point])
 
-
-        
 
     def report(self, detailed = False):
         pass
