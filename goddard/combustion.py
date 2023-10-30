@@ -5,7 +5,16 @@ from enum import Enum, auto
 from dataclasses import dataclass
 import cantera as ct
 import numpy as np
+from abc import ABC, abstractmethod
 
+class Combustor(ABC):
+    pass
+
+class FiniteAreaCombustor(Combustor):
+    pass
+
+class InfiniteAreaCombustor(Combustor):
+    pass
 
 class NozzleType(Enum):
     EQ = auto()

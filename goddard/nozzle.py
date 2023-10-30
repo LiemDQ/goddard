@@ -10,6 +10,122 @@ import cantera as ct
 from thermo import get_thermo_derivatives, get_thermo_properties
 from utils import to_si, copy_solution
 from pint import Quantity
+from abc import ABC, abstractmethod
+
+class ExitConditions:
+    subsonic_ratio: np.array
+    supersonic_ratio: np.array
+    pressure_ratio: np.array
+    
+    def __init__(self, supersonic_ratio=None, subsonic_ratio=None, pressure_ratio=None) -> None:
+        self.supersonic_ratio = supersonic_ratio
+        self.subsonic_ratio = subsonic_ratio
+        self.pressure_ratio = pressure_ratio
+        if not self.supersonic_ratio and not subsonic_ratio and not pressure_ratio:
+            raise ValueError("No nozzle exit conditions are specified.")
+
+class Nozzle(ABC):
+    
+    def __init__(self, inlet_gas: ct.Solution, exit_conditions: ExitConditions) -> None:
+        super().__init__()
+        self.inlet = inlet_gas
+    
+    @abstractmethod    
+    def get_throat_conditions(self, P_chamber: float, gas_chamber: ct.Solution, gamma_chamber: float):
+        pass
+    
+    @abstractmethod
+    def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: float, gas_chamber: ct.Solution, gamma_s, velocity):
+        pass
+
+
+class EquilibriumNozzle(Nozzle):
+    def __init__(self, inlet_gas: ct.Solution, exit_conditions: ExitConditions) -> None:
+        super().__init__(inlet_gas, exit_conditions)
+        
+    def get_throat_conditions(self, P_chamber: float, gas_chamber: ct.Solution, gamma_chamber: float):
+        '''
+        Assumptions: 
+        - Flow is isentropic
+        - Equilibrium flow
+        '''
+        gas = self.inlet
+        P_throat = P_chamber / np.power((gamma_chamber + 1)/2., gamma_chamber/(gamma_chamber-1))
+        # CEA defaults
+        max_iter_throat = 5
+        tolerance_throat = 0.4e-4
+
+        gamma_s = gamma_chamber
+        
+        M = 1.0 #throat mach is 1.0 by definition
+        num_iter = 0
+        residual = 1
+        # print(f"P throat: {P_throat}")
+        while residual > tolerance_throat:
+            num_iter += 1
+            if num_iter == max_iter_throat:
+                # TODO: show error message
+                break
+
+            P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
+            # print(f"P_throat: {to_si(P_throat)}")
+            gas.SPX = gas_chamber.s, P_throat, gas_chamber.X
+            gas.equilibrate('SP')
+            derivs = get_thermo_derivatives(gas)
+            dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas)
+
+            velocity = _get_velocity(gas, gas_chamber.h)
+            sonic_velocity = _get_sonic_velocity(gas, gamma_s)
+            # print(f"Velocity: {velocity}, sonic velocity: {sonic_velocity}")
+            M = velocity/sonic_velocity
+
+            residual = np.abs(1.0 - 1/M**2)
+        
+        return gas
+
+class FrozenNozzle(Nozzle):
+    def __init__(self, inlet_gas, NFZ: int) -> None:
+        super().__init__(inlet_gas)
+        if NFZ < 1 or NFZ > 5 or not isinstance(NFZ, int):
+            raise ValueError("Invalid NFZ value: must be integer between 1 and 5. See NASA RP1311 Part II (Users Manual), p. 18-19")
+        self.NFZ = NFZ
+    
+    def get_throat_conditions(self, P_chamber: float, gas_chamber: ct.Solution, gamma_chamber: float):
+        """
+        Throat conditions for frozen flow. See Gordon & McBride, 1994, Section 6.5.2.
+        """
+        gas = self.inlet
+        P_throat = P_chamber / np.power((gamma_chamber + 1)/2., gamma_chamber/(gamma_chamber-1))
+        # CEA defaults
+        max_iter_throat = 5
+        tolerance_throat = 0.4e-4
+
+        gamma_s = gamma_chamber
+        
+        M = 1.0 # throat mach is 1.0 by definition
+        num_iter = 0
+        residual = 1
+        while residual > tolerance_throat:
+            num_iter += 1
+            if num_iter == max_iter_throat:
+                # TODO: show error message
+                break
+
+            P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
+            gas.SPX = gas_chamber.s, P_throat, gas_chamber.X
+            # unlike with the equilibrium calculation, the gas mixture is never equilibrated
+            # and thus gamma never changes
+
+            # gas.equilibrate('SP')
+            # derivs = get_thermo_derivatives(gas)
+            velocity = _get_velocity(gas, gas_chamber.h)
+            sonic_velocity = _get_sonic_velocity(gas, gamma_s)
+            M = velocity/sonic_velocity
+
+            residual = np.abs(1.0 - 1/M**2)
+        
+        return gas
+    
 
 def get_throat_conditions(gas: ct.Solution, P_chamber: float, gas_chamber: ct.Solution, gamma_chamber: float):
     '''
