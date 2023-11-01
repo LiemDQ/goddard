@@ -1,6 +1,7 @@
 import pint
 import cantera as ct
 import numpy as np
+import itertools
 
 #Earth gravitational acceleration
 g0 = 9.8067 
@@ -13,6 +14,15 @@ def to_si(quant: pint.Quantity):
     Convert pint Quantity to magnitude in base SI units.
     '''
     return quant.to_base_units().magnitude
+
+def normalize_input_units_to_si(value: float | pint.Quantity) -> float:
+    """
+    Convert input value to base SI units. This is used to ensure all downstream calculations are in SI base units.
+    """
+    if isinstance(value, float):
+        return value
+    else:
+        return value.to_base_units().magnitude
 
 def species_list_to_dict(species_list):
     return {species.name:species for species in species_list}
@@ -108,3 +118,37 @@ def copy_ct_solution(solution: ct.Solution) -> ct.Solution:
     result = ct.Solution(thermo=solution.thermo_model, species=solution.species())
     result.SPX = solution.SPX
     return result
+
+def mixed_flatten(iterable):
+    """Flattens an iterable containing mixed iterables and scalars."""
+    for item in iterable:
+        try:
+            iterator = iter(item)
+        except TypeError: #item is scalar
+            yield item
+        else: #item is an iterable
+            for subitem in item: yield subitem
+
+def args_to_np_array(value, *args) -> np.array:
+    """
+    Convert arguments into a numpy array for further numerical processing.
+    
+    Cases that can be handled:
+    1. Value is a scalar, args are a series of scalars
+    2. Value is an iterable, args are a series of scalars
+    3. Value is an iterable, args are a series of iterables
+    4. Value is a numpy array, args are a series of scalars
+    5. Value is a numpy array, args are a series of iterables
+    """                
+    res = np.fromiter(mixed_flatten(args))
+    
+    if isinstance(value, np.array):
+        return np.concatenate((value, res))
+    else:
+        try:
+            iterator = iter(value)
+        except TypeError: #value is a scalar
+            return np.concatenate((np.array([value]), res))
+        else:
+            return np.concatenate((np.fromiter(value), res))
+            
