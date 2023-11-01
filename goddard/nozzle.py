@@ -10,7 +10,8 @@ import cantera as ct
 from thermo import get_thermo_derivatives, get_thermo_properties, get_speed_of_sound
 from utils import to_si, copy_ct_solution
 from abc import ABC, abstractmethod
-from enum import Enum, auto
+from typing import Type
+
 class ExitConditions:
     subsonic_ratio: np.array
     supersonic_ratio: np.array
@@ -22,21 +23,6 @@ class ExitConditions:
         self.pressure_ratio = pressure_ratio
         if not self.supersonic_ratio and not subsonic_ratio and not pressure_ratio:
             raise ValueError("No nozzle exit conditions are specified.")
-
-class NozzleType(Enum):
-    EQ = auto()
-    FROZEN = auto()
-    KINETIC = auto()
-
-# API functions
-def frozen_nozzle() -> NozzleType:
-    return NozzleType.FROZEN
-
-def equilibrium_nozzle() -> NozzleType:
-    return NozzleType.EQ
-
-def kinetic_nozzle() -> NozzleType:
-    return NozzleType.KINETIC
 
 class Nozzle(ABC):
     
@@ -199,7 +185,7 @@ class FrozenNozzle(Nozzle):
     def __init__(self, inlet_gas: ct.Solution, exit_conditions: ExitConditions, gamma_s: float | None = None, NFZ: int = 1) -> None:
         super().__init__(inlet_gas, exit_conditions, gamma_s)
         if NFZ < 1 or NFZ > 5 or not isinstance(NFZ, int):
-            raise ValueError("Invalid NFZ value: must be integer between 1 and 5. See NASA RP1311 Part II (Users Manual), p. 18-19")
+            raise ValueError("Invalid NFZ value: must be integer between 1 and 5. See NASA RP1311 Part II (Users Manual), p. 18-19.")
         self.NFZ = NFZ
     
     def get_throat_conditions(self, gas: ct.Solution) -> ct.Solution:
@@ -242,6 +228,7 @@ class FrozenNozzle(Nozzle):
         """
         See Gordon & McBride, 1994, Section 6.5.
         """
+        area_ratio = self.exit_conditions.supersonic_ratio
         A_mdot_thr = self.throat.T / (self.throat.P * velocity * self.throat.mean_molecular_weight) #remains constant
         # we iterate to obtain the nozzle exit temperature 
         T_e = self.throat.T #initial guess
@@ -363,7 +350,7 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: fl
         derivs = get_thermo_derivatives(gas_exit)
         dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas_exit)
         velocity = _get_velocity(gas_exit, gas_chamber.h)
-        sonic_velocity = _get_sonic_velocity(gas_exit, gamma_s)
+        sonic_velocity = get_speed_of_sound(gas_exit, gamma_s)
 
         Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight) / A_mdot_thr
         dlogp_dlogA = gamma_s * velocity** 2 / (velocity**2 - sonic_velocity**2)
@@ -377,6 +364,20 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: fl
         gas_exit.equilibrate('SP')
     
     return gas_exit
+
+
+def _create_nozzle(nozzle_class: Type[Nozzle], **kwargs):
+    return lambda inlet_gas, exit_conditions, gamma: nozzle_class(inlet_gas, exit_conditions, gamma, **kwargs)
+
+# API functions
+def frozen_nozzle(NFZ: int = 1) -> Nozzle:
+    return lambda inlet_gas, exit_conditions, gamma: FrozenNozzle(inlet_gas, exit_conditions, gamma, NFZ)
+
+def equilibrium_nozzle() -> Nozzle:
+    return lambda 
+
+def kinetic_nozzle() -> NozzleType:
+    return NozzleType.KINETIC
 
 def get_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
     pass

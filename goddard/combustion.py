@@ -7,19 +7,78 @@ import cantera as ct
 import numpy as np
 from abc import ABC, abstractmethod
 
-class Combustor(ABC):
+class MixtureRatio:
+    def __init__(self, M_fuel, M_oxidizer, OF, phi, equiv, fuel_percent) -> None:
+        self.OF_ratio = OF
+        self.phi = phi
+        self.req_ratio = equiv
+        self.fuel_percent = fuel_percent
+        self.M_fuel = M_fuel
+        self.M_ox = M_oxidizer
+        
+    @property
+    def phi(self):
+        return self._phi
+    
+    @property
+    def req_ratio(self):
+        return self._req_ratio
+    
+    @property
+    def OF_ratio(self):
+        return self._OF_ratio
+    
+    @property
+    def fuel_percent(self):
+        return self._fuel_percent
+    
+    @property.setter
+    def phi(self):
+        pass
+
+def _create_mixture_ratio(*kwargs):
+    return lambda fuel, oxidizer: MixtureRatio(fuel.mean_molecular_weight, oxidizer.mean_molecular_weight)
+
+def OF_ratio(value, *args):
+    values = utils.args_to_np_array(value, args)
+    return _create_mixture_ratio(OF=values)
+
+def phi_ratio(value, *args):
+    values = utils.args_to_np_array(value, args)
+    return _create_mixture_ratio(phi=values)
+
+def equiv_ratio(value, *args):
+    values = utils.args_to_np_array(value, args)
+    return _create_mixture_ratio(equiv=values)
+
+def fuel_pct(value, *args):
+    values = utils.args_to_np_array(value, args)
+    return _create_mixture_ratio(fuel_percent=values)
+
+
+
+def finite_area_combustor():
     pass
 
+def infinite_area_combustor():
+    pass
+
+class Combustor(ABC):
+    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio) -> None:
+        super().__init__()
+        self.fuel = fuel
+        self.oxidizer = oxidizer
+        self.MR = mr
+        
+    @abstractmethod
+    def solve(self):
+        pass
+        
 class FiniteAreaCombustor(Combustor):
     pass
 
 class InfiniteAreaCombustor(Combustor):
     pass
-
-class NozzleType(Enum):
-    EQ = auto()
-    FROZEN = auto()
-    KINETIC = auto()
 
 class CombustorArgs:
     def __init__(self, CR = 0, flux_ratio = 0, use_CR = True, is_frozen = NozzleType.EQ):
@@ -113,23 +172,23 @@ class CombustionAnalysis:
         
         print("THROAT CONDITIONS: ")
         if self.combustor.is_frozen == NozzleType.FROZEN:
-            gas_throat = utils.copy_solution(gas_chamber)
+            gas_throat = utils.copy_ct_solution(gas_chamber)
             gas_throat = nz.get_throat_conditions_frozen(gas_throat, self.chamber_pressure, gas_chamber, gamma)
             gas_throat()
-            sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
+            sonic_velocity = thermo.get_speed_of_sound(gas_throat, gamma)
 
 
-            gas_exit = utils.copy_solution(gas_throat)
+            gas_exit = utils.copy_ct_solution(gas_throat)
             gas_exit = nz.get_exit_conditions_frozen(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
             # gas_exit()
             
         elif self.combustor.is_frozen == NozzleType.EQ:
-            gas_throat = utils.copy_solution(gas_chamber)
+            gas_throat = utils.copy_ct_solution(gas_chamber)
             gas_throat = nz.get_throat_conditions(gas_throat, self.chamber_pressure, gas_chamber, gamma)
             gas_throat()
-            sonic_velocity = thermo.speed_of_sound(gas_throat, gamma)
+            sonic_velocity = thermo.get_speed_of_sound(gas_throat, gamma)
 
-            gas_exit = utils.copy_solution(gas_throat)
+            gas_exit = utils.copy_ct_solution(gas_throat)
             gas_exit = nz.get_exit_conditions(gas_exit, self.exit_conditions, self.chamber_pressure, gas_chamber, gamma, sonic_velocity)
             # gas_exit()
         else:
