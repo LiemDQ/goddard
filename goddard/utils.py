@@ -17,8 +17,9 @@ def to_si(quant: pint.Quantity):
 def species_list_to_dict(species_list):
     return {species.name:species for species in species_list}
 
-def process_text_input(text: str):
+def process_text_input(text: str) :
     """
+    String format: species name:basis fraction|species 2 name:basis fraction|...|TX (temperature X)|basis (mass or molar)
     String format: CH3OH(L):0.4|C2H5OH(L):0.6|T293.0|mass
     """
     input_species = text.split("|")
@@ -28,7 +29,7 @@ def process_text_input(text: str):
         last = input_species[-1]
         second_last = input_species[-2]
 
-        if last == "mass" or last == "mole": #case 1: composition type is specified
+        if last == "mass" or last == "molar": #case 1: composition type is specified
             composition_type = last
             input_species.pop()
             if second_last[0] == "T" and second_last[1].isdigit():
@@ -61,7 +62,7 @@ def normalize_compositions(species: dict[str, float]):
     
     return species
 
-def generate_solution(input_species_dict: dict[str, float], temperature: float, pressure: float, composition_type: str, reactant_file = reactant_files[0]):
+def generate_ct_solution(input_species_dict: dict[str, float], temperature: float, pressure: float, composition_type: str, reactant_file = reactant_files[0]) -> ct.Solution:
     species_dict = species_list_to_dict(ct.Species.list_from_file(reactant_file))
     
     input_species = [species_dict[name] for name in input_species_dict.keys()]
@@ -80,20 +81,16 @@ def generate_solution(input_species_dict: dict[str, float], temperature: float, 
     
     return solution
 
-def generate_solution_from_text_input(text: str, pressure: float):
+def generate_ct_solution_from_text_input(text: str, pressure: float) -> ct.Solution:
     species, temperature, comp_type = process_text_input(text)
     species = normalize_compositions(species)
 
-    return generate_solution(species, temperature, pressure, comp_type)
+    return generate_ct_solution(species, temperature, pressure, comp_type)
 
 def set_species_file(filename: str):
     reactant_files.append(filename)
 
-def extract_reaction_species(
-    fuel: ct.Solution, 
-    oxidizer: ct.Solution, 
-    filenames: str = product_files
-    ) -> ct.Solution:
+def extract_reaction_species(fuel: ct.Solution, oxidizer: ct.Solution, filenames: str = product_files) -> ct.Solution:
     '''
     Extract candidate reactants, based on the elements contained in the fuel and oxidizer.
     
@@ -107,7 +104,7 @@ def extract_reaction_species(
     
     return ct.Solution(thermo='IdealGas', species=species)
 
-def copy_solution(solution: ct.Solution) -> ct.Solution:
+def copy_ct_solution(solution: ct.Solution) -> ct.Solution:
     result = ct.Solution(thermo=solution.thermo_model, species=solution.species())
     result.SPX = solution.SPX
     return result

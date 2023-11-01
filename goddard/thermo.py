@@ -2,7 +2,7 @@ import numpy as np
 import cantera as ct
 import pint
 
-def speed_of_sound(gas: ct.Mixture, gamma: float) -> float: 
+def get_speed_of_sound(gas: ct.Mixture, gamma: float) -> float: 
     return np.sqrt(ct.gas_constant * gas.T * gamma / gas.mean_molecular_weight)
 
 def get_thermo_derivatives(gas):

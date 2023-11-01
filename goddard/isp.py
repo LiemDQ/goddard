@@ -36,8 +36,8 @@ def calc_isp_vac(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=Fal
         return list(map(lambda i: i[1], ivac))
 
 def get_isp(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
-    fuel = utils.generate_solution_from_text_input(fuel, utils.to_si(pressure))
-    oxidizer = utils.generate_solution_from_text_input(oxidizer, utils.to_si(pressure))
+    fuel = utils.generate_ct_solution_from_text_input(fuel, utils.to_si(pressure))
+    oxidizer = utils.generate_ct_solution_from_text_input(oxidizer, utils.to_si(pressure))
 
     result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
     isp = result.get_isp()
@@ -49,8 +49,8 @@ def get_isp(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansio
 
 
 def get_isp_vac(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
-    fuel = utils.generate_solution_from_text_input(fuel, utils.to_si(pressure))
-    oxidizer = utils.generate_solution_from_text_input(oxidizer, utils.to_si(pressure))
+    fuel = utils.generate_ct_solution_from_text_input(fuel, utils.to_si(pressure))
+    oxidizer = utils.generate_ct_solution_from_text_input(oxidizer, utils.to_si(pressure))
 
     result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
     ivac = result.get_ivac()
