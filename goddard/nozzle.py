@@ -8,7 +8,7 @@ import numpy as np
 from scipy.optimize import brentq
 import cantera as ct 
 from thermo import get_thermo_derivatives, get_thermo_properties, get_speed_of_sound
-from utils import to_si, copy_ct_solution
+from utils import to_si, copy_ct_solution, args_to_np_array
 from abc import ABC, abstractmethod
 from typing import Type
 
@@ -23,6 +23,18 @@ class ExitConditions:
         self.pressure_ratio = pressure_ratio
         if not self.supersonic_ratio and not subsonic_ratio and not pressure_ratio:
             raise ValueError("No nozzle exit conditions are specified.")
+
+def subsonic_ratio(value, *args):
+    values = args_to_np_array(value, args)
+    return ExitConditions(subsonic_ratio=values)
+
+def supersonic_ratio(value, *args):
+    values = args_to_np_array(value, args)
+    return ExitConditions(supersonic_ratio=values)
+
+def pressure_ratio(value, *args):
+    values = args_to_np_array(value, args)
+    return ExitConditions(pressure_ratio=values)
 
 class Nozzle(ABC):
     
@@ -175,8 +187,8 @@ class EquilibriumNozzle(Nozzle):
         
         return gas_exit
     
-    def _get_exit_conditions_pr(self) -> ct.Solution:
-        raise NotImplementedError("Pressure ratio expansion is not implemented for equilibrium nozzles.")
+    # def _get_exit_conditions_pr(self) -> ct.Solution:
+    #     raise NotImplementedError("Pressure ratio expansion is not implemented for equilibrium nozzles.")
     
     def _get_exit_conditions_subr(self) -> ct.Solution:
         raise NotImplementedError("Subsonic expansion is not implemented for equilibrium nozzles.")
@@ -366,18 +378,18 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: fl
     return gas_exit
 
 
-def _create_nozzle(nozzle_class: Type[Nozzle], **kwargs):
+def _get_nozzle_constructor(nozzle_class: Type[Nozzle], **kwargs):
     return lambda inlet_gas, exit_conditions, gamma: nozzle_class(inlet_gas, exit_conditions, gamma, **kwargs)
 
 # API functions
 def frozen_nozzle(NFZ: int = 1) -> Nozzle:
-    return lambda inlet_gas, exit_conditions, gamma: FrozenNozzle(inlet_gas, exit_conditions, gamma, NFZ)
+    return _get_nozzle_constructor(FrozenNozzle, NFZ=NFZ)
 
 def equilibrium_nozzle() -> Nozzle:
-    return lambda 
+    return _get_nozzle_constructor(EquilibriumNozzle)
 
-def kinetic_nozzle() -> NozzleType:
-    return NozzleType.KINETIC
+def kinetic_nozzle() -> Nozzle:
+    raise NotImplementedError("Kinetic nozzles are not implemented.")
 
 def get_exit_conditions_pressure_ratio(gas_throat: ct.Mixture, pressure_ratio):
     pass
