@@ -15,7 +15,16 @@ class MixtureRatio:
         self.fuel_percent = fuel_percent
         self.M_fuel = M_fuel
         self.M_ox = M_oxidizer
-        
+        self.molar_ratio = self._OF_to_molar_ratio(OF)
+    
+    @property
+    def M_fuel(self):
+        return self._M_fuel
+    
+    @property
+    def M_ox(self):
+        return self._M_ox
+    
     @property
     def phi(self):
         return self._phi
@@ -34,9 +43,19 @@ class MixtureRatio:
     
     @property.setter
     def phi(self):
-        pass
+        pass 
+    #TODO: I am not sure if it is even possible to convert between all these different ratios without stoichiometric data
+    
+    def _OF_to_molar_ratio(self, OF):
+        return OF / (self.M_ox / self.M_fuel)
+    
+    def fuel_mole_frac(self):
+        return 1 - self.molar_ratio/(1+self.molar_ratio)
+    
+    def ox_mole_frac(self):
+        return self.molar_ratio/(1+self.molar_ratio)
 
-def _create_mixture_ratio(*kwargs):
+def _create_mixture_ratio(**kwargs):
     return lambda fuel, oxidizer: MixtureRatio(fuel.mean_molecular_weight, oxidizer.mean_molecular_weight)
 
 def OF_ratio(value, *args):
@@ -66,19 +85,32 @@ def infinite_area_combustor():
 class Combustor(ABC):
     def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio) -> None:
         super().__init__()
-        self.fuel = fuel
-        self.oxidizer = oxidizer
-        self.MR = mr
+        self.fuel = utils.copy_ct_solution(fuel)
+        self._fuel_output = utils.copy_ct_solution(fuel)
+        self.oxidizer = utils.copy_ct_solution(oxidizer)
+        self._oxidizer_output = utils.copy_ct_solution(oxidizer)
+        self.mixture_ratio = mr
         
     @abstractmethod
-    def solve(self):
+    def solve(self) -> ct.Solution:
         pass
         
 class FiniteAreaCombustor(Combustor):
     pass
 
 class InfiniteAreaCombustor(Combustor):
-    pass
+    def solve(self):
+        molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
+        
+        moles_ox = molar_ratio / (1 + molar_ratio)        
+        moles_f = 1 - moles_ox
+        
+        combustor_gas = utils.extract_reaction_species(self._fuel_output, self._oxidizer_output)
+        mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (combustor_gas, 0.0)])
+        
+        # solve for combustion chamber composition
+        mixture.equilibrate('HP',solver="gibbs")
+        return combustor_gas
 
 class CombustorArgs:
     def __init__(self, CR = 0, flux_ratio = 0, use_CR = True, is_frozen = NozzleType.EQ):
