@@ -1,49 +1,67 @@
 from abc import ABC, abstractmethod
-from combustion import 
+from pint import Quantity
+from dataclasses import dataclass
+
+import cantera as ct
+
+
+from . import utils
+from .combustion import Combustor
+from .nozzle import Nozzle, ExitConditions
+from .result import Result
+
 class Problem:
-    def __init__(self, species, *args, **kwargs) -> None:
-        self.species = species
+    
+    def __init__(self, **kwargs) -> None:
         self.info = kwargs
     
     def report() -> None:
         pass
-
-
-class Solver(ABC):
-    def __init__(self) -> None:
-        super().__init__()
     
     @abstractmethod
-    def report():
+    def solve():
         pass
 
-    @abstractmethod
-    def solve(problem: Problem):
-        pass
-
-
-class CombustionSolver(Solver):
-    def solve(problem: Problem):
-        
-        return 
-
-class NozzleSolver(Solver):
+class CombustionProblem(Problem):
     pass
 
-class RocketSolver(CombustionSolver):
-    def solve(problem: Problem):
-        chamber_conditions = super().solve(problem)
-        return None
-
-class KineticSolver(Solver):
-    """
-    Not implemented yet!
-    """
+class NozzleProblem(Problem):
+    def __init__(self, gas, nozzle, pressure, exit_conditions, **kwargs) -> None:
+        super().__init__(**kwargs)
+        
+        self.inlet = utils.copy_ct_solution(gas)
+        self.inlet.P = pressure
+        self.nozzle = nozzle(gas, exit_conditions)
+        
+        
+class RocketProblem(Problem):
+    def __init__(self, fuel: str, oxidizer: str, pressure: float | Quantity, mixture_ratio, exit_conditions: ExitConditions, combustor, nozzle, **kwargs) -> None:
+        super().__init__(**kwargs)
+        pressure_SI = utils.normalize_input_units_to_si(pressure)
+        #TODO: accept cantera objects directly as well?
+        self.fuel = utils.generate_ct_solution_from_text_input(fuel, pressure_SI) 
+        self.oxidizer = utils.generate_ct_solution_from_text_input(oxidizer, pressure_SI)
+        self.mixture_ratio = mixture_ratio(self.fuel, self.oxidizer)
+        self.exit_conditions = exit_conditions
+        self.combustor = combustor(self.fuel, self.oxidizer, self.mixture_ratio)
+        self._nozzle_builder = nozzle
+        
+    def solve(self) -> Result:
+        combustor_gas = self.combustor.solve()
+        self.nozzle = self._nozzle_builder(combustor_gas, self.exit_conditions)
+        output = self.nozzle.get_exit_conditions()
+        
+class KineticProblem(Problem):
     pass
 
 class Solution:
     pass
 
-
-def solve(problem: Problem, solver: Solver) -> Solution:
+@dataclass
+class SolverOptions:
+    ionized: bool = False
+    transport: bool = False
+    use_mole_frac: bool = False
+    
+def solve(problem: Problem, options: SolverOptions):
     pass
