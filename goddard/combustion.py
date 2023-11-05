@@ -1,6 +1,7 @@
 import utils
 import thermo
 import nozzle as nz
+import data
 from enum import Enum, auto
 from dataclasses import dataclass
 import cantera as ct
@@ -16,6 +17,7 @@ class MixtureRatio:
         self.M_fuel = M_fuel
         self.M_ox = M_oxidizer
         self.molar_ratio = self._OF_to_molar_ratio(OF)
+        self.size = len(self.OF_ratio)
     
     @property
     def M_fuel(self):
@@ -83,34 +85,59 @@ def infinite_area_combustor():
     pass
 
 class Combustor(ABC):
-    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio) -> None:
+    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, pressures: np.array, mr: MixtureRatio) -> None:
         super().__init__()
-        self.fuel = utils.copy_ct_solution(fuel)
+        self.fuel = fuel
         self._fuel_output = utils.copy_ct_solution(fuel)
-        self.oxidizer = utils.copy_ct_solution(oxidizer)
+        self.oxidizer = oxidizer
         self._oxidizer_output = utils.copy_ct_solution(oxidizer)
+        self.reactants = data.extract_reaction_species(self._fuel_output, self._oxidizer_output)
+        self.pressures = pressures
         self.mixture_ratio = mr
         
     @abstractmethod
-    def solve(self) -> ct.Solution:
+    def solve(self) -> ct.SolutionArray:
         pass
+    
+    def _generate_mole_frac_matrix(self) -> np.array:
+        """
+        Create a 2D array where each entry is the set of mole fractions reflecting a given mixture ratio.
+        Used as an input to SolutionArray.
+        """
+        remove_L = lambda s: s.replace('(L)', '')
+        
+        mole_ratios = self.mixture_ratio.OF_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
+        moles_ox = mole_ratios / ( 1 + mole_ratios)
+        moles_f = 1 - moles_ox
+        
+        mole_frac_matrix = np.zeros((len(self.pressures), len(self.reactants.species_names)))
+        
+        for i,(f, o) in enumerate(zip(moles_f, moles_ox)):
+            fidx = [self.reactants.species_index(remove_L(species)) for species in self.fuel.species_names]
+            oidx = [self.reactants.species_index(remove_L(species)) for species in self.oxidizer.species_names]
+            for idx in fidx:
+                mole_frac_matrix[i][idx] = f
+            for idx in oidx:
+                mole_frac_matrix[i][idx] = o
+        
+        return mole_frac_matrix[:, np.newaxis, :]
         
 class FiniteAreaCombustor(Combustor):
-    pass
+    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio, cr=None, ) -> None:
+        super().__init__(fuel, oxidizer, mr)
+        
 
 class InfiniteAreaCombustor(Combustor):
     def solve(self):
-        molar_ratio = self.mixture_ratio / (self.oxidizer.mean_molecular_weight / self.fuel.mean_molecular_weight)
-        
-        moles_ox = molar_ratio / (1 + molar_ratio)        
-        moles_f = 1 - moles_ox
-        
-        combustor_gas = utils.extract_reaction_species(self._fuel_output, self._oxidizer_output)
-        mixture = ct.Mixture([(self.fuel, moles_f), (self.oxidizer, moles_ox), (combustor_gas, 0.0)])
-        
+
+        combustion_states = ct.SolutionArray(self.reactants, (len(self.pressures), self.mixture_ratio.size))
+
+        mole_fracs = self._generate_mole_frac_matrix()
+        combustion_states.TPX = self.reactants.T, self.pressures, mole_fracs
+                
         # solve for combustion chamber composition
-        mixture.equilibrate('HP',solver="gibbs")
-        return combustor_gas
+        combustion_states.equilibrate('HP',solver="gibbs")
+        return combustion_states
 
 class CombustorArgs:
     def __init__(self, CR = 0, flux_ratio = 0, use_CR = True, is_frozen = NozzleType.EQ):
