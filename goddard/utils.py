@@ -1,9 +1,11 @@
 import pint
 import cantera as ct
 import numpy as np
+import pandas as pd
 import itertools
 
-from . import data
+import data
+
 
 #Earth gravitational acceleration
 g0 = 9.8067 
@@ -77,7 +79,6 @@ def generate_ct_solution_from_text_input(text: str, pressure: float) -> ct.Solut
     species = normalize_compositions(species)
 
     return data.generate_ct_solution(species, temperature, pressure, comp_type)
-
 
 def copy_ct_solution(solution: ct.Solution) -> ct.Solution:
     result = ct.Solution(thermo=solution.thermo_model, species=solution.species())

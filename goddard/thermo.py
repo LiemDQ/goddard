@@ -2,16 +2,18 @@ import numpy as np
 import cantera as ct
 import pint
 
-def get_speed_of_sound(gas: ct.Mixture, gamma: float) -> float: 
+def get_speed_of_sound(gas: ct.Solution | ct.SolutionArray, gamma: np.array) -> np.array: 
     return np.sqrt(ct.gas_constant * gas.T * gamma / gas.mean_molecular_weight)
+
 
 def get_thermo_derivatives(gas):
     '''
     Gets thermo derivatives based on shifting equilibrium. 
 
-    Taken from https://kyleniemeyer.github.io/rocket-propulsion/thermochemistry/cea_cantera.html. Cantera calculates
-    thermodynamic properties, such as the specific heat, based on an assumption of frozen (i.e. invariant) composition, whereas
-    CEA assumes the equilibrium changes instantaneously. To reconcile the two, the derivatives of     
+    Taken from https://kyleniemeyer.github.io/rocket-propulsion/thermochemistry/cea_cantera.html with some minor modifications. 
+    Cantera calculates thermodynamic properties, such as the specific heat, based on an assumption of frozen (i.e. 
+    invariant) composition, whereas CEA assumes the equilibrium changes instantaneously. To reconcile the two, 
+    the thermodynamic derivatives for shifting compositions must be manually calculated.
     '''
     # unknowns for system with no condensed species:
     # dpi_i_dlogT_P (# elements)
@@ -19,6 +21,7 @@ def get_thermo_derivatives(gas):
     # dpi_i_dlogP_T (# elements)
     # dlogn_dlogP_T
     # total unknowns: 2*n_elements + 2
+    #TODO: modify to accomodate SolutionArrays
 
     num_var = 2 * gas.n_elements + 2
     
@@ -70,14 +73,6 @@ def get_thermo_derivatives(gas):
         coeff_matrix[2*gas.n_elements+1, gas.n_elements+1+i] = np.sum(stoich_coeffs[i, :] * moles)
     right_hand_side[2*gas.n_elements+1] = np.sum(moles)
 
-    # print("DEBUG:")
-    # print(f"{coeff_matrix}")
-    # print("Moles")
-    # print(f"{moles}")
-    # print("Enthalpies")
-    # print(f"{gas.standard_enthalpies_RT}")
-    # print("------------------")
-    
     derivs = np.linalg.solve(coeff_matrix, right_hand_side)
 
     dpi_dlogT_P = derivs[idx_dpi_dlogT_P : idx_dpi_dlogT_P + gas.n_elements]
@@ -90,10 +85,17 @@ def get_thermo_derivatives(gas):
     return dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T
 
 def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
-    '''Calculates specific heats, volume derivatives, and specific heat ratio.
-    
-    Based on shifting equilibrium for mixtures.
-    '''
+    """_summary_
+
+    Args:
+        gas (_type_): _description_
+        dpi_dlogT_P (_type_): _description_
+        dlogn_dlogT_P (_type_): _description_
+        dlogn_dlogP_T (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     
     tot_moles = 1.0 / gas.mean_molecular_weight
     moles = gas.X * tot_moles
@@ -104,17 +106,6 @@ def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
         for j, sp in enumerate(gas.species_names):
             stoich_coeffs[i,j] = gas.n_atoms(sp, elem)
     
-    # print("DEBUG PROPERTIES:")
-    # print("Moles")
-    # print(f"{moles}")
-    # print("Enthalpies")
-    # print(f"{gas.standard_enthalpies_RT}")
-    # print("Heat capacities")
-    # print(f"{gas.standard_cp_R}")
-    # print(f"Volume: {gas.v}")
-    # print(f"R: {ct.gas_constant}")
-    # print("------------------")
-
     spec_heat_p = ct.gas_constant * (
         np.sum([dpi_dlogT_P[i] * 
                 np.sum(stoich_coeffs[i,:] * moles * gas.standard_enthalpies_RT) 
@@ -137,7 +128,7 @@ def _get_thermo_properties(gas, dpi_dlogT_P, dlogn_dlogT_P, dlogn_dlogP_T):
     print(f"{gamma_s}, {spec_heat_p}")
     return dlogV_dlogT_P, dlogV_dlogP_T, spec_heat_p, gamma_s
 
-def get_thermo_properties(gas):
+def get_thermo_properties(gas: ct.SolutionArray):
     derivs = get_thermo_derivatives(gas)
     print(derivs)
     return _get_thermo_properties(gas, *derivs)

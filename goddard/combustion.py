@@ -77,14 +77,7 @@ def fuel_pct(value, *args):
     return _create_mixture_ratio(fuel_percent=values)
 
 
-
-def finite_area_combustor():
-    pass
-
-def infinite_area_combustor():
-    pass
-
-class Combustor(ABC):
+class CombustorBase(ABC):
     def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, pressures: np.array, mr: MixtureRatio) -> None:
         super().__init__()
         self.fuel = fuel
@@ -122,19 +115,23 @@ class Combustor(ABC):
         
         return mole_frac_matrix[:, np.newaxis, :]
         
-class FiniteAreaCombustor(Combustor):
-    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio, cr=None, ) -> None:
+class FiniteAreaCombustor(CombustorBase):
+    def __init__(self, fuel: ct.Solution, oxidizer: ct.Solution, mr: MixtureRatio, mass_flux=None, contraction_ratio = None) -> None:
         super().__init__(fuel, oxidizer, mr)
         
 
-class InfiniteAreaCombustor(Combustor):
+class InfiniteAreaCombustor(CombustorBase):
     def solve(self):
-
         combustion_states = ct.SolutionArray(self.reactants, (len(self.pressures), self.mixture_ratio.size))
-
         mole_fracs = self._generate_mole_frac_matrix()
         combustion_states.TPX = self.reactants.T, self.pressures, mole_fracs
-                
+         
         # solve for combustion chamber composition
         combustion_states.equilibrate('HP',solver="gibbs")
         return combustion_states
+
+def finite_area_combustor(mass_flux=None, contraction_ratio=None):
+    pass
+
+def infinite_area_combustor():
+    return lambda fuel, oxidizer, pressures, mr: InfiniteAreaCombustor(fuel, oxidizer, pressures, mr)

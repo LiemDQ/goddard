@@ -11,7 +11,6 @@ def add_source(source, priority=9):
 def set_species_file(filename: str):
     reactant_files.append(filename)
     
-
 def species_list_to_dict(species_list):
     return {species.name:species for species in species_list}
 
@@ -27,14 +26,13 @@ def extract_reaction_species(fuel: ct.Solution, oxidizer: ct.Solution, filenames
 
     species = [S for S in full_species if all(x in elements for x in S.composition)]
     
-    return ct.Solution(thermo='IdealGas', species=species)
+    return ct.Solution(thermo="ideal-gas", species=species)
 
 def generate_ct_solution_from_file(input_species_dict: dict[str, float], temperature: float, pressure: float, composition_type: str, reactant_file = reactant_files[0]) -> ct.Solution:
     species_dict = species_list_to_dict(ct.Species.list_from_file(reactant_file))
-    
     input_species = [species_dict[name] for name in input_species_dict.keys()]
-
-    solution = ct.Solution(thermo="IdealGas", species = input_species)
+    solution = ct.Solution(thermo="ideal-gas", species = input_species)
+    
     #Could add optional function parameter to support non-ideal gas models
     #TODO: add check on the valid temperature range for the thermodynamic correlations, and give an error if the 
     #temperature is out of bounds
@@ -44,7 +42,6 @@ def generate_ct_solution_from_file(input_species_dict: dict[str, float], tempera
         solution.TPX = temperature, pressure, input_species_dict
     else:
         raise ValueError("Composition type must be one of either 'mass' or 'mole'.")
-    
     
     return solution
 

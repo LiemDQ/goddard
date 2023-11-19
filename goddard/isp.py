@@ -1,80 +1,69 @@
 from combustion import *
 import cantera as ct
 from utils import g0
+from scipy import brentq
 
-def get_cstar(fuel, oxidizer, pressure, of_ratio, expansion_ratio):
+def get_cstar(gamma, temperature, molecular_weight):
     '''
-    Calculate characteristic combustion velocity. 
+    Calculate the C* value for a given combustion temperature and set of gas properties. C* is also known as the characteristic velocity,
+    and is a measure of the energy present in the fluid as a result of combustion. It is used as a metric for engine performance independent
+    of nozzle expansion.
     '''
-    pass
+    return (
+        np.sqrt(ct.gas_constant * temperature / (molecular_weight * gamma)) *
+        np.power(2 / (gamma + 1), -(gamma + 1) / (2*(gamma - 1)))
+        )
 
-def calc_isp_sl(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=False, return_as_seconds=True):
+def get_mach_from_subsonic_area_ratio(gamma, ratio):
     '''
-    Calculate sea-level specific impulse.
+    For a given area ratio, calculate the mach in the smaller area given the mach number in the larger area.
+    There are two possible solutions for a given ratio (one subsonic, one supersonic). 
+    This function always returns the subsonic solution.
     '''
-    result = _get_isp(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen)
-    isp = result.get_isp()
+    return brentq(lambda mach: get_area_ratio_from_mach_num(gamma, mach)-ratio, 0, 1.0)
+    
 
-    if not return_as_seconds:
-        return isp
-    else:
-        return list(map( lambda i: i[1], isp))
-
-
-
-def calc_isp_vac(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=False, return_as_seconds=True):
+def get_mach_from_supersonic_area_ratio(gamma, ratio):
     '''
-    Calculate vacuum specific impulse. 
+    For a given area ratio, calculate the mach in the smaller area given the mach number in the larger area.
+    There are two possible solutions for a given ratio (one subsonic, one supersonic). 
+    This function always returns the supersonic solution.
     '''
-    result = _get_isp(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen)
 
-    ivac = result.get_ivac()
+    #ideally, should be inf, but this would not converge for certain ill-conditioned edge cases.
+    upper_mach_limit = 10,000,000.0 
+    return brentq(lambda mach: get_area_ratio_from_mach_num(gamma, mach)-ratio, 1.0, upper_mach_limit)
 
-    if not return_as_seconds:
-        return ivac
-    else:
-        return list(map(lambda i: i[1], ivac))
+def get_area_ratio_from_mach_num(gamma, M):
+    '''
+    Area ratio (w.r.t throat) for a given mach number and isentropic expansion factor.
+    '''
+    return 1/M * ((1+ (gamma-1)/2*M**2) /((gamma+1)/2))**((gamma+1)/(2*(gamma-1)))
 
-def get_isp(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
-    fuel = utils.generate_ct_solution_from_text_input(fuel, utils.to_si(pressure))
-    oxidizer = utils.generate_ct_solution_from_text_input(oxidizer, utils.to_si(pressure))
+def get_velocity(gas: ct.Solution, stagnation_enthalpy):
+    '''
+    Velocity in isentropic supersonic flow can be found from the difference in enthalpy
+    between the gas in motion and the stagnation enthalpy. 
+    '''
+    return np.sqrt(2*(stagnation_enthalpy - gas.enthalpy_mass))
 
-    result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
-    isp = result.get_isp()
+def get_isp(gas, gamma, enthalpy):
+    '''
+    Calculate specific impulse given an exhaust gas thermodynamic state and combustion chamber enthalpy. 
+    '''
+    velocity = get_velocity(gas, enthalpy)
+    cstar = get_cstar(gamma, gas.T, gas.mean_molecular_weight)
+    CF = velocity/cstar
+    g0 = 9.80655 #gravitational acceleration
+    return velocity, velocity/g0
+    
 
-    if not output_in_seconds:
-        return isp
-    else:
-        return list(map(lambda i: i[1], isp)) #why are we doing this?
+def get_ivac(gas, isp):
+    '''
+    Ivac also includes the thrust from pressure forces. This assumes isp is provided in (m/s)
+    and not s.
+    '''
+    ivac = isp + gas.T * ct.gas_constant / (isp * gas.mean_molecular_weight)
+    g0 = 9.80655 #gravitational acceleration
 
-
-def get_isp_vac(fuel: str, oxidizer: str, pressure: float, OF_ratio: float, expansion_ratio: float, frozen=False, output_in_seconds=True):
-    fuel = utils.generate_ct_solution_from_text_input(fuel, utils.to_si(pressure))
-    oxidizer = utils.generate_ct_solution_from_text_input(oxidizer, utils.to_si(pressure))
-
-    result = _get_isp(fuel, oxidizer, pressure, OF_ratio, expansion_ratio, frozen)
-    ivac = result.get_ivac()
-
-    if not output_in_seconds:
-        return ivac
-    else:
-        return list(map(lambda i: i[1], ivac)) #why are we doing this?
-
-
-def _get_isp(fuel, oxidizer, pressure, of_ratio, expansion_ratio, frozen=False):
-    if frozen:
-        nt = NozzleType.FROZEN
-    else:
-        nt = NozzleType.EQ
-
-    analysis = CombustionAnalysis(pressure, fuel, oxidizer, of_ratio, expansion_ratio, CombustorArgs(is_frozen=nt))
-    result = analysis.run()
-
-    return result
-
-
-def calc_exhaust_temperature(fuel, oxidizer, pressure, of_ratio, expansion_ratio):
-    pass
-
-def calc_analyze(fuel, oxidizer, pressure, of_ratio, expansion_ratio):
-    pass
+    return ivac, ivac/g0

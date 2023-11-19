@@ -4,18 +4,18 @@ flow equations cannot be directly applied, because they assume that the heat cap
 ratio is constant, which holds for frozen flow but not for equilibrium flow.
 '''
 
-import numpy as np
-from scipy.optimize import brentq
-import cantera as ct 
-from thermo import get_thermo_derivatives, get_thermo_properties, get_speed_of_sound
-from utils import to_si, copy_ct_solution, args_to_np_array
 from abc import ABC, abstractmethod
 from typing import Type
+from dataclasses import dataclass
 
+import numpy as np
+import cantera as ct 
+
+from thermo import get_thermo_derivatives, get_thermo_properties, get_speed_of_sound
+from isp import get_cstar, get_velocity
+from utils import to_si, copy_ct_solution, args_to_np_array
+from error import SolverError
 class ExpansionConditions:
-    subsonic_ratio: np.array | None
-    supersonic_ratio: np.array | None
-    pressure_ratio: np.array | None
     
     def __init__(self, supersonic_ratio=None, subsonic_ratio=None, pressure_ratio=None) -> None:
         self.supersonic_ratio = supersonic_ratio
@@ -36,10 +36,10 @@ def pressure_ratio(value, *args):
     values = args_to_np_array(value, args)
     return ExpansionConditions(pressure_ratio=values)
 
-class Nozzle(ABC):
-    
+class NozzleBase(ABC):
+
     def __init__(self, inlet_gas: ct.Solution, inlet_states: ct.SolutionArray, expansion_conditions: ExpansionConditions, gamma_s: np.array | None = None) -> None:
-        
+
         super().__init__()
         self.inlet = inlet_gas
         self.inlet_states = inlet_states 
@@ -53,9 +53,12 @@ class Nozzle(ABC):
         self.exit_states = self.get_exit_conditions()
 
     def get_exit_conditions(self) -> ct.SolutionArray:
-        """
-        Solve the nozzle equations. Returns a solution array of size n x m, where n is the number of inlet conditions 
-        and m is the number of expansion conditions specified.
+        """Solve the nozzle equations. 
+
+        Returns:
+            ct.SolutionArray: A solution array of size n x m, where n is the number of inlet conditions 
+        and m is the number of expansion conditions specified. If the input is an array of dimension N, 
+        then the output is of dimension N+1. 
         """
         if self.expansion_conditions.supersonic_ratio:
             return self._get_exit_conditions_supr()
@@ -100,11 +103,8 @@ class Nozzle(ABC):
     def _get_exit_conditions_subr(self) -> ct.SolutionArray:
         pass
     
-    def _generate_condition_matrix(self, inlet_conditions: np.array, outlet_conditions: np.array):
-        pass
 
-
-class EquilibriumNozzle(Nozzle):
+class EquilibriumNozzle(NozzleBase):
 
     def _get_gamma(self):
         return get_thermo_properties(self.inlet)
@@ -128,7 +128,7 @@ class EquilibriumNozzle(Nozzle):
         
         M = 1.0 #throat mach is 1.0 by definition
         num_iter = 0
-        residual = 1
+        residual = np.ones(throat_states.shape)
         # print(f"P throat: {P_throat}")
         while not np.all(residual < tolerance_throat):
             num_iter += 1
@@ -140,10 +140,9 @@ class EquilibriumNozzle(Nozzle):
             # print(f"P_throat: {to_si(P_throat)}")
             throat_states.SPX = self.inlet_states.s, P_throat, self.inlet_states.X
             throat_states.equilibrate('SP')
-            derivs = get_thermo_derivatives(throat_states)
             dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(throat_states)
 
-            velocity = _get_velocity(throat_states, self.inlet.h)
+            velocity = get_velocity(throat_states, self.inlet.h)
             sonic_velocity = get_speed_of_sound(throat_states, gamma_s)
             M = velocity/sonic_velocity
 
@@ -185,7 +184,7 @@ class EquilibriumNozzle(Nozzle):
 
             derivs = get_thermo_derivatives(exit_states)
             dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(exit_states)
-            velocity = _get_velocity(exit_states, self.inlet.h)
+            velocity = get_velocity(exit_states, self.inlet.h)
             sonic_velocity = get_speed_of_sound(exit_states, gamma_s)
 
             Ae_At = exit_states.T / (exit_states.P * velocity * exit_states.mean_molecular_weight) / A_mdot_thr
@@ -222,7 +221,7 @@ class EquilibriumNozzle(Nozzle):
         while not np.all(np.abs(dlnT) < dlogT_residual):
             n += 1
             if n >= maxiter:
-                break
+                raise SolverError("Max iterations for exit conditions reached.")
             
             lnT_e = np.log(T_e) + dlnT
             T_e = np.exp(lnT_e)
@@ -237,7 +236,7 @@ class EquilibriumNozzle(Nozzle):
     def _get_exit_conditions_subr(self) -> ct.SolutionArray:
         raise NotImplementedError("Subsonic expansion is not implemented for equilibrium nozzles.")
 
-class FrozenNozzle(Nozzle):
+class FrozenNozzle(NozzleBase):
     def __init__(self, inlet_gas: ct.Solution, exit_conditions: ExpansionConditions, gamma_s: float | None = None, NFZ: int = 1) -> None:
         super().__init__(inlet_gas, exit_conditions, gamma_s)
         if NFZ < 1 or NFZ > 5 or not isinstance(NFZ, int):
@@ -258,7 +257,7 @@ class FrozenNozzle(Nozzle):
         
         M = 1.0 # throat mach is 1.0 by definition
         num_iter = 0
-        residual = 1
+        residual = np.ones(throat_states.shape)
         while not np.all(residual < tolerance_throat):
             num_iter += 1
             if num_iter == max_iter_throat:
@@ -267,8 +266,15 @@ class FrozenNozzle(Nozzle):
 
             P_throat = P_throat * (1 + gamma_s * M**2)/(1 + gamma_s)
             throat_states.SPX = self.inlet_states.s, P_throat, self.inlet_states.X
+            
+            #if NFZ = 1, then the frozen composition is at the combustion point.
+            #otherwise frozen composition is at the throat, or downstream of it. 
+            if self.NFZ > 1: 
+                throat_states.equilibrate('SP')
+                dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(throat_states)
 
-            velocity = _get_velocity(throat_states, self.inlet_states.h)
+
+            velocity = get_velocity(throat_states, self.inlet_states.h)
             sonic_velocity = get_speed_of_sound(throat_states, gamma_s)
             M = velocity/sonic_velocity
 
@@ -282,7 +288,7 @@ class FrozenNozzle(Nozzle):
         """
         area_ratio = self.expansion_conditions.supersonic_ratio
         A_mdot_thr = self.throat_states.T / (self.throat_states.P * velocity * self.throat_states.mean_molecular_weight) #remains constant
-        exit_shape = (*self.inlet_states.shape, len(area_ratio))
+        exit_shape = (*self.inlet_states.shape, len(area_ratio)) #we take all of the inlet states x the number of area ratios to calculate
         # we iterate to obtain the nozzle exit temperature 
         T_e = self.throat_states.T #initial guess
         exit_states = ct.SolutionArray(self.inlet, exit_shape)
@@ -313,7 +319,7 @@ class FrozenNozzle(Nozzle):
                 break
             # print(f"Iteration: {n}")
             m = 0
-            dlnT = 1000
+            dlnT = np.ones(exit_states.shape) #arbitrary initial value
             while not np.all(np.abs(dlnT) >= dlogT_tolerance):
                 m += 1
                 if m >= maxiter_temp:
@@ -324,7 +330,7 @@ class FrozenNozzle(Nozzle):
                 # print(f"T_exit: {T_e}")
 
             gamma_s = exit_states.cp/exit_states.cv #gamma_s = gamma for frozen flow
-            velocity = _get_velocity(exit_states, self.inlet.h)
+            velocity = get_velocity(exit_states, self.inlet.h)
             sonic_velocity = get_speed_of_sound(exit_states, gamma_s)
 
             Ae_At = exit_states.T / (exit_states.P * velocity * exit_states.mean_molecular_weight) / A_mdot_thr
@@ -398,11 +404,12 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: fl
         num_iter += 1
         if num_iter == max_iter_exit:
             #TODO: error message if nozzle fails to converge
+            raise SolverError("Max iterations for exit conditions reached.")
             break
 
         derivs = get_thermo_derivatives(gas_exit)
         dlogV_dlogT_P, dlogV_dlogP_T, cp, gamma_s = get_thermo_properties(gas_exit)
-        velocity = _get_velocity(gas_exit, gas_chamber.h)
+        velocity = get_velocity(gas_exit, gas_chamber.h)
         sonic_velocity = get_speed_of_sound(gas_exit, gamma_s)
 
         Ae_At = gas_exit.T / (gas_exit.P * velocity * gas_exit.mean_molecular_weight) / A_mdot_thr
@@ -419,7 +426,7 @@ def get_exit_conditions(gas_throat: ct.Mixture, area_ratio: float, P_chamber: fl
     return gas_exit
 
 
-def _get_nozzle_constructor(nozzle_class: Type[Nozzle], **kwargs):
+def _get_nozzle_constructor(nozzle_class: Type[NozzleBase], **kwargs):
     return lambda inlet_gas, exit_conditions, gamma=None: nozzle_class(inlet_gas, exit_conditions, gamma, **kwargs)
 
 # API functions
@@ -432,77 +439,28 @@ def equilibrium_nozzle():
 def kinetic_nozzle():
     raise NotImplementedError("Kinetic nozzles are not implemented.")
 
+@dataclass
 class NozzleOutputs:
     """
-    Organizes all the outputs from the nozzle calculations (cstar, isp, exit conditions, gas composition) 
-    into a convenient output
+    Organizes all the calculations from the nozzle calculations not directly 
+    contained in the Cantera objects (cstar, isp, ivac, gamma) into a convenient 
+    helper class.
     """
-    def __init__(self) -> None:
-        pass
-
-
-def _get_velocity(gas: ct.Solution, stagnation_enthalpy):
-    '''
-    Velocity in isentropic supersonic flow can be found from the difference in enthalpy
-    between the gas in motion and the stagnation enthalpy. 
-    '''
-    return np.sqrt(2*(stagnation_enthalpy - gas.enthalpy_mass))
-
-
-def get_cstar(gamma, temperature, molecular_weight):
-    '''
-    Calculate the C* value for a given combustion temperature and set of gas properties. C* is also known as the characteristic velocity,
-    and is a measure of the energy present in the fluid as a result of combustion. It is used as a metric for engine performance independent
-    of nozzle expansion.
-    '''
-    return (
-        np.sqrt(ct.gas_constant * temperature / (molecular_weight * gamma)) *
-        np.power(2 / (gamma + 1), -(gamma + 1) / (2*(gamma - 1)))
-        )
-
-def get_mach_from_subsonic_area_ratio(gamma, ratio):
-    '''
-    For a given area ratio, calculate the mach in the smaller area given the mach number in the larger area.
-    There are two possible solutions for a given ratio (one subsonic, one supersonic). 
-    This function always returns the subsonic solution.
-    '''
-    return brentq(lambda mach: get_area_ratio_from_mach_num(gamma, mach)-ratio, 0, 1.0)
+    isp: np.ndarray
+    ivac: np.ndarray
+    cstar: np.ndarray
+    gamma: np.ndarray
     
+    def append(self, isp, ivac, cstar, gamma) -> None:
+        """Append 
 
-def get_mach_from_supersonic_area_ratio(gamma, ratio):
-    '''
-    For a given area ratio, calculate the mach in the smaller area given the mach number in the larger area.
-    There are two possible solutions for a given ratio (one subsonic, one supersonic). 
-    This function always returns the supersonic solution.
-    '''
-
-    #ideally, should be inf, but this would not converge for certain ill-conditioned edge cases.
-    upper_mach_limit = 10,000,000.0 
-    return brentq(lambda mach: get_area_ratio_from_mach_num(gamma, mach)-ratio, 1.0, upper_mach_limit)
-
-def get_area_ratio_from_mach_num(gamma, M):
-    '''
-    Area ratio (w.r.t throat) for a given mach number and isentropic expansion factor.
-    '''
-    return 1/M * ((1+ (gamma-1)/2*M**2) /((gamma+1)/2))**((gamma+1)/(2*(gamma-1)))
-
-def get_isp(gas, gamma, enthalpy):
-    '''
-    Calculate specific impulse given an exhaust gas thermodynamic state and combustion chamber enthalpy. 
-    '''
-    velocity = _get_velocity(gas, enthalpy)
-    cstar = get_cstar(gamma, gas.T, gas.mean_molecular_weight)
-    CF = velocity/cstar
-    g0 = 9.80655 #gravitational acceleration
-    return velocity, velocity/g0
-    
-
-def get_ivac(gas, isp):
-    '''
-    Ivac also includes the thrust from pressure forces. This assumes isp is provided in (m/s)
-    and not s.
-    '''
-    ivac = isp + gas.T * ct.gas_constant / (isp * gas.mean_molecular_weight)
-    g0 = 9.80655 #gravitational acceleration
-
-    return ivac, ivac/g0
+        Args:
+            isp (bool): _description_
+            ivac (_type_): _description_
+            cstar (_type_): _description_
+            gamma (_type_): _description_
+        """
+        np.append(self.isp, isp)
+        np.append(self.ivac, ivac)
+        np.append(self.cstar, cstar)
+        np.append(self.gamma, gamma)
