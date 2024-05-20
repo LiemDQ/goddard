@@ -9,6 +9,7 @@ include(cmake/CondaAware.cmake)
 
 set(GODDARD_USE_cantera     "" CACHE PATH "Specify this option in case a specific cantera library should be used.")
 set(GODDARD_USE_Threads     "" CACHE PATH "Specify this option in case a specific Threads library should be used.")
+set(GODDARD_USE_Eigen3      "" CACHE PATH "Specify this option in case a specific Eigen3 library should be used.")
 
 function(GoddardFindPackage name)
     if(DEFINED GODDARD_USE_${ARGV0} AND NOT GODDARD_USE_${ARGV0} STREQUAL "")
@@ -26,13 +27,16 @@ function(GoddardFindPackage name)
     set(${name}_DIR ${${name}_DIR} PARENT_SCOPE)  # export to parent (e.g., Eigen3_DIR, Python_DIR)
 endfunction()
 
-
+function(find_cantera)
+#cantera does not provide its own cmake package file, so this must be written manually
+    # include_directories("${CONDA_AWARE_PREFIX}/")
+endfunction()
 
 function(goddard_setup_dependencies)
 
 
     GoddardFindPackage(Threads REQUIRED)
-    
+    GoddardFindPackage(Eigen3 3.4 REQUIRED)
 
 
 endfunction()

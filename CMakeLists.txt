@@ -23,11 +23,9 @@ goddard_setup_dependencies()
 goddard_local_options()
 
 target_compile_features(goddard_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
-
 add_library(goddard::goddard_options ALIAS goddard_options)
 add_library(goddard::goddard_warnings ALIAS goddard_warnings)
 
-# add_subdirectory(extern)
 add_subdirectory(src)
 
 

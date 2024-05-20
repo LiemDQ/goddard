@@ -67,7 +67,7 @@ if(DEFINED ENV{CONDA_PREFIX})
     message(STATUS "CondaAware: Appended ${CONDA_AWARE_PREFIX} to CMAKE_PREFIX_PATH")
 
     # Ensure include directory in conda environment is known to the project
-    include_directories(${CONDA_AWARE_PREFIX}/include)
+    include_directories(SYSTEM ${CONDA_AWARE_PREFIX}/include)
     message(STATUS "CondaAware: Appended ${CONDA_AWARE_PREFIX}/include to include directories")
 
     # Ensure library directory in conda environment is known to the project
