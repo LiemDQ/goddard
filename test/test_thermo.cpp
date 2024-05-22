@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 class DerivativeTests: public ::testing::Test {
     protected:
@@ -26,6 +27,10 @@ class DerivativeTests: public ::testing::Test {
     
 
 };
+
+double max_fp_error(double val, double reltol = 1e-4, double abstol = 1e-10) {
+    return std::max(abs(val*reltol), abstol);
+}
 
 
 TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
@@ -56,7 +61,7 @@ TEST_F(DerivativeTests, moleVectorIsCorrect){
     ASSERT_EQ(moles.size(), n_species);
 
     for (size_t i = 0; i < n_species; i++){
-        double tol = abs(expected_moles[i] * 0.001);
+        double tol = max_fp_error(expected_moles[i]);
         EXPECT_NEAR(moles(i), expected_moles[i], tol);
     }
 }
@@ -64,16 +69,16 @@ TEST_F(DerivativeTests, moleVectorIsCorrect){
 TEST_F(DerivativeTests, moleVectorIsCorrectAfterEquilibration){
     sln->thermo()->equilibrate("HP");
     auto moles = Goddard::get_mole_vector(*sln);
-    std::vector<double> expected_moles{
-        9.11244396e-06, 1.13250699e-06, 2.20601379e-05, 1.21177599e-02,
+    Eigen::ArrayXd expected_moles(n_species);
+    expected_moles << 9.11244396e-06, 1.13250699e-06, 2.20601379e-05, 1.21177599e-02,
         2.63718243e-04, 1.20488303e-02, 2.45871008e-06, 2.53459510e-07,
-        1.21918510e-03, 1.21918510e-02};
+        1.21918510e-03, 1.21918510e-02;
 
     ASSERT_EQ(moles.size(), n_species);
 
     for (size_t i = 0; i < n_species; i++){
-        double tol = abs(expected_moles[i]* 0.001);
-        EXPECT_NEAR(moles(i), expected_moles[i], tol);
+        double tol = max_fp_error(expected_moles(i));
+        EXPECT_NEAR(moles(i), expected_moles(i), tol);
     }
 }
 
@@ -85,7 +90,7 @@ TEST_F(DerivativeTests, stdEnthalpiesRTAreCorrect){
     
     ASSERT_EQ(enthalpies.size(), n_species);
     for (size_t i = 0; i < n_species; i++){
-        double tol = abs(exp_enthalpies[i]* 0.001);
+        double tol = max_fp_error(exp_enthalpies[i]);
         EXPECT_NEAR(enthalpies(i), exp_enthalpies(i), tol);
     }
 }
@@ -94,7 +99,7 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrect){
     EXPECT_NEAR(sln->thermo()->temperature(), 2400.0, 1e-1);
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
-    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_derivatives(*sln);
+    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
@@ -109,18 +114,18 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrect){
     double exp_dlogn_dlogP_T = 9.179708964294817e-17;
 
     for (size_t i = 0; i < n_elements; i++){
-        double tol = abs(exp_dpi_dlogT_P(i)*1e-3);
+        double tol = max_fp_error(exp_dpi_dlogT_P(i));
         EXPECT_NEAR(derivs.dpi_dlogT_P(i), exp_dpi_dlogT_P(i), tol);
     }
 
-    EXPECT_NEAR(derivs.dlogn_dlogT_P, exp_dlogn_dlogT_P, exp_dlogn_dlogT_P*1e-3);
+    EXPECT_NEAR(derivs.dlogn_dlogT_P, exp_dlogn_dlogT_P, max_fp_error(exp_dlogn_dlogT_P));
 
     for (size_t i = 0; i < n_elements; i++){
-        double tol = abs(exp_dpi_dlogP_T(i)*1e-3);
+        double tol = max_fp_error(exp_dpi_dlogP_T(i));
         EXPECT_NEAR(derivs.dpi_dlogP_T(i), exp_dpi_dlogP_T(i), tol);
     }
 
-    EXPECT_NEAR(derivs.dlogn_dlogP_T, exp_dlogn_dlogP_T, exp_dlogn_dlogP_T*1e-3);
+    EXPECT_NEAR(derivs.dlogn_dlogP_T, exp_dlogn_dlogP_T, max_fp_error(exp_dlogn_dlogP_T));
 
 }
 
@@ -131,10 +136,13 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrectAfterEquilibration){
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
 
-    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_derivatives(*sln);
+    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
-    EXPECT_NEAR(derivs.dlogn_dlogT_P, 0.0198466495473248, 1e-5);
-    EXPECT_NEAR(derivs.dlogn_dlogP_T,-0.0006600595545953462, 1e-8);
+    double exp_dlogn_dlogT_P = 0.0198466495473248;
+    double exp_dlogn_dlogP_T = -0.0006600595545953462;
+
+    EXPECT_NEAR(derivs.dlogn_dlogT_P, exp_dlogn_dlogT_P, max_fp_error(exp_dlogn_dlogT_P));
+    EXPECT_NEAR(derivs.dlogn_dlogP_T, exp_dlogn_dlogP_T, max_fp_error(exp_dlogn_dlogP_T));
 }

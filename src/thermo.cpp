@@ -4,6 +4,8 @@
 
 #include "goddard/thermo.hpp"
 
+#include <iostream>
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using Eigen::ArrayXd;
@@ -18,10 +20,10 @@ ArrayXXd get_stoichiometric_coeffs(Cantera::Solution& gas){
     size_t n_species = thermo->nSpecies();
 
     //construct matrix of elemental stoichiometric coefficients
-    ArrayXXd stoich_coeffs(n_elements, n_species);
+    ArrayXXd stoich_coeffs(n_species, n_elements);
     for(size_t i = 0; i < n_elements; i++){
         for(size_t j = 0; j < n_species; j++){
-            stoich_coeffs(i,j) = thermo->nAtoms(j, i);
+            stoich_coeffs(j,i) = thermo->nAtoms(j, i);
         }
     }
 
@@ -62,7 +64,12 @@ ArrayXd get_cpR_vector(Cantera::Solution& gas){
     return cp_R;
 }
 
-ThermoDerivatives get_thermo_derivatives(Cantera::Solution& gas) {
+/**
+ * @brief Cantera calculates thermodynamic derivatives assuming a fixed composition, 
+ * which is not valid for reacting flows. 
+ * 
+*/
+ThermoDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
     auto thermo = gas.thermo();
 
     size_t n_elements = thermo->nElements();
@@ -70,10 +77,14 @@ ThermoDerivatives get_thermo_derivatives(Cantera::Solution& gas) {
 
     
     MatrixXd coeff_matrix(num_var, num_var);
+    coeff_matrix.setZero();
+
     VectorXd rhs(num_var);
+    rhs.setZero();
 
 
-    auto std_enthalpies_RT = get_enthalpyRT_vector(gas);
+
+    auto std_H_RT = get_enthalpyRT_vector(gas);
     auto moles = get_mole_vector(gas);
 
     //indices
@@ -90,28 +101,33 @@ ThermoDerivatives get_thermo_derivatives(Cantera::Solution& gas) {
     //first n_elements equations
     for (size_t i = 0; i < n_elements; i++) {
         for (size_t j = 0; j < n_elements; j++){
-            coeff_matrix(i,j) = (stoich_coeffs(i)*stoich_coeffs(j)*moles).sum();
+            coeff_matrix(i,j) = (stoich_coeffs.col(i)*stoich_coeffs.col(j)*moles).sum();
         }
-        coeff_matrix(i, n_elements) = (stoich_coeffs(i) * moles).sum();
-        rhs(i) = -(stoich_coeffs(i)*moles*std_enthalpies_RT).sum();
+        coeff_matrix(i, n_elements) = (stoich_coeffs.col(i) * moles).sum();
+        rhs(i) = -(stoich_coeffs.col(i)*moles*std_H_RT).sum();
     }
+
+    //skipping temperature derivative equation for condensed species
     
+    //single term for (dpi/dlogT)_P
     for (size_t i = 0; i < n_elements; i++){
-        coeff_matrix(n_elements, i) = (stoich_coeffs(i) * moles).sum();
+        coeff_matrix(n_elements, i) = (stoich_coeffs.col(i) * moles).sum();
     }
-    rhs(n_elements) = -(moles * std_enthalpies_RT).sum();
+    rhs(n_elements) = -(moles * std_H_RT).sum();
 
     // equations for derivatives w.r.t. pressure
     for (size_t i = 0; i < n_elements; i++) {
         for (size_t j = 0; j < n_elements; j++){
-            coeff_matrix(n_elements+1+i, n_elements+1+j) = (stoich_coeffs(i)*stoich_coeffs(j) * moles).sum();
+            coeff_matrix(n_elements+1+i, n_elements+1+j) = (stoich_coeffs.col(i)*stoich_coeffs.col(j) * moles).sum();
         }
-        coeff_matrix(n_elements+1+i, 2*n_elements+1) = (stoich_coeffs(i) * moles).sum();
-        rhs(n_elements+1+i) = (stoich_coeffs(i)*moles).sum();
+        coeff_matrix(n_elements+1+i, 2*n_elements+1) = (stoich_coeffs.col(i) * moles).sum();
+        rhs(n_elements+1+i) = (stoich_coeffs.col(i)*moles).sum();
     }
 
+    //skipping pressure derivative equation for condensed species
+
     for (size_t i = 0; i < n_elements; i++){
-        coeff_matrix(2*n_elements+1, n_elements+1+i) = (stoich_coeffs(i) * moles).sum();
+        coeff_matrix(2*n_elements+1, n_elements+1+i) = (stoich_coeffs.col(i) * moles).sum();
     }
     rhs(2*n_elements+1) = moles.sum();
 
@@ -125,7 +141,7 @@ ThermoDerivatives get_thermo_derivatives(Cantera::Solution& gas) {
     return {dpi_dlogT_P, dlogn_dlogT_P, dpi_dlogP_T, dlogn_dlogP_T};
 }
 
-ThermoProperties get_thermo_properties(Cantera::Solution& gas, const ThermoDerivatives& derivs){
+ThermoProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const ThermoDerivatives& derivs){
     auto moles = get_mole_vector(gas);
     
     auto stoich_coeffs = get_stoichiometric_coeffs(gas);
