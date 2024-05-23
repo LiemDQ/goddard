@@ -1,5 +1,4 @@
 #include "cantera/core.h"
-#include "cantera/base/Array.h"
 #include "eigen3/Eigen/Dense"
 
 #include "goddard/equilibrium.hpp"
@@ -146,28 +145,30 @@ EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, 
     auto thermo = gas.thermo();
     
     size_t n_elements = thermo->nElements();
-    size_t n_species = thermo->nSpecies();
 
-    auto std_enthalpy_RT = get_enthalpyRT_vector(gas);
+    auto H_RT = get_enthalpyRT_vector(gas);
     auto cp_R = get_cpR_vector(gas);
 
     //isobaric specific heat
-    double spec_heat_p = 0.0;
-
-    for (size_t k=0; k < n_species; k++){
-        for (size_t i=0; i < n_elements; i++){
-            spec_heat_p += derivs.dpi_dlogP_T(k)*stoich_coeffs(i, k) * moles(k, 0) * std_enthalpy_RT(k,0);
-        }
-        spec_heat_p += moles(k,0) * std_enthalpy_RT(k,0) * derivs.dlogn_dlogT_P;
-        spec_heat_p += moles(k,0) * cp_R(k,0);
-        spec_heat_p += moles(k,0) * std_enthalpy_RT(k,0) * std_enthalpy_RT(k,0);
+    //NOTE: this is on a kg basis because of the normalization of the mole vector to the gas molar mass
+    double dpi_cp_contribution = 0;
+    for (size_t i=0; i < n_elements; i++){
+        dpi_cp_contribution += derivs.dpi_dlogT_P(i) * (moles * H_RT * stoich_coeffs.col(i)).sum();
     }
+    double spec_heat_p = Cantera::GasConstant * (
+        dpi_cp_contribution 
+        + (moles * H_RT).sum()*derivs.dlogn_dlogT_P
+        + (moles * cp_R).sum()
+        + (moles * H_RT * H_RT).sum()
+    );
 
+    //volumetric derivatives
     double dlogV_dlogT_P = 1 + derivs.dlogn_dlogT_P;
     double dlogV_dlogP_T = -1 + derivs.dlogn_dlogP_T;
 
     //isochoric specific heat
-    double additional_Cpv_term = thermo->pressure() * thermo->molarVolume() / thermo->temperature() * dlogV_dlogT_P * dlogV_dlogT_P / dlogV_dlogP_T;
+    double mass_volume =  thermo->molarVolume() / thermo->meanMolecularWeight(); 
+    double additional_Cpv_term = thermo->pressure() * mass_volume / thermo->temperature() * dlogV_dlogT_P * dlogV_dlogT_P / dlogV_dlogP_T;
     double spec_heat_v = spec_heat_p + additional_Cpv_term;
     
     //heat capacity ratios

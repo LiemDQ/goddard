@@ -27,6 +27,6 @@ Eigen::ArrayXd get_enthalpyRT_vector(Cantera::Solution& gas);
 Eigen::ArrayXd get_cpR_vector(Cantera::Solution& gas);
 
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas);
-EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, EquilibriumDerivatives& derivatives);
+EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const EquilibriumDerivatives& derivatives);
 
 } //namespace Goddard
