@@ -1,4 +1,4 @@
-#include "goddard/thermo.hpp"
+#include "goddard/equilibrium.hpp"
 
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
@@ -99,7 +99,7 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrect){
     EXPECT_NEAR(sln->thermo()->temperature(), 2400.0, 1e-1);
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
-    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
+    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
@@ -136,7 +136,7 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrectAfterEquilibration){
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
 
-    Goddard::ThermoDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
+    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 

@@ -7,14 +7,14 @@
 namespace Goddard {
 
 
-struct ThermoDerivatives {
+struct EquilibriumDerivatives {
     Eigen::ArrayXd dpi_dlogT_P;
     double dlogn_dlogT_P;
     Eigen::ArrayXd dpi_dlogP_T;
     double dlogn_dlogP_T;
 };
 
-struct ThermoProperties {
+struct EquilibriumProperties {
     double dlogV_dlogT_P;
     double dlogV_dlogP_T;
     double spec_heat_p;
@@ -26,7 +26,7 @@ Eigen::ArrayXd get_mole_vector(Cantera::Solution& gas);
 Eigen::ArrayXd get_enthalpyRT_vector(Cantera::Solution& gas);
 Eigen::ArrayXd get_cpR_vector(Cantera::Solution& gas);
 
-ThermoDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas);
-ThermoProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, ThermoDerivatives& derivatives);
+EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas);
+EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, EquilibriumDerivatives& derivatives);
 
 } //namespace Goddard

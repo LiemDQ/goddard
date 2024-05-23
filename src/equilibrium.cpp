@@ -2,7 +2,7 @@
 #include "cantera/base/Array.h"
 #include "eigen3/Eigen/Dense"
 
-#include "goddard/thermo.hpp"
+#include "goddard/equilibrium.hpp"
 
 #include <iostream>
 
@@ -69,7 +69,7 @@ ArrayXd get_cpR_vector(Cantera::Solution& gas){
  * which is not valid for reacting flows. 
  * 
 */
-ThermoDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
+EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
     auto thermo = gas.thermo();
 
     size_t n_elements = thermo->nElements();
@@ -81,8 +81,6 @@ ThermoDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
 
     VectorXd rhs(num_var);
     rhs.setZero();
-
-
 
     auto std_H_RT = get_enthalpyRT_vector(gas);
     auto moles = get_mole_vector(gas);
@@ -141,7 +139,7 @@ ThermoDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
     return {dpi_dlogT_P, dlogn_dlogT_P, dpi_dlogP_T, dlogn_dlogP_T};
 }
 
-ThermoProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const ThermoDerivatives& derivs){
+EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const EquilibriumDerivatives& derivs){
     auto moles = get_mole_vector(gas);
     
     auto stoich_coeffs = get_stoichiometric_coeffs(gas);
