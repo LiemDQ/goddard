@@ -7,11 +7,11 @@ GoddardFindPackage(GTest 1.1.4 REQUIRED)
 include(GoogleTest)
 
 add_executable(
-    goddardThermoTests
-    test_thermo.cpp
+    goddardEquilibriumTests
+    test_equilibrium.cpp
 )
 
-target_link_libraries(goddardThermoTests PUBLIC goddard_options goddard_warnings)
-target_link_libraries(goddardThermoTests PUBLIC goddard_lib)
-target_link_libraries(goddardThermoTests PUBLIC GTest::gtest_main)
-gtest_discover_tests(goddardThermoTests TEST_PREFIX "thermo")
+target_link_libraries(goddardEquilibriumTests PUBLIC goddard_options goddard_warnings)
+target_link_libraries(goddardEquilibriumTests PUBLIC goddard_lib)
+target_link_libraries(goddardEquilibriumTests PUBLIC GTest::gtest_main)
+gtest_discover_tests(goddardEquilibriumTests TEST_PREFIX "equilibrium")

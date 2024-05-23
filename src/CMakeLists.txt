@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 add_executable(
     goddard_main
     main.cpp
+    equilibrium.cpp
 )
 target_include_directories(goddard_main
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -22,7 +23,7 @@ target_include_directories(
 )
 
 #library
-add_library(goddard_lib SHARED thermo.cpp)
+add_library(goddard_lib SHARED equilibrium.cpp)
 
 target_include_directories(goddard_lib
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
