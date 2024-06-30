@@ -15,21 +15,35 @@ using Cantera::ThermoPhase;
 
 
 ThermoStateManager::ThermoStateManager(std::shared_ptr<Solution> sol, int len) : 
-solution(sol), 
-states(SolutionArray::create(std::move(sol), len, {})),
-orig_solution_state(copy_original_state()) {
-	
+	solution(sol), 
+	states(SolutionArray::create(std::move(sol), len, {})),
+	orig_solution_state(solution->thermo()->stateSize()) {
+
+	solution->thermo()->saveState(orig_solution_state);
 }
+
 ThermoStateManager::ThermoStateManager(std::shared_ptr<Solution> sol, const std::vector<long>& shape) : 
-solution(sol), 
-states(SolutionArray::create(std::move(sol), static_cast<int>(shape.size()), {})),
-orig_solution_state(copy_original_state()) {
+	solution(sol), 
+	states(SolutionArray::create(std::move(sol), static_cast<int>(shape.size()), {})),
+	orig_solution_state(solution->thermo()->stateSize()) {
+
+	solution->thermo()->saveState(orig_solution_state);
 	states->setApiShape(shape);
+}
+
+void ThermoStateManager::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
+	//not sure if this will work, based on what they did in python implementation
+	for (size_t loc = 0; loc < this->size(); loc++){
+		states->setLoc(loc);
+		states->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
+		states->updateState(loc);
+	}
 }
 
 void ThermoStateManager::TP(const std::vector<double>& Ts, const std::vector<double>& Ps) {
 	this->update_states(&ThermoPhase::setState_TP, Ts, Ps);
-}	
+}
+
 void ThermoStateManager::TPX(const std::vector<double>& Ts, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs){
 	this->update_states_with_composition(&ThermoPhase::setState_TPX, Ts, Ps, xs);
 }
@@ -37,6 +51,7 @@ void ThermoStateManager::TPX(const std::vector<double>& Ts, const std::vector<do
 void ThermoStateManager::HP(const std::vector<double>& Hs, const std::vector<double>& Ps) {
 	this->update_states(&ThermoPhase::setState_HP, Hs, Ps);
 }
+
 void ThermoStateManager::SP(const std::vector<double>& Ss, const std::vector<double>& Ps) {
 	this->update_states(&ThermoPhase::setState_SP, Ss, Ps);
 }
@@ -58,12 +73,12 @@ void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double), c
 	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2);}, var1, var2);
 }
 
-void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, double tol = 1e-9){
+void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, double tol){
 	auto fn = std::mem_fn(f);
 	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2, tol);}, var1, var2);
 }
 
-void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3, double tol = 1e-9){
+void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3, double tol){
 	auto fn = std::mem_fn(f);
 	auto update_f = [&](double v1, double v2, const double* v3){
 		fn(states->thermo(), v1, v2, tol);
@@ -88,6 +103,7 @@ void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var
 	int loc = 0;
 	for (size_t idx2 = 0; idx2 < len2; idx2++){
 		for (size_t idx1 = 0; idx1 < len1; idx1++){
+			states->setLoc(loc);
 			f(var1[idx1], var2[idx2]);
 			states->updateState(loc);
 			loc++;			
@@ -109,6 +125,7 @@ void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var
 	for (size_t idx3 = 0; idx3 < len3;  idx3++){
 		for (size_t idx2 = 0; idx2 < len2; idx2++){
 			for (size_t idx1 = 0; idx1 < len1; idx1++){
+				states->setLoc(loc);
 				f(var1[idx1], var2[idx2], var3[idx3].data());
 				states->updateState(loc);
 				loc++;			
