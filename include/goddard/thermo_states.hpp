@@ -9,7 +9,6 @@
 
 namespace Goddard {
 
-enum class ThermoBroadcastValue;
 /**
  * Wrapper around `Cantera::SolutionArray` with a higher-level API. 
  * Supports ND arrays.
@@ -27,7 +26,8 @@ class ThermoStateManager {
 		int estimate_equil=0,
 		int log_level=0);
 
-	inline int size() const {return this->states->size();}
+	inline int size() const {return states->size();}
+	inline bool is_shape_set() const {return shape_is_set;}
 
 	void TP(const std::vector<double>& Ts, const std::vector<double>& Ps);	
 	void TPX(const std::vector<double>& Ts, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs);
@@ -61,7 +61,7 @@ class ThermoStateManager {
 
 	template <typename Func>
 	void _update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2);
-	
+
 	template <typename Func>
 	void _update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3);
 	
@@ -70,6 +70,7 @@ class ThermoStateManager {
 	std::shared_ptr<Cantera::Solution> solution;
 	std::shared_ptr<Cantera::SolutionArray> states; //TODO: maybe make these public
 	std::vector<double> orig_solution_state;
+	bool shape_is_set = false;
 };
 
 }

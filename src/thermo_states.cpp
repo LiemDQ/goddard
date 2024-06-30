@@ -32,7 +32,7 @@ ThermoStateManager::ThermoStateManager(std::shared_ptr<Solution> sol, const std:
 }
 
 void ThermoStateManager::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
-	//not sure if this will work, based on what they did in python implementation
+	//not sure if this will work; this is based on what they did in python implementation
 	for (size_t loc = 0; loc < this->size(); loc++){
 		states->setLoc(loc);
 		states->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
@@ -97,8 +97,13 @@ void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var
 
 	size_t len1 = var1.size();
 	size_t len2 = var2.size();
-	this->check_dimensionality(len1, 0);
-	this->check_dimensionality(len2, 1);
+	if (!shape_is_set) {
+		states->setApiShape({static_cast<long>(len1), static_cast<long>(len2)});
+		shape_is_set = true;
+	} else{
+		this->check_dimensionality(len1, 0);
+		this->check_dimensionality(len2, 1);
+	}
 
 	int loc = 0;
 	for (size_t idx2 = 0; idx2 < len2; idx2++){
@@ -117,9 +122,14 @@ void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var
 	size_t len1 = var1.size();
 	size_t len2 = var2.size();
 	size_t len3 = var3.size();
-	this->check_dimensionality(len1, 0);
-	this->check_dimensionality(len2, 1);
-	this->check_dimensionality(len3, 2);
+	if (!shape_is_set){
+		states->setApiShape({static_cast<long>(len1), static_cast<long>(len2), static_cast<long>(len3)});
+		shape_is_set = true;
+	} else {
+		this->check_dimensionality(len1, 0);
+		this->check_dimensionality(len2, 1);
+		this->check_dimensionality(len3, 2);
+	}
 
 	int loc = 0;
 	for (size_t idx3 = 0; idx3 < len3;  idx3++){
