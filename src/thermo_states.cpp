@@ -40,23 +40,23 @@ void ThermoStateManager::equilibrate(const std::string& XY, const std::string& s
 	}
 }
 
-void ThermoStateManager::TP(const std::vector<double>& Ts, const std::vector<double>& Ps) {
+void ThermoStateManager::TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps) {
 	this->update_states(&ThermoPhase::setState_TP, Ts, Ps);
 }
 
-void ThermoStateManager::TPX(const std::vector<double>& Ts, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs){
+void ThermoStateManager::TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs){
 	this->update_states_with_composition(&ThermoPhase::setState_TPX, Ts, Ps, xs);
 }
 
-void ThermoStateManager::HP(const std::vector<double>& Hs, const std::vector<double>& Ps) {
+void ThermoStateManager::HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps) {
 	this->update_states(&ThermoPhase::setState_HP, Hs, Ps);
 }
 
-void ThermoStateManager::SP(const std::vector<double>& Ss, const std::vector<double>& Ps) {
+void ThermoStateManager::SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps) {
 	this->update_states(&ThermoPhase::setState_SP, Ss, Ps);
 }
 
-void ThermoStateManager::SPX(const std::vector<double>& Ss, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs) {
+void ThermoStateManager::SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs) {
 	this->update_states_with_composition(&ThermoPhase::setState_SP, Ss, Ps, xs);
 }
 	
@@ -68,32 +68,32 @@ void ThermoStateManager::check_dimensionality(size_t len, size_t dim){
 	}
 }
 
-void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double), const std::vector<double>& var1, const std::vector<double>& var2){
+void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
 	auto fn = std::mem_fn(f);
 	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2);}, var1, var2);
 }
 
-void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, double tol){
+void ThermoStateManager::update_states(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, double tol){
 	auto fn = std::mem_fn(f);
 	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2, tol);}, var1, var2);
 }
 
-void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3, double tol){
+void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3, double tol){
 	auto fn = std::mem_fn(f);
 	auto update_f = [&](double v1, double v2, const double* v3){
 		fn(states->thermo(), v1, v2, tol);
 		states->thermo()->setMoleFractions(v3);
 	};
-	this->_update_states(update_f, var1, var2, var3);
+	this->_update_states_with_composition(update_f, var1, var2, var3);
 }
 
-void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, const double*), const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3){
+void ThermoStateManager::update_states_with_composition(void (ThermoPhase::*f)(double, double, const double*),const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3){
 	auto fn = std::mem_fn(f);
-	this->_update_states([&](double v1, double v2, const double* v3){fn(states->thermo(), v1, v2, v3);}, var1, var2, var3);
+	this->_update_states_with_composition([&](double v1, double v2, const double* v3){fn(states->thermo(), v1, v2, v3);}, var1, var2, var3);
 }
 
 template <typename Func>
-void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2){
+void ThermoStateManager::_update_states(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
 
 	size_t len1 = var1.size();
 	size_t len2 = var2.size();
@@ -117,7 +117,7 @@ void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var
 }
 
 template <typename Func>
-void ThermoStateManager::_update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3) {
+void ThermoStateManager::_update_states_with_composition(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3){
 
 	size_t len1 = var1.size();
 	size_t len2 = var2.size();

@@ -2,7 +2,7 @@
 
 #include "cantera/thermo.h"
 #include "cantera/base/SolutionArray.h"
-
+#include "eigen3/Eigen/Dense"
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,7 +30,7 @@ class ThermoStateManager {
 	inline bool is_shape_set() const {return shape_is_set;}
 
 	void TP(const std::vector<double>& Ts, const std::vector<double>& Ps);	
-	void TPX(const std::vector<double>& Ts, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs);
+	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs);
 	void HP(const std::vector<double>& Hs, const std::vector<double>& Ps);
 	void SP(const std::vector<double>& Ss, const std::vector<double>& Ps);
 	void SPX(const std::vector<double>& Ss, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs);
@@ -40,30 +40,30 @@ class ThermoStateManager {
 	void check_dimensionality(size_t len, size_t dim);
 	
 	void update_states(void (Cantera::ThermoPhase::*f)(double, double), 
-		const std::vector<double>& var1,
-		const std::vector<double>& var2);
+		const Eigen::ArrayXd& var1,
+		const Eigen::ArrayXd& var2);
 
 	void update_states(void (Cantera::ThermoPhase::*f)(double, double, double), 
-		const std::vector<double>& var1,
-		const std::vector<double>& var2,
+		const Eigen::ArrayXd& var1,
+		const Eigen::ArrayXd& var2,
 		double tol = 1e-9);
 
 	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
-		const std::vector<double>& var1,
-		const std::vector<double>& var2, 
-		const std::vector<std::vector<double>>& var3,
+		const Eigen::ArrayXd& var1,
+		const Eigen::ArrayXd& var2, 
+		const std::vector<Eigen::ArrayXd>& var3,
 		double tol = 1e-9);
 
 	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, const double*),
-		const std::vector<double>& var1,
-		const std::vector<double>& var2,
-		const std::vector<std::vector<double>>& var3);
+		const Eigen::ArrayXd& var1,
+		const Eigen::ArrayXd& var2,
+		const std::vector<Eigen::ArrayXd>& var3);
 
 	template <typename Func>
 	void _update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2);
 
 	template <typename Func>
-	void _update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2, const std::vector<std::vector<double>>& var3);
+	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3);
 	
 	std::shared_ptr<Cantera::Solution> copy_original_state();
 	
