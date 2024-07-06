@@ -11,4 +11,13 @@ MixtureRatio::MixtureRatio(double OF,
             this->M_ox = oxidizer->thermo()->meanMolecularWeight();
         }
 
-}
+MixtureRatios::MixtureRatios(double OF, 
+        const std::shared_ptr<Cantera::Solution>& fuel, 
+        const std::shared_ptr<Cantera::Solution>& oxidizer)
+        : OF_ratio(OF) 
+        {
+            this->M_fuel = fuel->thermo()->meanMolecularWeight();
+            this->M_ox = oxidizer->thermo()->meanMolecularWeight();
+        }
+
+} //namespace Goddard
