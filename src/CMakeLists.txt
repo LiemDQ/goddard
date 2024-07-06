@@ -5,11 +5,11 @@ add_executable(
     goddard_main
     main.cpp
     equilibrium.cpp
+    thermo_states.cpp
 )
 target_include_directories(goddard_main
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
-
 )
 
 
