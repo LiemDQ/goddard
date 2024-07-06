@@ -65,8 +65,9 @@ ArrayXd get_cpR_vector(Cantera::Solution& gas){
 
 /**
  * @brief Cantera calculates thermodynamic derivatives assuming a fixed composition, 
- * which is not valid for reacting flows. 
+ * which is not correct for reactive flows, such as ones in chemical equilibrium. 
  * 
+ * For equilibrium, the system of equations can be solved by imposing that the Gibbs free energy is 0.
 */
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
     auto thermo = gas.thermo();
