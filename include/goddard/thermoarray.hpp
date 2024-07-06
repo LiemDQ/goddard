@@ -13,10 +13,10 @@ namespace Goddard {
  * Wrapper around `Cantera::SolutionArray` with a higher-level API. 
  * Supports ND arrays.
 */
-class ThermoStateManager {
+class ThermoArray {
 	public:
-	ThermoStateManager(const std::shared_ptr<Cantera::Solution> sol, int len);
-	ThermoStateManager(const std::shared_ptr<Cantera::Solution> sol, const std::vector<long>& shape);
+	ThermoArray(const std::shared_ptr<Cantera::Solution> sol, int len);
+	ThermoArray(const std::shared_ptr<Cantera::Solution> sol, const std::vector<long>& shape);
 
 	void equilibrate(const std::string& XY, 
 		const std::string& solver="auto", 
@@ -29,11 +29,11 @@ class ThermoStateManager {
 	inline int size() const {return states->size();}
 	inline bool is_shape_set() const {return shape_is_set;}
 
-	void TP(const std::vector<double>& Ts, const std::vector<double>& Ps);	
+	void TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps);	
 	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs);
-	void HP(const std::vector<double>& Hs, const std::vector<double>& Ps);
-	void SP(const std::vector<double>& Ss, const std::vector<double>& Ps);
-	void SPX(const std::vector<double>& Ss, const std::vector<double>& Ps, const std::vector<std::vector<double>>& xs);
+	void HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps);
+	void SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps);
+	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs);
 	
 
 	private:
@@ -60,7 +60,7 @@ class ThermoStateManager {
 		const std::vector<Eigen::ArrayXd>& var3);
 
 	template <typename Func>
-	void _update_states(Func&& f, const std::vector<double>& var1, const std::vector<double>& var2);
+	void _update_states(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2);
 
 	template <typename Func>
 	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3);
