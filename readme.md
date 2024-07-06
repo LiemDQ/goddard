@@ -22,10 +22,7 @@ Questions? Reach out by opening a discussion topic, or via email at [liem.dam-qu
 
 
 ## License
-LGPL v3.0
+Goddard is subject to the terms of the Mozilla Public License, v. 2.0.
 
 Copyright © 2023 Liem Dam-Quang
 
-Goddard is free software; you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation; either version 3.0 of the License, or (at your option) any later version.
-
-Goddard is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
