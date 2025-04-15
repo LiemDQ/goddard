@@ -30,10 +30,10 @@ class ThermoArray {
 	inline bool is_shape_set() const {return shape_is_set;}
 
 	void TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps);	
-	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs);
+	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
 	void HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps);
 	void SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps);
-	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const std::vector<Eigen::ArrayXd>& xs);
+	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
 	
 
 	private:
@@ -51,19 +51,19 @@ class ThermoArray {
 	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
 		const Eigen::ArrayXd& var1,
 		const Eigen::ArrayXd& var2, 
-		const std::vector<Eigen::ArrayXd>& var3,
+		const Eigen::ArrayXXd& var3,
 		double tol = 1e-9);
 
 	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, const double*),
 		const Eigen::ArrayXd& var1,
 		const Eigen::ArrayXd& var2,
-		const std::vector<Eigen::ArrayXd>& var3);
+		const Eigen::ArrayXXd& var3);
 
 	template <typename Func>
 	void _update_states(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2);
 
 	template <typename Func>
-	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const std::vector<Eigen::ArrayXd>& var3);
+	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const Eigen::ArrayXXd& var3);
 	
 	std::shared_ptr<Cantera::Solution> copy_original_state();
 	

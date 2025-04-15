@@ -4,31 +4,51 @@
 
 #include "eigen3/Eigen/Dense"
 #include "goddard/mixture_ratio.hpp"
-#include "goddard/thermo_states.hpp"
+#include "goddard/thermoarray.hpp"
+#include "goddard/utils.hpp"
 #include <memory>
 #include <vector>
 #include <utility>
 
 namespace Goddard {
 
+enum class CombustorType {
+    INFINITE_AREA,
+    FINITE_MASS_FLUX,
+    FINITE_CONTRACTION_RATIO
+};
+
+struct CombustionOptions {
+    CombustorType combustor_type;
+    bool include_transport = false;
+    bool include_ionized = false;
+    double abstol = DEFAULT_ABSTOL;
+    double reltol = DEFAULT_RELTOL;
+    double trace_conc = DEFAULT_TRACE_CONCENTRATION;
+};
+
+/**
+ * @brief Handles combustion reactions.
+ */
 class Combustor {
     public:
     //this may lead to lots of unnecessary copies
-    Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Cantera::Solution> oxidizer, Eigen::ArrayXd&& pressures, MixtureRatios&& mr);
+    Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Cantera::Solution> oxidizer, Eigen::ArrayXd&& temperatures, Eigen::ArrayXd&& pressures, MixtureRatios&& mr);
 
 
-    ThermoArray solve();
+    ThermoArray solve(CombustionOptions options = {});
 
     protected:
-    std::vector<Eigen::ArrayXd> generate_mole_fraction_tensor();
+    Eigen::ArrayXXd generate_mole_fraction_matrix();
     
     std::shared_ptr<Cantera::Solution> fuel;
     std::shared_ptr<Cantera::Solution> oxidizer;
     Cantera::MultiPhase feed;
     //TODO: add a "reactant" solution object
+    std::shared_ptr<Cantera::Solution> products;
 
     MixtureRatios mr;
-    Eigen::ArrayXd feed_temperatures;
+    Eigen::ArrayXd temperatures;
     Eigen::ArrayXd pressures;
 
 };

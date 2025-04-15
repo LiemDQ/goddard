@@ -1,30 +1,30 @@
 #include "goddard/combustor.hpp"
-#include "goddard/thermo_states.hpp"
+#include "goddard/thermoarray.hpp"
 
 namespace Goddard {
 
-Combustor::Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Cantera::Solution> oxidizer, Eigen::ArrayXd&& pressures, MixtureRatios&& mr)
-: fuel(std::move(fuel)), oxidizer(std::move(oxidizer)), pressures(pressures), mr(mr)
+Combustor::Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Cantera::Solution> oxidizer, Eigen::ArrayXd&& temperatures, Eigen::ArrayXd&& pressures, MixtureRatios&& mr)
+: fuel(fuel), oxidizer(oxidizer), temperatures(temperatures), pressures(pressures), mr(mr)
 {
     feed.addPhase(fuel->thermo().get(), 1.0);
     feed.addPhase(oxidizer->thermo().get(), 1.0);
 
 }
 
-ThermoArray Combustor::solve() {
-    auto mole_fracs = this->generate_mole_fraction_tensor();
+ThermoArray Combustor::solve(CombustionOptions options) {
+    auto mole_fracs = this->generate_mole_fraction_matrix();
     //todo: make "reactant" solution instead of using fuel solution 
-    ThermoArray combustion_states = ThermoArray(fuel, {feed_temperatures.size(), pressures.size(), mr.molar_ratio().size() });
-    combustion_states.TPX(feed_temperatures, pressures, mole_fracs);
+    ThermoArray combustion_states = ThermoArray(products, {temperatures.size(), pressures.size(), mr.molar_ratio().size() });
+    combustion_states.TPX(temperatures, pressures, mole_fracs);
     combustion_states.equilibrate("HP", "gibbs");
 
     return combustion_states;
 }
 
 /**
- * Create a n-D tensor with the mole fractions of each component participating in the reaction.
+ * Create a matrix with the mole fractions of each component participating in the reaction.
  */
-std::vector<Eigen::ArrayXd> Combustor::generate_mole_fraction_tensor() {
+Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix() {
     
     auto oxidizer_thermo = oxidizer->thermo();
     auto fuel_thermo = fuel->thermo();
@@ -32,19 +32,18 @@ std::vector<Eigen::ArrayXd> Combustor::generate_mole_fraction_tensor() {
     Eigen::ArrayXd moles_ox = mole_ratios / (1 + mole_ratios);
     Eigen::ArrayXd moles_f = 1 - moles_ox;
 
+    //create the matrix.
+    //TODO: should this be an ArrayXXd instead of a vector<ArrayXd>?
     //this needs to include all species from both oxidizer and fuel
-    auto mole_frac_tensor = std::vector<Eigen::ArrayXd>(mole_ratios.size(), Eigen::ArrayXd::Zero(feed.nSpecies())); 
-    
-    for (size_t i = 0; i < mole_ratios.size(); i++){
-        double fuel_moles = moles_f[i];
-        double ox_moles = moles_ox[i];
-        feed.setPhaseMoles(0, fuel_moles);
-        feed.setPhaseMoles(1, ox_moles);
-        feed.getMoleFractions(mole_frac_tensor[i].data());
-        
+    // auto mole_frac_matrix = std::vector<Eigen::ArrayXd>(mole_ratios.size(), Eigen::ArrayXd::Zero(feed.nSpecies())); 
+    auto mole_frac_matrix = Eigen::ArrayXXd(mole_ratios.size(), feed.nSpecies());
+    for (size_t i = 0; i < mole_frac_matrix.cols(); i++) {
+        feed.setPhaseMoles(0, moles_f[i]);
+        feed.setPhaseMoles(1, moles_ox[i]);
+        feed.getMoleFractions(mole_frac_matrix.row(i).data());
     }
 
-    return mole_frac_tensor;
+    return mole_frac_matrix;
 }
 
 } //nameplace Goddard
