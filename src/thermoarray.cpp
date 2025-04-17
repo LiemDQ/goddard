@@ -16,7 +16,7 @@ using Cantera::ThermoPhase;
 
 ThermoArray::ThermoArray(std::shared_ptr<Solution> sol, int len) : 
 	solution(sol), 
-	states(SolutionArray::create(std::move(sol), len, {})),
+	states(SolutionArray::create(sol, len, {})),
 	orig_solution_state(solution->thermo()->stateSize()) {
 
 	solution->thermo()->saveState(orig_solution_state);
@@ -34,7 +34,7 @@ ThermoArray::ThermoArray(std::shared_ptr<Solution> sol, const std::vector<long>&
 
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
 	//not sure if this will work; this is based on what they did in python implementation
-	for (int loc = 0; loc < this->size(); loc++){
+	for (int loc = 0; loc < size(); loc++){
 		states->setLoc(loc);
 		states->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
 		states->updateState(loc);
@@ -42,27 +42,27 @@ void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, 
 }
 
 void ThermoArray::TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps) {
-	this->update_states(&ThermoPhase::setState_TP, Ts, Ps);
+	update_states(&ThermoPhase::setState_TP, Ts, Ps);
 }
 
 void ThermoArray::TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs){
-	this->update_states_with_composition(&ThermoPhase::setState_TPX, Ts, Ps, xs);
+	update_states_with_composition(&ThermoPhase::setState_TPX, Ts, Ps, xs);
 }
 
 void ThermoArray::HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps) {
-	this->update_states(&ThermoPhase::setState_HP, Hs, Ps);
+	update_states(&ThermoPhase::setState_HP, Hs, Ps);
 }
 
 void ThermoArray::SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps) {
-	this->update_states(&ThermoPhase::setState_SP, Ss, Ps);
+	update_states(&ThermoPhase::setState_SP, Ss, Ps);
 }
 
 void ThermoArray::SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs) {
-	this->update_states_with_composition(&ThermoPhase::setState_SP, Ss, Ps, xs);
+	update_states_with_composition(&ThermoPhase::setState_SP, Ss, Ps, xs);
 }
 	
 void ThermoArray::check_dimensionality(size_t len, size_t dim){
-	const auto& shape = this->states->apiShape();
+	const auto& shape = states->apiShape();
 	if (len != static_cast<size_t>(shape[dim])){
 		throw std::length_error("Provided vector for dimension " + std::to_string(dim) 
 			+ " was of length " + std::to_string(len) + " but expected length " + std::to_string(shape[dim]));
@@ -72,13 +72,13 @@ void ThermoArray::check_dimensionality(size_t len, size_t dim){
 void ThermoArray::update_states(void (ThermoPhase::*f)(double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
-	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2);}, var1, var2);
+	_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2);}, var1, var2);
 }
 
 void ThermoArray::update_states(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, double tol){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
-	this->_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2, tol);}, var1, var2);
+	_update_states([&](double v1, double v2){fn(states->thermo(),v1, v2, tol);}, var1, var2);
 }
 
 void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const Eigen::ArrayXXd& var3, double tol){
@@ -88,15 +88,18 @@ void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, 
 		fn(states->thermo(), v1, v2, tol);
 		states->thermo()->setMoleFractions(v3);
 	};
-	this->_update_states_with_composition(update_f, var1, var2, var3);
+	_update_states_with_composition(update_f, var1, var2, var3);
 }
 
 void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, double, const double*),const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const Eigen::ArrayXXd& var3){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
-	this->_update_states_with_composition([&](double v1, double v2, const double* v3){fn(states->thermo(), v1, v2, v3);}, var1, var2, var3);
+	_update_states_with_composition([&](double v1, double v2, const double* v3){fn(states->thermo(), v1, v2, v3);}, var1, var2, var3);
 }
 
+/**
+ * @brief Updates thermodynamic state by broadcasting a function `f` with values in `var1` and `var2`. 
+ */
 template <typename Func>
 void ThermoArray::_update_states(Func&& f, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
 
@@ -106,8 +109,8 @@ void ThermoArray::_update_states(Func&& f, const Eigen::ArrayXd& var1, const Eig
 		states->setApiShape({static_cast<long>(len1), static_cast<long>(len2)});
 		shape_is_set = true;
 	} else{
-		this->check_dimensionality(len1, 0);
-		this->check_dimensionality(len2, 1);
+		check_dimensionality(len1, 0);
+		check_dimensionality(len2, 1);
 	}
 
 	int loc = 0;
@@ -121,6 +124,10 @@ void ThermoArray::_update_states(Func&& f, const Eigen::ArrayXd& var1, const Eig
 	}
 }
 
+/**
+ * @brief Updates thermodynamic state, including compositions, 
+ * by broadcasting across the specified arrays and matrix. 
+ */
 template <typename Func>
 void ThermoArray::_update_states_with_composition(
 	Func&& f, 
@@ -136,9 +143,9 @@ void ThermoArray::_update_states_with_composition(
 		states->setApiShape({static_cast<long>(len1), static_cast<long>(len2), static_cast<long>(len3)});
 		shape_is_set = true;
 	} else {
-		this->check_dimensionality(len1, 0);
-		this->check_dimensionality(len2, 1);
-		this->check_dimensionality(len3, 2);
+		check_dimensionality(len1, 0);
+		check_dimensionality(len2, 1);
+		check_dimensionality(len3, 2);
 	}
 
 	int loc = 0;

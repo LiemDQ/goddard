@@ -12,7 +12,7 @@ Combustor::Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Ca
 }
 
 ThermoArray Combustor::solve(CombustionOptions options) {
-    auto mole_fracs = this->generate_mole_fraction_matrix();
+    auto mole_fracs = generate_mole_fraction_matrix();
     //todo: make "reactant" solution instead of using fuel solution 
     ThermoArray combustion_states = ThermoArray(products, {temperatures.size(), pressures.size(), mr.molar_ratio().size() });
     combustion_states.TPX(temperatures, pressures, mole_fracs);
