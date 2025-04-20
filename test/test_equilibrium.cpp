@@ -1,4 +1,5 @@
 #include "goddard/equilibrium.hpp"
+#include "goddard/utils.hpp"
 
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
@@ -6,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <string>
 #include <algorithm>
 
 class DerivativeTests: public ::testing::Test {
@@ -22,15 +24,15 @@ class DerivativeTests: public ::testing::Test {
         gas->setState_TPX(temp, pressure, "H2O:1, N2:1, O2:1. AR:0.1"); //completely random composition lol
     }
     std::shared_ptr<Cantera::Solution> sln;
+    std::vector<std::string> elements = {"O", "H", "Ar", "N"};
+    std::vector<std::string> species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     size_t n_species;
     size_t n_elements;
     
 
 };
 
-double max_fp_error(double val, double reltol = 1e-4, double abstol = 1e-10) {
-    return std::max(abs(val*reltol), abstol);
-}
+using namespace Goddard;
 
 
 TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
@@ -47,9 +49,16 @@ TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
 
     EXPECT_EQ(coeffs.size(), expected_coeffs.size());
 
+    expected_coeffs.transposeInPlace();
+
     for (int i = 0; i < n_elements_signed; i++){
         for (int j = 0; j < n_species_signed; j++){
-            // EXPECT_EQ(coeffs(i,j), expected_coeffs(i,j));
+            std::string stoich_id = "Species: ";
+            stoich_id += species[j];
+            stoich_id += ", element: ";
+            stoich_id += elements[i];
+            
+            EXPECT_EQ(coeffs(j,i), expected_coeffs(j,i)) << stoich_id;
         }
     }
 }
@@ -57,11 +66,11 @@ TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
 TEST_F(DerivativeTests, moleVectorIsCorrect){
     auto moles = Goddard::get_mole_vector(*sln);
     
-    std::vector<double> expected_moles{0., 0., 0.,  0.01219185, 0., 0.01219185, 0. , 0. , 0.00121919, 0.01219185};
+    std::vector<double> expected_moles{0., 0., 0.,  0.01219185, 0., 0.01219185, 0. , 0. , 0.001219185, 0.01219185};
     ASSERT_EQ(moles.size(), n_species);
 
     for (size_t i = 0; i < n_species; i++){
-        double tol = max_fp_error(expected_moles[i]);
+        double tol = max_fp_error(expected_moles[i], 1e-5, 1e-7);
         EXPECT_NEAR(moles(i), expected_moles[i], tol);
     }
 }
