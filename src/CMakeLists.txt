@@ -5,7 +5,7 @@ add_executable(
     goddard_main
     main.cpp
     equilibrium.cpp
-    thermo_states.cpp
+    thermoarray.cpp
 )
 target_include_directories(goddard_main
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -23,7 +23,12 @@ target_include_directories(
 )
 
 #library
-add_library(goddard_lib SHARED equilibrium.cpp)
+add_library(
+  goddard_lib 
+  SHARED 
+  equilibrium.cpp 
+  thermoarray.cpp
+)
 
 target_include_directories(goddard_lib
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
