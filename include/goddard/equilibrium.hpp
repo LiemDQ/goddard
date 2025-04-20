@@ -21,6 +21,12 @@ struct EquilibriumProperties {
     double gamma_s;
 };
 
+/**
+ * @brief Get matrix of stoichiometric coefficients of the species contained in the `Solution` object.
+ * 
+ * @return 2D Eigen array of stoichiometric coefficients. Rows represent species, while columns represent elements.
+ * Ordering is the same as the data file used to generated the `Solution` object. 
+ */
 Eigen::ArrayXXd get_stoichiometric_coeffs(Cantera::Solution& gas);
 Eigen::ArrayXd get_mole_vector(Cantera::Solution& gas);
 Eigen::ArrayXd get_enthalpyRT_vector(Cantera::Solution& gas);
