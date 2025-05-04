@@ -75,7 +75,12 @@ class ThermoArray {
 	/**
 	 * @brief Set the temperature and pressure of the array.
 	 */
-	void TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps);	
+	void TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps);
+	/**
+	 * @brief Set the temperature, pressure, and mole fractions of the array. 
+	 * The mole fraction matrix columns should represent species and 
+	 * the rows should represent distinct compositions. 
+	 * */	
 	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
 	void TPY(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
 
