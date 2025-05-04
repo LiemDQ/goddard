@@ -28,6 +28,9 @@ add_library(
   SHARED 
   equilibrium.cpp 
   thermoarray.cpp
+  combustor.cpp
+  mixture_ratio.cpp
+  error.cpp
 )
 
 target_include_directories(goddard_lib

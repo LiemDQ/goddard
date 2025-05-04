@@ -1,6 +1,5 @@
 #pragma once
 #include "cantera/core.h"
-#include "cantera/equil/MultiPhase.h"
 
 #include "eigen3/Eigen/Dense"
 #include "goddard/mixture_ratio.hpp"
@@ -9,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include <utility>
+#include <string>
 
 namespace Goddard {
 
@@ -19,37 +19,47 @@ enum class CombustorType {
 };
 
 struct CombustionOptions {
-    CombustorType combustor_type;
+    CombustorType combustor_type = CombustorType::INFINITE_AREA;
     bool include_transport = false;
     bool include_ionized = false;
-    double abstol = DEFAULT_ABSTOL;
     double reltol = DEFAULT_RELTOL;
-    double trace_conc = DEFAULT_TRACE_CONCENTRATION;
 };
 
 /**
- * @brief Handles combustion reactions.
+ * @brief Handles isobaric combustion reactions.
  */
 class Combustor {
     public:
     //this may lead to lots of unnecessary copies
-    Combustor(std::shared_ptr<Cantera::Solution> fuel, std::shared_ptr<Cantera::Solution> oxidizer, Eigen::ArrayXd&& temperatures, Eigen::ArrayXd&& pressures, MixtureRatios&& mr);
+    Combustor(
+        std::shared_ptr<Cantera::Solution>& fuel, 
+        std::shared_ptr<Cantera::Solution>& oxidizer, 
+        std::shared_ptr<Cantera::Solution>& products
+    );
 
 
-    ThermoArray solve(CombustionOptions options = {});
+    ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustionOptions& options = {});
+    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr);
+    
+
+    inline std::vector<std::string> get_combustion_species() {return product_sln->thermo()->speciesNames();}
+    inline std::shared_ptr<Cantera::Solution> get_fuel() {return fuel_sln;}
+    inline std::shared_ptr<Cantera::Solution> get_oxidizer() {return oxidizer_sln;}
+    inline std::shared_ptr<Cantera::Solution> get_products() { return product_sln; }
 
     protected:
-    Eigen::ArrayXXd generate_mole_fraction_matrix();
     
-    std::shared_ptr<Cantera::Solution> fuel;
-    std::shared_ptr<Cantera::Solution> oxidizer;
-    Cantera::MultiPhase feed;
-    //TODO: add a "reactant" solution object
-    std::shared_ptr<Cantera::Solution> products;
+    std::shared_ptr<Cantera::Solution> fuel_sln;
+    std::shared_ptr<Cantera::Solution> oxidizer_sln;
+    std::shared_ptr<Cantera::Solution> product_sln;
 
-    MixtureRatios mr;
-    Eigen::ArrayXd temperatures;
-    Eigen::ArrayXd pressures;
+    
+    void assign_mole_frac_row_entries(
+        Eigen::ArrayXXd& matrix, 
+        long row_idx, 
+        const Cantera::Composition& composition, 
+        double coeff = 1.0);
+
 
 };
 

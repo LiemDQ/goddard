@@ -7,7 +7,7 @@ namespace Goddard {
 
 class MixtureRatio {
     public: 
-    MixtureRatio(double OF, double M_fuel, double M_oxidizer): OF_ratio(OF), M_fuel(M_fuel), M_ox(M_oxidizer) {}
+    MixtureRatio(double OF, double fuel_molar_mass, double oxidizer_molar_mass): OF_ratio(OF), M_fuel(fuel_molar_mass), M_ox(oxidizer_molar_mass) {}
     MixtureRatio(double OF, 
         const std::shared_ptr<Cantera::Solution>& fuel, 
         const std::shared_ptr<Cantera::Solution>& oxidizer);
@@ -29,8 +29,13 @@ class MixtureRatio {
 
 class MixtureRatios {
     public: 
-    MixtureRatios(double OF, double M_fuel, double M_oxidizer): OF_ratio(OF), M_fuel(M_fuel), M_ox(M_oxidizer) {}
+    MixtureRatios(double OF, double fuel_molar_mass, double oxidizer_molar_mass): OF_ratio(1), M_fuel(fuel_molar_mass), M_ox(oxidizer_molar_mass) { OF_ratio << OF;}
+    MixtureRatios(const Eigen::ArrayXd& OF, double fuel_molar_mass, double oxidizer_molar_mass): OF_ratio(OF), M_fuel(fuel_molar_mass), M_ox(oxidizer_molar_mass) {}
+
     MixtureRatios(double OF, 
+        const std::shared_ptr<Cantera::Solution>& fuel, 
+        const std::shared_ptr<Cantera::Solution>& oxidizer);
+    MixtureRatios(const Eigen::ArrayXd& OF, 
         const std::shared_ptr<Cantera::Solution>& fuel, 
         const std::shared_ptr<Cantera::Solution>& oxidizer);
         
