@@ -10,6 +10,7 @@ add_executable(
     goddardTests
     test_equilibrium.cpp
     test_thermoarray.cpp
+    test_combustor.cpp
 )
 
 target_link_libraries(goddardTests PUBLIC goddard_options goddard_warnings)
