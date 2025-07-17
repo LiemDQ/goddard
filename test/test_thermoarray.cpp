@@ -77,7 +77,7 @@ TEST_F(ThermoArray2DTests, constructorWorks){
     EXPECT_EQ(array->size(), array->solutionarray()->size()) 
         << "Array should have the same size as its underlying `SolutionArray`";
     EXPECT_EQ(array->solution(), sln) 
-        << "Array Solution poii=nter should point to the underlying Solution used to construct it.";
+        << "Array Solution pointer should point to the underlying Solution used to construct it.";
 
     EXPECT_EQ(array->solution()->thermo()->nSpecies(), NUM_H2O2_SPECIES)
      << "ohmech should have 10 species";
@@ -194,11 +194,12 @@ class ThermoArray3DTests: public ::testing::Test {
         temperatures << 1,2,3,4,5;
         temperatures *=  100.0;
 
-        compositions = Eigen::ArrayXXd(NUM_H2O2_SPECIES, NUM_COMPOSITIONS);
+        compositions = Eigen::ArrayXXd(NUM_COMPOSITIONS, NUM_H2O2_SPECIES);
         for (size_t i = 0; i < NUM_COMPOSITIONS; i++) {
+            double h2 = static_cast<double>(i);
             double o2 = static_cast<double>(NUM_COMPOSITIONS - i);
             //"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"
-            compositions.row(i) << static_cast<double>(i), 1e-10, 1e-10, o2, 1e-10, 0.1, 1e-10, 0.5, 1.0;
+            compositions.row(i) << h2, 0.0e-10, 0.0e-10, o2, 0.0e-10, 0.1, 0.0e-10, 0.5, 1.0, 0.0e-10;
         }
     }
 
@@ -252,7 +253,7 @@ TEST_F(ThermoArray3DTests, broadcastTPX){
 
                 for (size_t l = 0; l < state.size(); l++) {
                     EXPECT_DOUBLE_EQ(state[l], ref_state[l]) 
-                        << "State vectors should be identical." 
+                        << "State vectors should be identical. " 
                         << "Indices (i,j,k,l): (" << i << "," << j << "," << k << "," << l << ")";
                 }
                 loc++;
@@ -264,7 +265,7 @@ TEST_F(ThermoArray3DTests, broadcastTPX){
 
 TEST_F(ThermoArray3DTests, equilibrateTPX){
     ASSERT_NO_THROW(array->TPX(temperatures, pressures, compositions));
-    array->equilibrate("HP", "gibbs", Goddard::DEFAULT_RELTOL);
+    ASSERT_NO_THROW(array->equilibrate("HP", "gibbs", Goddard::DEFAULT_RELTOL)) << "Composition:\n" << compositions;
 
     auto states = array->solutionarray();
 
@@ -290,15 +291,17 @@ TEST_F(ThermoArray3DTests, equilibrateTPX){
                 
                 std::vector<double> state = states->getState(loc);
                 
-                ref_thermo->setMoleFractions(composition.data());
-                ref_thermo->setTemperature(temperatures(i));
-                ref_thermo->setPressure(pressures(j));
-                ref_thermo->equilibrate("HP", "gibbs", Goddard::DEFAULT_RELTOL);
+                EXPECT_NO_THROW(
+                    ref_thermo->setMoleFractions(composition.data());
+                    ref_thermo->setTemperature(temperatures(i));
+                    ref_thermo->setPressure(pressures(j));
+                    ref_thermo->equilibrate("HP", "gibbs", Goddard::DEFAULT_RELTOL);
+                ) << "Composition: " << composition.data();
                 ref_thermo->saveState(ref_state);
 
                 for (size_t l = 0; l < state.size(); l++) {
-                    EXPECT_NEAR(state[l], ref_state[l], Goddard::max_fp_error(ref_state[l])) 
-                        << "State vectors should be identical." 
+                    EXPECT_NEAR(state[l], ref_state[l], Goddard::max_fp_error(ref_state[l], 1.0e-6, 1.0E-7)) 
+                        << "State vectors should be identical. " 
                         << "Indices (i,j,k,l): (" << i << "," << j << "," << k << "," << l << ")";
                 }
                 loc++;

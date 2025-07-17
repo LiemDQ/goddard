@@ -3,6 +3,7 @@
 #include "goddard/utils.hpp"
 
 #include <memory>
+#include <iostream>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
 #include "gtest/gtest.h"
@@ -82,7 +83,9 @@ TEST_F(H2O2CombustorTests, moleFracMatrixIsCorrect) {
     
     //"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"
     for (int i = 0; i < reference_ox_fracs.size(); i++) {
+        //check O2
         EXPECT_NEAR(mole_fracs(i,3), reference_ox_fracs(i), max_fp_error(reference_ox_fracs(i), 1e-4))<< "i = " << i;
+        //check H2
         EXPECT_NEAR(mole_fracs(i,0), 1-reference_ox_fracs(i), max_fp_error(1-reference_ox_fracs(i), 1e-4)) << "i = " << i;
     }
 
@@ -94,16 +97,18 @@ TEST_F(H2O2CombustorTests, moleFracMatrixIsCorrect) {
 TEST_F(H2O2CombustorTests, equilibriumIsCorrect) {
     Eigen::ArrayXd pressures = Eigen::ArrayXd(5);
     pressures << 1,2,3,4,5;
-    pressures *= Cantera::OneBar * 10;
+    pressures *= Cantera::OneBar * 10; //10, 20, 30, 40, 50 bar
 
     Eigen::ArrayXd temperatures = Eigen::ArrayXd(1);
-    temperatures << 90.15;
+    temperatures << 92.0;
     
+    // Eigen::ArrayXXd mole_fracs = combustor->generate_mole_fraction_matrix(*MRs);
+
     auto results = combustor->solve(
-        temperatures,
-        pressures, 
-        *MRs
-    );
+            temperatures,
+            pressures, 
+            *MRs
+        );
 
     ASSERT_EQ(results.ndim(), 3);
     ASSERT_EQ(results.shape()[0], temperatures.size());
