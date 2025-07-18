@@ -6,6 +6,7 @@ add_executable(
     main.cpp
     equilibrium.cpp
     thermoarray.cpp
+    global.cpp
 )
 target_include_directories(goddard_main
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -19,7 +20,9 @@ target_link_libraries(goddard_main PUBLIC goddard_options goddard_warnings)
 target_include_directories(
   goddard_main 
   PUBLIC
-  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+  $<INSTALL_INTERFACE:include>
 )
 
 #library
@@ -34,15 +37,14 @@ add_library(
 )
 
 target_include_directories(goddard_lib
-    PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PUBLIC 
+      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+      $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+
     PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
 )
 
 target_link_libraries(goddard_lib PUBLIC cantera Eigen3::Eigen)
 target_link_libraries(goddard_lib PUBLIC goddard_options goddard_warnings)
 
-target_include_directories(
-  goddard_lib 
-  PUBLIC
-  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
-)
