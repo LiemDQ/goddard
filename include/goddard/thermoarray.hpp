@@ -12,7 +12,9 @@ namespace Goddard {
 /**
  * @brief Wrapper around `Cantera::SolutionArray` with a higher-level API for 
  * broadcasting thermodynamic operations.
- * Supports ND arrays.
+ * Supports up to 3D arrays.
+ * 
+ * If the third dimension is used, it is assumed to be used to set a composition. 
  * 
 */
 class ThermoArray {
@@ -34,6 +36,8 @@ class ThermoArray {
 
 	void reshape(const std::vector<long>& shape);
 	inline std::vector<long> shape() const {return m_states->apiShape();}
+
+	//Size of ThermoArray (number of entries)
 	inline int size() const {return m_states->size();}
 	inline int ndim() const {return m_states->apiNdim();}
 	inline bool is_shape_set() const {return m_shape_is_set;}
@@ -48,7 +52,17 @@ class ThermoArray {
 	 */
 	inline std::shared_ptr<Cantera::Solution> solution() {return m_solution;}
 	
-	
+	Eigen::ArrayXXd temperature(int slice = 0) const;
+	Eigen::ArrayXXd pressure(int slice = 0) const;
+	Eigen::ArrayXXd internal_energy_mass(int slice = 0) const;
+	Eigen::ArrayXXd internal_energy_mole(int slice = 0) const;
+	Eigen::ArrayXXd enthalpy_mass(int slice = 0) const;
+	Eigen::ArrayXXd enthalpy_mole(int slice = 0) const;
+	Eigen::ArrayXXd entropy_mass(int slice = 0) const;
+	Eigen::ArrayXXd entropy_mole(int slice = 0) const;
+	Eigen::ArrayXXd mean_molecular_weight(int slice = 0) const;
+
+
 	void equilibrate(const std::string& XY, 
 		const std::string& solver="auto", 
 		double rtol=1e-6,
@@ -107,6 +121,16 @@ class ThermoArray {
 
 	private:
 	void check_dimensionality(size_t len, size_t dim);
+
+	/**
+	 * @brief retrieve thermodynamic state values from SolutionArray.
+	 */
+	Eigen::ArrayXXd retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice = 0) const;
+	
+	/**
+	 * @brief Format data vector into 2D matrix based on underlying shape
+	 */
+	Eigen::ArrayXXd reshape_thermo_data(const std::vector<double>& vec) const;
 	
 	void update_states(void (Cantera::ThermoPhase::*f)(double, double), 
 		const Eigen::ArrayXd& var1,
@@ -127,7 +151,6 @@ class ThermoArray {
 		const Eigen::ArrayXd& var1,
 		const Eigen::ArrayXd& var2,
 		const Eigen::ArrayXXd& var3);
-	
 		
 	/**
 	 * @brief Updates thermodynamic state by broadcasting a function `f` with values in `var1` and `var2`. 

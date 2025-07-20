@@ -3,12 +3,14 @@
 #include "cantera/base/SolutionArray.h"
 
 #include "goddard/thermoarray.hpp"
+#include "goddard/utils.hpp"
+
 #include <vector>
 #include <exception>
 #include <utility>
 #include <memory>
 #include <string>
-
+#include <cassert>
 namespace Goddard {
 
 using Cantera::SolutionArray;
@@ -42,6 +44,43 @@ void ThermoArray::reshape(const std::vector<long>& shape) {
 	m_states->resize(static_cast<int>(array_size));
 	m_states->setApiShape(shape);
 }
+
+Eigen::ArrayXXd ThermoArray::temperature(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::temperature, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::pressure(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::pressure, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::internal_energy_mass(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::intEnergy_mass, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::internal_energy_mole(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::intEnergy_mole, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::enthalpy_mass(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::enthalpy_mass, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::enthalpy_mole(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::enthalpy_mole, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::entropy_mass(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::entropy_mass, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::entropy_mole(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::entropy_mole, slice);
+}
+
+Eigen::ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
+	return retrieve_thermo_data(&ThermoPhase::meanMolecularWeight, slice);
+}
+
 
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
 
@@ -97,6 +136,54 @@ void ThermoArray::check_dimensionality(size_t len, size_t dim){
 		throw std::length_error("Provided vector for dimension " + std::to_string(dim) 
 			+ " was of length " + std::to_string(len) + " but expected length " + std::to_string(shape[dim]));
 	}
+}
+
+Eigen::ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice) const {
+	std::vector<double> old_state(m_solution->thermo()->stateSize());
+	m_solution->thermo()->saveState(old_state);
+
+	auto fn = std::mem_fn(f);
+	
+	int data_size = 0;
+	int initial_index = 0;
+
+	//determine the slice of data to extract, if the array is 3D.
+	if (ndim() > 2) {
+		const auto& data_shape = shape();
+		data_size = data_shape[0]*data_shape[1];
+		initial_index = data_size * slice;
+	} else {
+		data_size = size();
+	}
+
+	std::vector<double> retrieved_data(data_size); //TODO: use an XXd array directly?
+	for (int loc = initial_index; loc <= data_size+initial_index; loc++) {
+		m_solution->thermo()->restoreState(m_states->getState(loc));
+		retrieved_data.push_back(fn(m_solution->thermo()));
+	}
+	return reshape_thermo_data(retrieved_data);
+}
+
+Eigen::ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec) const {
+	if (!m_shape_is_set) {
+		throw std::runtime_error("Attempted to retrieve data from ThermoArray before setting its shape.");
+	}
+	const auto& data_shape = shape();
+	
+	int rows = data_shape[0];
+	int cols = 0;
+
+	if (ndim() == 1) {
+		cols = 1;
+	} else if (ndim() >= 2) {
+		cols = data_shape[1];
+	}
+
+	assert(cols*rows == vec.size() && "Data vector and Eigen matrix sizes do not match.");
+
+	Eigen::ArrayXXd data_array = Eigen::Map<const Eigen::ArrayXXd>(vec.data(), rows, cols);
+	
+	return data_array;
 }
 
 void ThermoArray::update_states(void (ThermoPhase::*f)(double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
@@ -187,14 +274,8 @@ void ThermoArray::_update_states_with_composition(
 }
  
 std::shared_ptr<Solution> ThermoArray::copy_original_solution(){
-	std::shared_ptr<Solution> new_sln = Cantera::newSolution(m_solution->source(), m_solution->name());
-	auto thermo = m_solution->thermo();
-	std::vector<double> Xs(thermo->nSpecies());
-	thermo->getMoleFractions(Xs.data());
-	new_sln->thermo()->setState_TPX(thermo->temperature(), thermo->pressure(), Xs.data());
-	//kinetics and transport are probably not needed
 
-	return new_sln;
+	return copy_solution(*m_solution);
 }
 
 } //namespace Goddard
