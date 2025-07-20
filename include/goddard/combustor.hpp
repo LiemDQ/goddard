@@ -39,26 +39,26 @@ class Combustor {
 
 
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustionOptions& options = {});
-    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr);
+    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
     
 
-    inline std::vector<std::string> get_combustion_species() {return product_sln->thermo()->speciesNames();}
-    inline std::shared_ptr<Cantera::Solution> get_fuel() {return fuel_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_oxidizer() {return oxidizer_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_products() { return product_sln; }
+    inline std::vector<std::string> get_combustion_species() {return m_product_sln->thermo()->speciesNames();}
+    inline std::shared_ptr<Cantera::Solution> get_fuel() {return m_fuel_sln;}
+    inline std::shared_ptr<Cantera::Solution> get_oxidizer() {return m_oxidizer_sln;}
+    inline std::shared_ptr<Cantera::Solution> get_products() { return m_product_sln; }
 
     protected:
     
-    std::shared_ptr<Cantera::Solution> fuel_sln;
-    std::shared_ptr<Cantera::Solution> oxidizer_sln;
-    std::shared_ptr<Cantera::Solution> product_sln;
+    std::shared_ptr<Cantera::Solution> m_fuel_sln;
+    std::shared_ptr<Cantera::Solution> m_oxidizer_sln;
+    std::shared_ptr<Cantera::Solution> m_product_sln;
 
     
     void assign_mole_frac_row_entries(
         Eigen::ArrayXXd& matrix, 
         long row_idx, 
         const Cantera::Composition& composition, 
-        double coeff = 1.0);
+        double coeff = 1.0) const;
 
 
 };
