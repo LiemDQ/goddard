@@ -34,6 +34,7 @@ add_library(
   combustor.cpp
   mixture_ratio.cpp
   error.cpp
+  utils.cpp
 )
 
 target_include_directories(goddard_lib
