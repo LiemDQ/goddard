@@ -38,7 +38,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
     std::vector<double> X_inlet(gas_state->nSpecies());
     gas_state->getMoleFractions(X_inlet.data());
 
-    EquilibriumProperties thermo_props = get_thermo_equilibrium_properties(gas_state);
+    EquilibriumProperties thermo_props = get_thermo_equilibrium_properties(*gas_state);
 
     double gamma_s = thermo_props.gamma_s;
     double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
@@ -70,7 +70,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
         iter++;
     }
 
-    return {true, H_inlet, P_inlet, S_inlet, save_gas_state(*gas_state)};
+    return {true, H_inlet, P_inlet, S_inlet, save_thermo_state(*gas_state)};
 }
 
 double EquilibriumNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
@@ -165,7 +165,7 @@ NozzleResult EquilibriumNozzle::iterate_area_expansion(
         gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
         gamma_s = get_gamma_s(*gas_thermo);
     }
-    return {true, save_gas_state(*gas_thermo)};
+    return {true, save_thermo_state(*gas_thermo)};
 }
 
 
@@ -178,7 +178,7 @@ NozzleResult EquilibriumNozzle::solve_pressure_ratio(const ThroatCondition& thro
     gas_thermo->equilibrate("SP", "gibbs");
     
     //pressure ratio for equilibrium nozzle does not require iteration
-    return {true, save_gas_state(*gas_thermo)};
+    return {true, save_thermo_state(*gas_thermo)};
 }
 
 double FrozenNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
@@ -243,7 +243,7 @@ NozzleResult FrozenNozzle::solve_pressure_ratio(const ThroatCondition& throat_co
         return {false, {}};
     }
     else {
-        return {true, save_gas_state(*gas_thermo)};
+        return {true, save_thermo_state(*gas_thermo)};
     }
 }
 
@@ -289,7 +289,7 @@ NozzleResult FrozenNozzle::iterate_area_expansion(
 
         pressure_ratio = std::exp(log_pinf_pe);
     }
-    return {true, save_gas_state(*gas_thermo)};
+    return {true, save_thermo_state(*gas_thermo)};
 
 }
 

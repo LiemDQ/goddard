@@ -7,7 +7,7 @@
 #include <vector>
 namespace Goddard {
 
-std::vector<double> save_gas_state(const Cantera::ThermoPhase& sol);
+std::vector<double> save_thermo_state(const Cantera::ThermoPhase& sol);
 
 std::shared_ptr<Cantera::Solution> create_mixture_solution(Cantera::Solution& sol1, Cantera::Solution& sol2);
 
