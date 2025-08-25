@@ -63,9 +63,10 @@ class NozzleBase {
     void reset_state();
 
     /**
+     * @brief Calculate chemical reaction-adjusted specific heat ratio from a thermodynamic state. 
      * @warning Can modify the underlying state!
      */
-    virtual double gamma(Cantera::ThermoPhase& state) = 0;
+    virtual double get_gamma_s(Cantera::ThermoPhase& state) = 0;
 
     protected:
     std::shared_ptr<Cantera::Solution> m_gas;
@@ -78,7 +79,7 @@ class NozzleBase {
 
 class EquilibriumNozzle : NozzleBase {
     public:    
-    double gamma(Cantera::ThermoPhase& state) override;
+    double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) override;
@@ -92,15 +93,25 @@ class EquilibriumNozzle : NozzleBase {
 };
 
 
-class FrozenNozzle : NozzleBase {
+class FrozenNozzle final : NozzleBase {
     public:    
-    double gamma(Cantera::ThermoPhase& state) override;
+    double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) override;
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;
 
+    NozzleResult iterate_area_expansion(
+        std::shared_ptr<Cantera::ThermoPhase>& gas_thermo, 
+        const ThroatCondition& throat_condition, 
+        double expansion_ratio, double pressure_ratio_guess, double abstol);
+
+    double iterate_temperature(
+        std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
+        const ThroatCondition& throat_condition, 
+        double pressure_ratio, double T_guess, double abstol=0.5e-5);
+    
 };
 
 } //namespace Goddard
