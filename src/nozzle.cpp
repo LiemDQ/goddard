@@ -11,19 +11,20 @@
 
 namespace Goddard {
 
-NozzleResult NozzleBase::solve(const NozzleConditions& conditions) {
+NozzleResult NozzleBase::solve(ExpansionType expansion_type, double expansion_ratio, double pressure_ratio) {
     
-    switch (conditions.expansion_type) {
+    ThroatCondition throat_condition = solve_throat_conditions();
+    switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO:
-            return this->solve_supersonic_area_expansion();
+            return this->solve_supersonic_area_expansion(throat_condition, expansion_ratio);
         case ExpansionType::SUBSONIC_AREA_RATIO:
-            return this->solve_subsonic_area_expansion();
+            return this->solve_subsonic_area_expansion(throat_condition, expansion_ratio);
         default:
-            return this->solve_pressure_ratio();
+            return this->solve_pressure_ratio(throat_condition, expansion_ratio);
     }
 }
 
-ThroatResult solve_throat_conditions(
+ThroatCondition solve_throat_conditions(
     Cantera::Solution& inlet_gas, 
     bool frozen, 
     double abstol
@@ -81,32 +82,122 @@ ThroatResult solve_throat_conditions(
 }
 
 
-NozzleResult solve_equilibrium_supersonic_area_expansion(
-    Cantera::Solution& throat_gas, 
-    const ThroatResult& result, 
-    double expansion_ratio,
-    double abstol
-) {
-    auto thrt_thermo = throat_gas.thermo();
+void NozzleBase::reset_state(){
+    m_gas->thermo()->restoreState(m_initial_state);
+}
 
-    double velocity = gas_isenthalpic_velocity(*thrt_thermo, result.H_stagnation);
-    
-    //throat area/mdot is constant
-    const double A_mdot_thrt = area_per_mdot(*thrt_thermo, velocity);
+ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
+    auto gas_state = m_gas->thermo();
 
+    double P_inlet = gas_state->pressure();
+    double S_inlet = gas_state->entropy_mass();
+    double H_inlet = gas_state->enthalpy_mass();
     
-    EquilibriumProperties equilibrium_props = get_thermo_equilibrium_properties(throat_gas);
+    std::vector<double> X_inlet(gas_state->nSpecies());
+    gas_state->getMoleFractions(X_inlet.data());
+
+    EquilibriumProperties thermo_props = get_thermo_equilibrium_properties(*m_gas);
+
+    double gamma_s = thermo_props.gamma_s;
+    double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
+    
+    const int max_iters = 5;
+    int iter = 0;
+    double Mach = 1.0; //throat mach number is 1 by definition
+    double residual = 1.0;
+
+    while (residual > abstol){
+        if (iter >= max_iters){
+            //show error message or throw exception
+            return {};
+        }
+        P_throat = P_throat * (1 + gamma_s * Mach* Mach)/(1+ gamma_s);
+        
+        gas_state->setState_SP(S_inlet,P_throat);
+
+        //if equilibrium conditions are selected, the composition must reach chemical
+        //equilibrium in the throat.
+        gamma_s = gamma(*gas_state);
+        
+        double velocity = gas_isenthalpic_velocity(*gas_state, H_inlet);
+        double sonic_velocity = gas_sonic_velocity(*gas_state, gamma_s);
+
+        Mach = velocity/sonic_velocity;
+        residual = std::abs(1.0 - 1.0/(Mach * Mach));
+
+        iter++;
+    }
+
+    return {true, H_inlet, P_inlet, S_inlet, save_gas_state(*gas_state)};
+}
+
+double EquilibriumNozzle::gamma(Cantera::ThermoPhase& state) {
+    state.equilibrate("SP", "gibbs");
+     //WARNING: if m_gas has a different ThermoPhase than `state` this will result in incorrect behavior!
+    auto props = get_thermo_equilibrium_properties(*m_gas);
+    return props.gamma_s;
+}
+
+NozzleResult EquilibriumNozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    gas_thermo->restoreState(throat_condition.state);
+
+    double ln_pressure_ratio = 0;
+    double throat_pressure_ratio = throat_condition.P_inlet/gas_thermo->pressure();
+    double ln_throat_ratio = std::log(throat_pressure_ratio);
+    double ln_Ae_At = std::log(expansion_ratio);
+    
+    if (expansion_ratio >= 1.09) {
+        ln_pressure_ratio = ln_throat_ratio/(expansion_ratio + 10.587*std::pow(ln_Ae_At, 3)+9.454*ln_Ae_At);
+    }
+    else if (expansion_ratio > 1.0001) {
+        ln_pressure_ratio = 0.9* ln_throat_ratio / (expansion_ratio + 10.587*std::pow(ln_Ae_At, 3)+9.454*ln_Ae_At);
+    }
+    else {
+        //invalid expansion ratio
+        return {false, {}};
+    }
+    return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
+}
+
+NozzleResult EquilibriumNozzle::solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    gas_thermo->restoreState(throat_condition.state);
+    
+    EquilibriumProperties equilibrium_props = get_thermo_equilibrium_properties(*m_gas);
     double gamma_s = equilibrium_props.gamma_s;
-    
-    //initial guess for area ratios > 2
-    double pressure_ratio = std::exp(gamma_s+1.4*std::log10(expansion_ratio));
-    double P_exit = result.P_inlet/pressure_ratio;
 
-    std::shared_ptr<Cantera::Solution> exit_gas = copy_solution(throat_gas);
-    auto exit_thermo = exit_gas->thermo();
-    exit_thermo->setState_SP(result.S_inlet, P_exit);
-    exit_thermo->equilibrate("SP");
-    double Ae_At = exit_thermo->temperature() / (exit_thermo->pressure() * velocity * exit_thermo->meanMolecularWeight())/A_mdot_thrt;
+    double ln_pressure_ratio = 0;
+    if (expansion_ratio >= 2) {
+        ln_pressure_ratio = gamma_s+1.4*std::log(expansion_ratio);
+    } 
+    else if (expansion_ratio > 1.0001) {
+        double throat_pressure_ratio = throat_condition.P_inlet/gas_thermo->pressure();
+        double ln_throat_ratio = std::log(throat_pressure_ratio);
+        double ln_Ae_At = std::log(expansion_ratio);
+        ln_pressure_ratio = ln_throat_ratio + std::sqrt(3.294*ln_Ae_At*ln_Ae_At+1.535*ln_Ae_At);
+    } else {
+        //invalid expansion ratio
+        return {false, {}};
+    }
+    
+    return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
+}
+
+NozzleResult EquilibriumNozzle::iterate_area_expansion(
+    std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
+    const ThroatCondition& throat_condition, 
+    double expansion_ratio, double pressure_ratio_guess, double abstol) {
+
+    double pressure_ratio = pressure_ratio_guess;
+    double P_exit = throat_condition.P_inlet/pressure_ratio;
+    double velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
+    const double A_mdot_thrt = area_per_mdot(*gas_thermo, velocity);
+
+    gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
+    gas_thermo->equilibrate("SP", "gibbs");
+
+    double Ae_At = gas_thermo->temperature() / (gas_thermo->pressure() * velocity * gas_thermo->meanMolecularWeight())/A_mdot_thrt;
 
     int iters = 0;
     int max_iter = 10;
@@ -118,47 +209,53 @@ NozzleResult solve_equilibrium_supersonic_area_expansion(
         iters++;
         if (iters >= max_iter) {
             //show error message or throw exception
-            return {false, nullptr};
+            return {false, {}};
         }
-        EquilibriumProperties eqprops = get_thermo_equilibrium_properties(*exit_gas);
-        velocity = gas_isenthalpic_velocity(*exit_thermo, result.H_stagnation);
-        sonic_velocity = gas_sonic_velocity(*exit_thermo, eqprops.gamma_s);
-        Ae_At = area_per_mdot(*exit_thermo, velocity)/A_mdot_thrt;
+        EquilibriumProperties eqprops = get_thermo_equilibrium_properties(*m_gas);
+        velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
+        sonic_velocity = gas_sonic_velocity(*gas_thermo, eqprops.gamma_s);
+        Ae_At = area_per_mdot(*gas_thermo, velocity)/A_mdot_thrt;
 
         dlogp_dlogA = eqprops.gamma_s * velocity * velocity / (velocity*velocity - sonic_velocity*sonic_velocity);
         residual = dlogp_dlogA * (std::log(expansion_ratio) - std::log(Ae_At));
-        double log_pinf_pe = std::log(pressure_ratio) + residual;
+        double log_pinf_pe = std::log(pressure_ratio_guess) + residual;
 
         pressure_ratio = std::exp(log_pinf_pe);
-        P_exit = result.P_inlet / pressure_ratio;
+        P_exit = throat_condition.P_inlet / pressure_ratio;
 
-        exit_thermo->setState_SP(result.S_inlet, P_exit);
-        exit_thermo->equilibrate("SP");
+        gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
+        gas_thermo->equilibrate("SP", "gibbs");
     }
-    return {true, exit_gas};
+    return {true, save_gas_state(*gas_thermo)};
 }
 
-NozzleResult solve_equilibrium_pressure_ratio(
-    Cantera::Solution& throat_gas,
-    const ThroatResult& throat_result,
-    double pressure_ratio,
-    double abstol
-) {
-    auto throat_thermo = throat_gas.thermo();
+
+NozzleResult EquilibriumNozzle::solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) {
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    gas_thermo->restoreState(throat_condition.state);
+
+    double P_exit = throat_condition.P_inlet/pressure_ratio;
+    gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
+    gas_thermo->equilibrate("SP", "gibbs");
+    
+    return {true, save_gas_state(*gas_thermo)};
+}
+
+NozzleResult FrozenNozzle::solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol = 0.5e-5) {
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    gas_thermo->restoreState(throat_condition.state);
     
     //To solve the gas state, we need to iterate to find the exit temperature
     //initial guess
-    double T_exit = throat_thermo->temperature();
+    double T_exit = gas_thermo->temperature();
 
-    std::shared_ptr<Cantera::Solution> exit_gas = copy_solution(throat_gas);
-    auto exit_thermo = exit_gas->thermo();
 
-    exit_thermo->setPressure(throat_result.P_inlet/pressure_ratio);
-    exit_thermo->setTemperature(T_exit);
-    exit_thermo->equilibrate("TP");
+    gas_thermo->setPressure(throat_condition.P_inlet/pressure_ratio);
+    gas_thermo->setTemperature(T_exit);
+    gas_thermo->equilibrate("TP");
 
-    EquilibriumProperties eqprops = get_thermo_equilibrium_properties(*exit_gas);
-    double dlnT = (throat_result.S_inlet - exit_thermo->entropy_mass())/eqprops.spec_heat_p;
+    EquilibriumProperties eqprops = get_thermo_equilibrium_properties(*m_gas);
+    double dlnT = (throat_condition.S_inlet - gas_thermo->entropy_mass())/eqprops.spec_heat_p;
 
     int maxiter = 8;
     int iters = 0;
@@ -166,21 +263,20 @@ NozzleResult solve_equilibrium_pressure_ratio(
     while (std::abs(dlnT) > abstol) {
         iters++;
         if (iters >= maxiter){
-            return {false, nullptr};
+            return {false, {}};
         }
         
         double lnT_exit = std::log(T_exit) + dlnT;
         T_exit = std::exp(lnT_exit);
 
-        exit_thermo->setState_TP(T_exit, exit_thermo->pressure());
-        exit_thermo->equilibrate("TP");
-        eqprops = get_thermo_equilibrium_properties(*exit_gas);
-        dlnT = (throat_result.S_inlet - exit_thermo->entropy_mass())/eqprops.spec_heat_p;
+        gas_thermo->setState_TP(T_exit, gas_thermo->pressure());
+        gas_thermo->equilibrate("TP");
+        eqprops = get_thermo_equilibrium_properties(*m_gas);
+        dlnT = (throat_condition.S_inlet - gas_thermo->entropy_mass())/eqprops.spec_heat_p;
     }
 
-    return {true, exit_gas};
+    return {true, save_gas_state(*gas_thermo)};
 }
-
 
 } //namespace Goddard
 
