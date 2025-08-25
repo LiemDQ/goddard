@@ -1,10 +1,13 @@
 #include "cantera/core.h"
 #include "cantera/base/SolutionArray.h"
 #include "goddard/equilibrium.hpp"
-#include "goddard/thermo_states.hpp"
+#include "goddard/thermoarray.hpp"
+#include "goddard/global.hpp"
 #include <iostream>
 
 int main() {
+    Goddard::setup_defaults();
+    
     auto sln = Cantera::newSolution("h2o2.yaml", "ohmech");
     double temp = 2400.0; //K
     double pressure = 50.0*Cantera::OneAtm;
@@ -14,7 +17,7 @@ int main() {
     auto slnarr = Cantera::SolutionArray::create(sln, 10);
 
 
-    auto coeffs = Goddard::get_stoichiometric_coeffs(*sln);
+    auto coeffs = Goddard::get_stoichiometric_coeffs(*sln->thermo());
 
     auto manager = Goddard::ThermoArray(sln, std::vector<long>{1,1,1});
 

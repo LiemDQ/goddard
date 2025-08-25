@@ -144,14 +144,14 @@ Eigen::ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::
 
 	auto fn = std::mem_fn(f);
 	
-	int data_size = 0;
+	long data_size = 0;
 	int initial_index = 0;
 
 	//determine the slice of data to extract, if the array is 3D.
 	if (ndim() > 2) {
 		const auto& data_shape = shape();
 		data_size = data_shape[0]*data_shape[1];
-		initial_index = data_size * slice;
+		initial_index = static_cast<int>(data_size * slice);
 	} else {
 		data_size = size();
 	}
@@ -170,8 +170,8 @@ Eigen::ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec)
 	}
 	const auto& data_shape = shape();
 	
-	int rows = data_shape[0];
-	int cols = 0;
+	long rows = data_shape[0];
+	long cols = 0;
 
 	if (ndim() == 1) {
 		cols = 1;

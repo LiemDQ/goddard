@@ -38,7 +38,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
     std::vector<double> X_inlet(gas_state->nSpecies());
     gas_state->getMoleFractions(X_inlet.data());
 
-    EquilibriumProperties thermo_props = get_thermo_equilibrium_properties(*m_gas);
+    EquilibriumProperties thermo_props = get_thermo_equilibrium_properties(gas_state);
 
     double gamma_s = thermo_props.gamma_s;
     double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
@@ -76,7 +76,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
 double EquilibriumNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     state.equilibrate("SP", "gibbs");
      //WARNING: if m_gas has a different ThermoPhase than `state` this will result in incorrect behavior!
-    auto props = get_thermo_equilibrium_properties(*m_gas);
+    auto props = get_thermo_equilibrium_properties(state);
     return props.gamma_s;
 }
 
@@ -106,7 +106,7 @@ NozzleResult EquilibriumNozzle::solve_supersonic_area_expansion(const ThroatCond
     std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
     gas_thermo->restoreState(throat_condition.state);
     
-    EquilibriumProperties equilibrium_props = get_thermo_equilibrium_properties(*m_gas);
+    EquilibriumProperties equilibrium_props = get_thermo_equilibrium_properties(*gas_thermo);
     double gamma_s = equilibrium_props.gamma_s;
 
     double ln_pressure_ratio = 0;

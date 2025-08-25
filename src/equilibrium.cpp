@@ -13,53 +13,46 @@ using Eigen::ArrayXXd;
 namespace Goddard {
 
 
-ArrayXXd get_stoichiometric_coeffs(Cantera::Solution& gas){
-    auto thermo = gas.thermo();
-    size_t n_elements = thermo->nElements();
-    size_t n_species = thermo->nSpecies();
+ArrayXXd get_stoichiometric_coeffs(const Cantera::ThermoPhase& gas){
+    size_t n_elements = gas.nElements();
+    size_t n_species = gas.nSpecies();
 
     //construct matrix of elemental stoichiometric coefficients
     ArrayXXd stoich_coeffs(n_species, n_elements);
     for(size_t i = 0; i < n_elements; i++){
         for(size_t j = 0; j < n_species; j++){
-            stoich_coeffs(j,i) = thermo->nAtoms(j, i);
+            stoich_coeffs(j,i) = gas.nAtoms(j, i);
         }
     }
 
     return stoich_coeffs;
 }
 
-ArrayXd get_mole_vector(Cantera::Solution& gas){
-    auto thermo = gas.thermo();
-    
-    size_t n_species = thermo->nSpecies();
-    double total_moles = 1.0/thermo->meanMolecularWeight();
+ArrayXd get_mole_vector(const Cantera::ThermoPhase& gas){
+    size_t n_species = gas.nSpecies();
+    double total_moles = 1.0/gas.meanMolecularWeight();
 
     ArrayXd moles(n_species);
-    thermo->getMoleFractions(moles.data());
+    gas.getMoleFractions(moles.data());
     moles *= total_moles;
     return moles;
 }
 
-ArrayXd get_enthalpyRT_vector(Cantera::Solution& gas){
-    auto thermo = gas.thermo();
-
-    size_t n_species = thermo->nSpecies();
+ArrayXd get_enthalpyRT_vector(const Cantera::ThermoPhase& gas){
+    size_t n_species = gas.nSpecies();
 
     ArrayXd std_enthalpies_RT(n_species);
     
-    thermo->getEnthalpy_RT(std_enthalpies_RT.data());
+    gas.getEnthalpy_RT(std_enthalpies_RT.data());
 
     return std_enthalpies_RT;
 }
 
-ArrayXd get_cpR_vector(Cantera::Solution& gas){
-    auto thermo = gas.thermo();
-
-    size_t n_species = thermo->nSpecies();
+ArrayXd get_cpR_vector(const Cantera::ThermoPhase& gas){
+    size_t n_species = gas.nSpecies();
     ArrayXd cp_R(n_species);
     
-    thermo->getCp_R(cp_R.data());
+    gas.getCp_R(cp_R.data());
     return cp_R;
 }
 
@@ -69,10 +62,8 @@ ArrayXd get_cpR_vector(Cantera::Solution& gas){
  * 
  * For equilibrium, the system of equations can be solved by imposing that the Gibbs free energy is 0.
 */
-EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas) {
-    auto thermo = gas.thermo();
-
-    size_t n_elements = thermo->nElements();
+EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoPhase& gas) {
+    size_t n_elements = gas.nElements();
     size_t num_var = 2 * n_elements + 2;
 
     
@@ -139,13 +130,11 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas
     return {dpi_dlogT_P, dlogn_dlogT_P, dpi_dlogP_T, dlogn_dlogP_T};
 }
 
-EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const EquilibriumDerivatives& derivs){
+EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivs){
     auto moles = get_mole_vector(gas);
     
     auto stoich_coeffs = get_stoichiometric_coeffs(gas);
-    auto thermo = gas.thermo();
-    
-    size_t n_elements = thermo->nElements();
+    size_t n_elements = gas.nElements();
 
     auto H_RT = get_enthalpyRT_vector(gas);
     auto cp_R = get_cpR_vector(gas);
@@ -168,8 +157,8 @@ EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, 
     double dlogV_dlogP_T = -1 + derivs.dlogn_dlogP_T;
 
     //isochoric specific heat
-    double mass_volume =  thermo->molarVolume() / thermo->meanMolecularWeight(); 
-    double additional_Cpv_term = thermo->pressure() * mass_volume / thermo->temperature() * dlogV_dlogT_P * dlogV_dlogT_P / dlogV_dlogP_T;
+    double mass_volume =  gas.molarVolume() / gas.meanMolecularWeight(); 
+    double additional_Cpv_term = gas.pressure() * mass_volume / gas.temperature() * dlogV_dlogT_P * dlogV_dlogT_P / dlogV_dlogP_T;
     double spec_heat_v = spec_heat_p + additional_Cpv_term;
     
     //heat capacity ratios
@@ -177,6 +166,10 @@ EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, 
     double gamma_s = -gamma/dlogV_dlogP_T;
     
     return {dlogV_dlogT_P, dlogV_dlogP_T, spec_heat_p, gamma_s};
+}
+
+EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas) {
+    return get_thermo_equilibrium_properties(gas, get_thermo_equilibrium_derivatives(gas));
 }
 
 } //namespace Goddard
