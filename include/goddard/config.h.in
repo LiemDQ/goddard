@@ -1,1 +1,3 @@
-#define DATA_DIR "@DATA_INSTALL_DIR@"
+#pragma once
+
+#define DATA_DIR "@DATA_DIR@"

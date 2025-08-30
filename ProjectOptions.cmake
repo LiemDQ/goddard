@@ -19,6 +19,7 @@ macro(goddard_supports_sanitizers)
 endmacro()
 
 macro(goddard_setup_options)
+  option(goddard_DEVELOPMENT_BUILD "Enable development build (uses source data directory)" ON)
   option(goddard_ENABLE_HARDENING "Enable hardening" ON)
   option(goddard_ENABLE_COVERAGE "Enable coverage reporting" OFF)
   cmake_dependent_option(
