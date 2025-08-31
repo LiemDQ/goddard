@@ -12,7 +12,7 @@ Combustor::Combustor(
 ) : m_fuel_sln(fuel), m_oxidizer_sln(oxidizer), m_product_sln(products)
 {}
 
-ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustionOptions& options) {
+ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options) {
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mr);
     
 
@@ -21,9 +21,9 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::Ar
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
     //combustion is adiabatic and isobaric for subsonic flames
-    switch (options.combustor_type) {
+    switch (options.type) {
         case CombustorType::INFINITE_AREA: {
-            combustion_states.equilibrate("HP", "gibbs", options.reltol);
+            combustion_states.equilibrate("HP", "gibbs");
             break;
         }
         default: throw NotImplementedError("Finite area combustors");

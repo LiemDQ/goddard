@@ -34,4 +34,12 @@ double isp(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
 
 double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
 
+double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
+
+/**
+ * @brief Calculate thrust coefficient.
+ */
+double c_F(double gamma, double pressure_ratio, double area_ratio);
+
+
 }

@@ -5,25 +5,14 @@
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/case_options.hpp"
+
 #include <memory>
 #include <vector>
 #include <utility>
 #include <string>
 
 namespace Goddard {
-
-enum class CombustorType {
-    INFINITE_AREA,
-    FINITE_MASS_FLUX,
-    FINITE_CONTRACTION_RATIO
-};
-
-struct CombustionOptions {
-    CombustorType combustor_type = CombustorType::INFINITE_AREA;
-    bool include_transport = false;
-    bool include_ionized = false;
-    double reltol = DEFAULT_RELTOL;
-};
 
 /**
  * @brief Handles isobaric combustion reactions.
@@ -38,7 +27,7 @@ class Combustor {
     );
 
 
-    ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustionOptions& options = {});
+    ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options = {});
     Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
     
 
