@@ -60,6 +60,8 @@ double check_abstol(double abstol) {
     else return abstol;
 }
 
-
+Eigen::ArrayXd vector_to_eigenarray(std::vector<double>& vec) {
+    return Eigen::Map<Eigen::ArrayXd>(vec.data(), vec.size());
+}
 
 }

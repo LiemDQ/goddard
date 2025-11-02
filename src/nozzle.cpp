@@ -8,24 +8,47 @@
 #include <cmath>
 #include <exception>
 #include <vector>
-
+#include <functional>
 namespace Goddard {
 
-NozzleResult NozzleBase::solve(ExpansionType expansion_type, double expansion_ratio, double pressure_ratio) {
+NozzleResult NozzleBase::solve(ExpansionType expansion_type, double ratio) {
     
     ThroatCondition throat_condition = solve_throat_conditions();
     switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO:
-            return this->solve_supersonic_area_expansion(throat_condition, expansion_ratio);
+            return solve_supersonic_area_expansion(throat_condition, ratio);
         case ExpansionType::SUBSONIC_AREA_RATIO:
-            return this->solve_subsonic_area_expansion(throat_condition, expansion_ratio);
-        default:
-            return this->solve_pressure_ratio(throat_condition, expansion_ratio);
+            return solve_subsonic_area_expansion(throat_condition, ratio);
+        case ExpansionType::PRESSURE_RATIO:
+            return solve_pressure_ratio(throat_condition, ratio);
     }
 }
 
+NozzleResults NozzleBase::solve(ExpansionType expansion_type, std::vector<double> ratios) {
+    
+    ThroatCondition throat_condition = solve_throat_conditions();
+    std::vector<NozzleResult> results;
+    
+    switch (expansion_type) {
+        case ExpansionType::SUPERSONIC_AREA_RATIO: {
+            for (double ratio: ratios) results.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
+            break;
+        }
+        case ExpansionType::SUBSONIC_AREA_RATIO: {
+            for (double ratio: ratios) results.push_back(solve_subsonic_area_expansion(throat_condition, ratio));
+            break;
+        }
+        case ExpansionType::PRESSURE_RATIO: {
+            for (double ratio: ratios) results.push_back(solve_pressure_ratio(throat_condition, ratio));
+            break;
+        }
+    } 
+    
+    return {throat_condition, results};
+}
+
 void NozzleBase::reset_state(){
-    m_gas->thermo()->restoreState(m_initial_state);
+    m_gas->thermo()->restoreState(m_inlet_state);
 }
 
 ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
@@ -110,6 +133,8 @@ NozzleResult EquilibriumNozzle::solve_supersonic_area_expansion(const ThroatCond
     double gamma_s = equilibrium_props.gamma_s;
 
     double ln_pressure_ratio = 0;
+
+    //correlations for initial guess
     if (expansion_ratio >= 2) {
         ln_pressure_ratio = gamma_s+1.4*std::log(expansion_ratio);
     } 
@@ -149,7 +174,7 @@ NozzleResult EquilibriumNozzle::iterate_area_expansion(
         iters++;
         if (iters >= max_iter) {
             //show error message or throw exception
-            return {false, {}};
+            return {false, gamma_s, {}};
         }
         velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
         sonic_velocity = gas_sonic_velocity(*gas_thermo, gamma_s);
@@ -165,7 +190,7 @@ NozzleResult EquilibriumNozzle::iterate_area_expansion(
         gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
         gamma_s = get_gamma_s(*gas_thermo);
     }
-    return {true, save_thermo_state(*gas_thermo)};
+    return {true, gamma_s, save_thermo_state(*gas_thermo)};
 }
 
 
@@ -178,7 +203,7 @@ NozzleResult EquilibriumNozzle::solve_pressure_ratio(const ThroatCondition& thro
     gas_thermo->equilibrate("SP", "gibbs");
     
     //pressure ratio for equilibrium nozzle does not require iteration
-    return {true, save_thermo_state(*gas_thermo)};
+    return {true, get_gamma_s(*gas_thermo), save_thermo_state(*gas_thermo)};
 }
 
 double FrozenNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
@@ -203,7 +228,7 @@ NozzleResult FrozenNozzle::solve_supersonic_area_expansion(const ThroatCondition
         ln_pressure_ratio = ln_throat_ratio + std::sqrt(3.294*ln_Ae_At*ln_Ae_At+1.535*ln_Ae_At);
     } else {
         //invalid expansion ratio
-        return {false, {}};
+        return {false, gamma_s, {}};
     }
 
     return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
@@ -217,7 +242,7 @@ NozzleResult FrozenNozzle::solve_subsonic_area_expansion(const ThroatCondition& 
     double throat_pressure_ratio = throat_condition.P_inlet/gas_thermo->pressure();
     double ln_throat_ratio = std::log(throat_pressure_ratio);
     double ln_Ae_At = std::log(expansion_ratio);
-    
+    //correlations for initial guesses
     if (expansion_ratio >= 1.09) {
         ln_pressure_ratio = ln_throat_ratio/(expansion_ratio + 10.587*std::pow(ln_Ae_At, 3)+9.454*ln_Ae_At);
     }
@@ -226,7 +251,7 @@ NozzleResult FrozenNozzle::solve_subsonic_area_expansion(const ThroatCondition& 
     }
     else {
         //invalid expansion ratio
-        return {false, {}};
+        return {false, 0.0, {}};
     }
     return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
 }
@@ -238,12 +263,12 @@ NozzleResult FrozenNozzle::solve_pressure_ratio(const ThroatCondition& throat_co
     //To solve the gas state, we need to iterate to find the exit temperature
     //initial guess
     double P_exit = iterate_temperature(gas_thermo, throat_condition, pressure_ratio, gas_thermo->temperature(), abstol);
+    //returned value is negative if iteration fails to find a solution.
     if (P_exit < 0) {
-        //iteration failed to find a solution
         return {false, {}};
     }
     else {
-        return {true, save_thermo_state(*gas_thermo)};
+        return {true, get_gamma_s(*gas_thermo), save_thermo_state(*gas_thermo)};
     }
 }
 
@@ -255,6 +280,7 @@ NozzleResult FrozenNozzle::iterate_area_expansion(
     
     double pressure_ratio = pressure_ratio_guess;
     double P_exit = throat_condition.P_inlet/pressure_ratio;
+    double gamma_s = get_gamma_s(*gas_thermo);
     double velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
     const double A_mdot_thrt = area_per_mdot(*gas_thermo, velocity);
     
@@ -278,7 +304,7 @@ NozzleResult FrozenNozzle::iterate_area_expansion(
             return {false, {}};
         }
 
-        double gamma_s = get_gamma_s(*gas_thermo);
+        gamma_s = get_gamma_s(*gas_thermo);
         velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
         sonic_velocity = gas_sonic_velocity(*gas_thermo, gamma_s);
         Ae_At = area_per_mdot(*gas_thermo, velocity)/A_mdot_thrt;
@@ -289,7 +315,7 @@ NozzleResult FrozenNozzle::iterate_area_expansion(
 
         pressure_ratio = std::exp(log_pinf_pe);
     }
-    return {true, save_thermo_state(*gas_thermo)};
+    return {true, gamma_s, save_thermo_state(*gas_thermo)};
 
 }
 

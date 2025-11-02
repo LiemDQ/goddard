@@ -21,34 +21,31 @@ class Combustor {
     public:
     //this may lead to lots of unnecessary copies
     Combustor(
-        std::shared_ptr<Cantera::Solution>& fuel, 
-        std::shared_ptr<Cantera::Solution>& oxidizer, 
-        std::shared_ptr<Cantera::Solution>& products
+        std::shared_ptr<Cantera::Solution>& thermo,
+        std::vector<double>& fuel_state, 
+        std::vector<double>& oxidizer_state
     );
 
 
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options = {});
-    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
-    
+    ThermoArray solve(const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options = {});
 
-    inline std::vector<std::string> get_combustion_species() {return m_product_sln->thermo()->speciesNames();}
-    inline std::shared_ptr<Cantera::Solution> get_fuel() {return m_fuel_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_oxidizer() {return m_oxidizer_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_products() { return m_product_sln; }
+    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
+    Eigen::ArrayXXd generate_mass_fraction_matrix(const MixtureRatios& mr) const;
+
+    inline std::vector<std::string> get_combustion_species() {return m_thermo->thermo()->speciesNames();}
 
     protected:
-    
-    std::shared_ptr<Cantera::Solution> m_fuel_sln;
-    std::shared_ptr<Cantera::Solution> m_oxidizer_sln;
-    std::shared_ptr<Cantera::Solution> m_product_sln;
-
+    const std::vector<double> m_fuel_state, m_oxidizer_state;
+    std::shared_ptr<Cantera::Solution> m_thermo;
     
     void assign_mole_frac_row_entries(
         Eigen::ArrayXXd& matrix, 
         long row_idx, 
         const Cantera::Composition& composition, 
         double coeff = 1.0) const;
-
+    
+    ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
 
 };
 

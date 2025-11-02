@@ -1,5 +1,6 @@
 #pragma once
 #include "cantera/core.h"
+#include "eigen3/Eigen/Dense"
 #include <memory>
 #include <cmath>
 #include <algorithm>
@@ -30,5 +31,7 @@ double check_abstol(double abstol);
 constexpr double max_fp_error(double val, double reltol = DEFAULT_RELTOL, double abstol = DEFAULT_ABSTOL) {
     return std::max(abs(val*reltol), abstol);
 }
+
+Eigen::ArrayXd vector_to_eigenarray(std::vector<double>& vec);
 
 }

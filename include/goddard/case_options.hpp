@@ -1,6 +1,7 @@
 #pragma once
 
 #include <variant>
+#include <vector>
 
 namespace Goddard {
 
@@ -13,33 +14,32 @@ enum class CombustorType {
 };
 
 struct CombustorOptions {
-    CombustorType type;    
+    CombustorType type;
+    std::vector<double> pressures;
     double mass_flux;
     double contraction_ratio;
 };
 
-struct FrozenRxOpts {
-    unsigned int NFZ = 1;
+enum class NozzleChemistryType {
+    NONE,
+    FROZEN,
+    EQUILIBRIUM,
+    KINETIC
 };
 
-struct EquilibriumRxOpts {
-    //no options
+enum class ExpansionType {
+    SUPERSONIC_AREA_RATIO,
+    SUBSONIC_AREA_RATIO,
+    PRESSURE_RATIO
 };
 
-struct NoRxOpts {
-    //no options
+
+struct NozzleOptions {
+    NozzleChemistryType chemistry;
+    ExpansionType expansion_type;
+    std::vector<double> expansion_ratios;
+    unsigned int frozen_NFZ = 1;
 };
 
-struct KineticRxOpts {
-    //no options
-};
-
-using ReactionOptions = std::variant<NoRxOpts, FrozenRxOpts, EquilibriumRxOpts, KineticRxOpts>;
-
-struct RocketCaseOptions {
-    CombustorOptions combustor_options;
-    ReactionOptions rx_options;
-    bool include_ionized = false;
-};
 
 } //namespace goddard

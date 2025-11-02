@@ -16,6 +16,8 @@ namespace Goddard {
 using Cantera::SolutionArray;
 using Cantera::Solution;
 using Cantera::ThermoPhase;
+using Eigen::ArrayXd;
+using Eigen::ArrayXXd;
 
 
 ThermoArray::ThermoArray(std::shared_ptr<Solution> sol, int len, const Cantera::AnyMap& meta) : 
@@ -45,39 +47,39 @@ void ThermoArray::reshape(const std::vector<long>& shape) {
 	m_states->setApiShape(shape);
 }
 
-Eigen::ArrayXXd ThermoArray::temperature(int slice) const {
+ArrayXXd ThermoArray::temperature(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::temperature, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::pressure(int slice) const {
+ArrayXXd ThermoArray::pressure(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::pressure, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::internal_energy_mass(int slice) const {
+ArrayXXd ThermoArray::internal_energy_mass(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::intEnergy_mass, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::internal_energy_mole(int slice) const {
+ArrayXXd ThermoArray::internal_energy_mole(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::intEnergy_mole, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::enthalpy_mass(int slice) const {
+ArrayXXd ThermoArray::enthalpy_mass(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::enthalpy_mass, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::enthalpy_mole(int slice) const {
+ArrayXXd ThermoArray::enthalpy_mole(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::enthalpy_mole, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::entropy_mass(int slice) const {
+ArrayXXd ThermoArray::entropy_mass(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::entropy_mass, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::entropy_mole(int slice) const {
+ArrayXXd ThermoArray::entropy_mole(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::entropy_mole, slice);
 }
 
-Eigen::ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
+ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
 	return retrieve_thermo_data(&ThermoPhase::meanMolecularWeight, slice);
 }
 
@@ -93,40 +95,56 @@ void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, 
 	m_states->thermo()->restoreState(m_orig_solution_state);
 }
 
-void ThermoArray::TD(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ds) {
+void ThermoArray::TD(const ArrayXd& Ts, const ArrayXd& Ds) {
 	update_states(&ThermoPhase::setState_TD, Ts, Ds);
 }
 
-void ThermoArray::TV(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Vs) {
+void ThermoArray::TV(const ArrayXd& Ts, const ArrayXd& Vs) {
 	update_states(&ThermoPhase::setState_TV, Ts, Vs);
 }
 
-void ThermoArray::TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps) {
+void ThermoArray::TP(const ArrayXd& Ts, const ArrayXd& Ps) {
 	update_states(&ThermoPhase::setState_TP, Ts, Ps);
 }
 
-void ThermoArray::TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs){
+void ThermoArray::TPX(const ArrayXd& Ts, const ArrayXd& Ps, const ArrayXXd& xs){
 	update_states_with_composition(&ThermoPhase::setState_TPX, Ts, Ps, xs);
 }
 
-void ThermoArray::TPY(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys){
+void ThermoArray::TPY(const ArrayXd& Ts, const ArrayXd& Ps, const ArrayXXd& ys){
 	update_states_with_composition(&ThermoPhase::setState_TPY, Ts, Ps, ys);
 }
 
-void ThermoArray::HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps) {
+void ThermoArray::HP(const ArrayXd& Hs, const ArrayXd& Ps) {
 	update_states(&ThermoPhase::setState_HP, Hs, Ps);
 }
 
-void ThermoArray::SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps) {
+void ThermoArray::HPX(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs) {
+	update_states_with_mole_composition(&ThermoPhase::setState_HP, Hs, Ps, xs);
+}
+void ThermoArray::HPY(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys) {
+	update_states_with_mass_composition(&ThermoPhase::setState_HP, Hs, Ps, ys);
+}
+
+void ThermoArray::SP(const ArrayXd& Ss, const ArrayXd& Ps) {
 	update_states(&ThermoPhase::setState_SP, Ss, Ps);
 }
 
-void ThermoArray::SH(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Hs) {
+void ThermoArray::SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs) {
+	update_states_with_mole_composition(&ThermoPhase::setState_SP, Ss, Ps, xs);
+}
+
+void ThermoArray::SPY(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys) {
+	update_states_with_mass_composition(&ThermoPhase::setState_SP, Ss, Ps, ys);
+}
+
+
+void ThermoArray::SH(const ArrayXd& Ss, const ArrayXd& Hs) {
 	update_states(&ThermoPhase::setState_SH, Ss, Hs);
 }
 
 
-void ThermoArray::UV(const Eigen::ArrayXd& Us, const Eigen::ArrayXd& Vs) {
+void ThermoArray::UV(const ArrayXd& Us, const ArrayXd& Vs) {
 	update_states(&ThermoPhase::setState_UV, Us, Vs);
 }
 	
@@ -138,7 +156,7 @@ void ThermoArray::check_dimensionality(size_t len, size_t dim){
 	}
 }
 
-Eigen::ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice) const {
+ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice) const {
 	std::vector<double> old_state(m_solution->thermo()->stateSize());
 	m_solution->thermo()->saveState(old_state);
 
@@ -164,7 +182,7 @@ Eigen::ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::
 	return reshape_thermo_data(retrieved_data);
 }
 
-Eigen::ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec) const {
+ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec) const {
 	if (!m_shape_is_set) {
 		throw std::runtime_error("Attempted to retrieve data from ThermoArray before setting its shape.");
 	}
@@ -181,41 +199,51 @@ Eigen::ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec)
 
 	assert(cols*rows == vec.size() && "Data vector and Eigen matrix sizes do not match.");
 
-	Eigen::ArrayXXd data_array = Eigen::Map<const Eigen::ArrayXXd>(vec.data(), rows, cols);
+	ArrayXXd data_array = Eigen::Map<const ArrayXXd>(vec.data(), rows, cols);
 	
 	return data_array;
 }
 
-void ThermoArray::update_states(void (ThermoPhase::*f)(double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2){
+void ThermoArray::update_states(void (ThermoPhase::*f)(double, double), const ArrayXd& var1, const ArrayXd& var2){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
 	_update_states([&](double v1, double v2){fn(m_states->thermo(),v1, v2);}, var1, var2);
 }
 
-void ThermoArray::update_states(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, double tol){
+void ThermoArray::update_states(void (ThermoPhase::*f)(double, double, double), const ArrayXd& var1, const ArrayXd& var2, double tol){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
 	_update_states([&](double v1, double v2){fn(m_states->thermo(),v1, v2, tol);}, var1, var2);
 }
 
-void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, double, double), const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const Eigen::ArrayXXd& var3, double tol){
+void ThermoArray::update_states_with_mole_composition(void (ThermoPhase::*f)(double, double, double), const ArrayXd& var1, const ArrayXd& var2, const ArrayXXd& var3, double tol){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
 	auto update_f = [&](double v1, double v2, const double* v3){
-		fn(m_states->thermo(), v1, v2, tol);
 		m_states->thermo()->setMoleFractions(v3);
+		fn(m_states->thermo(), v1, v2, tol);
 	};
 	_update_states_with_composition(update_f, var1, var2, var3);
 }
 
-void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, double, const double*),const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2, const Eigen::ArrayXXd& var3){
+void ThermoArray::update_states_with_mass_composition(void (ThermoPhase::*f)(double, double, double), const ArrayXd& var1, const ArrayXd& var2, const ArrayXXd& var3, double tol) {
+	auto fn = std::mem_fn(f);
+	auto update_f = [&](double v1, double v2, const double* v3){
+		m_states->thermo()->setMassFractions(v3);
+		fn(m_states->thermo(), v1, v2, tol);
+	};
+	_update_states_with_composition(update_f, var1, var2, var3);
+}
+
+void ThermoArray::update_states_with_composition(void (ThermoPhase::*f)(double, double, const double*),const ArrayXd& var1, const ArrayXd& var2, const ArrayXXd& var3){
 	//function pointer signature is needed so compiler can resolve which overloaded function to use
 	auto fn = std::mem_fn(f);
 	_update_states_with_composition([&](double v1, double v2, const double* v3){fn(m_states->thermo(), v1, v2, v3);}, var1, var2, var3);
 }
 
+
 template <typename Func>
-void ThermoArray::_update_states(Func&& f, const Eigen::ArrayXd& arr1, const Eigen::ArrayXd& arr2){
+void ThermoArray::_update_states(Func&& f, const ArrayXd& arr1, const ArrayXd& arr2){
 
 	size_t len1 = arr1.size();
 	size_t len2 = arr2.size();
@@ -244,9 +272,9 @@ void ThermoArray::_update_states(Func&& f, const Eigen::ArrayXd& arr1, const Eig
 template <typename Func>
 void ThermoArray::_update_states_with_composition(
 	Func&& f, 
-	const Eigen::ArrayXd& arr1, 
-	const Eigen::ArrayXd& arr2, 
-	const Eigen::ArrayXXd& arr3
+	const ArrayXd& arr1, 
+	const ArrayXd& arr2, 
+	const ArrayXXd& arr3
 ){
 
 	size_t len1 = arr1.size();
