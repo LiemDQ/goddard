@@ -6,7 +6,6 @@
 
 
 #include "goddard/thermoarray.hpp"
-#include "goddard/case_options.hpp"
 
 namespace Goddard {
 
@@ -16,6 +15,28 @@ namespace Goddard {
 //     double reltol = 1e-3;
 //     double abstol = 1e-6;
 // };
+
+enum class NozzleChemistryType {
+    NONE,
+    FROZEN,
+    EQUILIBRIUM,
+    KINETIC
+};
+
+enum class ExpansionType {
+    SUPERSONIC_AREA_RATIO,
+    SUBSONIC_AREA_RATIO,
+    PRESSURE_RATIO
+};
+
+
+struct NozzleOptions {
+    NozzleChemistryType chemistry;
+    ExpansionType expansion_type;
+    std::vector<double> expansion_ratios;
+    unsigned int frozen_NFZ = 1;
+};
+
 
 struct ThroatCondition {
     bool converged;
@@ -49,8 +70,11 @@ class NozzleBase {
 
     NozzleBase(Cantera::Solution& gas, std::vector<double> state): m_gas(gas.shared_from_this()), m_inlet_state(state) {}
 
-    NozzleResult solve(ExpansionType expansion_type, double ratio = 1.0);
-    NozzleResults solve(ExpansionType expansion_type, std::vector<double> ratios);
+    virtual ~NozzleBase() = default;
+
+    NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
+    NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
+    ThroatCondition solve_throat_conditions(double abstol = 4e-4);
 
     void reset_state();
     inline void set_inlet_state(const std::vector<double>& state) {m_inlet_state = state;}
@@ -65,7 +89,6 @@ class NozzleBase {
     protected:
     std::shared_ptr<Cantera::Solution> m_gas;
     std::vector<double> m_inlet_state;
-    ThroatCondition solve_throat_conditions(double abstol = 4e-4);
     virtual NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) = 0;
@@ -103,10 +126,17 @@ class FrozenNozzle final : public NozzleBase {
         const ThroatCondition& throat_condition, 
         double expansion_ratio, double pressure_ratio_guess, double abstol);
 
+    
+    /**
+     * Finding a thermodynamic state with a known pressure, entropy, and composition, 
+     * requires iteration. This is the approach recommended by Gordon & McBride. 
+     */
     double iterate_temperature(
         std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
         const ThroatCondition& throat_condition, 
-        double pressure_ratio, double T_guess, double abstol=0.5e-5);
+        double pressure_ratio, double T_guess, 
+        const std::vector<double>& composition,
+        double abstol=0.5e-5);
     
 };
 

@@ -5,7 +5,6 @@
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
-#include "goddard/case_options.hpp"
 
 #include <memory>
 #include <vector>
@@ -13,6 +12,20 @@
 #include <string>
 
 namespace Goddard {
+
+enum class CombustorType {
+    INFINITE_AREA,
+    FINITE_MASS_FLUX,
+    FINITE_CONTRACTION_RATIO,
+    NONE
+};
+
+struct CombustorOptions {
+    CombustorType type;
+    std::vector<double> pressures;
+    double mass_flux;
+    double contraction_ratio;
+};
 
 /**
  * @brief Handles isobaric combustion reactions.
@@ -36,8 +49,8 @@ class Combustor {
     inline std::vector<std::string> get_combustion_species() {return m_thermo->thermo()->speciesNames();}
 
     protected:
-    const std::vector<double> m_fuel_state, m_oxidizer_state;
     std::shared_ptr<Cantera::Solution> m_thermo;
+    const std::vector<double> m_fuel_state, m_oxidizer_state;
     
     void assign_mole_frac_row_entries(
         Eigen::ArrayXXd& matrix, 
