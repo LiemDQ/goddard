@@ -11,8 +11,11 @@ add_executable(
     test_equilibrium.cpp
     test_thermoarray.cpp
     test_combustor.cpp
-    test_cea_loader.cpp
-    cea_loader.cpp
+    # test_cea_loader.cpp
+    # cea_loader.cpp
+    # cea_comparer.cpp
+    test_speciate.cpp
+    test_nozzle.cpp
 )
 
 target_include_directories(goddardTests      
