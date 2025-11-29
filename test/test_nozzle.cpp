@@ -2,6 +2,7 @@
 #include "goddard/combustor.hpp"
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/numerics.hpp"
 
 #include <memory>
 #include <iostream>

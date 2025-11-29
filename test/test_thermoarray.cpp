@@ -1,6 +1,7 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/numerics.hpp"
 
 #include "cantera/core.h"
 #include "gtest/gtest.h"
