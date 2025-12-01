@@ -38,10 +38,7 @@ AnyMap speciate(const string& infile, const std::unordered_set<string>& elements
 
 AnyMap speciate(AnyMap& root_node, const std::unordered_set<string>& elements) {
     
-    // const auto& species_node = root_node["species"].asMap("name");
-    assert(root_node["species"].isVector<AnyMap>() && "Must be a vector of Maps");
     auto& species_list = root_node["species"].asVector<AnyMap>();
-    std::cerr << "GOT SPECIES LIST\n";
     //for the species to be included, it must contain one of the elements
     //provided AND it must not contain any elements that were not provided.
     bool contains_element;
@@ -78,11 +75,47 @@ AnyMap speciate(AnyMap& root_node, const std::unordered_set<string>& elements) {
     return root_node;
 }
 
-AnyMap speciate_from_yaml_string(const std::string& yaml_str, const std::unordered_set<std::string>& elements) {
+AnyMap speciate_from_yaml_string(const string& yaml_str, const std::unordered_set<string>& elements) {
     
     auto root_node = AnyMap::fromYamlString(yaml_str);
     
     return speciate(root_node, elements);
+}
+
+AnyMap select_species(const string& infile, const std::unordered_set<string>& species) {
+    size_t dot = infile.find_last_of('c');
+    string extension;
+    if (dot != Cantera::npos) {
+        extension = Cantera::toLowerCopy(infile.substr(dot+1));
+    }
+
+    if (extension == "cti" || extension == "xml") {
+        throw Cantera::CanteraError("newSolution",
+                           "The CTI and XML formats are no longer supported.");
+    }
+    
+    auto root_node = AnyMap::fromYamlFile(infile);
+    
+    return select_species(root_node, species);
+}
+
+AnyMap select_species(AnyMap& root_node, const std::unordered_set<string>& species) {
+    auto& species_list = root_node["species"].asVector<AnyMap>();
+    for (auto it = species_list.begin(); it != species_list.end();) {
+        if (!species.count((*it)["name"].asString())) {
+            species_list.erase(it);
+        }
+        else { //only increment if the item isn't erased from species_list, or iterator will be invalidated
+            ++it;
+        }
+    }
+    return root_node;
+}
+
+AnyMap select_species_from_yaml_string(const string& yaml_str, const std::unordered_set<string>& species) {
+    auto root_node = AnyMap::fromYamlString(yaml_str);
+
+    return select_species(root_node, species);
 }
 
 } //namespace Goddard

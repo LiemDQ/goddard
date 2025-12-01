@@ -2,11 +2,13 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <memory>
 #include <optional>
 #include "cantera/core.h"
-#include "goddard/case_options.hpp"
+#include "goddard/combustor.hpp"
+#include "goddard/nozzle.hpp"
 
 namespace Goddard {
 
@@ -15,27 +17,23 @@ struct RocketCaseParameters {
     std::string problem_type;
     CombustorOptions combustor_options;
     NozzleOptions nozzle_options;
-    
+};
+
+struct Speciation { //TODO: implement speciation functionality
+    std::unordered_set<std::string> species;
+    std::unordered_set<std::string> elements;
+    int max_species = 10;
 };
 
 struct ChemicalParameters {
     std::string thermo_file;
-    std::vector<std::string> species;
+    std::unordered_set<std::string> species;
     std::vector<double> cantera_fuel_state;
     std::vector<double> cantera_oxidizer_state;
     std::vector<double> OF_ratios;
     std::vector<double> phi_ratios;
     std::vector<double> fuel_weight_percentages;
     std::vector<double> valance_equivalences;
-};
-
-struct RocketProblemInputs {
-    std::vector<RocketCaseParameters> problem_cases;
-    ChemicalParameters chemical_params;
-    std::shared_ptr<Cantera::Solution> solution;
-    bool trace_cutoff = 1e-6;
-    bool include_transport = false;
-    bool include_ionized_species = false;
 };
 
 struct RocketState {
@@ -78,26 +76,36 @@ struct RocketPerformance {
 RocketPerformance performance_from_state() {
 
 }
-class RocketProblemBuilder {
 
-
-};
 
 class RocketProblem : public std::enable_shared_from_this<RocketProblem> {
 
     public:
-    static std::shared_ptr<RocketProblem> create(const std::string& thermo_file);
+    
+    static std::shared_ptr<RocketProblem> create(
+        const ChemicalParameters& chem_params,
+        const std::vector<RocketCaseParameters>& cases, 
+        const std::string& name = "",
+        bool include_transport = false,
+        bool include_ionized_species = false,
+        double trace_cutoff = 1e-6
+    );
 
     RocketProblemResults solve();
     
     inline std::shared_ptr<Cantera::Solution> solution() { return m_solution; }
     inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_solution->thermo(); }
-    bool include_transport = false;
-    bool include_ionized_species = false;
+    bool include_transport = false; //TODO: implement transport functionality
+    bool include_ionized_species = false; //TODO: implement ionized species
     double m_trace_cutoff = 1e-6;
     
     private:
-    RocketProblem(const std::string& thermo_file);
+    RocketProblem(const ChemicalParameters& chem_params,
+        const std::vector<RocketCaseParameters>& cases, 
+        const std::string& name = "", 
+        bool transport = false,
+        bool ionized_species = false,
+        double trace = 1e-6);
     std::vector<RocketCaseParameters> m_problem_cases;
     ChemicalParameters m_chemical_params;
     std::shared_ptr<Cantera::Solution> m_solution;

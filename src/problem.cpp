@@ -1,20 +1,57 @@
+#include "goddard/problem.hpp"
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/nozzle_utils.hpp"
 #include "goddard/mixture_ratio.hpp"
-#include "goddard/problem.hpp"
 #include "goddard/error.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/speciate.hpp"
 #include <exception>
 #include <memory>
 #include <utility>
+#include <vector>
+#include <unordered_set>
 #include "eigen3/Eigen/Dense"
+#include "cantera/core.h"
 
 namespace Goddard {
 
+std::shared_ptr<RocketProblem> create(const ChemicalParameters& chem_params,
+        std::vector<RocketCaseParameters>& cases,
+        const std::string& name,
+        bool include_transport,
+        bool include_ionized_species,
+        double trace_cutoff) {
+    
+    
+    return std::make_shared<RocketProblem>(
+        chem_params,
+        cases,
+        name,
+        include_transport,
+        include_ionized_species,
+        trace_cutoff
+    );
+} 
+
+RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
+        const std::vector<RocketCaseParameters>& cases, 
+        const std::string& name, 
+        bool transport,
+        bool ionized_species,
+        double trace): 
+    m_problem_cases(cases), m_chemical_params(chem_params), 
+    include_transport(transport), include_ionized_species(ionized_species), 
+    m_trace_cutoff(trace) {
+
+    auto root_node = select_species(m_chemical_params.thermo_file, m_chemical_params.species);
+    const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", name);
+    m_solution = Cantera::newSolution(phase_node, root_node);
+    m_solution->setSource(m_chemical_params.thermo_file);
+}
 
 RocketProblemResults RocketProblem::solve() {
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;

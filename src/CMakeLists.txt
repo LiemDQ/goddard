@@ -39,6 +39,7 @@ add_library(
   speciate.cpp
   nozzle.cpp
   nozzle_utils.cpp
+  numerics.cpp
 )
 
 target_include_directories(goddard_lib

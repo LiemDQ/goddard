@@ -17,7 +17,6 @@ namespace Goddard {
 // };
 
 enum class NozzleChemistryType {
-    NONE,
     FROZEN,
     EQUILIBRIUM,
     KINETIC

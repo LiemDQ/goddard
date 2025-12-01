@@ -1,5 +1,6 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/numerics.hpp"
 
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
