@@ -34,7 +34,7 @@ class Combustor {
     public:
     //this may lead to lots of unnecessary copies
     Combustor(
-        std::shared_ptr<Cantera::Solution>& thermo,
+        std::shared_ptr<Cantera::Solution> thermo,
         std::vector<double>& fuel_state, 
         std::vector<double>& oxidizer_state
     );
@@ -47,10 +47,10 @@ class Combustor {
     Eigen::ArrayXXd generate_mass_fraction_matrix(const MixtureRatios& mr) const;
 
     inline std::vector<std::string> get_combustion_species() {return m_thermo->thermo()->speciesNames();}
+    std::vector<double> fuel_state, oxidizer_state;
 
     protected:
     std::shared_ptr<Cantera::Solution> m_thermo;
-    const std::vector<double> m_fuel_state, m_oxidizer_state;
     
     void assign_mole_frac_row_entries(
         Eigen::ArrayXXd& matrix, 

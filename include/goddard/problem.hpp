@@ -78,37 +78,29 @@ RocketPerformance performance_from_state() {
 }
 
 
-class RocketProblem : public std::enable_shared_from_this<RocketProblem> {
+class RocketProblem {
 
     public:
     
-    static std::shared_ptr<RocketProblem> create(
-        const ChemicalParameters& chem_params,
-        const std::vector<RocketCaseParameters>& cases, 
-        const std::string& name = "",
-        bool include_transport = false,
-        bool include_ionized_species = false,
-        double trace_cutoff = 1e-6
-    );
-
-    RocketProblemResults solve();
-    
-    inline std::shared_ptr<Cantera::Solution> solution() { return m_solution; }
-    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_solution->thermo(); }
-    bool include_transport = false; //TODO: implement transport functionality
-    bool include_ionized_species = false; //TODO: implement ionized species
-    double m_trace_cutoff = 1e-6;
-    
-    private:
     RocketProblem(const ChemicalParameters& chem_params,
         const std::vector<RocketCaseParameters>& cases, 
         const std::string& name = "", 
         bool transport = false,
         bool ionized_species = false,
         double trace = 1e-6);
-    std::vector<RocketCaseParameters> m_problem_cases;
-    ChemicalParameters m_chemical_params;
-    std::shared_ptr<Cantera::Solution> m_solution;
+    
+    RocketProblemResults solve();
+    
+    inline std::shared_ptr<Cantera::Solution> solution() { return m_sln; }
+    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_sln->thermo(); }
+    bool include_transport = false; //TODO: implement transport functionality
+    bool include_ionized_species = false; //TODO: implement ionized species
+    double trace_cutoff = 1e-6;
+    std::vector<RocketCaseParameters> problem_cases;
+    ChemicalParameters chemical_params;
+    
+    private:
+    std::shared_ptr<Cantera::Solution> m_sln;
 
 };
 
@@ -124,14 +116,14 @@ struct RocketProblemCaseResult {
 class RocketProblemResults {
     
     public: 
-    RocketProblemResults(std::shared_ptr<RocketProblem>&& prob, std::unordered_map<std::string, RocketProblemCaseResult>&& cases);
+    RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results, std::shared_ptr<Cantera::Solution> sln);
     std::vector<ThermoStateInfo> extract_thermo_info(const std::string& case_name, std::size_t index);
 
+    std::unordered_map<std::string, RocketProblemCaseResult> cases;
     private:
-    std::shared_ptr<RocketProblem> m_prob;
-    std::unordered_map<std::string, RocketProblemCaseResult> m_cases;
+    std::shared_ptr<Cantera::Solution> m_sln;
 
-    inline std::shared_ptr<Cantera::ThermoPhase> thermo() {m_prob->thermo();}
+    inline std::shared_ptr<Cantera::ThermoPhase> thermo() {return m_sln->thermo();}
 };
 
 

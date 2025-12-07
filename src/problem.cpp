@@ -43,30 +43,30 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
         bool transport,
         bool ionized_species,
         double trace): 
-    m_problem_cases(cases), m_chemical_params(chem_params), 
+    problem_cases(cases), chemical_params(chem_params), 
     include_transport(transport), include_ionized_species(ionized_species), 
-    m_trace_cutoff(trace) {
+    trace_cutoff(trace) {
 
-    auto root_node = select_species(m_chemical_params.thermo_file, m_chemical_params.species);
+    auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
     const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", name);
-    m_solution = Cantera::newSolution(phase_node, root_node);
-    m_solution->setSource(m_chemical_params.thermo_file);
+    m_sln = Cantera::newSolution(phase_node, root_node);
+    m_sln->setSource(chemical_params.thermo_file);
 }
 
 RocketProblemResults RocketProblem::solve() {
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;
     
-    Eigen::ArrayXd OFs = vector_to_eigenarray(m_chemical_params.OF_ratios);
-    std::shared_ptr<Cantera::ThermoPhase> thermo = m_solution->thermo();
-    std::vector<double> state(m_solution->thermo()->stateSize());
+    Eigen::ArrayXd OFs = vector_to_eigenarray(chemical_params.OF_ratios);
+    std::shared_ptr<Cantera::ThermoPhase> thermo = m_sln->thermo();
+    std::vector<double> state(m_sln->thermo()->stateSize());
 
-    for (RocketCaseParameters& params : m_problem_cases) {
+    for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
         
-        double M_fuel = molar_mass_from_composition(*thermo, m_chemical_params.cantera_oxidizer_state);
-        double M_oxidizer = molar_mass_from_composition(*thermo, m_chemical_params.cantera_oxidizer_state);
+        double M_fuel = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
+        double M_oxidizer = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
         MixtureRatios MRs(OFs, M_fuel, M_oxidizer);
-        Combustor combustor(m_solution, m_chemical_params.cantera_fuel_state, m_chemical_params.cantera_oxidizer_state);
+        Combustor combustor(m_sln, chemical_params.cantera_fuel_state, chemical_params.cantera_oxidizer_state);
         ThermoArray combustion_states = combustor.solve(pressures, MRs, params.combustor_options);
 
         std::vector<NozzleResults> expansion_results(static_cast<std::size_t>(combustion_states.size()));
@@ -75,11 +75,11 @@ RocketProblemResults RocketProblem::solve() {
 
         switch (params.nozzle_options.chemistry) {
             case NozzleChemistryType::FROZEN: {
-                nozzle = new FrozenNozzle(*m_solution);
+                nozzle = new FrozenNozzle(*m_sln);
                 break;
             }
             case NozzleChemistryType::EQUILIBRIUM: {
-                nozzle = new EquilibriumNozzle(*m_solution);
+                nozzle = new EquilibriumNozzle(*m_sln);
                 break;
             }
             default: throw NotImplementedError("Nozzle type is not implemented.");
@@ -101,13 +101,17 @@ RocketProblemResults RocketProblem::solve() {
         };
     }
     
-    return {shared_from_this(), std::move(case_results)};
+    return {std::move(case_results), m_sln};
 }
 
-
+RocketProblemResults::RocketProblemResults(
+    std::unordered_map<std::string, RocketProblemCaseResult>&& case_results, 
+    std::shared_ptr<Cantera::Solution> sln) 
+    : cases(case_results), m_sln(std::move(sln)) {
+}
 
 std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std::string& case_name, std::size_t index){
-    RocketProblemCaseResult& case_result = m_cases[case_name];
+    RocketProblemCaseResult& case_result = cases[case_name];
     auto tmo = thermo();
     std::vector<double> state(tmo->stateSize());
     

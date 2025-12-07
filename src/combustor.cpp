@@ -2,14 +2,15 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/error.hpp"
 #include "cantera/core.h"
+#include <utility>
 #include <cassert>
 namespace Goddard {
 
 Combustor::Combustor(
-    std::shared_ptr<Cantera::Solution>& thermo,
+    std::shared_ptr<Cantera::Solution> thermo,
     std::vector<double>& fuel_state, 
     std::vector<double>& oxidizer_state
-) : m_thermo(thermo), m_fuel_state(fuel_state), m_oxidizer_state(oxidizer_state)
+) : m_thermo(std::move(thermo)), fuel_state(fuel_state), oxidizer_state(oxidizer_state)
 {}
 
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options) {
@@ -31,10 +32,10 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const MixtureRatio
     Eigen::ArrayXd mass_f = mr.fuel_mass_frac();
     Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mr);
 
-    thermo->restoreState(m_oxidizer_state);
+    thermo->restoreState(oxidizer_state);
     double oxidizer_enthalpy = thermo->enthalpy_mass();
 
-    thermo->restoreState(m_fuel_state);
+    thermo->restoreState(fuel_state);
     double fuel_enthalpy = thermo->enthalpy_mass();
     
     Eigen::ArrayXd enthalpies = oxidizer_enthalpy * mass_ox + fuel_enthalpy * mass_f;
@@ -71,10 +72,10 @@ Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(const MixtureRatios& mr
     //this needs to include all species from both oxidizer and fuel
     //this may be problematic if there are unused species in the reactants
     Eigen::ArrayXXd mole_frac_matrix = Eigen::ArrayXXd::Zero(mole_ratios.size(), thermo->nSpecies());
-    thermo->restoreState(m_oxidizer_state);
+    thermo->restoreState(oxidizer_state);
     Cantera::Composition ox_species = thermo->getMoleFractionsByName();
 
-    thermo->restoreState(m_fuel_state);
+    thermo->restoreState(fuel_state);
     Cantera::Composition fuel_species = thermo->getMoleFractionsByName();
     
     for (int i = 0; i < mole_frac_matrix.rows(); i++) {
@@ -101,10 +102,10 @@ Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(const MixtureRatios& mr
     //this needs to include all species from both oxidizer and fuel
     //this may be problematic if there are unused species in the reactants
     Eigen::ArrayXXd mass_frac_matrix = Eigen::ArrayXXd::Zero(moles_ox.size(), thermo->nSpecies());
-    thermo->restoreState(m_oxidizer_state);
+    thermo->restoreState(oxidizer_state);
     Cantera::Composition ox_species = thermo->getMassFractionsByName();
 
-    thermo->restoreState(m_fuel_state);
+    thermo->restoreState(fuel_state);
     Cantera::Composition fuel_species = thermo->getMassFractionsByName();
     
     for (int i = 0; i < mass_frac_matrix.rows(); i++) {

@@ -62,12 +62,12 @@ NozzleResults NozzleBase::solve(ExpansionType expansion_type, const std::vector<
 }
 
 void NozzleBase::reset_state(){
-    m_gas->thermo()->restoreState(m_inlet_state);
+    m_gas->thermo()->restoreState(inlet_state);
 }
 
 ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
     auto gas_state = m_gas->thermo();
-    gas_state->restoreState(m_inlet_state);
+    gas_state->restoreState(inlet_state);
 
     double P_inlet = gas_state->pressure();
     double S_inlet = gas_state->entropy_mass();

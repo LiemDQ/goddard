@@ -63,11 +63,11 @@ struct NozzleResults {
     
 class NozzleBase {
     public:
-    NozzleBase(Cantera::Solution& gas): m_gas(gas.shared_from_this()), m_inlet_state(gas.thermo()->stateSize()) {
-        m_gas->thermo()->saveState(m_inlet_state);
+    NozzleBase(Cantera::Solution& gas): m_gas(gas.shared_from_this()), inlet_state(gas.thermo()->stateSize()) {
+        m_gas->thermo()->saveState(inlet_state);
     }
 
-    NozzleBase(Cantera::Solution& gas, std::vector<double> state): m_gas(gas.shared_from_this()), m_inlet_state(state) {}
+    NozzleBase(Cantera::Solution& gas, std::vector<double> state): m_gas(gas.shared_from_this()), inlet_state(state) {}
 
     virtual ~NozzleBase() = default;
 
@@ -76,8 +76,8 @@ class NozzleBase {
     ThroatCondition solve_throat_conditions(double abstol = 4e-4);
 
     void reset_state();
-    inline void set_inlet_state(const std::vector<double>& state) {m_inlet_state = state;}
-    inline std::vector<double> get_inlet_state() const {return m_inlet_state;}
+    inline void set_inlet_state(const std::vector<double>& state) {inlet_state = state;}
+    inline std::vector<double> get_inlet_state() const {return inlet_state;}
 
     /**
      * @brief Calculate chemical reaction-adjusted specific heat ratio from a thermodynamic state. 
@@ -85,9 +85,10 @@ class NozzleBase {
      */
     virtual double get_gamma_s(Cantera::ThermoPhase& state) = 0;
 
+    std::vector<double> inlet_state;
+    
     protected:
     std::shared_ptr<Cantera::Solution> m_gas;
-    std::vector<double> m_inlet_state;
     virtual NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) = 0;
