@@ -50,7 +50,7 @@ double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma) {
     return velocity/sonic;
 }
 
-double c_F(double gamma, double pressure_ratio, double) {
+double C_F(double gamma, double pressure_ratio, double) {
     double term1 = 2*gamma*gamma/(gamma-1);
     double term2 = std::pow(2/(gamma+1), (gamma+1)/(gamma-1));
     double term3 = 1 - std::pow(pressure_ratio, (gamma-1)/gamma);

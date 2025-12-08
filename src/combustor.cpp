@@ -3,14 +3,15 @@
 #include "goddard/error.hpp"
 #include "cantera/core.h"
 #include <utility>
+#include <iostream>
 #include <cassert>
 namespace Goddard {
 
 Combustor::Combustor(
     std::shared_ptr<Cantera::Solution> thermo,
-    std::vector<double>& fuel_state, 
-    std::vector<double>& oxidizer_state
-) : m_thermo(std::move(thermo)), fuel_state(fuel_state), oxidizer_state(oxidizer_state)
+    std::vector<double>& fuel,
+    std::vector<double>& oxidizer
+) : fuel_state(fuel), oxidizer_state(oxidizer), m_thermo(std::move(thermo))
 {}
 
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options) {

@@ -113,12 +113,12 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrect){
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
-    Eigen::ArrayXd exp_dpi_dlogT_P(n_species);
+    Eigen::ArrayXd exp_dpi_dlogT_P(n_elements);
     exp_dpi_dlogT_P << -1.86677477,  4.63052867, -2.18942708, -1.77019042;
     
     double exp_dlogn_dlogT_P = -1.8359417928589634e-16;
 
-    Eigen::ArrayXd exp_dpi_dlogP_T(n_species);
+    Eigen::ArrayXd exp_dpi_dlogP_T(n_elements);
     exp_dpi_dlogP_T << 0.5, 0.25, 1., 0.5;
 
     double exp_dlogn_dlogP_T = 9.179708964294817e-17;

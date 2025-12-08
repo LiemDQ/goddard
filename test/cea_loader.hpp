@@ -7,6 +7,7 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 
+#include "goddard/problem.hpp"
 
 /**
  * CEA test data structures for validation against NASA CEA results
@@ -119,3 +120,4 @@ private:
     CEAPerformance parse_performance(const nlohmann::json& json) const;
     CEAComposition parse_mass_fractions(const nlohmann::json& json) const;
 };
+

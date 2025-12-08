@@ -9,6 +9,8 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/speciate.hpp"
+#include <cmath>
+#include <iostream>
 #include <exception>
 #include <memory>
 #include <utility>
@@ -38,14 +40,16 @@ std::shared_ptr<RocketProblem> create(const ChemicalParameters& chem_params,
 } 
 
 RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
-        const std::vector<RocketCaseParameters>& cases, 
-        const std::string& name, 
+        const std::vector<RocketCaseParameters>& cases,
+        const std::string& name,
         bool transport,
         bool ionized_species,
-        double trace): 
-    problem_cases(cases), chemical_params(chem_params), 
-    include_transport(transport), include_ionized_species(ionized_species), 
-    trace_cutoff(trace) {
+        double trace):
+    include_transport(transport),
+    include_ionized_species(ionized_species),
+    trace_cutoff(trace),
+    problem_cases(cases),
+    chemical_params(chem_params) {
 
     auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
     const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", name);
@@ -63,23 +67,24 @@ RocketProblemResults RocketProblem::solve() {
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
         
-        double M_fuel = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
+        double M_fuel = molar_mass_from_composition(*thermo, chemical_params.cantera_fuel_state);
         double M_oxidizer = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
         MixtureRatios MRs(OFs, M_fuel, M_oxidizer);
         Combustor combustor(m_sln, chemical_params.cantera_fuel_state, chemical_params.cantera_oxidizer_state);
         ThermoArray combustion_states = combustor.solve(pressures, MRs, params.combustor_options);
 
-        std::vector<NozzleResults> expansion_results(static_cast<std::size_t>(combustion_states.size()));
+        std::vector<NozzleResults> expansion_results;
+        expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
-        NozzleBase* nozzle;
+        std::unique_ptr<NozzleBase> nozzle;
 
         switch (params.nozzle_options.chemistry) {
             case NozzleChemistryType::FROZEN: {
-                nozzle = new FrozenNozzle(*m_sln);
+                nozzle = std::make_unique<FrozenNozzle>(*m_sln);
                 break;
             }
             case NozzleChemistryType::EQUILIBRIUM: {
-                nozzle = new EquilibriumNozzle(*m_sln);
+                nozzle = std::make_unique<EquilibriumNozzle>(*m_sln);
                 break;
             }
             default: throw NotImplementedError("Nozzle type is not implemented.");
@@ -93,12 +98,12 @@ RocketProblemResults RocketProblem::solve() {
             expansion_results.push_back(expansions);
         }
 
-        case_results[params.name] = {
-            params.problem_type, 
-            combustion_states, 
-            params.nozzle_options.chemistry, 
+        case_results.emplace(params.name, RocketProblemCaseResult{
+            params.problem_type,
+            std::move(combustion_states),
+            params.nozzle_options.chemistry,
             expansion_results
-        };
+        });
     }
     
     return {std::move(case_results), m_sln};
@@ -111,16 +116,14 @@ RocketProblemResults::RocketProblemResults(
 }
 
 std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std::string& case_name, std::size_t index){
-    RocketProblemCaseResult& case_result = cases[case_name];
+    RocketProblemCaseResult& case_result = cases.at(case_name);
     auto tmo = thermo();
-    std::vector<double> state(tmo->stateSize());
-    
-    
-    if (index > case_result.inlet_states.size()) {
+
+    if (index >= static_cast<std::size_t>(case_result.inlet_states.size())) {
         throw std::runtime_error("Provided index exceeds length of ThermoArray.");
     }
-    
-    std::vector<double> state = case_result.inlet_states.get_state(index);
+
+    std::vector<double> state = case_result.inlet_states.get_state(static_cast<int>(index));
     NozzleResults nozzle_results = case_result.nozzle_states[index];
     
 
@@ -226,6 +229,126 @@ std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std
     }
 
     return state_info;
+}
+
+std::optional<ThermoStateInfo> RocketProblemResults::get_chamber_state(
+    const std::string& case_name, std::size_t of_index) {
+
+    auto it = cases.find(case_name);
+    if (it == cases.end()) {
+        return std::nullopt;
+    }
+
+    RocketProblemCaseResult& case_result = it->second;
+    if (of_index >= static_cast<std::size_t>(case_result.inlet_states.size())) {
+        return std::nullopt;
+    }
+
+    auto all_states = extract_thermo_info(case_name, of_index);
+    if (all_states.empty()) {
+        return std::nullopt;
+    }
+
+    return all_states[0]; // Chamber is first state
+}
+
+std::optional<ThermoStateInfo> RocketProblemResults::get_throat_state(
+    const std::string& case_name, std::size_t of_index) {
+
+    auto it = cases.find(case_name);
+    if (it == cases.end()) {
+        return std::nullopt;
+    }
+
+    RocketProblemCaseResult& case_result = it->second;
+    if (of_index >= static_cast<std::size_t>(case_result.inlet_states.size())) {
+        return std::nullopt;
+    }
+
+    auto all_states = extract_thermo_info(case_name, of_index);
+    if (all_states.size() < 2) {
+        return std::nullopt;
+    }
+
+    return all_states[1]; // Throat is second state
+}
+
+std::vector<ThermoStateInfo> RocketProblemResults::get_exit_states(
+    const std::string& case_name, std::size_t of_index) {
+
+    auto it = cases.find(case_name);
+    if (it == cases.end()) {
+        return {};
+    }
+
+    RocketProblemCaseResult& case_result = it->second;
+    if (of_index >= static_cast<std::size_t>(case_result.inlet_states.size())) {
+        return {};
+    }
+
+    auto all_states = extract_thermo_info(case_name, of_index);
+    if (all_states.size() <= 2) {
+        return {}; // No exit states
+    }
+
+    // Exit states start at index 2
+    return std::vector<ThermoStateInfo>(all_states.begin() + 2, all_states.end());
+}
+
+RocketPerformance RocketProblemResults::calculate_performance(
+    const ThermoStateInfo& chamber,
+    const ThermoStateInfo& throat,
+    const ThermoStateInfo& exit) {
+
+    // Pressure ratios
+    double pressure_ratio = chamber.pressure / exit.pressure;
+    double throat_pressure_ratio = chamber.pressure / throat.pressure;
+
+    // Area ratio from isentropic flow relations
+    // A/A* = (1/M) * [(2/(gamma+1)) * (1 + (gamma-1)/2 * M^2)]^((gamma+1)/(2*(gamma-1)))
+    // For now, estimate from density ratio (approximate)
+    double area_ratio = (throat.density * throat.speed_of_sound) /
+                        (exit.density * exit.speed_of_sound) *
+                        (throat_pressure_ratio / pressure_ratio);
+
+    // Characteristic velocity (c*)
+    // c* = P_c * A_t / m_dot = sqrt(gamma * R * T_c) / gamma * sqrt((2/(gamma+1))^((gamma+1)/(gamma-1)))
+    // Simplified: c* = throat.speed_of_sound / sqrt(throat.gamma_s) * factor
+    double gamma = throat.gamma_s;
+    double cstar = throat.speed_of_sound * std::sqrt(
+        std::pow(2.0 / (gamma + 1.0), (gamma + 1.0) / (gamma - 1.0)) / gamma
+    );
+
+    // Exit velocity from enthalpy difference
+    // v_e = sqrt(2 * (h_chamber - h_exit))
+    double exit_velocity = std::sqrt(2.0 * (chamber.enthalpy - exit.enthalpy));
+
+    // Thrust coefficient CF = v_e / c* + (P_e - P_amb) * A_e / (P_c * A_t)
+    // For vacuum: CF_vac = v_e / c* + P_e * A_e / (P_c * A_t)
+    // Simplified (assuming matched nozzle): CF ≈ v_e / c*
+    double CF = exit_velocity / cstar;
+
+    // Specific impulse Isp = v_e / g0
+    constexpr double g0 = 9.80665; // m/s^2
+    double isp = exit_velocity / g0;
+
+    // Vacuum specific impulse (includes pressure thrust term)
+    // Ivac = Isp + P_e * A_e / (m_dot * g0)
+    // Approximation: Ivac ≈ Isp * (1 + P_e/(P_c) * area_ratio * some_factor)
+    double ivac = isp + (exit.pressure / chamber.pressure) * area_ratio * cstar / g0;
+
+    // Mach number at exit (approximate from speed of sound)
+    double mach_number = exit_velocity / exit.speed_of_sound;
+
+    return RocketPerformance{
+        pressure_ratio,
+        area_ratio,
+        mach_number,
+        cstar,
+        CF,
+        isp,
+        ivac
+    };
 }
 
 } //namespace Goddard

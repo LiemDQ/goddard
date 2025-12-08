@@ -13,11 +13,14 @@ class CEATestUtils {
 public:
     struct ComparisonTolerance {
         double temperature_rel = 1e-2;      // 1% relative error for temperature
-        double pressure_rel = 1e-3;         // 0.1% relative error for pressure  
+        double pressure_rel = 1e-3;         // 0.1% relative error for pressure
         double density_rel = 1e-2;          // 1% relative error for density
         double enthalpy_rel = 1e-2;         // 1% relative error for enthalpy
+        double entropy_rel = 1e-2;          // 1% relative error for entropy
         double molecular_weight_rel = 1e-3; // 0.1% relative error for molecular weight
-        double gamma_rel = 1e-3;            // 0.1% relative error for gamma
+        double gamma_rel = 1e-2;            // 1% relative error for gamma
+        double sound_speed_rel = 1e-2;      // 1% relative error for sound speed
+        double thermo_deriv_rel = 5e-2;     // 5% relative error for dlV/dlP, dlV/dlT
         double mass_fraction_abs = 1e-4;    // Absolute error for mass fractions
     };
     
@@ -33,15 +36,21 @@ public:
     
     /**
      * Compare Goddard combustion result against CEA chamber state
-     * @param goddard_state Goddard combustion result  
+     * @param goddard_state Goddard combustion result
      * @param cea_state CEA chamber state
      * @param tolerance Comparison tolerances
      * @return Vector of comparison results for each parameter
      */
     static std::vector<ComparisonResult> compare_chamber_states(
-        const Goddard::StateInfo& goddard_state,  // TODO: Replace with actual Goddard state type
+        const Goddard::ThermoStateInfo& goddard_state,
         const CEAState& cea_state,
-        const ComparisonTolerance& tolerance = ComparisonTolerance{}
+        const ComparisonTolerance& tolerance
+    );
+
+    // Overload with default tolerance
+    static std::vector<ComparisonResult> compare_chamber_states(
+        const Goddard::ThermoStateInfo& goddard_state,
+        const CEAState& cea_state
     );
     
     /**

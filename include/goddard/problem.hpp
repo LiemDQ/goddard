@@ -73,9 +73,11 @@ struct RocketPerformance {
     double ivac;
 };
 
-RocketPerformance performance_from_state() {
+// Forward declaration
+class RocketProblemResults;
 
-}
+// TODO: implement this function
+// RocketPerformance performance_from_state();
 
 
 class RocketProblem {
@@ -114,12 +116,54 @@ struct RocketProblemCaseResult {
 };
 
 class RocketProblemResults {
-    
-    public: 
+
+    public:
     RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results, std::shared_ptr<Cantera::Solution> sln);
+
+    /**
+     * Extract all thermo states for a case at a given O/F index.
+     * Returns [inlet, throat, exit1, exit2, ...] in order.
+     */
     std::vector<ThermoStateInfo> extract_thermo_info(const std::string& case_name, std::size_t index);
 
+    /**
+     * Get chamber/inlet state for a specific case and O/F index.
+     * @param case_name Name of the case
+     * @param of_index Index into the O/F ratio array
+     * @return Chamber state, or nullopt if not found
+     */
+    std::optional<ThermoStateInfo> get_chamber_state(const std::string& case_name, std::size_t of_index);
+
+    /**
+     * Get throat state for a specific case and O/F index.
+     * @param case_name Name of the case
+     * @param of_index Index into the O/F ratio array
+     * @return Throat state, or nullopt if not found
+     */
+    std::optional<ThermoStateInfo> get_throat_state(const std::string& case_name, std::size_t of_index);
+
+    /**
+     * Get all exit states for a specific case and O/F index.
+     * @param case_name Name of the case
+     * @param of_index Index into the O/F ratio array
+     * @return Vector of exit states (may be empty if no exits)
+     */
+    std::vector<ThermoStateInfo> get_exit_states(const std::string& case_name, std::size_t of_index);
+
+    /**
+     * Calculate rocket performance metrics from chamber, throat, and exit states.
+     * @param chamber Chamber/inlet state
+     * @param throat Throat state
+     * @param exit Exit state
+     * @return Performance metrics (cstar, CF, Isp, Ivac, etc.)
+     */
+    static RocketPerformance calculate_performance(
+        const ThermoStateInfo& chamber,
+        const ThermoStateInfo& throat,
+        const ThermoStateInfo& exit);
+
     std::unordered_map<std::string, RocketProblemCaseResult> cases;
+
     private:
     std::shared_ptr<Cantera::Solution> m_sln;
 

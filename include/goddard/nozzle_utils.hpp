@@ -38,11 +38,11 @@ double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
 /**
  * @brief Calculate thrust coefficient.
  */
-constexpr double c_F(double gamma, double pressure_ratio, double area_ratio);
+double C_F(double gamma, double pressure_ratio, double area_ratio);
 
 /**
- * @brief Calculate the characteristic combustion velocity (c*) 
+ * @brief Calculate the characteristic combustion velocity (c*)
  */
-constexpr double cstar(double gamma, double temperature, double molecular_weight);
+double cstar(double gamma, double temperature, double molecular_weight);
 
 }

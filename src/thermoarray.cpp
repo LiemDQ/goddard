@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <cassert>
+#include <iostream>
 namespace Goddard {
 
 using Cantera::SolutionArray;
@@ -92,7 +93,9 @@ void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, 
 		m_states->updateState(loc);
 	}
 
-	m_states->thermo()->restoreState(m_orig_solution_state);
+	if (size() > 1) //TODO: this is needed to work around a bug in the Cantera SolutionArray implementation of getState.
+		m_states->thermo()->restoreState(m_orig_solution_state);
+
 }
 
 void ThermoArray::TD(const ArrayXd& Ts, const ArrayXd& Ds) {
@@ -197,7 +200,7 @@ ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec) const 
 		cols = data_shape[1];
 	}
 
-	assert(cols*rows == vec.size() && "Data vector and Eigen matrix sizes do not match.");
+	assert(static_cast<size_t>(cols*rows) == vec.size() && "Data vector and Eigen matrix sizes do not match.");
 
 	ArrayXXd data_array = Eigen::Map<const ArrayXXd>(vec.data(), rows, cols);
 	

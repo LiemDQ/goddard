@@ -63,11 +63,11 @@ struct NozzleResults {
     
 class NozzleBase {
     public:
-    NozzleBase(Cantera::Solution& gas): m_gas(gas.shared_from_this()), inlet_state(gas.thermo()->stateSize()) {
+    NozzleBase(Cantera::Solution& gas): inlet_state(gas.thermo()->stateSize()), m_gas(gas.shared_from_this()) {
         m_gas->thermo()->saveState(inlet_state);
     }
 
-    NozzleBase(Cantera::Solution& gas, std::vector<double> state): m_gas(gas.shared_from_this()), inlet_state(state) {}
+    NozzleBase(Cantera::Solution& gas, std::vector<double> state): inlet_state(state), m_gas(gas.shared_from_this()) {}
 
     virtual ~NozzleBase() = default;
 

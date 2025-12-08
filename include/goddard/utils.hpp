@@ -16,4 +16,9 @@ std::shared_ptr<Cantera::Solution> copy_solution(Cantera::Solution& sln);
 
 Eigen::ArrayXd vector_to_eigenarray(std::vector<double>& vec);
 
+/**
+ * @brief Get molar mass from a state vector by restoring state and computing mean MW.
+ */
+double molar_mass_from_composition(Cantera::ThermoPhase& thermo, const std::vector<double>& state);
+
 }

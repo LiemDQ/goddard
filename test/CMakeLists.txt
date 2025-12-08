@@ -11,9 +11,10 @@ add_executable(
     test_equilibrium.cpp
     test_thermoarray.cpp
     test_combustor.cpp
-    # test_cea_loader.cpp
-    # cea_loader.cpp
-    # cea_comparer.cpp
+    test_cea_loader.cpp
+    test_cea_integration.cpp
+    cea_loader.cpp
+    cea_comparer.cpp
     test_speciate.cpp
     test_nozzle.cpp
 )
@@ -29,6 +30,7 @@ target_link_libraries(goddardTests PRIVATE goddard_options goddard_warnings)
 target_link_libraries(goddardTests PRIVATE goddard_lib)
 target_link_libraries(goddardTests PRIVATE GTest::gtest_main)
 target_link_libraries(goddardTests PRIVATE GTest::gmock)
+target_link_libraries(goddardTests PRIVATE nlohmann_json::nlohmann_json)
 gtest_add_tests(TARGET goddardTests 
     TEST_PREFIX "goddard"
     EXTRA_ARGS ""

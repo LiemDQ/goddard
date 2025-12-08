@@ -44,4 +44,9 @@ Eigen::ArrayXd vector_to_eigenarray(std::vector<double>& vec) {
     return Eigen::Map<Eigen::ArrayXd>(vec.data(), vec.size());
 }
 
+double molar_mass_from_composition(Cantera::ThermoPhase& thermo, const std::vector<double>& state) {
+    thermo.restoreState(state);
+    return thermo.meanMolecularWeight();
+}
+
 }
