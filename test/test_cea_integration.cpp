@@ -223,9 +223,6 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
-    std::cerr << "====================\n";
-    std::cerr << "SOLVE COMPLETED\n";
-    std::cerr << "====================\n";
 
     // Extract chamber (inlet) state - index 0 is the first state
     auto thermo_states = results.extract_thermo_info("H2_O2_equilibrium", 0);

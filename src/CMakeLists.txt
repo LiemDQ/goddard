@@ -7,6 +7,7 @@ add_executable(
     equilibrium.cpp
     thermoarray.cpp
     global.cpp
+    utils.cpp
 )
 target_include_directories(goddard_main
     PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -40,6 +41,7 @@ add_library(
   nozzle.cpp
   nozzle_utils.cpp
   numerics.cpp
+  problem.cpp
 )
 
 target_include_directories(goddard_lib

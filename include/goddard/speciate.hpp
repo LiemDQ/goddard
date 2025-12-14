@@ -2,7 +2,6 @@
 #include "cantera/core.h"
 #include "cantera/base/AnyMap.h"
 
-#include <memory>
 #include <unordered_set>
 #include <string>
 
