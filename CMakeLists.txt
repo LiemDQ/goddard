@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 
 if (NOT DEFINED CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
 endif()
 
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -29,8 +29,8 @@ endif()
 set(DATA_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/goddard/data")
 
 # for development builds, use source directory data
-# for installation, use the install directory
-if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR NOT CMAKE_INSTALL_PREFIX)
+# for installed builds, use the install directory
+if(goddard_DEVELOPMENT_BUILD)
   set(DATA_DIR "${CMAKE_SOURCE_DIR}/data")
 else()
   set(DATA_DIR "${DATA_INSTALL_DIR}")
@@ -58,6 +58,10 @@ include(CTest)
 if(BUILD_TESTING)
   message(AUTHOR_WARNING "Building tests.")
   add_subdirectory(test)
+  # install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/cea_results"
+  #         DESTINATION "${DATA_INSTALL_DIR}"
+  #         FILES_MATCHING PATTERN "*.json"
+  # )
 endif()
 
 #python bindings

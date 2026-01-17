@@ -28,10 +28,21 @@ double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity);
 
 Eigen::ArrayXXd area_per_mdot(const ThermoArray& gas, const Eigen::ArrayXXd& velocity);
 
-double cstar(double gamma, double temperature, double molecular_weight);
 
 double isp(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
 
 double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
+
+double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
+
+/**
+ * @brief Calculate thrust coefficient.
+ */
+double C_F(double gamma, double pressure_ratio, double area_ratio);
+
+/**
+ * @brief Calculate the characteristic combustion velocity (c*)
+ */
+double cstar(double gamma, double temperature, double molecular_weight);
 
 }

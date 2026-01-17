@@ -40,26 +40,13 @@ std::shared_ptr<Cantera::Solution> copy_solution(Cantera::Solution& sln) {
     return p_new_sln;
 }
 
-// std::shared_ptr<Cantera::Solution> speciate(const std::string& source, const std::vector<std::string>& elements) {
-    
-// }
-
-double check_reltol(double reltol) {
-    if (reltol <= 0) {
-        Cantera::warn_user("check_reltol", "reltol is zero or negative. Setting reltol to default value: {0}", DEFAULT_RELTOL);
-        return DEFAULT_RELTOL;
-    }
-    else return reltol;
+Eigen::ArrayXd vector_to_eigenarray(std::vector<double>& vec) {
+    return Eigen::Map<Eigen::ArrayXd>(vec.data(), vec.size());
 }
 
-double check_abstol(double abstol) {
-    if (abstol <= 0) {
-        Cantera::warn_user("check_abstol", "abstol is zero or negative. Setting abstol to default value: {0}", DEFAULT_ABSTOL);
-        return DEFAULT_ABSTOL;
-    }
-    else return abstol;
+double molar_mass_from_composition(Cantera::ThermoPhase& thermo, const std::vector<double>& state) {
+    thermo.restoreState(state);
+    return thermo.meanMolecularWeight();
 }
-
-
 
 }

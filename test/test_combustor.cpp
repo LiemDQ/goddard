@@ -1,7 +1,7 @@
 #include "goddard/combustor.hpp"
 #include "goddard/mixture_ratio.hpp"
+#include "goddard/numerics.hpp"
 #include "goddard/utils.hpp"
-
 #include <memory>
 #include <iostream>
 #include "eigen3/Eigen/Dense"
@@ -18,31 +18,36 @@ class H2O2CombustorTests: public ::testing::Test {
         fuel = Cantera::newSolution("h2o2.yaml", "ohmech");
         oxidizer = Cantera::newSolution("h2o2.yaml", "ohmech");
         products = Cantera::newSolution("h2o2.yaml", "ohmech");
-        auto fuel_state = fuel->thermo();
-        auto ox_state = oxidizer->thermo();
+        auto fuel_thermo = fuel->thermo();
+        auto ox_thermo = oxidizer->thermo();
 
         double ox_temp = 90.15; //K
         double fuel_temp = 20.2; //K
         
         double pressure = 100.0 * Cantera::OneBar;
-        fuel_state->setState_TPX(fuel_temp, pressure, "H2: 1");
-        ox_state->setState_TPX(ox_temp, pressure, "O2: 1");
+        fuel_thermo->setState_TPX(fuel_temp, pressure, "H2: 1");
+        ox_thermo->setState_TPX(ox_temp, pressure, "O2: 1");
         
         OF_ratios = Eigen::ArrayXd(5);
         OF_ratios << 6.0, 7.0, 8.0, 9.0, 10.0;
 
         reference_molar_ratio = OF_ratios/O2_MOLAR_MASS * H2_MOLAR_MASS;
         reference_ox_fracs = 1- 1/(1 + reference_molar_ratio);
+
+        fuel_thermo->saveState(fuel_state);
+        ox_thermo->saveState(ox_state);
     }
 
     void SetUp() override {
         MRs = std::make_unique<Goddard::MixtureRatios>(OF_ratios, fuel, oxidizer);
 
-        combustor = std::make_unique<Goddard::Combustor>(fuel, oxidizer, products);
+        combustor = std::make_unique<Goddard::Combustor>(products, fuel_state, ox_state);
     }
 
     std::shared_ptr<Cantera::Solution> fuel, oxidizer, products;
-    Goddard::CombustionOptions options;
+    std::vector<double> fuel_state;
+    std::vector<double> ox_state;
+    Goddard::CombustorOptions options{ Goddard::CombustorType::INFINITE_AREA, {70.0*Cantera::OneBar}, 0.0, 0.0};
     Eigen::ArrayXd OF_ratios;
     Eigen::ArrayXd reference_molar_ratio;
     Eigen::ArrayXd reference_ox_fracs;
@@ -102,12 +107,14 @@ TEST_F(H2O2CombustorTests, equilibriumIsCorrect) {
     Eigen::ArrayXd temperatures = Eigen::ArrayXd(1);
     temperatures << 92.0;
     
+    // CombustorOptions options = {CombustorType::INFINITE_AREA, {70.0*Cantera::OneBar}, 0.0, 0.0};
     // Eigen::ArrayXXd mole_fracs = combustor->generate_mole_fraction_matrix(*MRs);
 
     auto results = combustor->solve(
             temperatures,
             pressures, 
-            *MRs
+            *MRs,
+            options
         );
 
     ASSERT_EQ(results.ndim(), 3);

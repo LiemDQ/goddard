@@ -22,17 +22,18 @@ struct EquilibriumProperties {
 };
 
 /**
- * @brief Get matrix of stoichiometric coefficients of the species contained in the `Solution` object.
+ * @brief Get matrix of stoichiometric coefficients of the species contained in the `ThermoPhase` object.
  * 
  * @return 2D Eigen array of stoichiometric coefficients. Rows represent species, while columns represent elements.
- * Ordering is the same as the data file used to generated the `Solution` object. 
+ * Ordering is the same as the data file used to generated the `ThermoPhase` object. 
  */
-Eigen::ArrayXXd get_stoichiometric_coeffs(Cantera::Solution& gas);
-Eigen::ArrayXd get_mole_vector(Cantera::Solution& gas);
-Eigen::ArrayXd get_enthalpyRT_vector(Cantera::Solution& gas);
-Eigen::ArrayXd get_cpR_vector(Cantera::Solution& gas);
+Eigen::ArrayXXd get_stoichiometric_coeffs(const Cantera::ThermoPhase& gas);
+Eigen::ArrayXd get_mole_vector(const Cantera::ThermoPhase& gas);
+Eigen::ArrayXd get_enthalpyRT_vector(const Cantera::ThermoPhase& gas);
+Eigen::ArrayXd get_cpR_vector(const Cantera::ThermoPhase& gas);
 
-EquilibriumDerivatives get_thermo_equilibrium_derivatives(Cantera::Solution& gas);
-EquilibriumProperties get_thermo_equilibrium_properties(Cantera::Solution& gas, const EquilibriumDerivatives& derivatives);
+EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoPhase& gas);
+EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivatives);
+EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas);
 
 } //namespace Goddard

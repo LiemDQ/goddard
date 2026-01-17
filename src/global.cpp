@@ -5,8 +5,12 @@ namespace Goddard {
 
     
 void setup_defaults(){
-    
-    add_directory(DATA_DIR);
+    static bool is_initialized;
+    if (!is_initialized){
+        add_directory(DATA_DIR);
+
+        is_initialized = true;
+    }
 }
 
 void add_directory(const std::string& dir){

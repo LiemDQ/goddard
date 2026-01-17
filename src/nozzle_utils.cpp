@@ -1,5 +1,6 @@
 #include "goddard/nozzle_utils.hpp"
 
+#include <cmath>
 namespace Goddard {
 
 double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagnation){
@@ -40,6 +41,22 @@ double isp(const Cantera::ThermoPhase& gas, double gamma, double enthalpy) {
 double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy) {
     double v = isp(gas, gamma, enthalpy);
     return v + gas.temperature()*Cantera::GasConstant/(v * gas.meanMolecularWeight());
+}
+
+double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma) {
+    double velocity = gas_isenthalpic_velocity(gas, H_stag);
+    double sonic = gas_sonic_velocity(gas, gamma);
+    
+    return velocity/sonic;
+}
+
+double C_F(double gamma, double pressure_ratio, double) {
+    double term1 = 2*gamma*gamma/(gamma-1);
+    double term2 = std::pow(2/(gamma+1), (gamma+1)/(gamma-1));
+    double term3 = 1 - std::pow(pressure_ratio, (gamma-1)/gamma);
+    //TODO: do we need to include pressure term?
+
+    return std::sqrt(term1*term2*term3);
 }
 
 }

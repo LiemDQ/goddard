@@ -42,6 +42,8 @@ class ThermoArray {
 	inline int ndim() const {return m_states->apiNdim();}
 	inline bool is_shape_set() const {return m_shape_is_set;}
 
+	inline std::vector<double> get_state(int loc) {return m_states->getState(loc);} 
+
 	/**
 	 * @brief Get a pointer to the underlying `SolutionArray` object. 
 	 */
@@ -104,10 +106,26 @@ class ThermoArray {
 	void HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps);
 
 	/**
+	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
+	 * The mole fraction matrix columns should represent species and 
+	 * the rows should represent distinct compositions. 
+	 * */
+	void HPX(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
+	void HPY(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
+
+	/**
 	 * @brief Set the entropy and pressure of the array.
 	 */
 	void SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps);
-	
+
+	/**
+	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
+	 * The mole fraction matrix columns should represent species and 
+	 * the rows should represent distinct compositions. 
+	 * */
+	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
+	void SPY(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
+
 	/**
 	 * @brief Set the entropy and the enthalpy of the array.
 	 */
@@ -141,9 +159,15 @@ class ThermoArray {
 		const Eigen::ArrayXd& var2,
 		double tol = 1e-9);
 
-	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
+	void update_states_with_mole_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
 		const Eigen::ArrayXd& var1,
 		const Eigen::ArrayXd& var2, 
+		const Eigen::ArrayXXd& var3,
+		double tol = 1e-9);
+		
+	void update_states_with_mass_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
+		const Eigen::ArrayXd& var1,
+		const Eigen::ArrayXd& var2,
 		const Eigen::ArrayXXd& var3,
 		double tol = 1e-9);
 
@@ -151,7 +175,9 @@ class ThermoArray {
 		const Eigen::ArrayXd& var1,
 		const Eigen::ArrayXd& var2,
 		const Eigen::ArrayXXd& var3);
-		
+	
+
+
 	/**
 	 * @brief Updates thermodynamic state by broadcasting a function `f` with values in `var1` and `var2`. 
 	 * 

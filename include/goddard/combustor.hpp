@@ -5,6 +5,7 @@
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
+
 #include <memory>
 #include <vector>
 #include <utility>
@@ -15,14 +16,15 @@ namespace Goddard {
 enum class CombustorType {
     INFINITE_AREA,
     FINITE_MASS_FLUX,
-    FINITE_CONTRACTION_RATIO
+    FINITE_CONTRACTION_RATIO,
+    NONE
 };
 
-struct CombustionOptions {
-    CombustorType combustor_type = CombustorType::INFINITE_AREA;
-    bool include_transport = false;
-    bool include_ionized = false;
-    double reltol = DEFAULT_RELTOL;
+struct CombustorOptions {
+    CombustorType type;
+    std::vector<double> pressures;
+    double mass_flux;
+    double contraction_ratio;
 };
 
 /**
@@ -32,34 +34,31 @@ class Combustor {
     public:
     //this may lead to lots of unnecessary copies
     Combustor(
-        std::shared_ptr<Cantera::Solution>& fuel, 
-        std::shared_ptr<Cantera::Solution>& oxidizer, 
-        std::shared_ptr<Cantera::Solution>& products
+        std::shared_ptr<Cantera::Solution> thermo,
+        std::vector<double>& fuel_state, 
+        std::vector<double>& oxidizer_state
     );
 
 
-    ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustionOptions& options = {});
-    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
-    
+    ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options = {});
+    ThermoArray solve(const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options = {});
 
-    inline std::vector<std::string> get_combustion_species() {return m_product_sln->thermo()->speciesNames();}
-    inline std::shared_ptr<Cantera::Solution> get_fuel() {return m_fuel_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_oxidizer() {return m_oxidizer_sln;}
-    inline std::shared_ptr<Cantera::Solution> get_products() { return m_product_sln; }
+    Eigen::ArrayXXd generate_mole_fraction_matrix(const MixtureRatios& mr) const;
+    Eigen::ArrayXXd generate_mass_fraction_matrix(const MixtureRatios& mr) const;
+
+    inline std::vector<std::string> get_combustion_species() {return m_thermo->thermo()->speciesNames();}
+    std::vector<double> fuel_state, oxidizer_state;
 
     protected:
-    
-    std::shared_ptr<Cantera::Solution> m_fuel_sln;
-    std::shared_ptr<Cantera::Solution> m_oxidizer_sln;
-    std::shared_ptr<Cantera::Solution> m_product_sln;
-
+    std::shared_ptr<Cantera::Solution> m_thermo;
     
     void assign_mole_frac_row_entries(
         Eigen::ArrayXXd& matrix, 
         long row_idx, 
         const Cantera::Composition& composition, 
         double coeff = 1.0) const;
-
+    
+    ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
 
 };
 

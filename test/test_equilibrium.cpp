@@ -1,5 +1,6 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/numerics.hpp"
 
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
@@ -36,7 +37,7 @@ using namespace Goddard;
 
 
 TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
-    auto coeffs = Goddard::get_stoichiometric_coeffs(*sln);
+    auto coeffs = Goddard::get_stoichiometric_coeffs(*sln->thermo());
     Eigen::ArrayXXd expected_coeffs{
         {0, 0, 1, 2, 1, 1, 2, 2, 0, 0},
         {2, 1, 0, 0, 1, 2, 1, 2, 0, 0},
@@ -64,7 +65,7 @@ TEST_F(DerivativeTests, stoichiometricCoeffsAreCorrect){
 }
 
 TEST_F(DerivativeTests, moleVectorIsCorrect){
-    auto moles = Goddard::get_mole_vector(*sln);
+    auto moles = Goddard::get_mole_vector(*sln->thermo());
     
     std::vector<double> expected_moles{0., 0., 0.,  0.01219185, 0., 0.01219185, 0. , 0. , 0.001219185, 0.01219185};
     ASSERT_EQ(moles.size(), n_species);
@@ -77,7 +78,7 @@ TEST_F(DerivativeTests, moleVectorIsCorrect){
 
 TEST_F(DerivativeTests, moleVectorIsCorrectAfterEquilibration){
     sln->thermo()->equilibrate("HP");
-    auto moles = Goddard::get_mole_vector(*sln);
+    auto moles = Goddard::get_mole_vector(*sln->thermo());
     Eigen::ArrayXd expected_moles(n_species);
     expected_moles << 9.11244396e-06, 1.13250699e-06, 2.20601379e-05, 1.21177599e-02,
         2.63718243e-04, 1.20488303e-02, 2.45871008e-06, 2.53459510e-07,
@@ -92,7 +93,7 @@ TEST_F(DerivativeTests, moleVectorIsCorrectAfterEquilibration){
 }
 
 TEST_F(DerivativeTests, stdEnthalpiesRTAreCorrect){
-    auto enthalpies = Goddard::get_enthalpyRT_vector(*sln);
+    auto enthalpies = Goddard::get_enthalpyRT_vector(*sln->thermo());
     Eigen::ArrayXd exp_enthalpies(n_species);
     exp_enthalpies << 3.35335209, 13.11402496, 14.69431338,  3.73354955,  5.37563442,
        -7.39428256,  5.8582109 ,  0.05367515,  2.18942708,  3.54038084;
@@ -108,16 +109,16 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrect){
     EXPECT_NEAR(sln->thermo()->temperature(), 2400.0, 1e-1);
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
-    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
+    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
-    Eigen::ArrayXd exp_dpi_dlogT_P(n_species);
+    Eigen::ArrayXd exp_dpi_dlogT_P(n_elements);
     exp_dpi_dlogT_P << -1.86677477,  4.63052867, -2.18942708, -1.77019042;
     
     double exp_dlogn_dlogT_P = -1.8359417928589634e-16;
 
-    Eigen::ArrayXd exp_dpi_dlogP_T(n_species);
+    Eigen::ArrayXd exp_dpi_dlogP_T(n_elements);
     exp_dpi_dlogP_T << 0.5, 0.25, 1., 0.5;
 
     double exp_dlogn_dlogP_T = 9.179708964294817e-17;
@@ -145,7 +146,7 @@ TEST_F(DerivativeTests, thermoDerivativesAreCorrectAfterEquilibration){
     EXPECT_NEAR(sln->thermo()->enthalpy_mass(), 23985.583414274723, 1e-1);
     
 
-    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
+    Goddard::EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
     ASSERT_EQ(derivs.dpi_dlogP_T.size(),n_elements);
     ASSERT_EQ(derivs.dpi_dlogT_P.size(), n_elements);
 
@@ -177,8 +178,8 @@ class PropertyTests: public ::testing::Test {
 };
 
 TEST_F(PropertyTests, equilibriumPropertiesAreCorrect) {
-    auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
-    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln, derivs);
+    auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
+    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
     EXPECT_NEAR(props.dlogV_dlogT_P, expected_props.dlogV_dlogT_P, max_fp_error(expected_props.dlogV_dlogT_P));
     EXPECT_NEAR(props.dlogV_dlogP_T, expected_props.dlogV_dlogP_T, max_fp_error(expected_props.dlogV_dlogP_T));
@@ -188,8 +189,8 @@ TEST_F(PropertyTests, equilibriumPropertiesAreCorrect) {
 
 TEST_F(PropertyTests, equilibriumPropertiesAreCorrectAfterEquilibrium) {
     sln->thermo()->equilibrate("HP", "gibbs");
-    auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln);
-    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln, derivs);
+    auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
+    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
     EXPECT_NEAR(props.dlogV_dlogT_P, expected_eq_props.dlogV_dlogT_P, max_fp_error(expected_eq_props.dlogV_dlogT_P));
     EXPECT_NEAR(props.dlogV_dlogP_T, expected_eq_props.dlogV_dlogP_T, max_fp_error(expected_eq_props.dlogV_dlogP_T));
