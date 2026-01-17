@@ -1,4 +1,0 @@
-cantera
-numpy
-pint
-matplotlib

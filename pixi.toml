@@ -1,0 +1,40 @@
+[workspace]
+authors = ["Liem Dam-Quang <liem.dam-quang@mail.mcgill.ca>"]
+channels = ["conda-forge"]
+name = "goddard"
+platforms = ["linux-64", "win-64", "osx-64"]
+version = "0.1.0"
+
+[tasks]
+compile = "cmake --build build"
+ctest = "ctest --test-dir build"
+clean = "rm -rf build"
+
+
+[tasks.configure]
+args = [{arg="build_type", default = "Release"}]
+cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }}"
+
+
+[dependencies]
+# cantera = "3.2.*"
+libcantera-devel = "3.2.*"
+cmake = ">=3.25"
+ninja = ">=1.11"
+scons = "*"
+yaml = "*"
+pkg-config = "*"
+nlohmann_json = "*"
+cxx-compiler = "*"
+nanobind = "*"
+ccache = { channel = "conda-forge" }
+gtest = ">=1.15"
+eigen = ">=3.4"
+python = ">3.11"
+
+[feature.data.dependencies]
+pyyaml = "*"
+
+[environments]
+default = {solve-group = "default"}
+data = {features = ["data"], solve-group = "default"}
