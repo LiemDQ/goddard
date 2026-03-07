@@ -12,7 +12,10 @@ project(
     VERSION 0.0.1
     LANGUAGES CXX C)
 
-# find_package(Python 3.11 Interpreter Development.Module REQUIRED)
+option(goddard_BUILD_PYTHON "Build Python bindings" ON)
+if(goddard_BUILD_PYTHON)
+  find_package(Python 3.11 COMPONENTS Interpreter Development.Module REQUIRED)
+endif()
 
 include(ProjectOptions.cmake)
 
@@ -64,14 +67,10 @@ if(BUILD_TESTING)
   # )
 endif()
 
-#python bindings
-include_directories("${CMAKE_SOURCE_DIR}/goddard")
-
-# add_subdirectory(${nanobind_SOURCE_DIR} ${nanobind_BINARY_DIR})
-# install headers
-# install(FILES
-#   "${PROJECT_BINARY_DIR}/include/config.h"
-# )
+# Python bindings
+if(goddard_BUILD_PYTHON)
+  add_subdirectory(python)
+endif()
 
 
 #install data files
