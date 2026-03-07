@@ -2,7 +2,7 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
 #include "goddard/utils.hpp"
-#include "goddard/nozzle_utils.hpp"
+#include "goddard/gas_dynamics.hpp"
 
 #include "cantera/core.h"
 #include <cmath>

@@ -1,7 +1,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
-#include "goddard/nozzle_utils.hpp"
+#include "goddard/gas_dynamics.hpp"
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/error.hpp"
 #include "goddard/thermo.hpp"
@@ -71,6 +71,15 @@ RocketProblemResults RocketProblem::solve() {
         double M_oxidizer = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
         MixtureRatios MRs(OFs, M_fuel, M_oxidizer);
         Combustor combustor(m_sln, chemical_params.cantera_fuel_state, chemical_params.cantera_oxidizer_state);
+
+        // TODO: workaround for bug in Cantera SolutionArray
+        // prevents incorrect values from being written in RocketProblemResults.
+        // this will have to remain in place until Cantera merges a fix.
+        // see https://github.com/Cantera/cantera/issues/2067
+        if (pressures.size() == 1 && MRs.size() == 1) {
+            pressures.conservativeResize(2);
+            pressures(1) = pressures(0);
+        }
         ThermoArray combustion_states = combustor.solve(pressures, MRs, params.combustor_options);
 
         std::vector<NozzleResults> expansion_results;
@@ -220,7 +229,7 @@ std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std
             exp.gamma_s,
             exp.dlV_dlP_T,
             exp.dlV_dlT_P,
-            gas_sonic_velocity(*tmo, throat.gamma_s),
+            gas_sonic_velocity(*tmo, exp.gamma_s),
             compositions
         };
 

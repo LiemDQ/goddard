@@ -1,5 +1,5 @@
 #include "cantera/core.h"
-#include "cantera/thermo.h"
+#include "cantera/base/AnyMap.h"
 #include "cantera/base/SolutionArray.h"
 
 #include "goddard/thermoarray.hpp"
@@ -46,6 +46,10 @@ void ThermoArray::reshape(const std::vector<long>& shape) {
 	}
 	m_states->resize(static_cast<int>(array_size));
 	m_states->setApiShape(shape);
+}
+
+std::vector<double> ThermoArray::get_state(int loc) {
+	return m_states->getState(loc);
 }
 
 ArrayXXd ThermoArray::temperature(int slice) const {

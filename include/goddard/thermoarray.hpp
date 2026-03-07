@@ -1,7 +1,8 @@
 #pragma once 
 
-#include "cantera/thermo.h"
+#include "cantera/core.h"
 #include "cantera/base/SolutionArray.h"
+#include "cantera/base/AnyMap.h"
 #include "eigen3/Eigen/Dense"
 #include <memory>
 #include <string>
@@ -42,7 +43,7 @@ class ThermoArray {
 	inline int ndim() const {return m_states->apiNdim();}
 	inline bool is_shape_set() const {return m_shape_is_set;}
 
-	inline std::vector<double> get_state(int loc) {return m_states->getState(loc);} 
+	std::vector<double> get_state(int loc);
 
 	/**
 	 * @brief Get a pointer to the underlying `SolutionArray` object. 

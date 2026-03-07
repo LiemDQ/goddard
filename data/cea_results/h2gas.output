@@ -1,0 +1,271 @@
+
+ *******************************************************************************
+
+         NASA-GLENN CHEMICAL EQUILIBRIUM PROGRAM CEA2, FEBRUARY 5, 2004
+                   BY  BONNIE MCBRIDE AND SANFORD GORDON
+      REFS: NASA RP-1311, PART I, 1994 AND NASA RP-1311, PART II, 1996
+
+ *******************************************************************************
+
+
+
+  
+ ### CEA analysis performed on Fri 06-Mar-2026 21:27:31
+  
+ # Problem Type: "Rocket" (Infinite Area Combustor)
+  
+ prob case = ldq____________9958 ro equilibrium frozen
+  
+ # Pressure (2 values):
+ p,psia= 3000, 4000
+ # Supersonic Area Ratio (2 values):
+ supar= 15, 35
+  
+ # Oxidizer/Fuel Wt. ratio (1 value):
+ o/f = 6
+  
+ # You selected the following fuels and oxidizers:
+ reac
+ fuel H2                wt%=100.0000  t,k= 273.150
+ oxid O2                wt%=100.0000  t,k= 273.150
+  
+ # You selected these options for output:
+ # short version of output
+ output short
+ # Proportions of any products will be expressed as Mass Fractions.
+ output massf
+ # Heat will be expressed as siunits
+ output siunits
+  
+ # Input prepared by this script:/var/www/sites/cearun/cgi-bin/CEARUN/prepareInpu
+ tFile.cgi
+  
+ ### IMPORTANT:  The following line is the end of your CEA input file!
+ end
+
+
+
+
+
+              THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM
+
+           COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR
+
+ Pin =  3000.0 PSIA
+ CASE = ldq____________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        H2                           1.0000000      -718.436    273.150
+ OXIDANT     O2                           1.0000000      -733.075    273.150
+
+ O/F=    6.00000  %FUEL= 14.285714  R,EQ.RATIO= 1.322780  PHI,EQ.RATIO= 1.322780
+
+                 CHAMBER   THROAT     EXIT     EXIT
+ Pinf/P            1.0000   1.7378   124.90   380.71
+ P, BAR            206.84   119.03   1.6560  0.54331
+ T, K             3716.65  3502.62  1959.41  1603.89
+ RHO, KG/CU M    9.0033 0 5.5560 0 1.4339-1 5.7489-2
+ H, KJ/KG         -70.549 -1296.75 -8252.18 -9419.85
+ U, KJ/KG        -2367.96 -3439.04 -9407.05 -10364.9
+ G, KJ/KG        -64807.2 -62305.3 -42381.1 -37356.5
+ S, KJ/(KG)(K)    17.4180  17.4180  17.4180  17.4180
+
+ M, (1/n)          13.451   13.594   14.107   14.111
+ (dLV/dLP)t      -1.02528 -1.01984 -1.00016 -1.00001
+ (dLV/dLT)p        1.4237   1.3528   1.0046   1.0004
+ Cp, KJ/(KG)(K)    8.2409   7.6512   3.4288   3.1660
+ GAMMAs            1.1451   1.1448   1.2097   1.2289
+ SON VEL,M/SEC     1622.0   1566.0   1182.0   1077.7
+ MACH NUMBER        0.000    1.000    3.422    4.013
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   15.000   35.000
+ CSTAR, M/SEC               2377.3   2377.3   2377.3
+ CF                         0.6587   1.7016   1.8190
+ Ivac, M/SEC                2934.0   4330.6   4542.7
+ Isp, M/SEC                 1566.0   4045.2   4324.2
+
+
+ MASS FRACTIONS
+
+ *H               0.00245  0.00201  0.00003  0.00000
+ HO2              0.00013  0.00007  0.00000  0.00000
+ *H2              0.03749  0.03663  0.03484  0.03486
+ H2O              0.88786  0.90678  0.96494  0.96513
+ H2O2             0.00006  0.00003  0.00000  0.00000
+ *O               0.00395  0.00259  0.00000  0.00000
+ *OH              0.06010  0.04637  0.00018  0.00001
+ *O2              0.00796  0.00552  0.00000  0.00000
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
+
+ NOTE. WEIGHT FRACTION OF FUEL IN TOTAL FUELS AND OF OXIDANT IN TOTAL OXIDANTS
+
+
+
+
+
+           THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION
+
+ Pin =  3000.0 PSIA
+ CASE = ldq____________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        H2                           1.0000000      -718.436    273.150
+ OXIDANT     O2                           1.0000000      -733.075    273.150
+
+ O/F=    6.00000  %FUEL= 14.285714  R,EQ.RATIO= 1.322780  PHI,EQ.RATIO= 1.322780
+
+                 CHAMBER   THROAT     EXIT     EXIT
+ Pinf/P            1.0000   1.7698   144.00   449.55
+ P, BAR            206.84   116.88   1.4364  0.46011
+ T, K             3716.65  3386.04  1549.11  1228.81
+ RHO, KG/CU M    9.0033 0 5.5840 0 1.5000-1 6.0575-2
+ H, KJ/KG         -70.549 -1322.90 -7783.76 -8758.12
+ U, KJ/KG        -2367.96 -3415.94 -8741.33 -9517.70
+ G, KJ/KG        -64807.2 -60300.9 -34766.2 -30161.5
+ S, KJ/(KG)(K)    17.4180  17.4180  17.4180  17.4180
+
+ M, (1/n)          13.451   13.451   13.451   13.451
+ Cp, KJ/(KG)(K)    3.8136   3.7610   3.1442   2.9339
+ GAMMAs            1.1934   1.1967   1.2447   1.2669
+ SON VEL,M/SEC     1655.8   1582.6   1091.7    981.0
+ MACH NUMBER        0.000    1.000    3.598    4.249
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   15.000   35.000
+ CSTAR, M/SEC               2340.5   2340.5   2340.5
+ CF                         0.6762   1.6781   1.7809
+ Ivac, M/SEC                2905.1   4171.5   4350.6
+ Isp, M/SEC                 1582.6   3927.6   4168.4
+
+ MASS FRACTIONS
+
+ *H              0.00245   HO2             0.00013   *H2             0.03749
+ H2O             0.88786   H2O2            0.00006   *O              0.00395
+ *OH             0.06010   *O2             0.00796
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
+
+ NOTE. WEIGHT FRACTION OF FUEL IN TOTAL FUELS AND OF OXIDANT IN TOTAL OXIDANTS
+
+
+
+
+
+
+
+
+
+
+              THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM
+
+           COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR
+
+ Pin =  4000.0 PSIA
+ CASE = ldq____________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        H2                           1.0000000      -718.436    273.150
+ OXIDANT     O2                           1.0000000      -733.075    273.150
+
+ O/F=    6.00000  %FUEL= 14.285714  R,EQ.RATIO= 1.322780  PHI,EQ.RATIO= 1.322780
+
+                 CHAMBER   THROAT     EXIT     EXIT
+ Pinf/P            1.0000   1.7390   125.79   383.41
+ P, BAR            275.79   158.59   2.1925  0.71930
+ T, K             3750.17  3529.39  1952.87  1597.75
+ RHO, KG/CU M    1.1937 1 7.3678 0 1.9050-1 7.6404-2
+ H, KJ/KG         -70.549 -1304.74 -8275.89 -9439.37
+ U, KJ/KG        -2380.91 -3457.17 -9426.85 -10380.8
+ G, KJ/KG        -64725.3 -62153.1 -41944.4 -36985.4
+ S, KJ/(KG)(K)    17.2405  17.2405  17.2405  17.2405
+
+ M, (1/n)          13.496   13.633   14.108   14.111
+ (dLV/dLP)t      -1.02348 -1.01826 -1.00013 -1.00001
+ (dLV/dLT)p        1.3907   1.3228   1.0038   1.0003
+ Cp, KJ/(KG)(K)    7.8595   7.2959   3.4119   3.1608
+ GAMMAs            1.1470   1.1468   1.2106   1.2293
+ SON VEL,M/SEC     1627.8   1571.1   1180.4   1075.8
+ MACH NUMBER        0.000    1.000    3.432    4.024
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   15.000   35.000
+ CSTAR, M/SEC               2382.5   2382.5   2382.5
+ CF                         0.6594   1.7003   1.8169
+ Ivac, M/SEC                2941.1   4335.1   4546.2
+ Isp, M/SEC                 1571.1   4051.0   4328.7
+
+
+ MASS FRACTIONS
+
+ *H               0.00226  0.00184  0.00003  0.00000
+ HO2              0.00014  0.00007  0.00000  0.00000
+ *H2              0.03731  0.03649  0.03484  0.03486
+ H2O              0.89286  0.91105  0.96498  0.96513
+ H2O2             0.00007  0.00003  0.00000  0.00000
+ *O               0.00345  0.00223  0.00000  0.00000
+ *OH              0.05688  0.04349  0.00015  0.00001
+ *O2              0.00703  0.00479  0.00000  0.00000
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
+
+ NOTE. WEIGHT FRACTION OF FUEL IN TOTAL FUELS AND OF OXIDANT IN TOTAL OXIDANTS
+
+
+
+
+
+           THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION
+
+ Pin =  4000.0 PSIA
+ CASE = ldq____________
+
+             REACTANT                    WT FRACTION      ENERGY      TEMP
+                                          (SEE NOTE)     KJ/KG-MOL      K  
+ FUEL        H2                           1.0000000      -718.436    273.150
+ OXIDANT     O2                           1.0000000      -733.075    273.150
+
+ O/F=    6.00000  %FUEL= 14.285714  R,EQ.RATIO= 1.322780  PHI,EQ.RATIO= 1.322780
+
+                 CHAMBER   THROAT     EXIT     EXIT
+ Pinf/P            1.0000   1.7691   143.28   446.45
+ P, BAR            275.79   155.90   1.9248  0.61774
+ T, K             3750.17  3418.28  1572.45  1249.98
+ RHO, KG/CU M    1.1937 1 7.4028 0 1.9869-1 8.0219-2
+ H, KJ/KG         -70.549 -1329.41 -7837.02 -8822.09
+ U, KJ/KG        -2380.91 -3435.30 -8805.76 -9592.16
+ G, KJ/KG        -64725.3 -60262.3 -34946.8 -30372.3
+ S, KJ/(KG)(K)    17.2405  17.2405  17.2405  17.2405
+
+ M, (1/n)          13.496   13.496   13.496   13.496
+ Cp, KJ/(KG)(K)    3.8184   3.7664   3.1566   2.9468
+ GAMMAs            1.1924   1.1956   1.2425   1.2643
+ SON VEL,M/SEC     1659.8   1586.7   1097.1    986.7
+ MACH NUMBER        0.000    1.000    3.592    4.240
+
+ PERFORMANCE PARAMETERS
+
+ Ae/At                      1.0000   15.000   35.000
+ CSTAR, M/SEC               2347.9   2347.9   2347.9
+ CF                         0.6758   1.6786   1.7819
+ Ivac, M/SEC                2913.9   4187.0   4367.7
+ Isp, M/SEC                 1586.7   3941.2   4183.7
+
+ MASS FRACTIONS
+
+ *H              0.00226   HO2             0.00014   *H2             0.03731
+ H2O             0.89286   H2O2            0.00007   *O              0.00345
+ *OH             0.05688   *O2             0.00703
+
+  * THERMODYNAMIC PROPERTIES FITTED TO 20000.K
+
+ NOTE. WEIGHT FRACTION OF FUEL IN TOTAL FUELS AND OF OXIDANT IN TOTAL OXIDANTS
+
+

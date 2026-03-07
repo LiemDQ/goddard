@@ -39,7 +39,7 @@ add_library(
   global.cpp
   speciate.cpp
   nozzle.cpp
-  nozzle_utils.cpp
+  gas_dynamics.cpp
   numerics.cpp
   problem.cpp
 )

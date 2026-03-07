@@ -12,6 +12,9 @@ double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagna
 
 Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& array, const Eigen::ArrayXXd& H_stagnation);
 
+double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity);
+
+Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity);
 
 /**
  * @brief Speed of sound of a gas.

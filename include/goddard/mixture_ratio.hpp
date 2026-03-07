@@ -48,6 +48,7 @@ class MixtureRatios {
     inline Eigen::ArrayXd oxidizer_mole_frac() const { return molar_ratio() / (1 + molar_ratio());}
     inline Eigen::ArrayXd OF_to_molar_ratio(const Eigen::ArrayXd& OF) const {return OF/(M_ox / M_fuel);}
     inline Eigen::ArrayXd molar_ratio() const {return OF_to_molar_ratio(m_OF_ratio);}
+    inline size_t size() const {return m_OF_ratio.size();}
 
     Eigen::ArrayXd m_OF_ratio;
     double M_fuel;

@@ -1,4 +1,4 @@
-#include "goddard/nozzle_utils.hpp"
+#include "goddard/gas_dynamics.hpp"
 
 #include <cmath>
 namespace Goddard {
@@ -18,6 +18,15 @@ double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma){
 Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma) {
     return (Cantera::GasConstant*gas.temperature()*gamma / gas.mean_molecular_weight()).sqrt();
 }
+
+double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity) {
+    return gas.enthalpy_mass() + velocity*velocity/2;
+}
+
+Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity) {
+    return gas.enthalpy_mass() + velocity * velocity / 2;
+}
+
 
 double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity) {
     return gas.temperature()*Cantera::GasConstant / (gas.pressure() * velocity * gas.meanMolecularWeight());

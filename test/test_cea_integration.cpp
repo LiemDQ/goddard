@@ -59,15 +59,23 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // aren't supported by ideal gas model. Use standard temp (298.15K) instead.
     // The CEA fuel_energy/oxidizer_energy fields contain the actual enthalpy.
     auto fuel_thermo = fuel->thermo();
-    double fuel_temp = std::max(conditions.fuel_temp, 298.15);
+    double fuel_temp = conditions.fuel_temp;
+    // double pressure_Pa = conditions.pressure_psia * 6894.76;
+    
     fuel_thermo->setState_TPX(fuel_temp, 101325.0, "H2:1");
+    // double fuel_MW = fuel_thermo->meanMolecularWeight();
+    // double fuel_energy = conditions.fuel_energy * 1000.0 / fuel_MW;
+    // fuel_thermo->setState_HP(fuel_energy, pressure_Pa);
     params.cantera_fuel_state.resize(fuel_thermo->stateSize());
     fuel_thermo->saveState(params.cantera_fuel_state);
 
     // Set oxidizer state (O2)
     auto ox_thermo = oxidizer->thermo();
-    double ox_temp = std::max(conditions.oxidizer_temp, 298.15);
+    double ox_temp = conditions.oxidizer_temp;
     ox_thermo->setState_TPX(ox_temp, 101325.0, "O2:1");
+    // double ox_MW = ox_thermo->meanMolecularWeight();
+    // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
+    // ox_thermo->setState_HP(ox_energy, pressure_Pa);
     params.cantera_oxidizer_state.resize(ox_thermo->stateSize());
     ox_thermo->saveState(params.cantera_oxidizer_state);
 
@@ -131,13 +139,6 @@ TEST_F(CEAIntegrationTests, LoadCEADataFiles) {
     }
 }
 
-// NOTE: This test uses the legacy Combustor API directly.
-// See RocketProblemChamberMatchesCEA for the RocketProblem-based version.
-TEST_F(CEAIntegrationTests, DISABLED_H2O2ChamberConditionsMatchCEA_LegacyAPI) {
-    // This test is disabled because the direct Combustor API has changed.
-    // Use RocketProblem-based tests instead.
-    GTEST_SKIP() << "Legacy Combustor API test - use RocketProblem tests instead";
-}
 
 // Simple demonstration test showing the workflow
 TEST_F(CEAIntegrationTests, DemonstrateWorkflow) {
@@ -197,7 +198,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     //              << "See comments in test file for details.";
 
     // Load H2 CEA reference data
-    std::string h2_json_path = cea_data_dir + "/h2.json";
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
     ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
 
@@ -219,7 +220,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_equilibrium",
         cea_result->conditions, NozzleChemistryType::EQUILIBRIUM);
-
+    
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
@@ -229,6 +230,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     ASSERT_GE(thermo_states.size(), 1) << "No thermo states extracted";
 
     const auto& goddard_chamber = thermo_states[0]; // inlet = chamber
+    // const auto& goddard_chamber = results.get_chamber_state("H2_O2_equilibrium", 0);
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -248,7 +250,7 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
     // Previously skipped due to state handling issues - now fixed
 
     // Load H2 CEA reference data
-    std::string h2_json_path = cea_data_dir + "/h2.json";
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
     ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
 
@@ -298,7 +300,7 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
     // Previously skipped due to state handling issues - now fixed
 
     // Load H2 CEA reference data
-    std::string h2_json_path = cea_data_dir + "/h2.json";
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
     ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
 
