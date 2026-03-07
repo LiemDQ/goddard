@@ -9,6 +9,8 @@ version = "0.1.0"
 compile = "cmake --build build"
 ctest = "ctest --test-dir build"
 clean = "rm -rf build"
+pip-install = "pip install -e . --no-build-isolation"
+test-python = "pytest python/tests/"
 
 
 [tasks.configure]
@@ -31,6 +33,9 @@ ccache = { channel = "conda-forge" }
 gtest = ">=1.15"
 eigen = ">=3.4"
 python = ">3.11"
+scikit-build-core = ">=0.10"
+numpy = "*"
+pytest = "*"
 
 [feature.data.dependencies]
 pyyaml = "*"
