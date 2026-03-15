@@ -25,9 +25,16 @@ target_include_directories(_core PRIVATE
     ${PROJECT_BINARY_DIR}/include
 )
 
-# Suppress strict warning flags inherited from goddard_lib's PUBLIC linkage
-# to goddard_warnings. Python C API headers and nanobind-generated code
-# trigger many warnings that are not actionable.
+# Embed RPATH so the extension can find libgoddard_lib.so at runtime
+# during development (build tree) and after install
+set_target_properties(_core PROPERTIES
+    BUILD_RPATH "$<TARGET_FILE_DIR:goddard_lib>"
+    INSTALL_RPATH "$ORIGIN"
+)
+
+# Suppress strict warning flags inherited from goddard_lib's PUBLIC linkage.
+# Python C API headers and nanobind-generated code trigger many warnings
+# that are not actionable.
 target_compile_options(_core PRIVATE
     -Wno-error
     -Wno-old-style-cast
@@ -43,6 +50,12 @@ target_compile_options(_core PRIVATE
     -Wno-missing-field-initializers
 )
 
+# Disable sanitizers for the Python extension module. ASan requires its
+# runtime to be the first loaded library, which is not possible when Python
+# loads extension modules dynamically.
+target_compile_options(_core PRIVATE -fno-sanitize=all)
+target_link_options(_core PRIVATE -fno-sanitize=all)
+
 # Copy the built module into python/goddard/ for dev workflow (PYTHONPATH=python)
 add_custom_command(TARGET _core POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -50,4 +63,6 @@ add_custom_command(TARGET _core POST_BUILD
         ${PROJECT_SOURCE_DIR}/python/goddard/$<TARGET_FILE_NAME:_core>
 )
 
-install(TARGETS _core LIBRARY DESTINATION goddard)
+# Install both the extension and the shared library into the same directory
+# so that $ORIGIN RPATH resolves libgoddard_lib.so at runtime.
+install(TARGETS _core goddard_lib LIBRARY DESTINATION goddard)

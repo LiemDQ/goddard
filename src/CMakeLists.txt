@@ -54,5 +54,6 @@ target_include_directories(goddard_lib
 )
 
 target_link_libraries(goddard_lib PUBLIC cantera Eigen3::Eigen)
-target_link_libraries(goddard_lib PUBLIC goddard_options goddard_warnings)
+target_link_libraries(goddard_lib PUBLIC goddard_options)
+target_link_libraries(goddard_lib PRIVATE goddard_warnings)
 

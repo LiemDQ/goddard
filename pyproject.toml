@@ -18,4 +18,8 @@ dev = ["pytest"]
 [tool.scikit-build]
 cmake.build-type = "Release"
 wheel.packages = ["python/goddard"]
-cmake.args = ["-Dgoddard_BUILD_PYTHON=ON"]
+cmake.args = [
+    "-Dgoddard_BUILD_PYTHON=ON",
+    "-Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF",
+    "-Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF",
+]

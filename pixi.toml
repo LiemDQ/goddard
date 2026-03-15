@@ -17,6 +17,12 @@ test-python = "pytest python/tests/"
 args = [{arg="build_type", default = "Release"}]
 cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }}"
 
+# Configure without sanitizers (needed for Python bindings -- ASan cannot
+# load as an indirect dependency of a Python extension module)
+[tasks.configure-python]
+args = [{arg="build_type", default = "Release"}]
+cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }} -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF"
+
 
 [dependencies]
 # cantera = "3.2.*"
@@ -33,6 +39,7 @@ ccache = { channel = "conda-forge" }
 gtest = ">=1.15"
 eigen = ">=3.4"
 python = ">3.11"
+pip = "*"
 scikit-build-core = ">=0.10"
 numpy = "*"
 pytest = "*"
