@@ -47,6 +47,16 @@ pytest = "*"
 [feature.data.dependencies]
 pyyaml = "*"
 
+[feature.test.dependencies]
+fortran-compiler = "*"
+
+[feature.test.pypi-dependencies]
+cea = "*"
+
+[feature.test.tasks]
+test-cea = "pytest python/tests/test_cea_comparison.py -v"
+
 [environments]
 default = {solve-group = "default"}
 data = {features = ["data"], solve-group = "default"}
+test = {features = ["test"], solve-group = "default"}
