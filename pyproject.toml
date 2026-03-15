@@ -1,2 +1,25 @@
 [build-system]
-requires = ["wheels", "hatchling"]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "goddard"
+version = "0.1.0"
+description = "Rocket engine simulation toolkit"
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+wheel.packages = ["python/goddard"]
+cmake.args = [
+    "-Dgoddard_BUILD_PYTHON=ON",
+    "-Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF",
+    "-Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF",
+]
