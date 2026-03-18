@@ -57,10 +57,15 @@ ArrayXd get_cpR_vector(const Cantera::ThermoPhase& gas){
 }
 
 /**
- * @brief Cantera calculates thermodynamic derivatives assuming a fixed composition, 
- * which is not correct for reactive flows, such as ones in chemical equilibrium. 
+ * @brief Calculate thermodynamic derivatives for a reactive gas at chemical equilibrium.
  * 
- * For equilibrium, the system of equations can be solved by imposing that the Gibbs free energy is 0.
+ * Cantera calculates thermodynamic derivatives assuming a fixed composition, 
+ * which is not correct for reactive flows, such as ones in chemical equilibrium, as the 
+ * change in molar quantity and chemical heat release/absorption must also be taken into account. 
+ * See [Gordon & McBride, 1994, "Computer program for calculation of complex chemical equilibrium 
+ * compositions and applications. Part 1: Analysis"](https://ntrs.nasa.gov/citations/19950013764) for more details.
+ * 
+ * 
 */
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoPhase& gas) {
     size_t n_elements = gas.nElements();
@@ -87,7 +92,7 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
     auto stoich_coeffs = get_stoichiometric_coeffs(gas);
 
     //equations for derivatives w.r.t. temperature
-    //first n_elements equations
+    //Gordon & McBride equation 2.56
     for (size_t i = 0; i < n_elements; i++) {
         for (size_t j = 0; j < n_elements; j++){
             coeff_matrix(i,j) = (stoich_coeffs.col(i)*stoich_coeffs.col(j)*moles).sum();
@@ -96,15 +101,17 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
         rhs(i) = -(stoich_coeffs.col(i)*moles*std_H_RT).sum();
     }
 
-    //skipping temperature derivative equation for condensed species
+    //TODO: temperature derivative equation 2.57 for condensed species
     
     //single term for (dpi/dlogT)_P
     for (size_t i = 0; i < n_elements; i++){
         coeff_matrix(n_elements, i) = (stoich_coeffs.col(i) * moles).sum();
     }
+    //Gordon & McBride equation 2.58
     rhs(n_elements) = -(moles * std_H_RT).sum();
 
     // equations for derivatives w.r.t. pressure
+    //Gordon & McBride equation 2.64
     for (size_t i = 0; i < n_elements; i++) {
         for (size_t j = 0; j < n_elements; j++){
             coeff_matrix(n_elements+1+i, n_elements+1+j) = (stoich_coeffs.col(i)*stoich_coeffs.col(j) * moles).sum();
@@ -113,13 +120,15 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
         rhs(n_elements+1+i) = (stoich_coeffs.col(i)*moles).sum();
     }
 
-    //skipping pressure derivative equation for condensed species
+    //TODO: pressure derivative equation 2.65 for condensed species
 
     for (size_t i = 0; i < n_elements; i++){
         coeff_matrix(2*n_elements+1, n_elements+1+i) = (stoich_coeffs.col(i) * moles).sum();
     }
+    //Gordon & McBride equation 2.66
     rhs(2*n_elements+1) = moles.sum();
 
+    // the derivatives are obtained from solving the system of equations. 
     VectorXd derivs = coeff_matrix.colPivHouseholderQr().solve(rhs);
 
     ArrayXd dpi_dlogT_P = derivs(Eigen::seq(idx_dpi_dlogT_P, idx_dpi_dlogT_P + n_elements-1));
@@ -130,6 +139,9 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
     return {dpi_dlogT_P, dlogn_dlogT_P, dpi_dlogP_T, dlogn_dlogP_T};
 }
 
+/**
+ * @brief Calculate thermodynamic properties of a reacting gas at equilibrium: volume derivatives, heat capacity and adiabatic index.
+*/
 EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivs){
     auto moles = get_mole_vector(gas);
     

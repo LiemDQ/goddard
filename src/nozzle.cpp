@@ -95,7 +95,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
 
         //if equilibrium conditions are selected, the composition must reach chemical
         //equilibrium in the throat.
-        gas_state->equilibrate("SP", "gibbs");
+        equilibrate(*gas_state);
         gamma_s = get_gamma_s(*gas_state);
         
         double velocity = gas_isenthalpic_velocity(*gas_state, H_inlet);
@@ -118,12 +118,18 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
         save_thermo_state(*gas_state)};
 }
 
+// -- EquilibriumNozzle -- 
+
 /*WARNING: if m_gas has a different ThermoPhase than `state` this will result in incorrect behavior!
 */
 double EquilibriumNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     
     auto props = get_thermo_equilibrium_properties(state);
     return props.gamma_s;
+}
+
+void EquilibriumNozzle::equilibrate(Cantera::ThermoPhase& state) {
+    state.equilibrate("SP","gibbs");
 }
 
 NozzleResult EquilibriumNozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
@@ -247,9 +253,16 @@ NozzleResult EquilibriumNozzle::solve_pressure_ratio(const ThroatCondition& thro
         save_thermo_state(*gas_thermo)};
 }
 
+// -- FrozenNozzle --
+
 double FrozenNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     //gamma_s = gamma. See CEA Part I Section 6.5.3.
     return state.cp_mass()/state.cv_mass();
+}
+
+void FrozenNozzle::equilibrate([[maybe_unused]] Cantera::ThermoPhase& state){
+    //for frozen nozzle, equilibration is a no-op
+    return;
 }
 
 NozzleResult FrozenNozzle::solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {

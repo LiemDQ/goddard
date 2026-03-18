@@ -7,8 +7,8 @@ double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagna
     return std::sqrt(2*(H_stagnation - gas.enthalpy_mass()));
 }
 
-Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& array, const Eigen::ArrayXXd& H_stagnation) {
-    return (2*(H_stagnation - array.enthalpy_mass())).sqrt();
+Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& H_stagnation) {
+    return (2*(H_stagnation - gas.enthalpy_mass())).sqrt();
 }
 
 double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma){
@@ -27,6 +27,13 @@ Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::Arr
     return gas.enthalpy_mass() + velocity * velocity / 2;
 }
 
+double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma) {
+    return gas.pressure() * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
+}
+
+Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma) {
+    return gas.pressure() * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
+}
 
 double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity) {
     return gas.temperature()*Cantera::GasConstant / (gas.pressure() * velocity * gas.meanMolecularWeight());

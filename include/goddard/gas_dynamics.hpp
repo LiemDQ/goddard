@@ -10,11 +10,15 @@ namespace Goddard {
  */
 double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagnation);
 
-Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& array, const Eigen::ArrayXXd& H_stagnation);
+Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& H_stagnation);
 
 double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity);
 
 Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity);
+
+double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma);
+
+Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma);
 
 /**
  * @brief Speed of sound of a gas.

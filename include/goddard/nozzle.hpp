@@ -84,11 +84,12 @@ class NozzleBase {
      * @warning Can modify the underlying state!
      */
     virtual double get_gamma_s(Cantera::ThermoPhase& state) = 0;
-
+    
     std::vector<double> inlet_state;
     
     protected:
     std::shared_ptr<Cantera::Solution> m_gas;
+    virtual void equilibrate(Cantera::ThermoPhase& state) = 0;
     virtual NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) = 0;
@@ -100,6 +101,7 @@ class EquilibriumNozzle : public NozzleBase {
     double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
+    void equilibrate(Cantera::ThermoPhase& state) override;
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) override;
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=4.5e-5) override;
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) override;
@@ -117,6 +119,7 @@ class FrozenNozzle final : public NozzleBase {
     double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
+    void equilibrate(Cantera::ThermoPhase& state) override;
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) override;
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;
