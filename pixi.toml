@@ -44,6 +44,14 @@ scikit-build-core = ">=0.10"
 numpy = "*"
 pytest = "*"
 
+[feature.examples.dependencies]
+ipykernel = "*"
+jupyter = "*"
+matplotlib = "*"
+loguru = "*"
+pandas = "*"
+scipy = "*"
+
 [feature.data.dependencies]
 pyyaml = "*"
 
@@ -58,5 +66,6 @@ test-cea = "pytest python/tests/test_cea_comparison.py -v"
 
 [environments]
 default = {solve-group = "default"}
+examples = {features = ["examples"], solve-group = "default"}
 data = {features = ["data"], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
