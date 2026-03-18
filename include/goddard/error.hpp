@@ -1,6 +1,8 @@
 #pragma once
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <format>
 
 namespace Goddard {
 
@@ -23,6 +25,16 @@ class ConvergenceError: public std::runtime_error {
     int m_num_iters;
     double m_tol;
     double m_residual;
+};
+
+class FmtError: public std::runtime_error {
+    public:
+
+    template <typename... Args>
+    FmtError(std::string_view fmt, Args&&... args)
+        : std::runtime_error(std::vformat(fmt, std::make_format_args(args...))) {}
+
+    ~FmtError() noexcept override = default;
 };
 
 }

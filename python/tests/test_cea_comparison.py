@@ -22,7 +22,7 @@ from conftest import (
 
 # Frozen cases excluded from default runs pending gamma_s fix.
 # Use FROZEN_CASES when ready to enable them.
-DEFAULT_CASES = EQUILIBRIUM_CASES
+DEFAULT_CASES = FROZEN_CASES
 
 
 # ---------------------------------------------------------------------------

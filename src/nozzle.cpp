@@ -260,7 +260,7 @@ double FrozenNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     return state.cp_mass()/state.cv_mass();
 }
 
-void FrozenNozzle::equilibrate(Cantera::ThermoPhase& state){
+void FrozenNozzle::equilibrate([[maybe_unused]] Cantera::ThermoPhase& state){
     //for frozen nozzle, equilibration is a no-op
     return;
 }
