@@ -64,13 +64,16 @@ RocketProblemResults RocketProblem::solve() {
     std::shared_ptr<Cantera::ThermoPhase> thermo = m_sln->thermo();
     std::vector<double> state(m_sln->thermo()->stateSize());
 
+    std::vector<double> oxidizer_state = chemical_params.cantera_oxidizer_state.to_vector(*thermo);
+    std::vector<double> fuel_state = chemical_params.cantera_fuel_state.to_vector(*thermo);
+
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
         
-        double M_fuel = molar_mass_from_composition(*thermo, chemical_params.cantera_fuel_state);
-        double M_oxidizer = molar_mass_from_composition(*thermo, chemical_params.cantera_oxidizer_state);
+        double M_fuel = molar_mass_from_composition(*thermo, fuel_state);
+        double M_oxidizer = molar_mass_from_composition(*thermo, oxidizer_state);
         MixtureRatios MRs(OFs, M_fuel, M_oxidizer);
-        Combustor combustor(m_sln, chemical_params.cantera_fuel_state, chemical_params.cantera_oxidizer_state);
+        Combustor combustor(m_sln, fuel_state, oxidizer_state);
 
         // TODO: workaround for bug in Cantera SolutionArray
         // prevents incorrect values from being written in RocketProblemResults.
@@ -358,6 +361,10 @@ RocketPerformance RocketProblemResults::calculate_performance(
         isp,
         ivac
     };
+}
+
+std::string RocketProblemResults::report([[maybe_unused]] const std::string& case_name) const {
+    throw NotImplementedError("Reports are not implemented.");
 }
 
 } //namespace Goddard

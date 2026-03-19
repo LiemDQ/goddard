@@ -28,6 +28,7 @@ from goddard._core import (
     FrozenNozzle,
     MixtureRatio,
     MixtureRatios,
+    ThermodynamicState,
     # Errors
     ConvergenceError,
     # Functions

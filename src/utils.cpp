@@ -14,6 +14,13 @@ std::vector<double> save_thermo_state(const Cantera::ThermoPhase& thermo) {
     return state;
 }
 
+std::vector<double> build_state_TPX(Cantera::Solution& sln, double T, double P, std::string& composition) {
+    std::vector<double> out(sln.thermo()->stateSize());
+    sln.thermo()->setState_TPX(T, P, composition);
+    sln.thermo()->saveState(out);
+    return out;
+}
+
 std::shared_ptr<Cantera::Solution> create_mixture_solution(Cantera::Solution& sol1, Cantera::Solution& sol2){
     auto thermo1 = sol1.thermo();
     auto thermo2 = sol2.thermo();

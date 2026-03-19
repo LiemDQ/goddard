@@ -124,7 +124,7 @@ TEST_F(ThermoArray2DTests, broadcastTP) {
             
             //the state vector stores pressure implicitly as density, so needs to be calculated.
             double density = state[1];
-            double calculated_pressure = ideal_gas_D_to_P(density, temperatures(i), MW);
+            double calculated_pressure = Goddard::ideal_gas_D_to_P(density, temperatures(i), MW);
             EXPECT_DOUBLE_EQ(calculated_pressure, pressures(j)) << "i = " << i << ", j = " << j; 
             loc++;
         }

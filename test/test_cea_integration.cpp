@@ -6,6 +6,7 @@
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/problem.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/thermo.hpp"
 #include "goddard/config.h"
 
 #include <algorithm>
@@ -60,24 +61,20 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // The CEA fuel_energy/oxidizer_energy fields contain the actual enthalpy.
     auto fuel_thermo = fuel->thermo();
     double fuel_temp = conditions.fuel_temp;
+    params.cantera_fuel_state = Goddard::ThermodynamicState(fuel_temp, 101325.0, "H2:1");
     // double pressure_Pa = conditions.pressure_psia * 6894.76;
     
-    fuel_thermo->setState_TPX(fuel_temp, 101325.0, "H2:1");
     // double fuel_MW = fuel_thermo->meanMolecularWeight();
     // double fuel_energy = conditions.fuel_energy * 1000.0 / fuel_MW;
     // fuel_thermo->setState_HP(fuel_energy, pressure_Pa);
-    params.cantera_fuel_state.resize(fuel_thermo->stateSize());
-    fuel_thermo->saveState(params.cantera_fuel_state);
 
     // Set oxidizer state (O2)
     auto ox_thermo = oxidizer->thermo();
     double ox_temp = conditions.oxidizer_temp;
-    ox_thermo->setState_TPX(ox_temp, 101325.0, "O2:1");
+    params.cantera_oxidizer_state = Goddard::ThermodynamicState(ox_temp, 101325.0, "O2:1");
     // double ox_MW = ox_thermo->meanMolecularWeight();
     // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
     // ox_thermo->setState_HP(ox_energy, pressure_Pa);
-    params.cantera_oxidizer_state.resize(ox_thermo->stateSize());
-    ox_thermo->saveState(params.cantera_oxidizer_state);
 
     // O/F ratio from CEA conditions
     params.OF_ratios = {conditions.of_ratio};

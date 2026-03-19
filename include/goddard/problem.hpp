@@ -9,6 +9,7 @@
 #include "cantera/core.h"
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/thermo.hpp"
 
 namespace Goddard {
 
@@ -28,8 +29,8 @@ struct Speciation { //TODO: implement speciation functionality
 struct ChemicalParameters {
     std::string thermo_file;
     std::unordered_set<std::string> species;
-    std::vector<double> cantera_fuel_state;
-    std::vector<double> cantera_oxidizer_state;
+    ThermodynamicState cantera_fuel_state;
+    ThermodynamicState cantera_oxidizer_state;
     std::vector<double> OF_ratios;
     std::vector<double> phi_ratios;
     std::vector<double> fuel_weight_percentages;
@@ -161,6 +162,8 @@ class RocketProblemResults {
         const ThermoStateInfo& chamber,
         const ThermoStateInfo& throat,
         const ThermoStateInfo& exit);
+
+    std::string report(const std::string& case_name = "") const;
 
     std::unordered_map<std::string, RocketProblemCaseResult> cases;
 

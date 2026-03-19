@@ -32,6 +32,7 @@ add_library(
   SHARED
   equilibrium.cpp
   thermoarray.cpp
+  thermo.cpp
   combustor.cpp
   mixture_ratio.cpp
   error.cpp
