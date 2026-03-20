@@ -209,6 +209,7 @@ void bind_structs(nb::module_& m) {
                             double gibbs,
                             double entropy,
                             double molecular_weight,
+                            double cp,
                             double gamma_s,
                             double dlV_dlP_T,
                             double dlV_dlT_P,
@@ -223,6 +224,7 @@ void bind_structs(nb::module_& m) {
             self->gibbs = gibbs;
             self->entropy = entropy;
             self->molecular_weight = molecular_weight;
+            self->cp = cp;
             self->gamma_s = gamma_s;
             self->dlV_dlP_T = dlV_dlP_T;
             self->dlV_dlT_P = dlV_dlT_P;
@@ -236,6 +238,7 @@ void bind_structs(nb::module_& m) {
             "gibbs"_a = 0.0,
             "entropy"_a = 0.0,
             "molecular_weight"_a = 0.0,
+            "cp"_a = 0.0,
             "gamma_s"_a = 0.0,
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
@@ -249,6 +252,7 @@ void bind_structs(nb::module_& m) {
         .def_ro("gibbs", &Goddard::ThermoStateInfo::gibbs)
         .def_ro("entropy", &Goddard::ThermoStateInfo::entropy)
         .def_ro("molecular_weight", &Goddard::ThermoStateInfo::molecular_weight)
+        .def_ro("cp", &Goddard::ThermoStateInfo::cp)
         .def_ro("gamma_s", &Goddard::ThermoStateInfo::gamma_s)
         .def_ro("dlV_dlP_T", &Goddard::ThermoStateInfo::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::ThermoStateInfo::dlV_dlT_P)

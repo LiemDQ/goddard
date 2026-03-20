@@ -31,6 +31,26 @@ inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
     return P*molar_mass/(T*Cantera::GasConstant);
 }
 
+/**
+ * Convenience struct containing relevant thermodynamic results
+ */
+struct ThermoStateInfo {
+    double pressure;
+    double temperature;
+    double density;
+    double enthalpy;
+    double internal_energy;
+    double gibbs;
+    double entropy;
+    double molecular_weight;
+    double cp;
+    double gamma_s;
+    double dlV_dlP_T;
+    double dlV_dlT_P;
+    double speed_of_sound;
+    std::unordered_map<std::string, double> composition;
+};
+
 
 /**
  * Convenience class for containing thermodynamic data in one place.

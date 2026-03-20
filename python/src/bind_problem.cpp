@@ -6,6 +6,7 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/problem.hpp"
+#include "goddard/rocket_results.hpp"
 #include "goddard/speciate.hpp"
 #include "cantera/core.h"
 
@@ -35,7 +36,11 @@ void bind_problem(nb::module_& m) {
         .def_ro("problem_type", &Goddard::RocketProblemCaseResult::problem_type)
         .def_ro("inlet_states", &Goddard::RocketProblemCaseResult::inlet_states)
         .def_ro("chemistry", &Goddard::RocketProblemCaseResult::chemistry)
-        .def_ro("nozzle_states", &Goddard::RocketProblemCaseResult::nozzle_states);
+        .def_ro("nozzle_states", &Goddard::RocketProblemCaseResult::nozzle_states)
+        .def_ro("OF_ratios", &Goddard::RocketProblemCaseResult::OF_ratios)
+        .def_ro("pressures", &Goddard::RocketProblemCaseResult::pressures)
+        .def_ro("expansion_ratios", &Goddard::RocketProblemCaseResult::expansion_ratios)
+        .def_ro("expansion_type", &Goddard::RocketProblemCaseResult::expansion_type);
 
     // RocketProblem
     nb::class_<Goddard::RocketProblem>(m, "RocketProblem")
@@ -78,5 +83,9 @@ void bind_problem(nb::module_& m) {
                 names.push_back(k);
             }
             return names;
-        }, "Get list of case names.");
+        }, "Get list of case names.")
+        .def("report", &Goddard::RocketProblemResults::report,
+             "case_name"_a = "",
+             "Generate a CEA-style formatted text report. "
+             "If case_name is empty, reports all cases.");
 }
