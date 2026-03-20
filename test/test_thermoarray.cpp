@@ -238,23 +238,21 @@ TEST_F(ThermoArray3DTests, broadcastTPX){
     std::vector<double> ref_state(ref_thermo->stateSize());
 
     for (int k = 0; k < compositions.rows(); k++) {
-        
-        auto composition = compositions.row(k);
+
+        Eigen::ArrayXd composition = compositions.row(k);
         ref_thermo->setMoleFractions(composition.data());
 
         for (int j = 0; j < pressures.size(); j++) {
-
-            
             for (int i = 0; i < temperatures.size(); i++){
                 std::vector<double> state = states->getState(loc);
-                
+
                 ref_thermo->setTemperature(temperatures(i));
                 ref_thermo->setPressure(pressures(j));
                 ref_thermo->saveState(ref_state);
 
                 for (size_t l = 0; l < state.size(); l++) {
-                    EXPECT_DOUBLE_EQ(state[l], ref_state[l]) 
-                        << "State vectors should be identical. " 
+                    EXPECT_DOUBLE_EQ(state[l], ref_state[l])
+                        << "State vectors should be identical. "
                         << "Indices (i,j,k,l): (" << i << "," << j << "," << k << "," << l << ")";
                 }
                 loc++;
@@ -284,14 +282,14 @@ TEST_F(ThermoArray3DTests, equilibrateTPX){
     std::vector<double> ref_state(ref_thermo->stateSize());
 
     for (int k = 0; k < compositions.rows(); k++) {
-        
-        auto composition = compositions.row(k);
-        
-        for (int j = 0; j < pressures.size(); j++) {       
+
+        Eigen::ArrayXd composition = compositions.row(k);
+
+        for (int j = 0; j < pressures.size(); j++) {
             for (int i = 0; i < temperatures.size(); i++){
-                
+
                 std::vector<double> state = states->getState(loc);
-                
+
                 EXPECT_NO_THROW(
                     ref_thermo->setMoleFractions(composition.data());
                     ref_thermo->setTemperature(temperatures(i));

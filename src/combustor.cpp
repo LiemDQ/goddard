@@ -75,8 +75,23 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const MixtureRatio
 
     Eigen::ArrayXd enthalpies = oxidizer_enthalpy * mass_ox + fuel_enthalpy * mass_f;
 
-    ThermoArray combustion_states = ThermoArray(m_thermo, {enthalpies.size(), pressures.size(), mr.molar_ratio().size()});
-    combustion_states.HPY(enthalpies, pressures, mass_fracs);
+    // Each enthalpy[i] is derived from composition i, so they must be paired
+    // rather than broadcast. Set each state explicitly to avoid creating
+    // nonsensical cross-paired (enthalpy_j, composition_i) states.
+    long n_compositions = enthalpies.size();
+    long n_pressures = pressures.size();
+    ThermoArray combustion_states = ThermoArray(m_thermo, {n_compositions, n_pressures});
+
+    int loc = 0;
+    for (long i = 0; i < n_compositions; i++) {
+        Eigen::ArrayXd row = mass_fracs.row(i);
+        for (long j = 0; j < n_pressures; j++) {
+            thermo->setMassFractions(row.data());
+            thermo->setState_HP(enthalpies[i], pressures[j]);
+            combustion_states.solutionarray()->updateState(loc);
+            loc++;
+        }
+    }
 
     return combust(combustion_states, options);
 }
@@ -187,8 +202,20 @@ ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& pressures, const Mixtu
                               + oxidizerEnthalpy * massOxTotal
                               + flueEnthalpy * wDilution;
 
-    ThermoArray combustion_states = ThermoArray(m_thermo, {enthalpies.size(), pressures.size(), mr.molar_ratio().size()});
-    combustion_states.HPY(enthalpies, pressures, mass_fracs);
+    long n_compositions = enthalpies.size();
+    long n_pressures = pressures.size();
+    ThermoArray combustion_states = ThermoArray(m_thermo, {n_compositions, n_pressures});
+
+    int loc = 0;
+    for (long i = 0; i < n_compositions; i++) {
+        Eigen::ArrayXd row = mass_fracs.row(i);
+        for (long j = 0; j < n_pressures; j++) {
+            thermo->setMassFractions(row.data());
+            thermo->setState_HP(enthalpies[i], pressures[j]);
+            combustion_states.solutionarray()->updateState(loc);
+            loc++;
+        }
+    }
 
     return combust(combustion_states, options);
 }
