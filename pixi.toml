@@ -57,6 +57,7 @@ pyyaml = "*"
 
 [feature.test.dependencies]
 fortran-compiler = "*"
+cantera = "3.2.*"
 
 [feature.test.pypi-dependencies]
 cea = "*"
