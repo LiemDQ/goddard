@@ -297,12 +297,16 @@ void ThermoArray::_update_states_with_composition(
 	}
 
 	int loc = 0;
-	for (auto xs: arr3.rowwise()){
+	for (int i = 0; i < arr3.rows(); i++){
+		// Evaluate row into contiguous storage. ArrayXXd is column-major,
+		// so a rowwise view's data() pointer is strided and cannot be
+		// passed directly to Cantera functions that expect contiguous arrays.
+		ArrayXd row = arr3.row(i);
 		for (double v2: arr2){
 			for (double v1: arr1){
-				f(v1, v2, xs.data());
+				f(v1, v2, row.data());
 				m_states->updateState(loc);
-				loc++;			
+				loc++;
 			}
 		}
 	}

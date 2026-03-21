@@ -10,6 +10,8 @@ namespace Goddard {
 
 std::vector<double> save_thermo_state(const Cantera::ThermoPhase& sol);
 
+std::vector<double> build_state_TP(Cantera::Solution& sln, double T, double P, std::string& composition);
+
 std::shared_ptr<Cantera::Solution> create_mixture_solution(Cantera::Solution& sol1, Cantera::Solution& sol2);
 
 std::shared_ptr<Cantera::Solution> copy_solution(Cantera::Solution& sln);

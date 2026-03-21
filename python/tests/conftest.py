@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
-
+import goddard
 
 # ---------------------------------------------------------------------------
 # Data directory
@@ -31,7 +31,7 @@ def find_data_dir() -> str:
 @dataclass
 class ReactantSpec:
     """Specifies a single reactant (fuel or oxidizer) for both Goddard and CEA."""
-    cea_name: bytes              # CEA species name, e.g. b"H2" or b"O2(L)"
+    cea_name: str                # CEA species name, e.g. "H2" or "O2(L)"
     cantera_composition: str     # Cantera composition string, e.g. "H2:1"
     temperature: float           # Reactant temperature in K
 
@@ -105,12 +105,10 @@ def build_goddard_problem(case: RocketTestCase):
     chem_params = goddard.ChemicalParameters()
     chem_params.thermo_file = yaml_path
     chem_params.species = case.species
-    chem_params.cantera_fuel_state = cantera_save_state(
-        yaml_path, case.phase_name,
-        case.fuel.cantera_composition, case.fuel.temperature)
-    chem_params.cantera_oxidizer_state = cantera_save_state(
-        yaml_path, case.phase_name,
-        case.oxidizer.cantera_composition, case.oxidizer.temperature)
+    chem_params.cantera_fuel_state = goddard.ThermodynamicState(
+        case.fuel.temperature, 101325.0, case.fuel.cantera_composition) 
+    chem_params.cantera_oxidizer_state = goddard.ThermodynamicState(
+        case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition)
     chem_params.OF_ratios = [case.of_ratio]
 
     case_params = goddard.RocketCaseParameters()
@@ -235,8 +233,8 @@ H2O2_SPECIES = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
 
 H2_O2_GAS_EQUILIBRIUM = RocketTestCase(
     name="h2_o2_gas_eq",
-    fuel=ReactantSpec(cea_name=b"H2", cantera_composition="H2:1", temperature=300.0),
-    oxidizer=ReactantSpec(cea_name=b"O2", cantera_composition="O2:1", temperature=300.0),
+    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
+    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
     of_ratio=6.0,
     chamber_pressure_bar=206.84,
     area_ratios=[15.0, 35.0],
@@ -248,8 +246,8 @@ H2_O2_GAS_EQUILIBRIUM = RocketTestCase(
 
 H2_O2_GAS_FROZEN = RocketTestCase(
     name="h2_o2_gas_frz",
-    fuel=ReactantSpec(cea_name=b"H2", cantera_composition="H2:1", temperature=300.0),
-    oxidizer=ReactantSpec(cea_name=b"O2", cantera_composition="O2:1", temperature=300.0),
+    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
+    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
     of_ratio=6.0,
     chamber_pressure_bar=206.84,
     area_ratios=[15.0, 35.0],

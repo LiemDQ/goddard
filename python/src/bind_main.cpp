@@ -12,6 +12,7 @@ void bind_thermoarray(nb::module_& m);
 void bind_combustor(nb::module_& m);
 void bind_nozzle(nb::module_& m);
 void bind_problem(nb::module_& m);
+void bind_thermo(nb::module_& m);
 
 NB_MODULE(_core, m) {
     m.doc() = "Goddard rocket engine simulation toolkit";
@@ -21,6 +22,7 @@ NB_MODULE(_core, m) {
     // Order matters: enums and structs first since classes reference them
     bind_enums(m);
     bind_errors(m);
+    bind_thermo(m);
     bind_structs(m);
     bind_equilibrium(m);
     bind_mixture_ratio(m);

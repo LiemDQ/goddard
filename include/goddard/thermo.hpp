@@ -2,6 +2,9 @@
 
 #include "cantera/core.h"
 #include <vector>
+
+namespace Goddard {
+
 /**
  * @brief Get the pressure of an ideal gas from its density, temperature, and molar mass. 
  * 
@@ -28,7 +31,44 @@ inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
     return P*molar_mass/(T*Cantera::GasConstant);
 }
 
-double molar_mass_from_composition(Cantera::ThermoPhase& thermo, const std::vector<double>& state);
+/**
+ * Convenience struct containing relevant thermodynamic results
+ */
+struct ThermoStateInfo {
+    double pressure;
+    double temperature;
+    double density;
+    double enthalpy;
+    double internal_energy;
+    double gibbs;
+    double entropy;
+    double molecular_weight;
+    double cp;
+    double gamma_s;
+    double dlV_dlP_T;
+    double dlV_dlT_P;
+    double speed_of_sound;
+    std::unordered_map<std::string, double> composition;
+};
+
+
+/**
+ * Convenience class for containing thermodynamic data in one place.
+ */
+class ThermodynamicState {
+public:
+    ThermodynamicState() = default;
+    ThermodynamicState(double temperature, double pressure, const std::string& comp)
+        : T(temperature), P(pressure), composition(comp) {}
+
+    double T = 0.0;
+    double P = 0.0;
+    std::string composition = {};
+
+    std::vector<double> to_vector(Cantera::ThermoPhase& sln);
+    std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln);
+    
+};
 
 /**
  * Convenience class for querying thermodynamic data.
@@ -43,3 +83,5 @@ class ThermoData {
         std::shared_ptr<Cantera::ThermoPhase> m_thermo;
         std::vector<double> m_state_vector;
 };
+
+} //namespace Goddard
