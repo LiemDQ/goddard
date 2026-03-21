@@ -18,10 +18,22 @@ Goddard is a C++/Python rocket engine simulation toolkit that uses Cantera for c
 - **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations
 - **MixtureRatio** (`mixture_ratio.hpp/cpp`): Fuel/oxidizer mixture ratio handling
 
+### Python Bindings (`python/`)
+- Built with **nanobind** (`python/src/bind_*.cpp`), exposed as `goddard._core` extension module
+- One binding file per C++ domain (enums, structs, problem, combustor, nozzle, thermoarray, mixture_ratio, equilibrium, errors)
+- Each file defines a `void bind_X(nb::module_& m)` function called from `bind_main.cpp`
+- Pure-Python convenience layer in `python/goddard/` (`__init__.py` re-exports, `convenience.py` has factory functions)
+- `Cantera::Solution` exposed as opaque `shared_ptr` handle (`SolutionHandle`) — no Cantera internals in the Python API
+- Cantera Python interop via state reconstruction (`from_cantera()` in `convenience.py`), not pointer extraction (Cython bindings don't expose `shared_ptr`)
+- Dev workflow: `pixi run compile` builds `_core.cpython-*.so` and copies it to `python/goddard/` automatically; use `PYTHONPATH=python` to import
+- Install workflow: `pip install -e . --no-build-isolation` via scikit-build-core
+
 ### Key Dependencies
 - **Cantera**: Primary backend for chemical kinetics and thermodynamics
 - **Eigen3**: Linear algebra operations
-- **Python 3.11**: For Python bindings and examples
+- **nanobind**: Python bindings (C++ → Python bridge)
+- **scikit-build-core**: Python package build backend for CMake projects
+- **Python >=3.11**: For Python bindings and examples
 - **GTest**: Unit testing framework
 
 ## Build System
@@ -67,6 +79,18 @@ cmake --build . --target goddardTests
 ctest -R "goddard"
 ```
 
+### Python Bindings
+```bash
+# Build (included in normal compile)
+pixi run compile
+
+# Install as editable package
+pixi run pip-install
+
+# Run Python tests
+pixi run test-python
+```
+
 ## Data Files Structure
 
 The `data/` directory contains:
@@ -87,7 +111,7 @@ Goddard is rocket science, so its codebase shouldn't be.
 - Long functions are OK if it makes sense for everything in them to be computed together, and intermediate results aren't needed.
 
 ### Formatting
-- Camel case for functions and variable names, Pascal case for types.
+- Snake case for functions and variable names, Pascal case for types.
 - Prefer descriptive variable names even if this makes them a bit longer.
 - Private class members start with `m_`. Public class members are named normally. 
 
@@ -108,6 +132,15 @@ Goddard is rocket science, so its codebase shouldn't be.
 
 ## Python Integration
 
+### Binding architecture
+- Bindings live in `python/src/bind_*.cpp` — one file per C++ header domain
+- Adding a new struct field to bindings = one `.def_rw(...)` line in the corresponding `bind_*.cpp`
+- `goddard_warnings` is linked PRIVATE to `goddard_lib` so consumers (bindings, tests) don't inherit `-Werror` and strict warning flags
+- `python/CMakeLists.txt` additionally suppresses warnings from Python C API headers via `-Wno-*` flags
+- `ThermoArray` is bound read-only (getters only); Eigen arrays auto-convert to numpy via `nanobind/eigen/dense.h`
+- `RocketProblemResults.cases` accessed via `get_case(name)` / `case_names()` methods (returns references) rather than exposing the raw `unordered_map`
+
+### Examples
 Python examples and notebooks in `examples/` demonstrate:
 - Basic rocket engine calculations (`basic_rocket.ipynb`)
 - Chemical kinetics analysis (`kinetics.ipynb`)
