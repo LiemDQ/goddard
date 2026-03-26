@@ -184,4 +184,8 @@ EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPha
     return get_thermo_equilibrium_properties(gas, get_thermo_equilibrium_derivatives(gas));
 }
 
+double get_equilibrium_gamma(const Cantera::ThermoPhase& gas) {
+    return get_thermo_equilibrium_properties(gas).gamma_s;
+}
+
 } //namespace Goddard
