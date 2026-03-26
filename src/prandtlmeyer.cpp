@@ -8,7 +8,7 @@ double prandtl_meyer(double mach, double gamma) {
     double gp1_gm1 = (gamma + 1.0) / (gamma - 1.0);
     double m2_minus_1 = mach * mach - 1.0;
     
-    return sqrt(gp1_gm1) * atan( sqrt(m2_minus_1) / gp1_gm1) - atan(sqrt(m2_minus_1));
+    return sqrt(gp1_gm1) * atan(sqrt(m2_minus_1 / gp1_gm1)) - atan(sqrt(m2_minus_1));
 }
 
 double prandtl_meyer_derivative(double mach, double gamma) {
@@ -17,10 +17,10 @@ double prandtl_meyer_derivative(double mach, double gamma) {
 }
 
 
-double mach_from_prandtl_meyer(double nu, double gamma, 
-                                double mach_guess = 0.0,
-                                double tol = 1e-10,
-                                int max_iter = 20) {
+double mach_from_prandtl_meyer(double nu, double gamma,
+                                double mach_guess,
+                                double tol,
+                                int max_iter) {
 
     double mach = (mach_guess > 1.0) ? mach_guess : 1.0 + nu;
 
