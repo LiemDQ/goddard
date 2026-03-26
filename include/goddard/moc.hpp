@@ -200,6 +200,14 @@ private:
         const CharacteristicPoint& interior_parent,
         double theta_wall, double x_wall, double y_wall);
 
+    // The first point is a special case, as it lies on the axis 
+    // but is assigned a nonzero theta. This is because the calculations 
+    // are started on the characteristic line along which theta is known.
+    // This leads to a small physical inconsistency, but it is necessary to 
+    // bootstrap the downstream marching.
+    CharacteristicPoint solve_initial_axis_point(
+        const CharacteristicPoint& expansion_point);
+
     /**
      * Compute flow properties at centerline for axisymmetric flow.
      *  

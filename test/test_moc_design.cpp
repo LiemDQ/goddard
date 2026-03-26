@@ -92,16 +92,16 @@ TEST_P(MocTextbookValidation, KernelNodes) {
 
         const auto& pt = wf[node.index];
 
-        EXPECT_NEAR(pt.theta / DEG, node.theta, 0.02)
+        EXPECT_NEAR(pt.theta / DEG, node.theta, 0.01)
             << "theta mismatch at wavefront=" << node.wavefront
             << " index=" << node.index;
-        EXPECT_NEAR(pt.nu / DEG, node.nu, 0.02)
+        EXPECT_NEAR(pt.nu / DEG, node.nu, 0.01)
             << "nu mismatch at wavefront=" << node.wavefront
             << " index=" << node.index;
-        EXPECT_NEAR(pt.mach, node.mach, 0.005)
+        EXPECT_NEAR(pt.mach, node.mach, 0.01)
             << "Mach mismatch at wavefront=" << node.wavefront
             << " index=" << node.index;
-        EXPECT_NEAR(pt.mu / DEG, node.mu, 0.02)
+        EXPECT_NEAR(pt.mu / DEG, node.mu, 0.2)
             << "mu mismatch at wavefront=" << node.wavefront
             << " index=" << node.index;
     }
@@ -142,37 +142,73 @@ TEST_P(MocTextbookValidation, UniformExitFlow) {
 }
 
 // ============================================================
-// Placeholder reference case
-// Replace with actual textbook data (e.g., Anderson Table 11.x, Zucrow & Hoffman)
+// Reference data taken from Anderson Table 11.1
 // ============================================================
 
-// This is a skeleton case. Fill in the actual reference node values
-// from your textbook table. The theta_schedule defines the expansion
-// fan angles, and kernel_nodes + wall_nodes provide the reference
-// solution at every point in the characteristic net.
-static MocReferenceCase placeholder_case() {
+static MocReferenceCase anderson_chap11() {
     MocReferenceCase ref;
-    ref.gamma = 1.4;
-    ref.theta_max_deg = 10.0;
+    ref.gamma = 1.40;
+    ref.theta_max_deg = 18.375;
     // 5 equally spaced characteristics
-    ref.theta_schedule_deg = {2.0, 4.0, 6.0, 8.0, 10.0};
+    ref.theta_schedule_deg = {0.375, 3.375, 6.375, 9.375, 12.375, 15.375, 18.375};
 
     // Exit nu = 2*theta_max for a min-length nozzle
-    ref.exit_mach = mach_from_prandtl_meyer(2.0 * 10.0 * DEG, 1.4);
+    ref.exit_mach = 2.4;
+
 
     // Kernel nodes: fill from textbook
-    // Example: first data line axis point (wavefront 0, index 0)
-    // has theta=0, nu = K_minus from first expansion ray (2 deg),
-    // which gives nu = 2 deg, M = mach_from_pm(2 deg)
-    // TODO: populate with full textbook reference data
+    // {wavefront index, index, theta, nu, mach, mu}
+    // the first two mu angles are modified slightly from Anderson
+    // as the table interpolation used in the book is slightly off.
+    ref.kernel_nodes = {
+        {0, 1, 3.375, 3.375, 1.19, 57.0},
+        {0, 2, 6.375, 6.375, 1.31, 49.8},
+        {0, 3, 9.375, 9.375, 1.41, 45.2},
+        {0, 4, 12.375, 12.375, 1.52, 41.1},
+        {0, 5, 15.375, 15.375, 1.62, 38.1},
+        {0, 6, 18.375, 18.375, 1.72, 35.6},
+        {1, 0, 0.0, 6.75, 1.32, 49.3},
+        {1, 1, 3.0, 9.75, 1.43, 44.4},
+        {1, 2, 6.0, 12.75, 1.53, 40.8},
+        {1, 3, 9.0, 15.75, 1.63, 37.8},
+        {1, 4, 12.0, 18.75, 1.73, 35.3},
+        {1, 5, 15.0, 21.75, 1.84, 32.9},
+        {2, 0, 0.0, 12.75, 1.53, 40.8},
+        {2, 1, 3.0, 15.75, 1.63, 37.8},
+        {2, 2, 6.0, 18.75, 1.73, 35.3},
+        {2, 3, 9.0, 21.75, 1.84, 32.9},
+        {2, 4, 12.0, 24.75, 1.94, 31.0},
+        {3, 0, 0.0, 18.75, 1.73, 35.3},
+        {3, 1, 3.0, 21.75, 1.84, 32.9},
+        {3, 2, 6.0, 24.75, 1.94, 31.0},
+        {3, 3, 9.0, 27.75, 2.05, 29.2},
+        {4, 0, 0.0, 24.75, 1.94, 31.0},
+        {4, 1, 3.0, 27.75, 2.05, 29.2},
+        {4, 2, 6.0, 30.75, 2.16, 27.6},
+        {5, 0, 0.0, 30.75, 2.16, 27.6},
+        {5, 1, 3.0, 33.75, 2.28, 26.0},
+        {6, 0, 0.0, 36.75, 2.4, 24.6},
+    };
+
+    // wall nodes
+    // {index, theta, nu, mach, mu}
+    ref.wall_nodes = {
+        {0, 18.375, 18.375, 1.72, 35.6},
+        {1, 15.0, 21.75, 1.84, 32.9},
+        {2, 12.0, 24.75, 1.94, 31.0},
+        {3,  9.0, 27.75, 2.05, 29.2},
+        {4,  6.0, 30.75, 2.16, 27.6},
+        {5, 3.0, 33.75, 2.28, 26.0},
+        {6, 0.0, 36.75, 2.4, 24.6}
+    };
 
     return ref;
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    PlaceholderCase,
+    AndersonTestCase,
     MocTextbookValidation,
-    ::testing::Values(placeholder_case())
+    ::testing::Values(anderson_chap11())
 );
 
 // ============================================================

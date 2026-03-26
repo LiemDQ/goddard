@@ -256,8 +256,6 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
     sonic_point.temperature = 1.0 / stagnation_factor(1.0, gamma); // T/T0 at M=1
     sonic_point.pressure = std::pow(sonic_point.temperature, gamma / (gamma - 1.0)); // p/p0 at M=1
 
-    double sonic_stag = stagnation_factor(1.0, gamma);
-
     std::vector<CharacteristicPoint> data_line;
     data_line.reserve(num_points);
 
@@ -271,18 +269,15 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
         expansion_point.theta = m_theta_schedule[i];
         expansion_point.nu = expansion_point.theta; // centered fan: nu = theta
         expansion_point.K_plus = 0.0; // theta - nu = 0 for all fan rays
-        expansion_point.K_minus = 2.0 * expansion_point.theta; // theta + nu
+        expansion_point.K_minus = expansion_point.theta + expansion_point.nu; // theta + nu
         expansion_point.mach = mach_from_prandtl_meyer(expansion_point.nu, gamma, 1.0);
         expansion_point.mu = asin(1.0 / expansion_point.mach);
         expansion_point.gamma_s = gamma;
 
-        double stag_ratio = sonic_stag / stagnation_factor(expansion_point.mach, gamma);
-        expansion_point.temperature = sonic_point.temperature * stag_ratio;
-        expansion_point.pressure = sonic_point.pressure
-            * std::pow(stag_ratio, gamma / (gamma - 1.0));
+        characteristic_isentropic_PT_from_parent(expansion_point, sonic_point);
 
         if (i == 0) {
-            upstream_point = solve_axis_point(expansion_point);
+            upstream_point = solve_initial_axis_point(expansion_point);            
         } else {
             upstream_point = solve_interior_point(expansion_point, upstream_point);
         }
@@ -297,7 +292,7 @@ void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
         //TODO: I believe the logic below is generalizable to all cases as long as 
         //there is special handling for reflections in the expansion region.
         case MocMode::DESIGN_MIN_LENGTH: {
-            // for a minimum length nozzle, the expansion region is infinitely small
+            // For a minimum length nozzle, the expansion region is infinitely small
             // so we are guaranteed to not have Mach wave reflections off the upper wall.
             // This means the number of characteristics is known upfront.
             size_t num_characteristics = static_cast<size_t>(net.num_c_plus);
@@ -306,11 +301,13 @@ void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
                 CharacteristicNet::Wavefront next_wavefront;
                 auto& curr_wavefront = net.wavefronts[i];
                 // skip the first node in a wavefront -- it is the centerline node which doesn't impact
-                // downstream nodes.
+                // downstream nodes. The C- characteristic is irrelevant due to symmetry, 
+                // and the C+ characteristic impacts nodes on the same wavefront.
                 CharacteristicPoint prev_point;
                 for (size_t j = 1; j < curr_wavefront.size(); j++) {
                     const CharacteristicPoint& parent_point = curr_wavefront[j];
                     // first non-centerline node impacts the downstream centerline node.
+                    // all other nodes impact interior downstream nodes.
                     if (j == 1) {
                         prev_point = solve_axis_point(parent_point);
                     }
@@ -390,6 +387,35 @@ CharacteristicPoint MocNozzle::solve_wall_point(
     throw std::runtime_error("Invalid MocMode in solve_wall_point");
 }
 
+CharacteristicPoint MocNozzle::solve_initial_axis_point(const CharacteristicPoint& expansion_point) {
+    CharacteristicPoint point;
+    point.y = 0.0; //point always lies on axis
+    switch (m_options.flow_type) {
+        case MocFlowKind::PLANAR: {
+            point.theta = expansion_point.theta;
+            point.nu = expansion_point.nu; // this follows from geometric analysis
+            point.K_plus = point.theta - point.nu;
+            point.K_minus = expansion_point.K_minus; 
+            point.gamma_s = get_gamma_s();
+            point.mach = mach_from_prandtl_meyer(point.nu, point.gamma_s, expansion_point.mach);
+            point.mu = mach_to_mu(point.mach);
+            
+            characteristic_isentropic_PT_from_parent(point, expansion_point);
+            
+            double c_minus_angle = average_cminus_angle(expansion_point, point);
+            point.x = expansion_point.x - expansion_point.y / tan(c_minus_angle);
+            break;
+        }
+        case MocFlowKind::AXISYMMETRIC: {
+            throw NotImplementedError("Axisymmetric flow is not implemented.");
+        }
+        default:
+            throw std::runtime_error("Invalid flow type specified.");
+    }
+
+    return point;
+}
+
 CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_parent) {
     CharacteristicPoint axis_point;
     axis_point.y = 0.0;
@@ -406,11 +432,7 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
         axis_point.mach = mach_from_prandtl_meyer(axis_point.nu, gamma, off_axis_parent.mach);
         axis_point.mu = asin(1.0/axis_point.mach);
 
-        double off_axis_stag = stagnation_factor(off_axis_parent.mach, gamma);
-        double axis_stag = stagnation_factor(axis_point.mach, gamma);
-        double stagnation_ratio = off_axis_stag/axis_stag;
-        axis_point.temperature = off_axis_parent.temperature * stagnation_ratio;
-        axis_point.pressure = off_axis_parent.pressure * pow(stagnation_ratio, gamma/(gamma-1.0));
+        characteristic_isentropic_PT_from_parent(axis_point, off_axis_parent);
 
         double c_minus_angle = 0.5 * (off_axis_parent.theta + axis_point.theta) 
             - 0.5 * (off_axis_parent.mu + axis_point.mu);
@@ -434,7 +456,7 @@ std::pair<double, double> MocNozzle::intersect_characteristic_with_wall(
         const NozzleProfile& wall) {
     
     double char_angle = parent.theta + parent.mu;
-    double char_slope = std::tan(char_angle);
+    double char_slope = tan(char_angle);
     
     // we use a basic predictor-corrector scheme to find the wall intersection
     // predictor: straight-line intersection
@@ -521,11 +543,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_algebraic(
 
     // we arbitrarily use point 1 as the reference stagnation point.
     // this makes no difference due to Crocco's theorem
-    double stagnation_factor_1 = stagnation_factor(p1.mach, gamma);
-    double stagnation_factor_3 = stagnation_factor(p3.mach, gamma);
-    
-    p3.temperature = p1.temperature * stagnation_factor_1/stagnation_factor_3;
-    p3.pressure = p1.pressure * pow(stagnation_factor_1/stagnation_factor_3, gamma/(gamma-1.0));
+    characteristic_isentropic_PT_from_parent(p3, p1);
 
     // compute intersection point
     // assumimg characteristics are straight lines.
@@ -571,12 +589,7 @@ CharacteristicPoint MocNozzle::solve_wall_flow(
     wall_point.K_minus = wall_point.theta + wall_point.nu;
 
     // Isentropic relations for pressure, temperature
-    double stagnation_factor_parent = stagnation_factor(interior_parent.mach, gamma);
-    double stagnation_factor_wall = stagnation_factor(wall_point.mach, gamma);
-    double temperature_ratio = stagnation_factor_parent / stagnation_factor_wall;
-
-    wall_point.temperature = interior_parent.temperature * temperature_ratio;
-    wall_point.pressure = interior_parent.pressure * std::pow(temperature_ratio, gamma/(gamma-1.0));
+    characteristic_isentropic_PT_from_parent(wall_point, interior_parent);
 
     return wall_point;
 }

@@ -1,7 +1,18 @@
 #include <cmath>
 #include "goddard/characteristics.hpp"
-
+#include "goddard/gas_dynamics.hpp"
 namespace Goddard {
+
+void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const CharacteristicPoint& parent){
+    double parent_stagnation_factor = stagnation_factor(parent.mach, parent.gamma_s);
+    double current_stagnation_factor = stagnation_factor(point.mach, point.gamma_s);
+    double ratio = parent_stagnation_factor/current_stagnation_factor;
+
+    double average_gamma = 0.5*(parent.gamma_s + point.gamma_s);
+    
+    point.temperature = parent.temperature * ratio;
+    point.pressure = parent.pressure * pow(ratio, average_gamma / (average_gamma - 1.0));
+}
 
 std::pair<double, double> characteristic_intersection_coordinates(
     const CharacteristicPoint& p1, 
