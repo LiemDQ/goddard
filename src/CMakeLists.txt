@@ -47,6 +47,8 @@ add_library(
   rocket_results.cpp
   prandtlmeyer.cpp
   characteristics.cpp
+  moc.cpp
+  shocks.cpp
 )
 
 target_include_directories(goddard_lib
