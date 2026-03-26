@@ -31,6 +31,14 @@ double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double 
     return gas.pressure() * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
 }
 
+double stagnation_factor(double mach, double gamma) {
+    return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
+}
+
+Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd gamma) {
+    return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
+}
+
 Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma) {
     return gas.pressure() * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
 }
