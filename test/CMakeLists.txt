@@ -17,6 +17,9 @@ add_executable(
     cea_comparer.cpp
     test_speciate.cpp
     test_nozzle.cpp
+    test_prandtl_meyer.cpp
+    test_moc_unit.cpp
+    test_moc_design.cpp
 )
 
 target_include_directories(goddardTests      
