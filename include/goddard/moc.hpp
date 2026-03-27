@@ -7,7 +7,7 @@
 
 #include "cantera/core.h" 
 #include "goddard/characteristics.hpp"
-
+#include "goddard/prandtlmeyer.hpp"
 namespace Goddard {
 
 // Forward declaration (defined in nozzle.hpp)
@@ -100,7 +100,7 @@ struct MocOptions {
     int num_characteristics;    // number of C+ lines from initial expansion fan
     double gamma;               // used only for PERFECT_GAS
     double reltol = 1e-5;
-    double abstol = 1e-8;
+    double abstol = 1e-10;
     ThroatGeometry geometry;     // throat geometry
 
     double theta_max;           // max wall angle (radians) for minimum length nozzle design mode
@@ -222,15 +222,51 @@ private:
         const CharacteristicPoint& interior_parent,
         const NozzleProfile& wall);
     
-    double get_gamma_s();
+    double gamma_s_from_mach(double mach) const;
+    double gamma_s_from_nu(double nu) const;
+    /**
+     * Get mach number from characteristic Prandtl-Meyer expansion angle.
+     */
+    double mach_from_nu(const CharacteristicPoint& point, double mach_guess = 0.0) const;
+
+    /**
+     * Get Prandtl-Meyer expansion angle from mach number.
+     */
+    double nu_from_mach(double mach) const;
+    
+    /**
+     * Iteratively find the mach number of the intersecting node.
+     */
+    double find_node_mach(
+        const CharacteristicPoint& p1, 
+        const CharacteristicPoint& p2,
+        double source_delta,
+        double mach_guess = 0.0
+    ) const;
+
+    void update_thermodynamic_state(CharacteristicPoint& point);
+    void update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
+    void update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
+
+    double cplus_source_term(
+        const CharacteristicPoint& p1, 
+        double new_y) const;
+
+    double cminus_source_term(
+        const CharacteristicPoint& p1, 
+        double new_y) const;
+
 
     std::shared_ptr<Cantera::Solution> m_gas;
     std::vector<double> m_theta_schedule;
     std::vector<std::string> m_messages;
 
+    PrandtlMeyerTable pm_table;
+
     double m_L_ref; //reference length for dimensionalization
     double m_P_ref; //reference pressure for dimensionalization
     double m_T_ref; //reference temperature for dimensionalization
+    double m_S_ref; //reference entropy
 };
 
 } // namespace Goddard

@@ -24,9 +24,9 @@ double stagnation_factor(double mach, double gamma);
 
 Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd gamma);
 
-inline double mach_to_mu(double mu) {
+inline double mach_to_mu(double mach) {
     // unfortunately trig functions aren't constexpr until C++26.
-    return std::asin(1.0/mu);
+    return std::asin(1.0/mach);
 }
 
 
