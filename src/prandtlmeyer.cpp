@@ -44,15 +44,16 @@ void PrandtlMeyerTable::build_table(
     bool equilibrium,
     double s0,
     double h0,
-    double a_throat, 
-    double h_end, 
+    double a_throat,
+    double pressure_ratio,
     size_t num_points) {
-    
-    // if h_end is not specified, set to 1/100 of total enthalpy
-    h_end = std::max(h0/100.0, h_end);
 
-    double h_throat = h0 - a_throat*a_throat/2.0;
-    double dh = (h_end - h_throat)/(num_points-1);
+    equil = equilibrium;
+
+    // Get throat pressure for computing the pressure stepping range
+    double P_throat = thermo.pressure();
+    double P_end = P_throat * pressure_ratio;
+    double dlnP = (log(P_end) - log(P_throat)) / static_cast<double>(num_points - 1);
 
     velocities.clear();
     nus.clear();
@@ -72,29 +73,39 @@ void PrandtlMeyerTable::build_table(
 
     double nu = 0.0;
     double old_V = a_throat;
+    double old_dnu_dV = 0.0; // for trapezoidal rule
     for (size_t i = 0; i < num_points; i++) {
-        double h = h_throat + i*dh;
+        double P = P_throat * exp(static_cast<double>(i) * dlnP);
 
-        double V = sqrt(2*(h0-h));
+        thermo.setState_SP(s0, P);
+        if (equilibrium) {
+            thermo.equilibrate("SP");
+        }
+
+        double h = thermo.enthalpy_mass();
+        double V = sqrt(std::max(0.0, 2.0 * (h0 - h)));
         double dV = V - old_V;
 
         double gamma;
-        thermo.setState_SH(s0, h);
         if (equilibrium) {
-            thermo.equilibrate("SH", "gibbs");
             gamma = get_equilibrium_gamma(thermo);
         }
         else {
-            gamma = thermo.cp_mass()/thermo.cv_mass();            
+            gamma = thermo.cp_mass() / thermo.cv_mass();
         }
         double a = gas_sonic_velocity(thermo, gamma);
-        double mach = V/a;
-        double dnu = sqrt(mach*mach -1)*dV/V;
+        double mach = (i == 0) ? 1.0 : V / a;
+        double current_dnu_dV = sqrt(std::max(0.0, mach * mach - 1.0)) / V;
+
+        // Trapezoidal rule: nu += 0.5*(f(old) + f(new)) * dV
+        double dnu = 0.5 * (old_dnu_dV + current_dnu_dV) * dV;
         nu += dnu;
+        old_dnu_dV = current_dnu_dV;
+        old_V = V;
 
         velocities.push_back(V);
         nus.push_back(nu);
-        dnu_dV.push_back(dnu);
+        dnu_dV.push_back(current_dnu_dV);
         machs.push_back(mach);
         enthalpies.push_back(h);
         gamma_s.push_back(gamma);
@@ -198,12 +209,13 @@ size_t PrandtlMeyerTable::find_closest_nMv_index(double query, const std::vector
         throw std::runtime_error("Cannot search table: Table has not been built yet.");
     auto it = std::upper_bound(keys.begin(), keys.end(), query);
 
-    if (it == keys.begin()) 
+    if (it == keys.begin())
         throw std::out_of_range("Query below search range");
     else if (it == keys.end())
         throw std::out_of_range("Query above search range");
     
     const size_t r = std::distance(keys.begin(), it);
+    return r;
 }
 
 double PrandtlMeyerTable::interp(double query,

@@ -116,16 +116,26 @@ struct MocOptions {
     NozzleProfile nozzle_profile; // wall geometry -- for analysis mode
 };
 
+struct ExitPlane {
+    std::vector<double> y;
+    std::vector<double> mach;
+    std::vector<double> theta;
+    std::vector<double> pressure;
+    std::vector<double> temperature;
+};
+
 struct MocResult {
     bool converged;
     CharacteristicNet net;
     NozzleProfile profile; //computed in design mode, echoed in analysis
 
-    std::vector<std::string> messages; // warnings and error information 
+    std::vector<std::string> messages; // warnings and error information
 
     double exit_mach;
     double nozzle_length;   // throat to exit plane
     double area_ratio;      // exit area / throat area
+
+    ExitPlane exit_plane;
 };
 
 /** 

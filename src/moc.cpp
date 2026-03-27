@@ -1,5 +1,8 @@
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include "goddard/equilibrium.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
@@ -40,12 +43,37 @@ size_t NozzleProfile::size() const {
     return x.size();
 }
 
-NozzleProfile NozzleProfile::load_profile_csv(const std::string& /*filename*/) {
-    throw NotImplementedError("Loading csv profiles is not implemented.");
+NozzleProfile NozzleProfile::load_profile_csv(const std::string& filename) {
+    NozzleProfile profile;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open file: " + filename);
+    }
+    std::string line;
+    // skip header line
+    std::getline(file, line);
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        double x_val, y_val;
+        char comma;
+        if (iss >> x_val >> comma >> y_val) {
+            profile.x.push_back(x_val);
+            profile.y.push_back(y_val);
+        }
+    }
+    return profile;
 }
 
-void NozzleProfile::save_profile_csv(const std::string& /*filename*/) {
-    throw NotImplementedError("Saving csv profiles is not implemented.");
+void NozzleProfile::save_profile_csv(const std::string& filename) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open file for writing: " + filename);
+    }
+    file << std::setprecision(15);
+    file << "x,y\n";
+    for (size_t i = 0; i < x.size(); i++) {
+        file << x[i] << "," << y[i] << "\n";
+    }
 }
 
 size_t NozzleProfile::find_index(double x_query) const {
@@ -63,14 +91,6 @@ MocResult MocNozzle::solve() {
     m_theta_schedule.clear();
 
     CharacteristicNet net;
-    if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
-        net.topology = NetTopology::TRIANGULAR;
-    } 
-    else {
-        net.topology = NetTopology::WAVEFRONT;
-    }
-
-    
     std::vector<CharacteristicPoint> data_line;
 
     if (m_options.chemistry == MocChemistry::PERFECT_GAS) {
@@ -107,12 +127,11 @@ MocResult MocNozzle::solve() {
         double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle->get_gamma_s(*m_gas->thermo()));
         
         pm_table.build_table(
-            *m_gas->thermo(), 
+            *m_gas->thermo(),
             m_options.chemistry == MocChemistry::EQUILIBRIUM,
-            throat.S_inlet, 
+            throat.S_inlet,
             throat.H_stagnation,
-            a_throat,
-            1000);
+            a_throat);
                 
         data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
     }
@@ -125,10 +144,23 @@ MocResult MocNozzle::solve() {
     solve_kernel_region(net);
     solve_wall_region(net);
 
+    // Check for invalid points
+    bool all_valid = true;
+    for (const auto& wf : net.wavefronts) {
+        for (const auto& pt : wf) {
+            if (pt.mach < 0.0) {
+                all_valid = false;
+                m_messages.push_back("Invalid point detected: non-downstream intersection or subsonic pocket");
+                break;
+            }
+        }
+        if (!all_valid) break;
+    }
+
     MocResult result;
     result.net = net;
     result.messages = m_messages;
-    result.converged = true; // no invalid points detected (TODO: check during solve)
+    result.converged = all_valid;
 
     // Populate performance fields
     if (!net.wall_x.empty()) {
@@ -153,6 +185,30 @@ MocResult MocNozzle::solve() {
     // Build wall profile from computed wall coordinates
     result.profile.x = net.wall_x;
     result.profile.y = net.wall_y;
+
+    // Exit plane extraction:
+    // For a min-length nozzle, the exit plane is the last wavefront + last wall point.
+    // The last wavefront contains the axis point, and each preceding wavefront's
+    // last point was absorbed into wall calculations.
+    if (!net.wavefronts.empty()) {
+        const auto& last_wf = net.wavefronts.back();
+        for (const auto& pt : last_wf) {
+            result.exit_plane.y.push_back(pt.y);
+            result.exit_plane.mach.push_back(pt.mach);
+            result.exit_plane.theta.push_back(pt.theta);
+            result.exit_plane.pressure.push_back(pt.pressure);
+            result.exit_plane.temperature.push_back(pt.temperature);
+        }
+        // Add the last wall point if available
+        if (!net.wall_points.empty()) {
+            const auto& wp = net.wall_points.back();
+            result.exit_plane.y.push_back(wp.y);
+            result.exit_plane.mach.push_back(wp.mach);
+            result.exit_plane.theta.push_back(wp.theta);
+            result.exit_plane.pressure.push_back(wp.pressure);
+            result.exit_plane.temperature.push_back(wp.temperature);
+        }
+    }
 
     return result;
 }
@@ -182,7 +238,6 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     sonic_point.K_plus = 0.0;
 
     sonic_point.gamma_s = gamma_s_from_nu(sonic_point.nu);
-    double sonic_stagnation_factor = stagnation_factor(sonic_point.mach, sonic_point.gamma_s);
     
     
     switch (m_options.mode) {
@@ -340,13 +395,14 @@ void MocNozzle::solve_wall_region(CharacteristicNet& net) {
             wall_point.y = 1.0;
             
             // for the min length nozzle case, every wavefront has a wall node
-            // impacted by the last node in the wavefront 
+            // impacted by the last node in the wavefront
             for (size_t i = 0; i < net.wavefronts.size(); i++) {
                 auto& wavefront = net.wavefronts[i];
                 const CharacteristicPoint& parent_point = wavefront.back();
                 wall_point = solve_wall_point(parent_point, wall_point, static_cast<int>(i));
                 net.wall_x.push_back(wall_point.x);
                 net.wall_y.push_back(wall_point.y);
+                net.wall_points.push_back(wall_point);
             }
             break;
         }
@@ -402,7 +458,20 @@ CharacteristicPoint MocNozzle::solve_initial_axis_point(const CharacteristicPoin
             break;
         }
         case MocFlowKind::AXISYMMETRIC: {
-            throw NotImplementedError("Axisymmetric flow is not implemented.");
+            // Same approach as planar for the initial axis point:
+            // assign theta from the expansion fan to bootstrap marching.
+            // The axisymmetric source term is not applied here because the
+            // initial expansion fan is modeled as a centered expansion at a point,
+            // and the first axis point is a direct consequence of this geometric
+            // construction. Source terms enter in subsequent solve_axis_point calls.
+            point.theta = expansion_point.theta;
+            update_thermodynamic_state_from_nu(point, expansion_point.nu, expansion_point.mach);
+            point.K_plus = point.theta - point.nu;
+            point.K_minus = expansion_point.K_minus;
+
+            double c_minus_angle = average_cminus_angle(expansion_point, point);
+            point.x = expansion_point.x - expansion_point.y / tan(c_minus_angle);
+            break;
         }
         default:
             throw std::runtime_error("Invalid flow type specified.");
@@ -434,12 +503,45 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
             break;
         }
         case MocFlowKind::AXISYMMETRIC: {
-            throw NotImplementedError("Axisymmetric flow is not implemented.");
+            // The source term sin(theta)/y is 0/0 at y=0.
+            // By L'Hopital's rule: lim_{y->0} sin(theta)/y = dtheta/dy,
+            // estimated from the off-axis parent point.
+            double dtheta_dy = off_axis_parent.theta / off_axis_parent.y;
+
+            // Predictor: planar solution as initial guess
+            axis_point.K_minus = off_axis_parent.K_minus;
+            double nu_pred = axis_point.K_minus; // theta=0 => nu = K_minus
+            update_thermodynamic_state_from_nu(axis_point, nu_pred, off_axis_parent.mach);
+            axis_point.K_plus = -axis_point.nu;
+
+            double c_minus_angle = average_cminus_angle(off_axis_parent, axis_point);
+            axis_point.x = off_axis_parent.x - off_axis_parent.y / tan(c_minus_angle);
+
+            // Corrector: apply limiting source term
+            // The C- compatibility equation at the axis becomes:
+            // dtheta + dnu = S_cminus * ds
+            // where S_cminus_limit = dtheta_dy / (M * sin(mu))
+            // and ds is the arc length along the C- characteristic.
+            double ds = off_axis_parent.y / std::abs(sin(c_minus_angle));
+            double mu_avg = 0.5 * (off_axis_parent.mu + axis_point.mu);
+            double M_avg = 0.5 * (off_axis_parent.mach + axis_point.mach);
+            double source_limit = dtheta_dy / (M_avg * sin(mu_avg)) * ds;
+
+            // Corrected nu: K_minus from parent, minus source contribution
+            double nu_corrected = off_axis_parent.K_minus + source_limit;
+            update_thermodynamic_state_from_nu(axis_point, nu_corrected, axis_point.mach);
+            axis_point.K_minus = axis_point.nu; // theta=0
+            axis_point.K_plus = -axis_point.nu;
+
+            // Recompute position with corrected slope
+            c_minus_angle = average_cminus_angle(off_axis_parent, axis_point);
+            axis_point.x = off_axis_parent.x - off_axis_parent.y / tan(c_minus_angle);
+            break;
         }
         default:
             throw std::runtime_error("Invalid flow type specified.");
     }
-        
+
     return axis_point;
 }
 
@@ -518,11 +620,8 @@ CharacteristicPoint MocNozzle::solve_interior_point(
 
 CharacteristicPoint MocNozzle::solve_interior_point_algebraic(
     const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2) 
+    const CharacteristicPoint& p2)
 {
-
-    double gamma = m_options.gamma;
-
     CharacteristicPoint p3;
     p3.theta = 0.5*(p1.K_minus + p2.K_plus);
     double mach_guess = 0.5*(p1.mach + p2.mach);
@@ -540,11 +639,14 @@ CharacteristicPoint MocNozzle::solve_interior_point_algebraic(
     p3.x = x;
     p3.y = y;
 
-    // sanity check
+    // validity checks
     if (p3.x < p1.x || p3.x < p2.x) {
         p3.mach = -1.0; // invalid point
     }
-    
+    if (p3.mach < 1.0 && p3.mach > 0.0) {
+        p3.mach = -1.0; // subsonic point -- characteristics undefined
+    }
+
     return p3;
 }
 
@@ -566,12 +668,14 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     CharacteristicPoint p3;
     double c_minus_angle = p1.theta - p1.mu;
     double c_plus_angle = p2.theta + p2.mu;
-    
-    auto [x,y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+
+    auto [x, y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+    p3.x = x;
+    p3.y = y;
     double S1 = cminus_source_term(p1, y);
     double S2 = cplus_source_term(p2, y);
 
-    update_thermodynamic_state_from_mach(p3, find_node_mach(p1, p2, S1-S2, y));
+    update_thermodynamic_state_from_mach(p3, find_node_mach(p1, p2, S1 - S2, 0.5 * (p1.mach + p2.mach)));
 
     // from compatibility equation.
     p3.theta = S1 + p1.theta - (p3.nu - p1.nu);
@@ -579,17 +683,18 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     p3.K_minus = p3.theta + p3.nu;
 
     // corrector step
-
-    const int max_iters = 2;
+    const int max_iters = 3;
 
     for (int i = 0; i < max_iters; i++) {
         c_minus_angle = average_cminus_angle(p1, p3);
         c_plus_angle = average_cplus_angle(p2, p3);
         auto [new_x, new_y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+        p3.x = new_x;
+        p3.y = new_y;
         double S1_new = cminus_source_term(p1, new_y);
         double S2_new = cplus_source_term(p2, new_y);
         update_thermodynamic_state_from_mach(p3, find_node_mach(p1, p2, S1_new - S2_new, p3.mach));
-        
+
         p3.theta = S1_new + p1.theta - (p3.nu - p1.nu);
         p3.K_plus = p3.theta - p3.nu;
         p3.K_minus = p3.theta + p3.nu;
@@ -624,7 +729,21 @@ CharacteristicPoint MocNozzle::solve_wall_flow(
             break;
         }
         case MocFlowKind::AXISYMMETRIC: {
-            // for axisymmetric flow, we must also account for the source term.
+            // For axisymmetric flow, K+ is not preserved along C+.
+            // Use predictor-corrector: start with planar approximation,
+            // then correct using the source term.
+            // Predictor: planar K+ preservation
+            wall_point.K_plus = interior_parent.K_plus;
+            update_thermodynamic_state_from_nu(
+                wall_point,
+                wall_point.theta - wall_point.K_plus,
+                interior_parent.mach);
+            wall_point.K_minus = wall_point.theta + wall_point.nu;
+
+            // The source term correction requires y, which is computed later
+            // in solve_wall_point_design/analysis. We store the predictor result
+            // and the corrector is applied in those methods.
+            // For now, this gives a first-order approximation.
             break;
         }
         default:
@@ -732,29 +851,40 @@ double MocNozzle::nu_from_mach(double mach) const {
 }
 
 double MocNozzle::find_node_mach(
-    const CharacteristicPoint& p1, 
+    const CharacteristicPoint& p1,
     const CharacteristicPoint& p2,
     double source_delta,
     double mach_guess) const
 {
-    
+
     // initial guess: mach of upstream
     double mach = (mach_guess > 1.0) ? mach_guess : p1.mach;
-    
+
     double delta_theta = p1.theta - p2.theta;
     const int max_iter = 15;
     // Newton's method to find root
+    // Residual function obtained from combining both compatibility equations:
+    //
+    //$$\epsilon (V_P) = (\theta_{A}- \theta_{B}) + \Delta \nu (V_{A} \rightarrow V_{P})
+    // + \Delta \nu (V_{B} \rightarrow V_{P}) - (S_{A}- S_{B})$$
+    // where A and B indicate upstream points.
     for (int i = 0; i < max_iter; i++) {
-        auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
-        double nu3 = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
+        double nu3, derivative;
 
-        double residual = delta_theta - source_delta + (nu3 - p1.nu ) + (nu3 - p2.nu);
+        if (m_options.chemistry == MocChemistry::PERFECT_GAS) {
+            nu3 = prandtl_meyer(mach, m_options.gamma);
+            // dnu/dM for perfect gas
+            derivative = 2.0 * prandtl_meyer_derivative(mach, m_options.gamma);
+        } else {
+            auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
+            nu3 = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
+            double V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
+            derivative = 2.0 * sqrt(mach * mach - 1.0) / V;
+        }
+
+        double residual = delta_theta - source_delta + (nu3 - p1.nu) + (nu3 - p2.nu);
         if (std::abs(residual) < m_options.abstol) return mach;
-        
-        // the derivative of the residual function is simply 2 * compatibility term
-        // as the theta and source terms are constant
-        double V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
-        double derivative = 2 * sqrt(mach * mach -1) / V;
+
         mach -= residual / derivative;
     }
 
@@ -768,15 +898,16 @@ void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
             // the choice of upstream point can be arbitrary due to Crocco's theorem
             // stagnation factor at throat is = 1 by definition
             double stagnation_ratio = stagnation_factor(point.mach, point.gamma_s);
-            point.temperature = m_T_ref * stagnation_ratio;
-            point.pressure = m_P_ref * stagnation_ratio * pow(stagnation_ratio, point.gamma_s / (point.gamma_s - 1.0));
+            point.temperature = m_T_ref / stagnation_ratio;
+            point.pressure = m_P_ref / pow(stagnation_ratio, point.gamma_s / (point.gamma_s - 1.0));
             break;
         }
         case MocChemistry::FROZEN:
         case MocChemistry::EQUILIBRIUM: {
             m_gas->thermo()->restoreState(point.cantera_state);
-            point.temperature = m_gas->thermo()->temperature()/ m_T_ref;
+            point.temperature = m_gas->thermo()->temperature() / m_T_ref;
             point.pressure = m_gas->thermo()->pressure() / m_P_ref;
+            break;
         }
         default: //unreachable
             throw std::runtime_error("Invalid value of MocChemistry specified.");

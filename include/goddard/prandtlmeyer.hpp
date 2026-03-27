@@ -28,7 +28,7 @@ double frozen_prandtl_meyer(Cantera::ThermoPhase& thermo, double mach);
  */
 class PrandtlMeyerTable {
 public:
-    bool equil;
+    
     std::vector<double> velocities;
     std::vector<double> nus;
     std::vector<double> machs;
@@ -38,18 +38,29 @@ public:
     std::vector<std::vector<double>> states;
 
     /**
-     * Build table of (velocity, nu) pairs.
+     * Build table of (velocity, nu) pairs along an isentropic expansion.
+     * Steps in pressure from throat conditions to a specified pressure ratio.
+     *
+     * @param thermo     Cantera ThermoPhase, set to throat conditions on entry
+     * @param equilibrium  If true, equilibrate at each point; otherwise frozen composition
+     * @param s0         Stagnation entropy (J/kg/K)
+     * @param h0         Stagnation enthalpy (J/kg)
+     * @param a_throat   Sound speed at the throat (m/s)
+     * @param pressure_ratio  Ratio P_exit/P_throat to expand to (default: 1e-4)
+     * @param num_points Number of table points
      */
     void build_table(
-        Cantera::ThermoPhase& thermo, 
+        Cantera::ThermoPhase& thermo,
         bool equilibrium,
         double s0,
         double h0,
-        double a_throat, 
-        double h_end = 0.0,
-        size_t num_points = 100);
+        double a_throat,
+        double pressure_ratio = 1e-4,
+        size_t num_points = 500);
     
     bool is_built() const { return built; }
+
+    bool is_equilibrium() const { return equil; }
 
     // Get velocity from nu.
     double interpolate_V(double nu) const;
@@ -115,7 +126,8 @@ public:
     
     IdxWeight index_and_weight(double query, const std::vector<double>& keys) const;
 private:
-    bool built;
+    bool built = false;
+    bool equil = false;
     
     /**
      * Find the index closest to a queried value using binary search.
