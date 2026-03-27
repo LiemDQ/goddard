@@ -57,11 +57,6 @@ std::pair<double, double> characteristic_intersection_coordinates(
     double angle1,
     double angle2);
 
-enum class NetTopology {
-    TRIANGULAR,
-    WAVEFRONT
-};
-
 class CharacteristicNet {
     
     public:
@@ -73,20 +68,11 @@ class CharacteristicNet {
     // access point at (i_plus, j_minus)
     std::vector<Wavefront> wavefronts;
 
-    // TODO: this implementation is only valid for triangular indexing!
-    CharacteristicPoint& at(int i, int j){
-        return wavefronts.front()[row_offset(j) + i];
-    }
-
-    const CharacteristicPoint& at(int i, int j) const {
-        return wavefronts.front()[row_offset(j) + i];
-    }
 
     // Wall contour (profile output)
     std::vector<double> wall_x;
     std::vector<double> wall_y;
-
-    NetTopology topology;
+    std::vector<CharacteristicPoint> wall_points;
 
 private:
     int row_offset(int j) const; //triangular indexing
