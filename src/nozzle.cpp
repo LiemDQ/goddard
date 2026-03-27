@@ -405,7 +405,7 @@ double FrozenNozzle::iterate_temperature(
 
     gas_thermo->setState_TPX(T_exit, throat_condition.P_inlet/pressure_ratio, composition.data());
 
-    double Cp = gas_thermo->cp_mass(); //TODO: unsure if we can just use this or whether it needs to be equilibrium Cp
+    double Cp = gas_thermo->cp_mass();
     double dlnT = (throat_condition.S_inlet - gas_thermo->entropy_mass())/Cp;
 
     int maxiter = 8;
