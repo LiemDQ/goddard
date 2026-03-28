@@ -207,8 +207,7 @@ private:
     
     // Compute flow at known wall position.
     CharacteristicPoint solve_wall_point_analysis(
-        const CharacteristicPoint& interior_parent,
-        double theta_wall, double x_wall, double y_wall);
+        const CharacteristicPoint& interior_parent);
 
     // The first point is a special case, as it lies on the axis 
     // but is assigned a nonzero theta. This is because the calculations 
@@ -254,14 +253,29 @@ private:
         double mach_guess = 0.0
     ) const;
 
+    /* Find where wall intersects with line extending outwards from a characteristic point, for a specified angle */
+    std::pair<double,double> find_wall_hit(const CharacteristicPoint& p, const NozzleProfile& wall, double char_angle) const;
+
     void update_thermodynamic_state(CharacteristicPoint& point);
     void update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
     void update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
 
+    /**
+     * Source term for axisymmetric flow along C+ characteristic.
+     */
     double cplus_source_term(
         const CharacteristicPoint& p1, 
         double new_y) const;
-
+    
+    /**
+     * Source term for axisymmetric flow along C+ characteristic.
+     */
+    double cplus_source_term(
+        const CharacteristicPoint& p1, 
+        const CharacteristicPoint& p3) const;
+    /**
+     * Source term for axisymmetric flow along C- characteristic.
+     */
     double cminus_source_term(
         const CharacteristicPoint& p1, 
         double new_y) const;

@@ -432,10 +432,8 @@ CharacteristicPoint MocNozzle::solve_wall_point(
             throw NotImplementedError("Rao nozzle design is not implemented.");
         }
         case MocMode::ANALYSIS: {
-            auto [x_wall, y_wall] = intersect_characteristic_with_wall(
-                interior_parent, m_options.nozzle_profile);
-            double theta_wall = m_options.nozzle_profile.theta_at(x_wall);
-            return solve_wall_point_analysis(interior_parent, theta_wall, x_wall, y_wall);
+            
+            return solve_wall_point_analysis(interior_parent);
         }
     }
     // unreachable
@@ -550,56 +548,12 @@ std::pair<double, double> MocNozzle::intersect_characteristic_with_wall(
         const NozzleProfile& wall) {
     
     double char_angle = parent.theta + parent.mu;
-    double char_slope = tan(char_angle);
     
-    // we use a basic predictor-corrector scheme to find the wall intersection
-    // predictor: straight-line intersection
-    // linear scan is appropriate for tens to low hundreds of points. 
+    // We use a basic predictor-corrector scheme to find the wall intersection
+    // Predictor: straight-line intersection
+    // Linear scan is appropriate for tens to low hundreds of points. 
     // if npoints grows beyond that, switch to bisection algorithm
-    double x_hit, y_hit;
-    for (size_t k = 0; k < wall.x.size() - 1; k++) {
-        double wall_slope = (wall.y[k+1] - wall.y[k])
-            / (wall.x[k+1] - wall.x[k]);
-        double wall_intercept = wall.y[k] - wall_slope * wall.x[k];
-        double char_intercept = parent.y - char_slope * parent.x;
-
-        double x_intercept = (wall_intercept - char_intercept) / (char_slope - wall_slope);
-
-        // check if intersection is within the wall segment
-        if (x_intercept >= wall.x[k] && x_intercept <= wall.x[k+1]) {
-            x_hit = x_intercept;
-            y_hit = parent.y + char_slope * (x_hit - parent.x);
-            break;
-        }
-    }
-
-    // corrector (for curved characteristics):
-    // solve the wall point flow using computed theta
-    // then recompute characteristic slope as average of parent and wall-point slopes.
-    // one correction is usually sufficient.
-    double wall_theta = wall.theta_at(x_hit);
-    CharacteristicPoint wall_point = solve_wall_flow(parent, wall_theta);
-    double wall_char_angle = wall_point.theta + wall_point.mu;
-    double average_char_angle = 0.5*(wall_char_angle + char_angle);
-    double corrected_char_slope = std::tan(average_char_angle);
-
-    for (size_t k = 0; k < wall.x.size() - 1; k++) {
-        double wall_slope = (wall.y[k+1] - wall.y[k])
-            / (wall.x[k+1] - wall.x[k]);
-        double wall_intercept = wall.y[k] - wall_slope * wall.x[k];
-        double char_intercept = parent.y - corrected_char_slope * parent.x;
-
-        double x_intercept = (wall_intercept - char_intercept) / (corrected_char_slope - wall_slope);
-
-        // check if intersection is within the wall segment
-        if (x_intercept >= wall.x[k] && x_intercept <= wall.x[k+1]) {
-            x_hit = x_intercept;
-            y_hit = parent.y + corrected_char_slope * (x_hit - parent.x);
-            break;
-        }
-    }
-
-    return {x_hit, y_hit};
+    return find_wall_hit(parent, wall, char_angle);
 }
 
 CharacteristicPoint MocNozzle::solve_interior_point(
@@ -714,41 +668,25 @@ CharacteristicPoint MocNozzle::solve_wall_flow(
     CharacteristicPoint wall_point;
     // geometric constraint: the flow at the wall must follow the wall curvature
     wall_point.theta = theta_wall;
+    // Predictor: planar K+ preservation
+    // Flow solve: compatibility equation along C+ from interior parent
+    // K+ is preserved: theta - nu = const along C+
+    // this only applies for planar flow.
 
-    switch (m_options.flow_type) {
-        case MocFlowKind::PLANAR: {
-            // Flow solve: compatibility equation along C+ from interior parent
-            // K+ is preserved: theta - nu = const along C+
-            // this only applies for planar flow.
-            wall_point.K_plus = interior_parent.K_plus;
-            update_thermodynamic_state_from_nu(
-                wall_point, 
-                wall_point.theta - wall_point.K_plus, 
-                interior_parent.mach);
-            wall_point.K_minus = wall_point.theta + wall_point.nu;
-            break;
-        }
-        case MocFlowKind::AXISYMMETRIC: {
-            // For axisymmetric flow, K+ is not preserved along C+.
-            // Use predictor-corrector: start with planar approximation,
-            // then correct using the source term.
-            // Predictor: planar K+ preservation
-            wall_point.K_plus = interior_parent.K_plus;
-            update_thermodynamic_state_from_nu(
-                wall_point,
-                wall_point.theta - wall_point.K_plus,
-                interior_parent.mach);
-            wall_point.K_minus = wall_point.theta + wall_point.nu;
+    // For axisymmetric flow, K+ is not preserved along C+.
+    // Use predictor-corrector: start with planar approximation,
+    // then correct using the source term.
+    // The source term correction requires y, which is computed later
+    // in solve_wall_point_design/analysis. We store the predictor result
+    // and the corrector is applied in those methods.
+    // For now, this gives a first-order approximation.
 
-            // The source term correction requires y, which is computed later
-            // in solve_wall_point_design/analysis. We store the predictor result
-            // and the corrector is applied in those methods.
-            // For now, this gives a first-order approximation.
-            break;
-        }
-        default:
-            throw std::runtime_error("Invalid flow type specified.");
-    }
+    wall_point.K_plus = interior_parent.K_plus;
+    update_thermodynamic_state_from_nu(
+        wall_point, 
+        wall_point.theta - wall_point.K_plus, 
+        interior_parent.mach);
+    wall_point.K_minus = wall_point.theta + wall_point.nu;
 
     return wall_point;
 }
@@ -762,8 +700,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
 
     // the angle between the interior point and the wall point 
     // is given by the C+ characteristic.
-    double c_plus_angle = 0.5 * (interior_parent.theta + wall_point.theta) 
-        + 0.5 * (interior_parent.mu + wall_point.mu);
+    double c_plus_angle = average_cplus_angle(interior_parent, wall_point); 
 
     // the angle between the previous wall point and the current wall point
     // is given by wall_theta. 
@@ -776,17 +713,119 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
     wall_point.x = x; 
     wall_point.y = y;
 
+    switch (m_options.flow_type) {
+        case MocFlowKind::PLANAR: { break; }
+        case MocFlowKind::AXISYMMETRIC: {
+            // Wall corrector step
+            // Unlike the case of an interior point, we only have one characteristic line
+            // and theta is already known (specified by wall).
+            // The general compatibility equation for the C+ characteristic is:
+            // $theta_P - theta_B - S_{BP} = nu_P - nu_B$
+            // where S is the source term, B is the interior point and P is the wall point.
+
+            // The solution procedure is:
+            // 1. Calculate source term from estimated y.
+            // 2. Calculate nu from axisymmetric compatibility equation.
+            // 3. Obtain thermodynamic values for given value of nu.
+            // 4. Recompute new position based on new C+ angle
+            // 5. Repeat until source residual is satisfactory. 
+            // In practice only 1-2 iterations should be needed.
+            double old_S = 0.0;
+            const int max_iter = 4;
+            for (int i = 0; i < max_iter; i++){
+                    
+                double S = cplus_source_term(interior_parent, wall_point);
+                double residual = std::abs(S - old_S);
+                old_S = S;
+                if (residual < m_options.abstol) break;
+                
+                update_thermodynamic_state_from_nu(
+                    wall_point, 
+                    wall_point.theta-interior_parent.theta - S + interior_parent.nu,
+                    interior_parent.mach);
+                
+                wall_point.K_plus = wall_point.theta - wall_point.nu;
+                wall_point.K_minus = wall_point.theta + wall_point.nu;
+                double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
+                auto [new_x,new_y] = characteristic_intersection_coordinates(
+                    interior_parent, 
+                    previous_wall_point, 
+                    c_plus_angle, 
+                    prev_wall_angle);
+
+                wall_point.x = new_x;
+                wall_point.y = new_y;
+            }
+        }
+        default:
+            throw std::runtime_error("Invalid flow type specified.");
+    }
+
     return wall_point;
 }
 
 CharacteristicPoint MocNozzle::solve_wall_point_analysis(
-        const CharacteristicPoint& interior_parent,
-        double theta_wall, double x_wall, double y_wall) 
+        const CharacteristicPoint& interior_parent) 
 {
-    CharacteristicPoint wall_point = solve_wall_flow(interior_parent, theta_wall);
+    const NozzleProfile& wall = m_options.nozzle_profile;
+    auto [x_wall, y_wall] = intersect_characteristic_with_wall(
+                interior_parent, wall);
+            
+
+    double wall_theta = wall.theta_at(x_wall);
+    double char_angle = interior_parent.theta + interior_parent.mu;
+    CharacteristicPoint wall_point = solve_wall_flow(interior_parent, wall_theta);
     
     wall_point.x = x_wall;
     wall_point.y = y_wall;
+    // Corrector (for curved characteristics):
+    // Solve the wall point flow using computed theta
+    // then recompute characteristic slope as average of parent and wall-point slopes.
+    // One correction is usually sufficient.
+    switch (m_options.flow_type) {
+        case MocFlowKind::PLANAR: {
+
+            //for planar flow, solve_wall_flow equations are exact.
+            double wall_char_angle = wall_point.theta + wall_point.mu;
+            double average_char_angle = 0.5*(wall_char_angle + char_angle);
+
+            auto [x_corrected, y_corrected] = find_wall_hit(wall_point, wall, average_char_angle);
+            wall_point.x = x_corrected;
+            wall_point.y = y_corrected;
+            wall_theta = wall.theta_at(wall_point.x);
+            wall_point = solve_wall_flow(interior_parent, wall_theta);
+            break;
+        }
+        case MocFlowKind::AXISYMMETRIC: {
+            // For axisymmetric flow, we must account for the source term.
+            double old_S = 0.0;
+            const int max_iter = 4;
+            for (int i = 0; i < max_iter; i++){
+                
+                double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
+                auto [x_corrected, y_corrected] = find_wall_hit(interior_parent, wall, c_plus_angle);
+                wall_point.x = x_corrected;
+                wall_point.y = y_corrected;
+                wall_theta = wall.theta_at(wall_point.x);
+
+                double S = cplus_source_term(interior_parent, wall_point);
+                double residual = std::abs(S - old_S);
+                if (residual < m_options.abstol) break;
+                old_S = S;
+                
+                update_thermodynamic_state_from_nu(
+                    wall_point, 
+                    wall_point.theta-interior_parent.theta - S + interior_parent.nu,
+                    interior_parent.mach);
+                
+            }
+            wall_point.K_plus = wall_point.theta - wall_point.nu;
+            wall_point.K_minus = wall_point.theta + wall_point.nu;
+            break;
+        }
+        default:
+            throw std::runtime_error("Invalid flow type specified.");
+    }
     return wall_point;
 }
 
@@ -960,16 +999,53 @@ void MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point,
     }
     update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
-} 
+}
+
+std::pair<double,double> MocNozzle::find_wall_hit(
+    const CharacteristicPoint& p, 
+    const NozzleProfile& wall, 
+    double char_angle) const
+{
+    double c_plus_slope = tan(char_angle);
+    double x,y;
+
+    for (size_t k = 0; k < wall.x.size() - 1; k++) {
+        double wall_slope = (wall.y[k+1] - wall.y[k])
+            / (wall.x[k+1] - wall.x[k]);
+        double wall_intercept = wall.y[k] - wall_slope * wall.x[k];
+        double char_intercept = p.y - c_plus_slope * p.x;
+
+        double x_intercept = (wall_intercept - char_intercept) / (c_plus_slope - wall_slope);
+
+        // check if intersection is within the wall segment
+        if (x_intercept >= wall.x[k] && x_intercept <= wall.x[k+1]) {
+            x = x_intercept;
+            y = p.y + c_plus_slope * (x - p.x);
+            break;
+        }
+    }
+    return {x,y};
+}
 
 double MocNozzle::cplus_source_term(
     const CharacteristicPoint& p, 
     double new_y) const 
 {
-    
     double y_avg = 0.5 * (p.y + new_y);
     double dy = new_y - p.y;
     return sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
+}
+
+double MocNozzle::cplus_source_term(
+    const CharacteristicPoint& p1, 
+    const CharacteristicPoint& p3) const 
+{
+    double y_avg = 0.5 * (p1.y + p3.y);
+    double dy = p3.y - p1.y;
+    double theta_avg = 0.5 * (p1.theta + p3.theta);
+    double theta_minus_mu_avg = 0.5 * ((p1.theta - p1.mu) + (p3.theta - p3.mu));
+    double mach_avg = 0.5 * (p1.mach + p3.mach);
+    return sin(theta_avg)/(mach_avg * sin(theta_minus_mu_avg)) * dy/y_avg;
 }
 
 double MocNozzle::cminus_source_term(
