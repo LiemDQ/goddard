@@ -15,6 +15,10 @@ double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma){
     return std::sqrt(Cantera::GasConstant*gas.temperature()*gamma/gas.meanMolecularWeight());
 }
 
+double gas_sonic_velocity(double temperature, double molar_mass, double gamma) {
+    return std::sqrt(Cantera::GasConstant*temperature*gamma/molar_mass);
+}
+
 Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma) {
     return (Cantera::GasConstant*gas.temperature()*gamma / gas.mean_molecular_weight()).sqrt();
 }

@@ -71,6 +71,9 @@ public:
     // Get mach number from nu.
     double interpolate_mach(double nu) const;
 
+    // Get mach number from velocity.
+    double interpolate_mach_from_V(double V) const;
+
     // Get static enthalpy from nu.
     double interpolate_h_from_nu(double nu) const;
     
@@ -104,6 +107,9 @@ public:
     
     // Get index containing value closest to input nu.
     IdxWeight find_nu_index_and_weight(double nu) const;
+
+    // Get index containing value closest to input velocity.
+    IdxWeight find_V_index_and_weight(double V) const;
 
     /**
      * Linear interpolation over vals with a specified weight.

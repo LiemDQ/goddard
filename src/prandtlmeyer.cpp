@@ -127,6 +127,10 @@ double PrandtlMeyerTable::interpolate_mach(double nu) const {
     return interp(nu, nus, machs);
 }
 
+double PrandtlMeyerTable::interpolate_mach_from_V(double V) const {
+    return interp(V, velocities, machs);
+}
+
 double PrandtlMeyerTable::interpolate_h_from_nu(double nu) const {
     return interp(nu, nus, enthalpies);
 }
@@ -169,6 +173,10 @@ PrandtlMeyerTable::IdxWeight PrandtlMeyerTable::find_nu_index_and_weight(double 
 
 PrandtlMeyerTable::IdxWeight PrandtlMeyerTable::find_mach_index_and_weight(double mach) const {
     return index_and_weight(mach, machs);
+}
+
+PrandtlMeyerTable::IdxWeight PrandtlMeyerTable::find_V_index_and_weight(double V) const {
+    return index_and_weight(V, velocities);
 }
 
 double PrandtlMeyerTable::interpolate_at_index(size_t idx, 

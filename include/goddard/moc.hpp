@@ -180,12 +180,17 @@ private:
         const CharacteristicPoint& c_minus_parent,
         const CharacteristicPoint& c_plus_parent);
     
-    // algebraic special case (planar + perfect gas)
-    CharacteristicPoint solve_interior_point_algebraic(
+    // Planar algebraic special case
+    CharacteristicPoint solve_interior_point_planar(
         const CharacteristicPoint& p1,
         const CharacteristicPoint& p2);
     
-    // iterative path (axisymmetric and/or variable gamma)
+    // Axisymmetric flow
+    CharacteristicPoint solve_interior_point_axisymmetric(
+        const CharacteristicPoint& p1,
+        const CharacteristicPoint& p2);
+    
+    // iterative path (generalized compatibility equation with arbitrary source term)
     CharacteristicPoint solve_interior_point_iterative(
         const CharacteristicPoint& p1,
         const CharacteristicPoint& p2);
@@ -259,6 +264,7 @@ private:
     void update_thermodynamic_state(CharacteristicPoint& point);
     void update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
     void update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
+    void update_thermodynamic_state_from_V(CharacteristicPoint& point, double V);
 
     /**
      * Source term for axisymmetric flow along C+ characteristic.

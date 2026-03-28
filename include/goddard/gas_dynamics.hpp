@@ -34,7 +34,7 @@ inline double mach_to_mu(double mach) {
  * @brief Speed of sound of a gas.
  */
 double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma);
-
+double gas_sonic_velocity(double temperature, double molar_mass, double gamma);
 Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma);
 
 

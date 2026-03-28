@@ -12,6 +12,7 @@ struct CharacteristicPoint {
     double temperature;
     double gamma_s; // local isentropic gamma
     double mach;
+    double V; //velocity
     // Characteristic slopes
     double mu; // Mach angle = asin(1/M)
     // Riemann invariants
