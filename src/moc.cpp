@@ -746,16 +746,17 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
                 
                 wall_point.K_plus = wall_point.theta - wall_point.nu;
                 wall_point.K_minus = wall_point.theta + wall_point.nu;
-                double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
+                double corrected_cplus_angle = average_cplus_angle(interior_parent, wall_point);
                 auto [new_x,new_y] = characteristic_intersection_coordinates(
                     interior_parent, 
                     previous_wall_point, 
-                    c_plus_angle, 
+                    corrected_cplus_angle, 
                     prev_wall_angle);
 
                 wall_point.x = new_x;
                 wall_point.y = new_y;
             }
+            break;
         }
         default:
             throw std::runtime_error("Invalid flow type specified.");
