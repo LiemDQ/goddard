@@ -293,6 +293,152 @@ TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
     EXPECT_GT(result.area_ratio, 1.0);
 }
 
+// ============================================================
+// Axisymmetric frozen/equilibrium tests
+// ============================================================
+
+TEST_F(MocFrozenTest, AxiFrozenSolves) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::FROZEN;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+
+    MocNozzle nozzle(gas, opts);
+    auto result = nozzle.solve();
+
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.exit_mach, 1.0);
+    EXPECT_GT(result.nozzle_length, 0.0);
+    EXPECT_GT(result.area_ratio, 1.0);
+}
+
+TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+
+    MocNozzle nozzle(gas, opts);
+    auto result = nozzle.solve();
+
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.exit_mach, 1.0);
+    EXPECT_GT(result.nozzle_length, 0.0);
+    EXPECT_GT(result.area_ratio, 1.0);
+}
+
+TEST_F(MocFrozenTest, AxiFrozenMonotonicWall) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::FROZEN;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+
+    MocNozzle nozzle(gas, opts);
+    auto result = nozzle.solve();
+
+    for (size_t i = 1; i < result.net.wall_x.size(); i++) {
+        EXPECT_GT(result.net.wall_x[i], result.net.wall_x[i-1])
+            << "Wall x should increase monotonically";
+    }
+    for (size_t i = 1; i < result.net.wall_y.size(); i++) {
+        EXPECT_GE(result.net.wall_y[i], result.net.wall_y[i-1])
+            << "Wall y should increase monotonically";
+    }
+}
+
+TEST_F(MocFrozenTest, AxiFrozenVs1D) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::FROZEN;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 10;
+    opts.geometry.throat_radius = 0.05;
+
+    MocNozzle moc_nozzle(gas, opts);
+    auto moc_result = moc_nozzle.solve();
+    ASSERT_TRUE(moc_result.converged);
+
+    // Reset gas state and run 1D solver at same area ratio
+    gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    FrozenNozzle nozzle_1d(*gas);
+    auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
+    ASSERT_TRUE(nozzle_result.throat.converged);
+    ASSERT_FALSE(nozzle_result.expansions.empty());
+    ASSERT_TRUE(nozzle_result.expansions[0].converged);
+
+    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
+    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+
+    // 2D MoC vs 1D: expect within ~10% (2D effects + design mode differences)
+    EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
+        << "Axisymmetric frozen MoC exit Mach should be in the same ballpark as 1D";
+}
+
+TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 10;
+    opts.geometry.throat_radius = 0.05;
+
+    MocNozzle moc_nozzle(gas, opts);
+    auto moc_result = moc_nozzle.solve();
+    ASSERT_TRUE(moc_result.converged);
+
+    // Reset gas state and run 1D solver
+    gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    EquilibriumNozzle nozzle_1d(*gas);
+    auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
+    ASSERT_TRUE(nozzle_result.throat.converged);
+    ASSERT_FALSE(nozzle_result.expansions.empty());
+    ASSERT_TRUE(nozzle_result.expansions[0].converged);
+
+    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
+    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+
+    EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
+        << "Axisymmetric equilibrium MoC exit Mach should be in the same ballpark as 1D";
+}
+
+TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 12.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+
+    // Frozen
+    opts.chemistry = MocChemistry::FROZEN;
+    MocNozzle frozen_nozzle(gas, opts);
+    auto frozen_result = frozen_nozzle.solve();
+
+    // Reset gas state
+    gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+
+    // Equilibrium
+    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    MocNozzle equil_nozzle(gas, opts);
+    auto equil_result = equil_nozzle.solve();
+
+    EXPECT_TRUE(frozen_result.converged);
+    EXPECT_TRUE(equil_result.converged);
+    EXPECT_GT(std::abs(frozen_result.exit_mach - equil_result.exit_mach), 1e-6)
+        << "Frozen and equilibrium should produce different exit Mach";
+}
+
 TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
@@ -321,4 +467,179 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
     // Exit Mach should differ (equilibrium shifts composition)
     // The difference may be small for this composition, but should not be identical
     EXPECT_GT(std::abs(frozen_result.exit_mach - equil_result.exit_mach), 1e-6);
+}
+
+// ============================================================
+// Thrust coefficient integration
+// ============================================================
+
+TEST(MocThrust, PlanarPerfectGasVs1D) {
+    // For a well-resolved min-length nozzle with nearly uniform exit flow,
+    // the integrated Cf should match the 1D momentum thrust formula.
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    auto solver = make_perfect_gas_solver(gamma, theta_max, 15);
+    auto result = solver.solve();
+    ASSERT_TRUE(result.converged);
+
+    auto cf = compute_thrust_coefficient(result, MocFlowKind::PLANAR);
+
+    // 1D reference: for uniform exit flow (theta=0), Cf_vac = p_e/p0 * (1 + gamma*M_e^2) * A_e/A_t
+    // where p_e/p0 = (1 + (gamma-1)/2 * M^2)^(-gamma/(gamma-1))
+    double M_e = result.exit_mach;
+    double p_ratio = std::pow(1.0 + (gamma - 1.0) / 2.0 * M_e * M_e, -gamma / (gamma - 1.0));
+    double Cf_1D = p_ratio * (1.0 + gamma * M_e * M_e) * result.area_ratio;
+
+    EXPECT_NEAR(cf.Cf_vacuum, Cf_1D, 0.02 * Cf_1D)
+        << "Planar Cf_vac should match 1D formula within 2%";
+
+    // Components should sum to total
+    EXPECT_NEAR(cf.momentum_thrust + cf.pressure_thrust, cf.Cf_vacuum, 1e-10);
+
+    // Momentum should be larger than pressure component for supersonic flow
+    EXPECT_GT(cf.momentum_thrust, cf.pressure_thrust);
+}
+
+TEST(MocThrust, AxiPerfectGasVs1D) {
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    auto solver = make_perfect_gas_solver(gamma, theta_max, 15, MocFlowKind::AXISYMMETRIC);
+    auto result = solver.solve();
+    ASSERT_TRUE(result.converged);
+
+    auto cf = compute_thrust_coefficient(result, MocFlowKind::AXISYMMETRIC);
+
+    // For axisymmetric, the 1D reference uses the same formula
+    // but with the axisymmetric area ratio (y_e/y_t)^2
+    double M_e = result.exit_mach;
+    double p_ratio = std::pow(1.0 + (gamma - 1.0) / 2.0 * M_e * M_e, -gamma / (gamma - 1.0));
+    double Cf_1D = p_ratio * (1.0 + gamma * M_e * M_e) * result.area_ratio;
+
+    // Axisymmetric exit flow is less uniform (source terms cause radial variation),
+    // so allow wider tolerance
+    EXPECT_NEAR(cf.Cf_vacuum, Cf_1D, 0.05 * Cf_1D)
+        << "Axisymmetric Cf_vac should match 1D formula within 5%";
+
+    EXPECT_NEAR(cf.momentum_thrust + cf.pressure_thrust, cf.Cf_vacuum, 1e-10);
+}
+
+TEST(MocThrust, AmbientPressureReducesCf) {
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    auto solver = make_perfect_gas_solver(gamma, theta_max, 10);
+    auto result = solver.solve();
+    ASSERT_TRUE(result.converged);
+
+    auto cf_vac = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.0);
+    auto cf_amb = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.1);
+
+    EXPECT_GT(cf_vac.Cf_vacuum, cf_amb.Cf);
+    EXPECT_NEAR(cf_vac.Cf_vacuum, cf_vac.Cf, 1e-15)
+        << "Cf_vacuum and Cf should match when ambient=0";
+}
+
+// ============================================================
+// Analysis mode
+// ============================================================
+
+TEST(MocAnalysis, PlanarRoundTrip) {
+    // Design a nozzle, then analyze its contour. Exit Mach should match.
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    // Step 1: Design mode
+    auto design_solver = make_perfect_gas_solver(gamma, theta_max, 10);
+    auto design_result = design_solver.solve();
+    ASSERT_TRUE(design_result.converged);
+
+    // Step 2: Analysis mode with design contour
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::PLANAR;
+    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.mode = MocMode::ANALYSIS;
+    opts.gamma = gamma;
+    opts.num_characteristics = 10;
+    opts.geometry.throat_radius = 1.0;
+    opts.nozzle_profile = design_result.profile;
+
+    MocNozzle analysis_solver(opts);
+    auto analysis_result = analysis_solver.solve();
+
+    EXPECT_TRUE(analysis_result.converged);
+    EXPECT_GT(analysis_result.exit_mach, 1.0);
+
+    // Exit Mach should be close to design exit Mach
+    // (not exact due to straight sonic line approximation and wall sampling)
+    EXPECT_NEAR(analysis_result.exit_mach, design_result.exit_mach, 0.15)
+        << "Analysis exit Mach should approximately match design";
+}
+
+TEST(MocAnalysis, PlanarWallPointsPopulated) {
+    double gamma = 1.4;
+    double theta_max = 12.0 * DEG;
+
+    auto design_solver = make_perfect_gas_solver(gamma, theta_max, 7);
+    auto design_result = design_solver.solve();
+
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::PLANAR;
+    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.mode = MocMode::ANALYSIS;
+    opts.gamma = gamma;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 1.0;
+    opts.nozzle_profile = design_result.profile;
+
+    MocNozzle analysis_solver(opts);
+    auto result = analysis_solver.solve();
+
+    EXPECT_GT(result.net.wall_points.size(), 0u);
+    for (const auto& wp : result.net.wall_points) {
+        EXPECT_GT(wp.mach, 1.0) << "Wall points should be supersonic";
+        EXPECT_GT(wp.x, 0.0) << "Wall points should be downstream of throat";
+    }
+}
+
+TEST(MocAnalysis, AxiRoundTrip) {
+    double gamma = 1.4;
+    double theta_max = 12.0 * DEG;
+
+    auto design_solver = make_perfect_gas_solver(gamma, theta_max, 8, MocFlowKind::AXISYMMETRIC);
+    auto design_result = design_solver.solve();
+    ASSERT_TRUE(design_result.converged);
+
+    MocOptions opts;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.mode = MocMode::ANALYSIS;
+    opts.gamma = gamma;
+    opts.num_characteristics = 8;
+    opts.geometry.throat_radius = 1.0;
+    opts.nozzle_profile = design_result.profile;
+
+    MocNozzle analysis_solver(opts);
+    auto result = analysis_solver.solve();
+
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.exit_mach, 1.0);
+    EXPECT_NEAR(result.exit_mach, design_result.exit_mach, 0.2)
+        << "Axisymmetric analysis should approximately match design";
+}
+
+TEST(MocThrust, ExitPlaneHasGammaAndVelocity) {
+    auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
+    auto result = solver.solve();
+
+    EXPECT_EQ(result.exit_plane.gamma_s.size(), result.exit_plane.mach.size());
+    EXPECT_EQ(result.exit_plane.velocity.size(), result.exit_plane.mach.size());
+
+    for (size_t i = 0; i < result.exit_plane.gamma_s.size(); i++) {
+        EXPECT_GT(result.exit_plane.gamma_s[i], 1.0)
+            << "gamma_s should be > 1";
+        EXPECT_GT(result.exit_plane.velocity[i], 0.0)
+            << "velocity should be positive";
+    }
 }
