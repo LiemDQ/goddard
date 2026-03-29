@@ -95,11 +95,22 @@ TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {
         for (const auto& pt : initial_line) {
             // Data line points inherit K_plus from the expansion fan via the axis/interior solver.
             // The first (axis) point should have K_plus = -K_minus (symmetry).
-            EXPECT_NEAR(pt.theta, 0.0, 1e-10)
-                << "Initial data line point should be on centerline (theta=0) "
-                << "only for the axis point";
+            EXPECT_NEAR(pt.K_plus, 0.0, 1e-10) 
+                << "Initial data line point should have K+ = 0 (theta - nu = 0)";
             // Actually, only the axis point has theta=0. Skip this for now.
             break;
+        }
+        if (result.net.wavefronts.size() > 1) {
+            for (size_t i = 1; i < result.net.wavefronts.size(); i++){
+                const auto& wavefront = result.net.wavefronts[i];
+                // all points along the wavefront have the same K+ value
+                double kplus = wavefront.front().K_plus;
+                for (const auto& pt: wavefront) {
+                    EXPECT_NEAR(pt.K_plus, kplus, 1e-10) 
+                        << "Data points in the same wavefront should have the same K+ value";
+                }
+            }
+            //TODO: check K- values too
         }
     }
 }
@@ -123,8 +134,10 @@ TEST(MocAxisPoint, SymmetryCondition) {
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
 
-    // Check all wavefronts: first point should be an axis point with theta=0, y=0
-    for (size_t i = 0; i < result.net.wavefronts.size(); i++) {
+    // Check all wavefronts except first: 
+    // first point should be an axis point with theta=0, y=0
+    // first wavepoint is intentionally non-symmetrical
+    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
         const auto& wf = result.net.wavefronts[i];
         ASSERT_FALSE(wf.empty()) << "Wavefront " << i << " is empty";
         EXPECT_NEAR(wf[0].theta, 0.0, 1e-12)
@@ -148,8 +161,8 @@ TEST(MocAxisPoint, KMinusEqualsNu) {
 
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
-
-    for (size_t i = 0; i < result.net.wavefronts.size(); i++) {
+    // skip first wavefront -- it is explicitly not set to theta = 0
+    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
         const auto& axis_pt = result.net.wavefronts[i][0];
         EXPECT_NEAR(axis_pt.K_minus, axis_pt.nu, 1e-10)
             << "Axis K_minus should equal nu in wavefront " << i;
@@ -255,4 +268,51 @@ TEST(MocSolve, ExitMachConsistentWithThetaMax) {
     double expected_exit_mach = mach_from_prandtl_meyer(2.0 * theta_max, gamma);
     EXPECT_NEAR(result.exit_mach, expected_exit_mach, 0.01)
         << "Exit Mach should correspond to nu = 2*theta_max";
+}
+
+// ── NozzleProfile::max_theta ────────────────────────────────────────────
+
+TEST(NozzleProfileTest, MaxThetaSimpleRamp) {
+    // Single straight segment at 30 degrees
+    NozzleProfile profile;
+    profile.x = {0.0, 1.0};
+    profile.y = {1.0, 1.0 + std::tan(30.0 * DEG)};
+    EXPECT_NEAR(profile.max_theta(), 30.0 * DEG, 1e-12);
+}
+
+TEST(NozzleProfileTest, MaxThetaMultipleSegments) {
+    // Three segments: 10°, 25°, 15° — max should be 25°
+    NozzleProfile profile;
+    double dx = 1.0;
+    profile.x = {0.0, dx, 2.0 * dx, 3.0 * dx};
+    profile.y = {1.0,
+                 1.0 + dx * std::tan(10.0 * DEG),
+                 1.0 + dx * std::tan(10.0 * DEG) + dx * std::tan(25.0 * DEG),
+                 1.0 + dx * std::tan(10.0 * DEG) + dx * std::tan(25.0 * DEG) + dx * std::tan(15.0 * DEG)};
+    EXPECT_NEAR(profile.max_theta(), 25.0 * DEG, 1e-12);
+}
+
+TEST(NozzleProfileTest, MaxThetaBellNozzle) {
+    // Bell-like contour: expansion section (increasing angle) then contraction
+    // back toward the axis. Max angle is in the middle, not at the first segment.
+    NozzleProfile profile;
+    double dx = 0.5;
+    // Angles per segment: 5°, 15°, 30°, 20°, 5°
+    std::vector<double> angles_deg = {5.0, 15.0, 30.0, 20.0, 5.0};
+    profile.x.push_back(0.0);
+    profile.y.push_back(1.0);
+    for (size_t i = 0; i < angles_deg.size(); i++) {
+        double dy = dx * std::tan(angles_deg[i] * DEG);
+        profile.x.push_back(profile.x.back() + dx);
+        profile.y.push_back(profile.y.back() + dy);
+    }
+    EXPECT_NEAR(profile.max_theta(), 30.0 * DEG, 1e-12);
+}
+
+TEST(NozzleProfileTest, MaxThetaFlatSegmentsIgnored) {
+    // Flat segment (0°) followed by an angled one — flat should not affect max
+    NozzleProfile profile;
+    profile.x = {0.0, 1.0, 2.0};
+    profile.y = {1.0, 1.0, 1.0 + std::tan(12.0 * DEG)};
+    EXPECT_NEAR(profile.max_theta(), 12.0 * DEG, 1e-12);
 }

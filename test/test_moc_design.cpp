@@ -161,6 +161,7 @@ static MocReferenceCase anderson_chap11() {
     // the first two mu angles are modified slightly from Anderson
     // as the table interpolation used in the book is slightly off.
     ref.kernel_nodes = {
+        {0, 0, 0.375, 0.375, 1.04, 73.8},
         {0, 1, 3.375, 3.375, 1.19, 57.0},
         {0, 2, 6.375, 6.375, 1.31, 49.8},
         {0, 3, 9.375, 9.375, 1.41, 45.2},

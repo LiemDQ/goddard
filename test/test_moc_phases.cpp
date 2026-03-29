@@ -573,7 +573,7 @@ TEST(MocAnalysis, PlanarRoundTrip) {
 
     // Exit Mach should be close to design exit Mach
     // (not exact due to straight sonic line approximation and wall sampling)
-    EXPECT_NEAR(analysis_result.exit_mach, design_result.exit_mach, 0.15)
+    EXPECT_NEAR(analysis_result.exit_mach, design_result.exit_mach, 0.05)
         << "Analysis exit Mach should approximately match design";
 }
 
@@ -625,7 +625,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     EXPECT_TRUE(result.converged);
     EXPECT_GT(result.exit_mach, 1.0);
-    EXPECT_NEAR(result.exit_mach, design_result.exit_mach, 0.2)
+    EXPECT_NEAR(result.exit_mach, design_result.exit_mach, 0.1)
         << "Axisymmetric analysis should approximately match design";
 }
 
