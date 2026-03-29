@@ -3,6 +3,11 @@ from goddard._core import (
     CombustorType,
     NozzleChemistryType,
     ExpansionType,
+    # MoC enums
+    MocFlowKind,
+    MocChemistry,
+    MocMode,
+    MocInitialization,
     # Structs
     CombustorOptions,
     NozzleOptions,
@@ -17,6 +22,15 @@ from goddard._core import (
     RocketProblemCaseResult,
     EquilibriumProperties,
     EquilibriumDerivatives,
+    # MoC structs
+    ThroatGeometry,
+    NozzleProfile,
+    MocOptions,
+    CharacteristicPoint,
+    CharacteristicNet,
+    ExitPlane,
+    MocResult,
+    ThrustCoefficient,
     # Classes
     SolutionHandle,
     RocketProblem,
@@ -29,6 +43,9 @@ from goddard._core import (
     MixtureRatio,
     MixtureRatios,
     ThermodynamicState,
+    # MoC class + function
+    MocNozzle,
+    compute_thrust_coefficient,
     # Errors
     ConvergenceError,
     # Functions
@@ -46,6 +63,8 @@ from goddard.convenience import (
     equilibrium_nozzle,
     frozen_nozzle,
     from_cantera,
+    moc_design,
+    moc_analysis,
 )
 
 __version__ = "0.1.0"
