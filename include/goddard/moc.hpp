@@ -62,7 +62,10 @@ public:
     
     // Interpolate wall angle at a given x-position.
     double theta_at(double x_query) const;
-    
+
+    // Find the maximum wall angle across all segments.
+    double max_theta() const;
+
     std::pair<double, double> at(size_t idx) const;
 
     void push_back(std::pair<double, double>&& coords);
@@ -190,7 +193,7 @@ public:
 
     MocOptions m_options;
 
-private:
+protected:
     // generate initial data line (Cantera-backed path)
     std::vector<CharacteristicPoint> generate_initial_data_line(
         const ThroatCondition& throat,

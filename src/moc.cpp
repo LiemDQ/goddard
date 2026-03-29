@@ -26,8 +26,19 @@ double NozzleProfile::slope_at(double x_query) const {
 }
 
 double NozzleProfile::theta_at(double x_query) const {
-    
+
     return atan(slope_at(x_query));
+}
+
+double NozzleProfile::max_theta() const {
+    double max_val = 0.0;
+    for (size_t i = 1; i < x.size(); i++) {
+        double segment_theta = std::atan2(y[i] - y[i-1], x[i] - x[i-1]);
+        if (segment_theta > max_val) {
+            max_val = segment_theta;
+        }
+    }
+    return max_val;
 }
 
 std::pair<double, double> NozzleProfile::at(size_t idx) const {
@@ -289,16 +300,14 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             throw NotImplementedError("Rao design mode initialization not implemented.");
         }
         case MocMode::ANALYSIS: {
-            // Derive theta_max from wall contour slope near the throat.
-            // Use the slope at a small offset downstream (midpoint of first wall segment).
+            // Find the maximum wall angle across the entire profile.
             const auto& wall = m_options.nozzle_profile;
             if (wall.size() < 2) {
                 throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
             }
-            double x_start = 0.5 * (wall.x[0] + wall.x[1]);
-            double theta_max = wall.theta_at(x_start);
+            double theta_max = wall.max_theta();
             if (theta_max <= 0.0) {
-                throw std::runtime_error("Wall slope at throat must be positive for analysis mode initialization.");
+                throw std::runtime_error("Wall profile must have a positive expansion angle for analysis mode.");
             }
 
             // Same centered expansion fan as design mode
@@ -317,7 +326,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 expansion_point.K_minus = expansion_point.theta + expansion_point.nu;
 
                 if (i == 0) {
-                    upstream_point = solve_axis_point(expansion_point);
+                    upstream_point = solve_initial_axis_point(expansion_point);
                     data_line.push_back(upstream_point);
                 } else {
                     upstream_point = solve_interior_point(expansion_point, upstream_point);
@@ -342,10 +351,9 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
         if (wall.size() < 2) {
             throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
         }
-        double x_start = 0.5 * (wall.x[0] + wall.x[1]);
-        theta_max = wall.theta_at(x_start);
+        theta_max = wall.max_theta();
         if (theta_max <= 0.0) {
-            throw std::runtime_error("Wall slope at throat must be positive for analysis mode initialization.");
+            throw std::runtime_error("Wall profile must have a positive expansion angle for analysis mode.");
         }
     }
 
