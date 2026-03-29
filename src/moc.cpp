@@ -85,6 +85,15 @@ size_t NozzleProfile::find_index(double x_query) const {
     return x.size() - 1;
 }
 
+// -- Logging helpers --
+void MocNozzle::log_warning(const std::string& msg) {
+    m_messages.push_back("Warning: " + msg);
+}
+
+void MocNozzle::log_info(const std::string& msg) {
+    m_messages.push_back("Info: " + msg);
+}
+
 // -- MocNozzle --
 MocResult MocNozzle::solve() {
     m_messages.clear();
@@ -144,13 +153,12 @@ MocResult MocNozzle::solve() {
     solve_kernel_region(net);
     solve_wall_region(net);
 
-    // Check for invalid points
+    // Check for invalid points (details already logged by individual solvers)
     bool all_valid = true;
     for (const auto& wf : net.wavefronts) {
         for (const auto& pt : wf) {
             if (pt.mach < 0.0) {
                 all_valid = false;
-                m_messages.push_back("Invalid point detected: non-downstream intersection or subsonic pocket");
                 break;
             }
         }
@@ -198,6 +206,8 @@ MocResult MocNozzle::solve() {
             result.exit_plane.theta.push_back(pt.theta);
             result.exit_plane.pressure.push_back(pt.pressure);
             result.exit_plane.temperature.push_back(pt.temperature);
+            result.exit_plane.gamma_s.push_back(pt.gamma_s);
+            result.exit_plane.velocity.push_back(pt.V);
         }
         // Add the last wall point if available
         if (!net.wall_points.empty()) {
@@ -207,6 +217,8 @@ MocResult MocNozzle::solve() {
             result.exit_plane.theta.push_back(wp.theta);
             result.exit_plane.pressure.push_back(wp.pressure);
             result.exit_plane.temperature.push_back(wp.temperature);
+            result.exit_plane.gamma_s.push_back(wp.gamma_s);
+            result.exit_plane.velocity.push_back(wp.V);
         }
     }
 
@@ -277,7 +289,42 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             throw NotImplementedError("Rao design mode initialization not implemented.");
         }
         case MocMode::ANALYSIS: {
-            throw NotImplementedError("Analysis mode initialization not implemented.");
+            // Derive theta_max from wall contour slope near the throat.
+            // Use the slope at a small offset downstream (midpoint of first wall segment).
+            const auto& wall = m_options.nozzle_profile;
+            if (wall.size() < 2) {
+                throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
+            }
+            double x_start = 0.5 * (wall.x[0] + wall.x[1]);
+            double theta_max = wall.theta_at(x_start);
+            if (theta_max <= 0.0) {
+                throw std::runtime_error("Wall slope at throat must be positive for analysis mode initialization.");
+            }
+
+            // Same centered expansion fan as design mode
+            double dtheta_initial = theta_max / (num_points * 10);
+            double dtheta = (theta_max - dtheta_initial) / (num_points - 1);
+            CharacteristicPoint upstream_point;
+
+            for (size_t i = 0; i < num_points; i++) {
+                CharacteristicPoint expansion_point;
+                expansion_point.x = sonic_point.x;
+                expansion_point.y = sonic_point.y;
+                expansion_point.theta = dtheta_initial + i * dtheta;
+                m_theta_schedule.push_back(expansion_point.theta);
+                update_thermodynamic_state_from_nu(expansion_point, expansion_point.theta, 1.0);
+                expansion_point.K_plus = expansion_point.theta - expansion_point.nu;
+                expansion_point.K_minus = expansion_point.theta + expansion_point.nu;
+
+                if (i == 0) {
+                    upstream_point = solve_axis_point(expansion_point);
+                    data_line.push_back(upstream_point);
+                } else {
+                    upstream_point = solve_interior_point(expansion_point, upstream_point);
+                    data_line.push_back(upstream_point);
+                }
+            }
+            break;
         }
     }
     return data_line;
@@ -288,14 +335,28 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
 {
     double gamma = m_options.gamma;
 
+    // For analysis mode, derive theta_max from wall contour
+    double theta_max = m_options.theta_max;
+    if (m_options.mode == MocMode::ANALYSIS) {
+        const auto& wall = m_options.nozzle_profile;
+        if (wall.size() < 2) {
+            throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
+        }
+        double x_start = 0.5 * (wall.x[0] + wall.x[1]);
+        theta_max = wall.theta_at(x_start);
+        if (theta_max <= 0.0) {
+            throw std::runtime_error("Wall slope at throat must be positive for analysis mode initialization.");
+        }
+    }
+
     // Build or use theta schedule
     if (!m_options.theta_schedule.empty()) {
         m_theta_schedule = m_options.theta_schedule;
         num_points = m_theta_schedule.size();
     } else {
         // Auto-generate: small first step, then uniform spacing
-        double dtheta_initial = m_options.theta_max / (num_points * 10);
-        double dtheta = (m_options.theta_max - dtheta_initial) / (num_points - 1);
+        double dtheta_initial = theta_max / (num_points * 10);
+        double dtheta = (theta_max - dtheta_initial) / (num_points - 1);
         m_theta_schedule.resize(num_points);
         for (size_t i = 0; i < num_points; i++) {
             m_theta_schedule[i] = dtheta_initial + i * dtheta;
@@ -343,25 +404,23 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
 
 void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
     switch (m_options.mode) {
-        //TODO: I believe the logic below is generalizable to all cases as long as 
-        //there is special handling for reflections in the expansion region.
-        case MocMode::DESIGN_MIN_LENGTH: {
-            // For a minimum length nozzle, the expansion region is infinitely small
-            // so we are guaranteed to not have Mach wave reflections off the upper wall.
-            // This means the number of characteristics is known upfront.
+        case MocMode::DESIGN_MIN_LENGTH:
+        case MocMode::ANALYSIS: {
+            // For both min-length design and analysis mode with straight sonic line
+            // initialization, the kernel uses the same triangular marching scheme.
+            // The number of characteristics is determined by the initial data line.
+            // In analysis mode, wall reflections in the expansion region are not modeled
+            // (this is a limitation of the straight sonic line approach).
             size_t num_characteristics = static_cast<size_t>(net.num_c_plus);
-            // the last wavefront at num_characteristics-1 should be skipped.
             for (size_t i = 0; i < num_characteristics-1; i++) {
                 CharacteristicNet::Wavefront next_wavefront;
                 auto& curr_wavefront = net.wavefronts[i];
                 // skip the first node in a wavefront -- it is the centerline node which doesn't impact
-                // downstream nodes. The C- characteristic is irrelevant due to symmetry, 
+                // downstream nodes. The C- characteristic is irrelevant due to symmetry,
                 // and the C+ characteristic impacts nodes on the same wavefront.
                 CharacteristicPoint prev_point;
                 for (size_t j = 1; j < curr_wavefront.size(); j++) {
                     const CharacteristicPoint& parent_point = curr_wavefront[j];
-                    // first non-centerline node impacts the downstream centerline node.
-                    // all other nodes impact interior downstream nodes.
                     if (j == 1) {
                         prev_point = solve_axis_point(parent_point);
                     }
@@ -377,9 +436,6 @@ void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
         case MocMode::DESIGN_RAO: {
             break;
         }
-        case MocMode::ANALYSIS: {
-            break;
-        }
     }
 }
 
@@ -393,7 +449,7 @@ void MocNozzle::solve_wall_region(CharacteristicNet& net) {
             wall_point.theta = m_options.theta_max;
             wall_point.x = 0.0;
             wall_point.y = 1.0;
-            
+
             // for the min length nozzle case, every wavefront has a wall node
             // impacted by the last node in the wavefront
             for (size_t i = 0; i < net.wavefronts.size(); i++) {
@@ -406,10 +462,22 @@ void MocNozzle::solve_wall_region(CharacteristicNet& net) {
             }
             break;
         }
-        case MocMode::DESIGN_RAO: {
+        case MocMode::ANALYSIS: {
+            // In analysis mode, wall points are determined by the prescribed wall contour.
+            // solve_wall_point dispatches to solve_wall_point_analysis which intersects
+            // the C+ characteristic with the wall and applies corrector iterations.
+            for (size_t i = 0; i < net.wavefronts.size(); i++) {
+                auto& wavefront = net.wavefronts[i];
+                const CharacteristicPoint& parent_point = wavefront.back();
+                // solve_wall_point_analysis only needs the interior parent
+                CharacteristicPoint wall_point = solve_wall_point_analysis(parent_point);
+                net.wall_x.push_back(wall_point.x);
+                net.wall_y.push_back(wall_point.y);
+                net.wall_points.push_back(wall_point);
+            }
             break;
         }
-        case MocMode::ANALYSIS: {
+        case MocMode::DESIGN_RAO: {
             break;
         }
     }
@@ -595,9 +663,15 @@ CharacteristicPoint MocNozzle::solve_interior_point_planar(
 
     // validity checks
     if (p3.x < p1.x || p3.x < p2.x) {
+        log_warning("Non-downstream intersection at ("
+            + std::to_string(p3.x) + ", " + std::to_string(p3.y)
+            + "). Parents at x=(" + std::to_string(p1.x) + ", " + std::to_string(p2.x) + ").");
         p3.mach = -1.0; // invalid point
     }
     if (p3.mach < 1.0 && p3.mach > 0.0) {
+        log_warning("Subsonic Mach " + std::to_string(p3.mach)
+            + " at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y)
+            + "). Possible shock formation.");
         p3.mach = -1.0; // subsonic point -- characteristics undefined
     }
 
@@ -673,9 +747,14 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
 
     // validity checks
     if (p3.x < p1.x || p3.x < p2.x) {
+        log_warning("Non-downstream intersection at ("
+            + std::to_string(p3.x) + ", " + std::to_string(p3.y)
+            + "). Parents at x=(" + std::to_string(p1.x) + ", " + std::to_string(p2.x) + ").");
         p3.mach = -1.0; // invalid point
-        
     } else if (p3.mach < 1.0) {
+        log_warning("Subsonic Mach " + std::to_string(p3.mach)
+            + " at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y)
+            + "). Possible shock formation.");
         p3.mach = -1.0; // subsonic point -- characteristics undefined
     }
 
@@ -734,6 +813,12 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
         if (residual < m_options.abstol) break;
         S1 = S1_new;
         S2 = S2_new;
+
+        if (i == max_iters - 1 && residual >= m_options.abstol) {
+            log_warning("Iterative interior solver did not converge. Residual="
+                + std::to_string(residual) + " after " + std::to_string(max_iters)
+                + " iterations at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y) + ").");
+        }
     }
     return p3;
 }
@@ -809,30 +894,37 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
             // 5. Repeat until source residual is satisfactory. 
             // In practice only 1-2 iterations should be needed.
             double old_S = 0.0;
+            double residual = 0.0;
             const int max_iter = 4;
             for (int i = 0; i < max_iter; i++){
-                    
+
                 double S = cplus_source_term(interior_parent, wall_point);
-                double residual = std::abs(S - old_S);
+                residual = std::abs(S - old_S);
                 old_S = S;
                 if (residual < m_options.abstol) break;
-                
+
                 update_thermodynamic_state_from_nu(
-                    wall_point, 
+                    wall_point,
                     wall_point.theta-interior_parent.theta - S + interior_parent.nu,
                     interior_parent.mach);
-                
+
                 wall_point.K_plus = wall_point.theta - wall_point.nu;
                 wall_point.K_minus = wall_point.theta + wall_point.nu;
                 double corrected_cplus_angle = average_cplus_angle(interior_parent, wall_point);
                 auto [new_x,new_y] = characteristic_intersection_coordinates(
-                    interior_parent, 
-                    previous_wall_point, 
-                    corrected_cplus_angle, 
+                    interior_parent,
+                    previous_wall_point,
+                    corrected_cplus_angle,
                     prev_wall_angle);
 
                 wall_point.x = new_x;
                 wall_point.y = new_y;
+
+                if (i == max_iter - 1 && residual >= m_options.abstol) {
+                    log_warning("Wall design source term iteration did not converge. Residual="
+                        + std::to_string(residual) + " at (" + std::to_string(wall_point.x)
+                        + ", " + std::to_string(wall_point.y) + ").");
+                }
             }
             break;
         }
@@ -844,7 +936,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
 }
 
 CharacteristicPoint MocNozzle::solve_wall_point_analysis(
-        const CharacteristicPoint& interior_parent) 
+        const CharacteristicPoint& interior_parent)
 {
     const NozzleProfile& wall = m_options.nozzle_profile;
     auto [x_wall, y_wall] = intersect_characteristic_with_wall(
@@ -880,7 +972,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_analysis(
             double old_S = 0.0;
             const int max_iter = 4;
             for (int i = 0; i < max_iter; i++){
-                
+
                 double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
                 auto [x_corrected, y_corrected] = find_wall_hit(interior_parent, wall, c_plus_angle);
                 wall_point.x = x_corrected;
@@ -891,12 +983,17 @@ CharacteristicPoint MocNozzle::solve_wall_point_analysis(
                 double residual = std::abs(S - old_S);
                 if (residual < m_options.abstol) break;
                 old_S = S;
-                
+
                 update_thermodynamic_state_from_nu(
-                    wall_point, 
+                    wall_point,
                     wall_point.theta-interior_parent.theta - S + interior_parent.nu,
                     interior_parent.mach);
-                
+
+                if (i == max_iter - 1 && residual >= m_options.abstol) {
+                    log_warning("Wall analysis source term iteration did not converge. Residual="
+                        + std::to_string(residual) + " at (" + std::to_string(wall_point.x)
+                        + ", " + std::to_string(wall_point.y) + ").");
+                }
             }
             wall_point.K_plus = wall_point.theta - wall_point.nu;
             wall_point.K_minus = wall_point.theta + wall_point.nu;
@@ -972,7 +1069,7 @@ double MocNozzle::find_node_mach(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2,
     double source_delta,
-    double mach_guess) const
+    double mach_guess)
 {
 
     // initial guess: mach of upstream
@@ -1007,6 +1104,9 @@ double MocNozzle::find_node_mach(
     }
 
     // rootfinding has failed
+    log_warning("find_node_mach did not converge after "
+        + std::to_string(max_iter) + " iterations. Last Mach="
+        + std::to_string(mach) + ", delta_theta=" + std::to_string(delta_theta) + ".");
     return -1.0;
 }
 
@@ -1033,9 +1133,13 @@ void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
 }
 
 void MocNozzle::update_thermodynamic_state_from_nu(
-    CharacteristicPoint& point, 
-    double nu, double mach_guess) 
+    CharacteristicPoint& point,
+    double nu, double mach_guess)
 {
+    if (nu < 0.0) {
+        log_warning("Negative Prandtl-Meyer angle nu="
+            + std::to_string(nu) + ". Subsonic flow or numerical error.");
+    }
     point.nu = nu;
     switch (m_options.chemistry) {
         case MocChemistry::PERFECT_GAS: {
@@ -1169,5 +1273,67 @@ double MocNozzle::cminus_source_term(
     return -sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
 }
 
+
+ThrustCoefficient compute_thrust_coefficient(
+    const MocResult& result,
+    MocFlowKind flow_type,
+    double ambient_pressure_ratio)
+{
+    const auto& ep = result.exit_plane;
+    size_t n = ep.y.size();
+
+    if (n < 2) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+
+    double momentum_integral = 0.0;
+    double pressure_integral = 0.0;
+
+    // Compute integrand components at each point
+    // f_momentum = p * gamma_s * M^2 * cos^2(theta)
+    // f_pressure = p
+    // Total integrand: f = f_momentum + f_pressure
+    // Integration measure depends on flow type:
+    //   Planar:       dy
+    //   Axisymmetric: 2 * y * dy  (pi cancels with pi*y_t^2 in denominator)
+
+    for (size_t i = 0; i < n - 1; i++) {
+        double f_mom_i = ep.pressure[i] * ep.gamma_s[i]
+            * ep.mach[i] * ep.mach[i]
+            * cos(ep.theta[i]) * cos(ep.theta[i]);
+        double f_mom_next = ep.pressure[i+1] * ep.gamma_s[i+1]
+            * ep.mach[i+1] * ep.mach[i+1]
+            * cos(ep.theta[i+1]) * cos(ep.theta[i+1]);
+
+        double f_pres_i = ep.pressure[i];
+        double f_pres_next = ep.pressure[i+1];
+
+        double dy = ep.y[i+1] - ep.y[i];
+
+        if (flow_type == MocFlowKind::PLANAR) {
+            // Trapezoidal rule
+            momentum_integral += 0.5 * (f_mom_i + f_mom_next) * dy;
+            pressure_integral += 0.5 * (f_pres_i + f_pres_next) * dy;
+        } else {
+            // Axisymmetric: integrand includes 2*y factor
+            // Trapezoidal rule for integral of f(y)*y*dy
+            momentum_integral += (f_mom_i * ep.y[i] + f_mom_next * ep.y[i+1]) * dy;
+            pressure_integral += (f_pres_i * ep.y[i] + f_pres_next * ep.y[i+1]) * dy;
+        }
+    }
+
+    // Normalize by throat area (p0 * A_throat)
+    // Nondimensional: p0 = 1, y_throat = 1.
+    // Planar: F = 2*integral (symmetry), A_throat = 2*y_t = 2.0  =>  Cf = integral
+    // Axisymmetric: F = 2*pi*integral(f*y*dy), A_throat = pi*y_t^2 = pi
+    //   => Cf = 2*integral(f*y*dy). The integrand already includes the 2*y factor.
+    double Cf_momentum = momentum_integral;
+    double Cf_pressure = pressure_integral;
+
+    double Cf_vacuum = Cf_momentum + Cf_pressure;
+    double Cf = Cf_vacuum - ambient_pressure_ratio * result.area_ratio;
+
+    return {Cf_vacuum, Cf, Cf_momentum, Cf_pressure};
+}
 
 } // namespace Goddard

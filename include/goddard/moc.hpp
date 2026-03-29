@@ -27,8 +27,14 @@ enum class MocChemistry {
 
 enum class MocMode {
     DESIGN_MIN_LENGTH,  // Minimum length nozzle with uniform exit flow
-    DESIGN_RAO, // Rao-type length-optimized thrust nozzle 
+    DESIGN_RAO, // Rao-type length-optimized thrust nozzle
     ANALYSIS    // wall contour is input
+};
+
+enum class MocInitialization {
+    STRAIGHT_SONIC_LINE,    // centered expansion fan at throat (default)
+    // HALL_TRANSONIC,      // future: Hall's parabolic sonic line
+    // WALL_MARCH,          // future: march from slightly supersonic wall region
 };
 
 struct ThroatGeometry {
@@ -96,6 +102,7 @@ struct MocOptions {
     MocFlowKind flow_type = MocFlowKind::PLANAR;
     MocChemistry chemistry = MocChemistry::PERFECT_GAS;
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
+    MocInitialization initialization = MocInitialization::STRAIGHT_SONIC_LINE;
 
     int num_characteristics;    // number of C+ lines from initial expansion fan
     double gamma;               // used only for PERFECT_GAS
@@ -122,6 +129,8 @@ struct ExitPlane {
     std::vector<double> theta;
     std::vector<double> pressure;
     std::vector<double> temperature;
+    std::vector<double> gamma_s;
+    std::vector<double> velocity;  // dimensional V (m/s) for frozen/equil, =Mach for perfect gas
 };
 
 struct MocResult {
@@ -137,6 +146,28 @@ struct MocResult {
 
     ExitPlane exit_plane;
 };
+
+struct ThrustCoefficient {
+    double Cf_vacuum;       // vacuum thrust coefficient
+    double Cf;              // thrust coefficient at specified ambient pressure
+    double momentum_thrust; // momentum component (normalized by p0 * A_throat)
+    double pressure_thrust; // pressure component (normalized by p0 * A_throat)
+};
+
+/**
+ * Compute thrust coefficient by integrating over the MoC exit plane.
+ *
+ * Uses the relation rho*V^2 = gamma_s * p * M^2 which holds for all chemistry types.
+ * The integrand at each exit plane point is: f = p * (gamma_s * M^2 * cos^2(theta) + 1).
+ *
+ * @param result   MoC solution result (must have populated exit_plane with gamma_s)
+ * @param flow_type  PLANAR or AXISYMMETRIC (determines integration measure)
+ * @param ambient_pressure_ratio  p_amb / p0 (0 for vacuum)
+ */
+ThrustCoefficient compute_thrust_coefficient(
+    const MocResult& result,
+    MocFlowKind flow_type,
+    double ambient_pressure_ratio = 0.0);
 
 /** 
  * Main class for performing 2D nozzle supersonic flow simulations using
@@ -252,11 +283,11 @@ private:
      * Iteratively find the mach number of the intersecting node.
      */
     double find_node_mach(
-        const CharacteristicPoint& p1, 
+        const CharacteristicPoint& p1,
         const CharacteristicPoint& p2,
         double source_delta,
         double mach_guess = 0.0
-    ) const;
+    );
 
     /* Find where wall intersects with line extending outwards from a characteristic point, for a specified angle */
     std::pair<double,double> find_wall_hit(const CharacteristicPoint& p, const NozzleProfile& wall, double char_angle) const;
@@ -286,6 +317,10 @@ private:
         const CharacteristicPoint& p1, 
         double new_y) const;
 
+
+    // Logging helpers
+    void log_warning(const std::string& msg);
+    void log_info(const std::string& msg);
 
     std::shared_ptr<Cantera::Solution> m_gas;
     std::vector<double> m_theta_schedule;
