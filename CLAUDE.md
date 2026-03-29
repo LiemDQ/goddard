@@ -17,10 +17,17 @@ Goddard is a C++/Python rocket engine simulation toolkit that uses Cantera for c
   - `FrozenNozzle`: Frozen composition nozzle flow
 - **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations
 - **MixtureRatio** (`mixture_ratio.hpp/cpp`): Fuel/oxidizer mixture ratio handling
+- **MoC** (`moc.hpp/cpp`, `characteristics.hpp/cpp`, `prandtlmeyer.hpp/cpp`): 2D supersonic nozzle flow via Method of Characteristics
+  - `MocNozzle`: Solver class supporting design (minimum-length) and analysis modes
+  - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
+  - `CharacteristicNet`/`CharacteristicPoint`: Flow field mesh and point data
+  - `NozzleProfile`: Wall contour representation with CSV I/O
+  - `PrandtlMeyerTable`: Precomputed isentropic expansion data for non-ideal gas
+  - `compute_thrust_coefficient()`: Exit plane integration for thrust performance
 
 ### Python Bindings (`python/`)
 - Built with **nanobind** (`python/src/bind_*.cpp`), exposed as `goddard._core` extension module
-- One binding file per C++ domain (enums, structs, problem, combustor, nozzle, thermoarray, mixture_ratio, equilibrium, errors)
+- One binding file per C++ domain (enums, structs, problem, combustor, nozzle, thermoarray, mixture_ratio, equilibrium, errors, moc)
 - Each file defines a `void bind_X(nb::module_& m)` function called from `bind_main.cpp`
 - Pure-Python convenience layer in `python/goddard/` (`__init__.py` re-exports, `convenience.py` has factory functions)
 - `Cantera::Solution` exposed as opaque `shared_ptr` handle (`SolutionHandle`) — no Cantera internals in the Python API
@@ -139,6 +146,7 @@ Goddard is rocket science, so its codebase shouldn't be.
 - `python/CMakeLists.txt` additionally suppresses warnings from Python C API headers via `-Wno-*` flags
 - `ThermoArray` is bound read-only (getters only); Eigen arrays auto-convert to numpy via `nanobind/eigen/dense.h`
 - `RocketProblemResults.cases` accessed via `get_case(name)` / `case_names()` methods (returns references) rather than exposing the raw `unordered_map`
+- `moc_design()` / `moc_analysis()` convenience functions for common MoC workflows
 
 ### Examples
 Python examples and notebooks in `examples/` demonstrate:
@@ -153,6 +161,8 @@ Unit tests focus on:
 - Numerical accuracy against CEA reference data
 - State management and error handling
 - Located in `test/` with naming pattern `test_*.cpp`
+- MoC solver validation against Anderson Ch. 11 reference data and analytical solutions
+- Python smoke tests and integration tests in `python/tests/`
 
 ## Code style
 
