@@ -20,11 +20,21 @@ double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double 
 
 Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma);
 
+double stagnation_factor(double mach, double gamma);
+
+Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd gamma);
+
+inline double mach_to_mu(double mach) {
+    // unfortunately trig functions aren't constexpr until C++26.
+    return std::asin(1.0/mach);
+}
+
+
 /**
  * @brief Speed of sound of a gas.
  */
 double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma);
-
+double gas_sonic_velocity(double temperature, double molar_mass, double gamma);
 Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma);
 
 

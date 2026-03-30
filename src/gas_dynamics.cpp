@@ -15,6 +15,10 @@ double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma){
     return std::sqrt(Cantera::GasConstant*gas.temperature()*gamma/gas.meanMolecularWeight());
 }
 
+double gas_sonic_velocity(double temperature, double molar_mass, double gamma) {
+    return std::sqrt(Cantera::GasConstant*temperature*gamma/molar_mass);
+}
+
 Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma) {
     return (Cantera::GasConstant*gas.temperature()*gamma / gas.mean_molecular_weight()).sqrt();
 }
@@ -29,6 +33,14 @@ Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::Arr
 
 double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma) {
     return gas.pressure() * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
+}
+
+double stagnation_factor(double mach, double gamma) {
+    return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
+}
+
+Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd gamma) {
+    return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
 }
 
 Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma) {

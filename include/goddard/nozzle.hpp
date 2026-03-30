@@ -39,6 +39,7 @@ struct NozzleOptions {
 
 struct ThroatCondition {
     bool converged;
+    double speed_of_sound;
     double H_stagnation;
     double P_inlet;
     double S_inlet;
@@ -89,7 +90,7 @@ class NozzleBase {
     
     protected:
     std::shared_ptr<Cantera::Solution> m_gas;
-    virtual void equilibrate(Cantera::ThermoPhase& state) = 0;
+    virtual void solve_chemistry(Cantera::ThermoPhase& state) = 0;
     virtual NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) = 0;
     virtual NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) = 0;
@@ -101,7 +102,7 @@ class EquilibriumNozzle : public NozzleBase {
     double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
-    void equilibrate(Cantera::ThermoPhase& state) override;
+    void solve_chemistry(Cantera::ThermoPhase& state) override;
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol=4.5e-5) override;
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=4.5e-5) override;
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol=0.5e-5) override;
@@ -119,7 +120,7 @@ class FrozenNozzle final : public NozzleBase {
     double get_gamma_s(Cantera::ThermoPhase& state) override;
 
     protected:
-    void equilibrate(Cantera::ThermoPhase& state) override;
+    void solve_chemistry(Cantera::ThermoPhase& state) override;
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) override;
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol) override;

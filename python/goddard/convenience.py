@@ -1,5 +1,7 @@
 """Convenience factory functions for building Goddard problems."""
 
+import math
+
 from goddard._core import (
     CombustorType,
     CombustorOptions,
@@ -7,6 +9,12 @@ from goddard._core import (
     NozzleOptions,
     ExpansionType,
     create_solution,
+    MocFlowKind,
+    MocChemistry,
+    MocMode,
+    MocOptions,
+    NozzleProfile,
+    MocNozzle,
 )
 
 
@@ -128,6 +136,89 @@ def frozen_nozzle(*ratios, frozen_NFZ=1):
     opts.expansion_ratios = list(ratios)
     opts.frozen_NFZ = frozen_NFZ
     return opts
+
+
+def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
+               flow_type=None, chemistry=None, throat_radius=1.0,
+               solution=None):
+    """Design a minimum-length nozzle using the Method of Characteristics.
+
+    Args:
+        theta_max_deg: Maximum wall angle in degrees.
+        num_characteristics: Number of C+ characteristics from expansion fan.
+        gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
+        flow_type: MocFlowKind (defaults to PLANAR).
+        chemistry: MocChemistry (defaults to PERFECT_GAS).
+        throat_radius: Throat radius for throat geometry.
+        solution: SolutionHandle for chemistry-based calculations. When
+            provided, the chemistry constructor is used.
+
+    Returns:
+        MocResult from the solver.
+    """
+    if flow_type is None:
+        flow_type = MocFlowKind.PLANAR
+    if chemistry is None:
+        chemistry = MocChemistry.PERFECT_GAS
+
+    opts = MocOptions()
+    opts.flow_type = flow_type
+    opts.chemistry = chemistry
+    opts.mode = MocMode.DESIGN_MIN_LENGTH
+    opts.num_characteristics = num_characteristics
+    opts.gamma = gamma
+    opts.theta_max = math.radians(theta_max_deg)
+    opts.geometry.throat_radius = throat_radius
+
+    if solution is not None:
+        nozzle = MocNozzle(solution, opts)
+    else:
+        nozzle = MocNozzle(opts)
+
+    return nozzle.solve()
+
+
+def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
+                 flow_type=None, chemistry=None, throat_radius=1.0,
+                 solution=None):
+    """Analyse an existing nozzle contour using the Method of Characteristics.
+
+    Args:
+        profile: NozzleProfile object or path to a CSV file.
+        num_characteristics: Number of C+ characteristics from expansion fan.
+        gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
+        flow_type: MocFlowKind (defaults to PLANAR).
+        chemistry: MocChemistry (defaults to PERFECT_GAS).
+        throat_radius: Throat radius for throat geometry.
+        solution: SolutionHandle for chemistry-based calculations. When
+            provided, the chemistry constructor is used.
+
+    Returns:
+        MocResult from the solver.
+    """
+    if flow_type is None:
+        flow_type = MocFlowKind.PLANAR
+    if chemistry is None:
+        chemistry = MocChemistry.PERFECT_GAS
+
+    if isinstance(profile, str):
+        profile = NozzleProfile.load_csv(profile)
+
+    opts = MocOptions()
+    opts.flow_type = flow_type
+    opts.chemistry = chemistry
+    opts.mode = MocMode.ANALYSIS
+    opts.num_characteristics = num_characteristics
+    opts.gamma = gamma
+    opts.geometry.throat_radius = throat_radius
+    opts.nozzle_profile = profile
+
+    if solution is not None:
+        nozzle = MocNozzle(solution, opts)
+    else:
+        nozzle = MocNozzle(opts)
+
+    return nozzle.solve()
 
 
 def from_cantera(ct_solution):

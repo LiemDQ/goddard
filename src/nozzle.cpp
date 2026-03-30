@@ -95,7 +95,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
 
         //if equilibrium conditions are selected, the composition must reach chemical
         //equilibrium in the throat.
-        equilibrate(*gas_state);
+        solve_chemistry(*gas_state);
         gamma_s = get_gamma_s(*gas_state);
         
         double velocity = gas_isenthalpic_velocity(*gas_state, H_inlet);
@@ -109,6 +109,7 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
 
     EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_state);
     return {true, 
+        gas_sonic_velocity(*gas_state, gamma_s),
         H_inlet, 
         P_inlet, 
         S_inlet, 
@@ -128,7 +129,7 @@ double EquilibriumNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     return props.gamma_s;
 }
 
-void EquilibriumNozzle::equilibrate(Cantera::ThermoPhase& state) {
+void EquilibriumNozzle::solve_chemistry(Cantera::ThermoPhase& state) {
     state.equilibrate("SP","gibbs");
 }
 
@@ -260,7 +261,7 @@ double FrozenNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
     return state.cp_mass()/state.cv_mass();
 }
 
-void FrozenNozzle::equilibrate([[maybe_unused]] Cantera::ThermoPhase& state){
+void FrozenNozzle::solve_chemistry([[maybe_unused]] Cantera::ThermoPhase& state){
     //for frozen nozzle, equilibration is a no-op
     return;
 }
@@ -405,7 +406,7 @@ double FrozenNozzle::iterate_temperature(
 
     gas_thermo->setState_TPX(T_exit, throat_condition.P_inlet/pressure_ratio, composition.data());
 
-    double Cp = gas_thermo->cp_mass(); //TODO: unsure if we can just use this or whether it needs to be equilibrium Cp
+    double Cp = gas_thermo->cp_mass();
     double dlnT = (throat_condition.S_inlet - gas_thermo->entropy_mass())/Cp;
 
     int maxiter = 8;
