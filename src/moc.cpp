@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <format>
 #include "goddard/equilibrium.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
@@ -671,15 +672,12 @@ CharacteristicPoint MocNozzle::solve_interior_point_planar(
 
     // validity checks
     if (p3.x < p1.x || p3.x < p2.x) {
-        log_warning("Non-downstream intersection at ("
-            + std::to_string(p3.x) + ", " + std::to_string(p3.y)
-            + "). Parents at x=(" + std::to_string(p1.x) + ", " + std::to_string(p2.x) + ").");
+        log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
+            p3.x, p3.y, p1.x, p2.x);
         p3.mach = -1.0; // invalid point
     }
     if (p3.mach < 1.0 && p3.mach > 0.0) {
-        log_warning("Subsonic Mach " + std::to_string(p3.mach)
-            + " at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y)
-            + "). Possible shock formation.");
+        log_warning("Subsonic Mach {} at ({}, {}). Possible shock formation.", p3.mach, p3.x, p3.y);
         p3.mach = -1.0; // subsonic point -- characteristics undefined
     }
 
@@ -755,14 +753,11 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
 
     // validity checks
     if (p3.x < p1.x || p3.x < p2.x) {
-        log_warning("Non-downstream intersection at ("
-            + std::to_string(p3.x) + ", " + std::to_string(p3.y)
-            + "). Parents at x=(" + std::to_string(p1.x) + ", " + std::to_string(p2.x) + ").");
+        log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
+            p3.x, p3.y, p1.x, p2.x);
         p3.mach = -1.0; // invalid point
     } else if (p3.mach < 1.0) {
-        log_warning("Subsonic Mach " + std::to_string(p3.mach)
-            + " at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y)
-            + "). Possible shock formation.");
+        log_warning("Subsonic Mach {} at ({}, {}). Possible shock formation.", p3.mach, p3.x, p3.y);
         p3.mach = -1.0; // subsonic point -- characteristics undefined
     }
 
@@ -823,9 +818,8 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
         S2 = S2_new;
 
         if (i == max_iters - 1 && residual >= m_options.abstol) {
-            log_warning("Iterative interior solver did not converge. Residual="
-                + std::to_string(residual) + " after " + std::to_string(max_iters)
-                + " iterations at (" + std::to_string(p3.x) + ", " + std::to_string(p3.y) + ").");
+            log_warning("Iterative interior solver did not converge."
+                "Residual={} after {} iterations at ({}, {}).", residual, max_iters, p3.x, p3.y);
         }
     }
     return p3;
@@ -929,9 +923,8 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
                 wall_point.y = new_y;
 
                 if (i == max_iter - 1 && residual >= m_options.abstol) {
-                    log_warning("Wall design source term iteration did not converge. Residual="
-                        + std::to_string(residual) + " at (" + std::to_string(wall_point.x)
-                        + ", " + std::to_string(wall_point.y) + ").");
+                    log_warning("Wall design source term iteration did not converge." 
+                        "Residual={} at ({}, {}).", residual, wall_point.x, wall_point.y);
                 }
             }
             break;
@@ -998,9 +991,8 @@ CharacteristicPoint MocNozzle::solve_wall_point_analysis(
                     interior_parent.mach);
 
                 if (i == max_iter - 1 && residual >= m_options.abstol) {
-                    log_warning("Wall analysis source term iteration did not converge. Residual="
-                        + std::to_string(residual) + " at (" + std::to_string(wall_point.x)
-                        + ", " + std::to_string(wall_point.y) + ").");
+                    log_warning("Wall design source term iteration did not converge." 
+                        "Residual={} at ({}, {}).", residual, wall_point.x, wall_point.y);
                 }
             }
             wall_point.K_plus = wall_point.theta - wall_point.nu;
@@ -1112,9 +1104,8 @@ double MocNozzle::find_node_mach(
     }
 
     // rootfinding has failed
-    log_warning("find_node_mach did not converge after "
-        + std::to_string(max_iter) + " iterations. Last Mach="
-        + std::to_string(mach) + ", delta_theta=" + std::to_string(delta_theta) + ".");
+    log_warning("find_node_mach did not converge after {} iterations. "
+        "Last Mach={}, delta_theta={}.", max_iter, mach, delta_theta);
     return -1.0;
 }
 
@@ -1145,8 +1136,7 @@ void MocNozzle::update_thermodynamic_state_from_nu(
     double nu, double mach_guess)
 {
     if (nu < 0.0) {
-        log_warning("Negative Prandtl-Meyer angle nu="
-            + std::to_string(nu) + ". Subsonic flow or numerical error.");
+        log_warning("Negative Prandtl-Meyer angle nu = {}. Subsonic flow or numerical error.", nu);
     }
     point.nu = nu;
     switch (m_options.chemistry) {

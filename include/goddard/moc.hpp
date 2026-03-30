@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <string_view>
+#include <format>
 #include <memory>
 #include <utility>
 #include <optional>
@@ -322,7 +324,16 @@ protected:
 
 
     // Logging helpers
+    template <typename... Args>
+    void log_warning(std::string_view fmt, Args&&... args) {
+        m_messages.push_back("Warning: " + std::vformat(fmt, std::make_format_args(args...)));
+    }
     void log_warning(const std::string& msg);
+    
+    template <typename... Args>
+    void log_info(std::string_view fmt, Args&&... args) {
+        m_messages.push_back("Info: " + std::vformat(fmt, std::make_format_args(args...)));
+    }
     void log_info(const std::string& msg);
 
     std::shared_ptr<Cantera::Solution> m_gas;
