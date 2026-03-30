@@ -12,6 +12,6 @@ Questions? Reach out by opening a discussion topic, or via email at [dq@liem.ca]
 
 
 ## License
-Goddard is subject to the terms of the Mozilla Public License, v. 2.0.
+Goddard is subject to the terms of the GNU Lesser General Public License License, v. 2.1.
 
 Copyright © 2026 Liem Dam-Quang
