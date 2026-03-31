@@ -20,9 +20,25 @@ public:
     // Interpolate wall slope at a given x-position.
     // Only used in analysis mode.
     double slope_at(double x_query) const;
+
     
     // Interpolate wall angle at a given x-position.
     double theta_at(double x_query) const;
+    
+    // 
+    double radius_at(double x_query) const;
+    
+    double area_at(double x_query) const;
+    // Get slope at a provided index.
+    double slope_at_idx(size_t idx) const;
+
+    double theta_at_idx(size_t idx) const;
+
+    double x_max() const;
+
+    double x_min() const;
+
+    std::pair<size_t, double> radius_max() const;
 
     // Find the maximum wall angle across all segments.
     double max_theta() const;
