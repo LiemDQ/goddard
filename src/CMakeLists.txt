@@ -49,6 +49,7 @@ add_library(
   characteristics.cpp
   moc.cpp
   shocks.cpp
+  profile.cpp
 )
 
 target_include_directories(goddard_lib
