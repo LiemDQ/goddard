@@ -19,6 +19,7 @@ nanobind_add_module(
     src/bind_equilibrium.cpp
     src/bind_thermo.cpp
     src/bind_moc.cpp
+    src/bind_kinetic_nozzle.cpp
 )
 
 target_link_libraries(_core PRIVATE goddard_lib)

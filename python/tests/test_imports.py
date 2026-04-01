@@ -41,6 +41,13 @@ def test_import_classes():
     )
 
 
+def test_import_kinetic_nozzle():
+    from goddard import KineticNozzle, KineticNozzleStation, KineticNozzleResults
+    assert KineticNozzle is not None
+    assert KineticNozzleStation is not None
+    assert KineticNozzleResults is not None
+
+
 def test_import_errors():
     from goddard import ConvergenceError
     assert issubclass(ConvergenceError, Exception)
