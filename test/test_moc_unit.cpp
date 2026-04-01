@@ -288,7 +288,7 @@ TEST(NozzleProfileTest, MaxThetaMultipleSegments) {
     profile.y = {1.0,
                  1.0 + dx * std::tan(10.0 * DEG),
                  1.0 + dx * std::tan(10.0 * DEG) + dx * std::tan(25.0 * DEG),
-                 1.0 + dx * std::tan(10.0 * DEG) + dx * std::tan(25.0 * DEG) + dx * std::tan(15.0 * DEG)};
+                 1.0 + dx * std::tan(10.0 * DEG) + dx * std::tan(25.0 * DEG) + dx * std::tan(25.0 * DEG)};
     EXPECT_NEAR(profile.max_theta(), 25.0 * DEG, 1e-12);
 }
 
@@ -297,8 +297,10 @@ TEST(NozzleProfileTest, MaxThetaBellNozzle) {
     // back toward the axis. Max angle is in the middle, not at the first segment.
     NozzleProfile profile;
     double dx = 0.5;
-    // Angles per segment: 5°, 15°, 30°, 20°, 5°
-    std::vector<double> angles_deg = {5.0, 15.0, 30.0, 20.0, 5.0};
+    // The 2nd-order central difference at each node averages the slopes (tan values)
+    // of the two adjacent segments, then takes atan. This is NOT the same as averaging
+    // angles: atan((tan(35°)+tan(25°))/2) ≈ 30.26°, not 30°.
+    std::vector<double> angles_deg = {5.0, 15.0, 35.0, 25.0, 20.0, 5.0};
     profile.x.push_back(0.0);
     profile.y.push_back(1.0);
     for (size_t i = 0; i < angles_deg.size(); i++) {
@@ -306,7 +308,9 @@ TEST(NozzleProfileTest, MaxThetaBellNozzle) {
         profile.x.push_back(profile.x.back() + dx);
         profile.y.push_back(profile.y.back() + dy);
     }
-    EXPECT_NEAR(profile.max_theta(), 30.0 * DEG, 1e-12);
+    // Max is at the node between the 35° and 25° segments (uniform spacing → simple average).
+    double expected_max_theta = std::atan((std::tan(35.0 * DEG) + std::tan(25.0 * DEG)) / 2.0);
+    EXPECT_NEAR(profile.max_theta(), expected_max_theta, 1e-12);
 }
 
 TEST(NozzleProfileTest, MaxThetaFlatSegmentsIgnored) {
