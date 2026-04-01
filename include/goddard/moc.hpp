@@ -47,7 +47,6 @@ struct ThroatGeometry {
     double downstream_wall_curvature_radius;
 };
 
-/*
 
 // For designing nozzle contours where the initial expansion shape is not prescribed
 // it is necessary to specific the centerline mach/pressure distribution instead.
