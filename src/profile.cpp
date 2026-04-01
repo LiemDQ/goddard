@@ -30,7 +30,7 @@ double NozzleProfile::radius_at(double x_query) const {
 
     double weight = (x_query - x1)/(x2-x1);
 
-    return y1 + weight * (y2-y1)/(x2-x1);
+    return y1 + weight * (y2-y1);
 }
 
 double NozzleProfile::area_at(double x_query) const {
