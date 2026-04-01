@@ -38,7 +38,7 @@ public:
         std::vector<double> inlet_state,
         NozzleChemistryType chemistry = NozzleChemistryType::EQUILIBRIUM);
 
-    KineticNozzleResults solve(double dt_max = 1e-4, int max_steps = 100000);
+    KineticNozzleResults solve(double dt_max = 1e-6, int max_steps = 100000);
 
     double get_gamma_s(Cantera::ThermoPhase& state);
     

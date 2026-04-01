@@ -50,6 +50,7 @@ add_library(
   moc.cpp
   shocks.cpp
   profile.cpp
+  kinetic_nozzle.cpp
 )
 
 target_include_directories(goddard_lib
