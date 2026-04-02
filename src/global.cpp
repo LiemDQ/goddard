@@ -14,7 +14,7 @@ void setup_defaults(){
 }
 
 void add_directory(const std::string& dir){
-    Cantera::addDirectory(dir);
+    Cantera::addDataDirectory(dir);
 }
 
 

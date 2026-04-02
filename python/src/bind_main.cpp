@@ -14,6 +14,7 @@ void bind_nozzle(nb::module_& m);
 void bind_problem(nb::module_& m);
 void bind_thermo(nb::module_& m);
 void bind_moc(nb::module_& m);
+void bind_kinetic_nozzle(nb::module_& m);
 
 NB_MODULE(_core, m) {
     m.doc() = "Goddard rocket engine simulation toolkit";
@@ -32,4 +33,5 @@ NB_MODULE(_core, m) {
     bind_nozzle(m);
     bind_problem(m);
     bind_moc(m);
+    bind_kinetic_nozzle(m);
 }
