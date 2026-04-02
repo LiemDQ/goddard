@@ -53,7 +53,7 @@ void bind_kinetic_nozzle(nb::module_& m) {
              "solution"_a, "profile"_a, "mdot"_a, "state"_a,
              "chemistry"_a = Goddard::NozzleChemistryType::EQUILIBRIUM)
         .def("solve", &Goddard::KineticNozzle::solve,
-             "dt_max"_a = 1e-4, "max_steps"_a = 100000)
+             "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000)
         .def_rw("m_profile", &Goddard::KineticNozzle::m_profile)
         .def_rw("m_mdot",    &Goddard::KineticNozzle::m_mdot);
 }

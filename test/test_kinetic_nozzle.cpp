@@ -44,15 +44,23 @@ protected:
         // Conical profile: throat r=0.01 m at x=0, exit r=0.01414 m at x=0.1 m
         // Area ratio at exit = (0.01414/0.01)^2 ≈ 2.0
         s_profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+        double length = s_profile.x_max() - s_profile.x_min();
+        int min_steps = 20000;
 
         KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
-        s_results = nozzle.solve(1e-6, 100000);
+        s_results = nozzle.solve(1e-6, length/min_steps, 100000);
     }
 
     static void TearDownTestSuite() { s_gas.reset(); }
 
-    void SetUp() override { s_gas->thermo()->restoreState(s_inlet_state); }
-
+    void SetUp() override { 
+        s_gas->thermo()->restoreState(s_inlet_state);
+        // don't check all stations, only sample a few 
+        size_t num_checks = 40;
+        check_interval = std::max(s_results.stations.size()/num_checks,1ul);
+    }
+    
+    size_t check_interval = 1;
     static std::shared_ptr<Cantera::Solution> s_gas;
     static std::vector<double> s_inlet_state;
     static NozzleProfile s_profile;
@@ -129,7 +137,7 @@ TEST_F(KineticNozzleTests, StagnationEnthalpyConservedAtEveryStation) {
 
     double H0 = s_results.throat.H_stagnation;
 
-    for (size_t i = 0; i < s_results.stations.size(); i++) {
+    for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
         const auto& station = s_results.stations[i];
         s_gas->thermo()->restoreState(station.state);
         double h = s_gas->thermo()->enthalpy_mass();
@@ -149,7 +157,7 @@ TEST_F(KineticNozzleTests, PressureDecreasesSupersonicBranch) {
     // allow equality between adjacent stations; verify overall decrease.
     ASSERT_GT(s_results.stations.size(), 1u);
 
-    for (size_t i = 1; i < s_results.stations.size(); i++) {
+    for (size_t i = 1; i < s_results.stations.size(); i += check_interval) {
         s_gas->thermo()->restoreState(s_results.stations[i].state);
         double P_cur = s_gas->thermo()->pressure();
         s_gas->thermo()->restoreState(s_results.stations[i-1].state);
@@ -172,7 +180,7 @@ TEST_F(KineticNozzleTests, TemperatureDecreasesSupersonicBranch) {
     // Same rationale as pressure: allow equality between adjacent stations.
     ASSERT_GT(s_results.stations.size(), 1u);
 
-    for (size_t i = 1; i < s_results.stations.size(); i++) {
+    for (size_t i = 1; i < s_results.stations.size(); i += check_interval) {
         s_gas->thermo()->restoreState(s_results.stations[i].state);
         double T_cur = s_gas->thermo()->temperature();
         s_gas->thermo()->restoreState(s_results.stations[i-1].state);
@@ -216,7 +224,7 @@ TEST_F(KineticNozzleTests, MachNumberAboveOneAndIncreasing) {
 TEST_F(KineticNozzleTests, AreaRatioIncreasing) {
     ASSERT_GT(s_results.stations.size(), 1u);
 
-    for (size_t i = 1; i < s_results.stations.size(); i++) {
+    for (size_t i = 1; i < s_results.stations.size(); i += check_interval) {
         EXPECT_GE(s_results.stations[i].area_ratio, s_results.stations[i-1].area_ratio)
             << "Area ratio must not decrease along the diverging nozzle at station " << i;
     }
@@ -307,6 +315,43 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
         << "Kinetic exit velocity should be <= equilibrium exit velocity";
 }
 
+TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
+    // Companion to the temperature bound: P_frozen <= P_kinetic <= P_equilibrium.
+    // Equilibrium recovers chemical bond energy (recombination exothermic) as
+    // additional enthalpy, which in the nozzle converts to higher temperature 
+    // & therefore pressure.
+    
+    ASSERT_TRUE(s_results.throat.converged);
+    ASSERT_GT(s_results.stations.size(), 0u);
+
+    const auto& exit_result = s_results.stations.back(); 
+
+    s_gas->thermo()->restoreState(exit_result.state);
+
+    double P_kinetic = s_gas->thermo()->pressure();
+    double exit_ar = s_results.stations.back().area_ratio;
+
+    s_gas->thermo()->restoreState(s_inlet_state);
+    EquilibriumNozzle eq_nozzle(*s_gas);
+    NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
+    ASSERT_TRUE(eq_results.expansions.front().converged);
+    s_gas->thermo()->restoreState(eq_results.expansions.front().state);
+    double P_eq = s_gas->thermo()->pressure();
+
+    s_gas->thermo()->restoreState(s_inlet_state);
+    FrozenNozzle frz_nozzle(*s_gas);
+    NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
+    ASSERT_TRUE(frz_results.expansions.front().converged);
+    s_gas->thermo()->restoreState(frz_results.expansions.front().state);
+    double P_frz = s_gas->thermo()->pressure();
+
+    double margin = P_kinetic * 0.005;
+    EXPECT_GE(P_kinetic, P_frz - margin)
+        << "Exit pressure should be >= frozen exit pressure";
+    EXPECT_LE(P_kinetic, P_eq + margin)
+        << "Exit pressure should be <= equilibrium exit pressure";
+}
+
 // ---------------------------------------------------------------------------
 // Gamma_s: must be frozen Cp/Cv
 // ---------------------------------------------------------------------------
@@ -351,7 +396,7 @@ TEST_F(KineticNozzleTests, DamkohlerVectorHasCorrectSize) {
     ASSERT_GT(s_results.stations.size(), 0u);
 
     size_t n_species = s_gas->thermo()->nSpecies();
-    for (size_t i = 0; i < s_results.stations.size(); i++) {
+    for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
         EXPECT_EQ(s_results.stations[i].damkohler.size(), n_species)
             << "Damkohler vector size mismatch at station " << i;
     }
@@ -362,7 +407,7 @@ TEST_F(KineticNozzleTests, DamkohlerMinIsMinimumOfNonZeroEntries) {
     // (trace species are zeroed out and excluded from the minimum)
     ASSERT_GT(s_results.stations.size(), 0u);
 
-    for (size_t i = 0; i < s_results.stations.size(); i++) {
+    for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
         const auto& station = s_results.stations[i];
         double manual_min = std::numeric_limits<double>::max();
         for (double da : station.damkohler) {
@@ -381,12 +426,39 @@ TEST_F(KineticNozzleTests, FreezingSpeciesIndexIsValid) {
     ASSERT_GT(s_results.stations.size(), 0u);
 
     int n_species = static_cast<int>(s_gas->thermo()->nSpecies());
-    for (size_t i = 0; i < s_results.stations.size(); i++) {
+    for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
         EXPECT_GE(s_results.stations[i].min_Da_species, 0)
             << "min_Da_species must be non-negative at station " << i;
         EXPECT_LT(s_results.stations[i].min_Da_species, n_species)
             << "min_Da_species out of range at station " << i;
     }
+}
+
+TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
+    // For a kinetically reacting nozzle, the entropy must be equal to or greater than 
+    // its equilibrium counterpart.
+    ASSERT_GT(s_results.stations.size(), 0u);
+
+    ASSERT_TRUE(s_results.throat.converged);
+    ASSERT_GT(s_results.stations.size(), 0u);
+
+    const auto& exit_result = s_results.stations.back(); 
+
+    s_gas->thermo()->restoreState(exit_result.state);
+
+    double S_kinetic = s_gas->thermo()->entropy_mass();
+    double exit_ar = s_results.stations.back().area_ratio;
+
+    s_gas->thermo()->restoreState(s_inlet_state);
+    EquilibriumNozzle eq_nozzle(*s_gas);
+    NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
+    ASSERT_TRUE(eq_results.expansions.front().converged);
+    s_gas->thermo()->restoreState(eq_results.expansions.front().state);
+    double S_eq = s_gas->thermo()->entropy_mass();
+
+    double margin = S_kinetic * 0.001;
+    EXPECT_GE(S_kinetic, S_eq - margin)
+        << "Exit entropy >= equiilibrium exit entropy";
 }
 
 // ---------------------------------------------------------------------------

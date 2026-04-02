@@ -92,7 +92,7 @@ static std::string diagnose_cvodes_failure(
            + msg;
 }
 
-KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
+KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_steps) {
     ThroatCondition throat = m_throat_solver->solve_throat_conditions();
     auto thermo = m_gas->thermo();
     thermo->restoreState(throat.state);
@@ -100,6 +100,7 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
     double H0 = throat.H_stagnation;
     double x = m_profile.x_min();
     double u = gas_isenthalpic_velocity(*thermo, H0);
+    double dudx = 0.0;
     double M = 1.0; // mach number is 1.0 by definition in the throat.
     double A_throat = m_profile.area_at(x);
 
@@ -136,6 +137,8 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
 
     std::vector<KineticNozzleStation> stations;
     double t = 0.0;
+    double u_old = u;
+    double x_old = x;
 
     const double conc_threshold = 1e-10; // skip trace species in Damkohler calculations
     const double x_exit = m_profile.x_max();
@@ -143,23 +146,19 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
 
     for (int step = 0; step < max_steps; step++) {
         if (x >= x_exit) break;
+        
+        double max_xstep = std::min(x_exit - x, dx_max);
+        double dt = std::min(dt_max, max_xstep/ u);
+        
+        x += u * dt * 0.5;
 
         double r = m_profile.radius_at(x);
         double drdx = m_profile.slope_at(x);
         double A_At = m_profile.area_at(x)/A_throat;
         double V = reactor->volume();
 
-        double dx_remain = x_exit - x;
-        if (dx_remain < 1e-6) break; // avoid Zeno's paradox: dt cap = 0.5*dx/u → never reaches exit
-        double dt = std::min(dt_max, 0.5*dx_remain/ u);
-
-        // "Strang" splitting: expansion -> chemistry -> expansion
-        // This is technically not Strang splitting as the volume ODE is coupled 
-        // to the chemistry ODEs via Cantera's IdealGasMoleReactor.
-        x += u * dt * 0.5;
-        r = m_profile.radius_at(x);
-        drdx = m_profile.slope_at(x);
-        wall_velocity = 2.0 * V * u * drdx / r; //updating wall velocity updates the functor
+        dudx = (u - u_old)/(x-x_old);
+        wall_velocity = V* (2.0 * u * drdx / r + dudx); //updating wall velocity updates the functor
 
         try {
             net.advance(t + dt);
@@ -168,20 +167,18 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
         }
         t += dt;
 
-        u = gas_isenthalpic_velocity(*thermo, H0);
-        M = u / gas_sonic_velocity(*thermo, get_gamma_s(*thermo));
-        V = reactor->volume();
-        x += u * dt / 2.0;
-
-        r = m_profile.radius_at(x);
-        drdx = m_profile.slope_at(x);
-        wall_velocity = 2.0 * V * u * drdx / r;
+        x_old = x;
+        u_old = u;
+        x += u * dt * 0.5;
 
         double dx = u*dt;
         double Da_min = std::numeric_limits<double>::max();
         int freeze_idx = 0;
         m_gas->kinetics()->getNetProductionRates(wdot.data());
         m_gas->thermo()->getConcentrations(conc.data());
+
+        u = gas_isenthalpic_velocity(*thermo, H0);
+        M = u / gas_sonic_velocity(*thermo, get_gamma_s(*thermo));
 
         for (size_t k = 0; k < n_species; k++) {
             if (conc[k] < conc_threshold) {
@@ -194,13 +191,9 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, int max_steps) {
                 freeze_idx = static_cast<int>(k);
             }
         }
-
-        
         stations.push_back({x, u, M, A_At, save_thermo_state(*thermo), damkohler, Da_min, freeze_idx});
     }
     return {throat, stations};
 }
-
-
 
 } // namespace Goddard
