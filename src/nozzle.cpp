@@ -108,12 +108,13 @@ ThroatCondition NozzleBase::solve_throat_conditions(double abstol) {
     }
 
     EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_state);
+
     return {true, 
         gas_sonic_velocity(*gas_state, gamma_s),
         H_inlet, 
         P_inlet, 
         S_inlet, 
-        final_props.gamma_s, 
+        gamma_s,
         final_props.dlogV_dlogP_T, 
         final_props.dlogV_dlogT_P, 
         save_thermo_state(*gas_state)};

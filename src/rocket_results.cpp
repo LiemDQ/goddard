@@ -85,6 +85,26 @@ std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std
         throat_compositions[names[i]] = state[i+2];
     }
 
+    double throat_gamma = 0;
+    double throat_dlogV_dlogP_T = 0;
+    double throat_dlogV_dlogT_P = 0;
+    switch (case_result.chemistry) {
+        case NozzleChemistryType::EQUILIBRIUM: {
+            auto props = get_thermo_equilibrium_properties(*tmo);
+            throat_gamma = props.gamma_s;
+            throat_dlogV_dlogP_T = props.dlogV_dlogP_T;
+            throat_dlogV_dlogT_P = props.dlogV_dlogT_P;
+            break;
+        }
+        case NozzleChemistryType::FROZEN: {
+            throat_gamma = tmo->cp_mass()/tmo->cv_mass();
+            throat_dlogV_dlogP_T = -1.0; //by definition -- see NASA reference publication 1311 eq 6.38
+            throat_dlogV_dlogT_P = 1.0; //by definition -- see NASA reference publication 1311 eq 6.37
+            break;
+        }
+        default: throw NotImplementedError("This chemistry type has not been implemented.");
+    }
+
     
     ThermoStateInfo throat_state {
         tmo->pressure(),
@@ -96,9 +116,9 @@ std::vector<ThermoStateInfo> RocketProblemResults::extract_thermo_info(const std
         tmo->entropy_mass(),
         tmo->meanMolecularWeight(),
         tmo->cp_mass(),
-        throat.gamma_s,
-        throat.dlV_dlP_T,
-        throat.dlV_dlT_P,
+        throat_gamma,
+        throat_dlogV_dlogP_T,
+        throat_dlogV_dlogT_P,
         gas_sonic_velocity(*tmo, throat.gamma_s),
         throat_compositions
     };
@@ -220,7 +240,7 @@ RocketPerformance RocketProblemResults::calculate_performance(
     // c* = P_c * A_t / m_dot = sqrt(gamma * R * T_c) / gamma * sqrt((2/(gamma+1))^((gamma+1)/(gamma-1)))
     // Simplified: c* = throat.speed_of_sound / sqrt(throat.gamma_s) * factor
     double gamma = throat.gamma_s;
-    double cstar = throat.speed_of_sound * std::sqrt(
+    double c_star = throat.speed_of_sound * std::sqrt(
         std::pow(2.0 / (gamma + 1.0), (gamma + 1.0) / (gamma - 1.0)) / gamma
     );
 
@@ -231,16 +251,15 @@ RocketPerformance RocketProblemResults::calculate_performance(
     // Thrust coefficient CF = v_e / c* + (P_e - P_amb) * A_e / (P_c * A_t)
     // For vacuum: CF_vac = v_e / c* + P_e * A_e / (P_c * A_t)
     // Simplified (assuming matched nozzle): CF ≈ v_e / c*
-    double CF = exit_velocity / cstar;
+    double CF = exit_velocity / c_star;
 
-    // Specific impulse Isp = v_e / g0
+    // Specific impulse Isp = v_e / g0  [seconds]
     constexpr double g0 = 9.80665; // m/s^2
     double isp = exit_velocity / g0;
 
-    // Vacuum specific impulse (includes pressure thrust term)
+    // Vacuum specific impulse (includes pressure thrust term) [seconds]
     // Ivac = Isp + P_e * A_e / (m_dot * g0)
-    // Approximation: Ivac ≈ Isp * (1 + P_e/(P_c) * area_ratio * some_factor)
-    double ivac = isp + (exit.pressure / chamber.pressure) * area_ratio * cstar / g0;
+    double ivac = isp + (exit.pressure / chamber.pressure) * area_ratio * c_star / g0;
 
     // Mach number at exit (approximate from speed of sound)
     double mach_number = exit_velocity / exit.speed_of_sound;
@@ -249,7 +268,7 @@ RocketPerformance RocketProblemResults::calculate_performance(
         pressure_ratio,
         area_ratio,
         mach_number,
-        cstar,
+        c_star,
         CF,
         isp,
         ivac

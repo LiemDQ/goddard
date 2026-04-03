@@ -35,6 +35,34 @@ std::vector<const CEAState*> CEAResult::find_exit_states() const {
     return exits;
 }
 
+const CEAState* CEAResult::find_frozen_chamber_state() const {
+    for (const auto& state : frozen_states) {
+        if (state.location == "CHAMBER") {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+const CEAState* CEAResult::find_frozen_throat_state() const {
+    for (const auto& state : frozen_states) {
+        if (state.location == "THROAT") {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<const CEAState*> CEAResult::find_frozen_exit_states() const {
+    std::vector<const CEAState*> exits;
+    for (const auto& state : frozen_states) {
+        if (state.location.find("EXIT") != std::string::npos) {
+            exits.push_back(&state);
+        }
+    }
+    return exits;
+}
+
 // CEADataLoader implementation
 std::unique_ptr<CEAResult> CEADataLoader::load_from_file(const std::string& json_path) const {
     try {

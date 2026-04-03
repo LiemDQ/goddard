@@ -344,3 +344,156 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
         }
     }
 }
+
+
+TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
+
+    // Load H2 CEA reference data
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
+    auto cea_result = cea_loader->load_from_file(h2_json_path);
+    ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
+
+    // Get CEA chamber state
+    const auto* cea_chamber = cea_result->find_frozen_chamber_state();
+    ASSERT_NE(cea_chamber, nullptr) << "No chamber state found in CEA data";
+
+    // Skip if CEA data incomplete
+    if (cea_chamber->temperature_k == 0 || cea_chamber->pressure_bar == 0) {
+        GTEST_SKIP() << "CEA chamber data incomplete";
+    }
+
+    std::cout << "\n=== RocketProblem vs CEA Chamber Comparison ===" << std::endl;
+    std::cout << "CEA Chamber: T=" << cea_chamber->temperature_k << "K, P="
+              << cea_chamber->pressure_bar << "bar, MW=" << cea_chamber->molecular_weight
+              << "g/mol" << std::endl;
+
+    // Create RocketProblem from CEA conditions
+    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
+    auto case_params = createCaseParams("H2_O2_frozen",
+        cea_result->conditions, NozzleChemistryType::FROZEN);
+    
+    // Create and solve RocketProblem
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    auto results = problem.solve();
+
+    // Extract chamber (inlet) state - index 0 is the first state
+    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
+    ASSERT_GE(thermo_states.size(), 1) << "No thermo states extracted";
+
+    const auto& goddard_chamber = thermo_states[0]; // inlet = chamber
+    // const auto& goddard_chamber = results.get_chamber_state("H2_O2_equilibrium", 0);
+
+    std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
+              << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
+              << "g/mol" << std::endl;
+
+    // Compare using CEATestUtils
+    auto comparisons = CEATestUtils::compare_chamber_states(goddard_chamber, *cea_chamber);
+    CEATestUtils::print_comparison_summary(comparisons, "H2+O2 Frozen Chamber");
+
+    // Check all comparisons pass
+    for (const auto& result : comparisons) {
+        EXPECT_TRUE(result.passed) << result.message;
+    }
+}
+
+
+TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
+    // Previously skipped due to state handling issues - now fixed
+
+    // Load H2 CEA reference data
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
+    auto cea_result = cea_loader->load_from_file(h2_json_path);
+    ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
+
+    // Get CEA throat state
+    const auto* cea_throat = cea_result->find_frozen_throat_state();
+    ASSERT_NE(cea_throat, nullptr) << "No throat state found in CEA data";
+
+    // Skip if CEA data incomplete
+    if (cea_throat->temperature_k == 0) {
+        GTEST_SKIP() << "CEA throat data incomplete";
+    }
+
+    std::cout << "\n=== RocketProblem vs CEA Throat Comparison ===" << std::endl;
+    std::cout << "CEA Throat: T=" << cea_throat->temperature_k << "K, P="
+              << cea_throat->pressure_bar << "bar, Mach=" << cea_throat->mach_number
+              << std::endl;
+
+    // Create RocketProblem from CEA conditions
+    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
+    auto case_params = createCaseParams("H2_O2_frozen",
+        cea_result->conditions, NozzleChemistryType::FROZEN);
+
+    // Create and solve RocketProblem
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    auto results = problem.solve();
+
+    // Extract throat state - index 1 is the throat
+    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
+    ASSERT_GE(thermo_states.size(), 2) << "Not enough thermo states (need throat)";
+
+    const auto& goddard_throat = thermo_states[1]; // throat
+
+    std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
+              << goddard_throat.pressure / 1e5 << "bar" << std::endl;
+
+    // Compare using CEATestUtils
+    auto comparisons = CEATestUtils::compare_chamber_states(goddard_throat, *cea_throat);
+    CEATestUtils::print_comparison_summary(comparisons, "H2+O2 Throat");
+
+    // Check all comparisons pass
+    for (const auto& result : comparisons) {
+        EXPECT_TRUE(result.passed) << result.message;
+    }
+}
+
+TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
+    // Load H2 CEA reference data
+    std::string h2_json_path = cea_data_dir + "/h2gas.json";
+    auto cea_result = cea_loader->load_from_file(h2_json_path);
+    ASSERT_NE(cea_result, nullptr) << "Failed to load CEA data from " << h2_json_path;
+
+    // Get CEA exit states
+    auto cea_exits = cea_result->find_frozen_exit_states();
+    ASSERT_GT(cea_exits.size(), 0) << "No exit states found in CEA data";
+
+    std::cout << "\n=== RocketProblem vs CEA Exit Comparison ===" << std::endl;
+    std::cout << "CEA has " << cea_exits.size() << " exit state(s)" << std::endl;
+
+    // Create RocketProblem from CEA conditions
+    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
+    auto case_params = createCaseParams("H2_O2_frozen",
+        cea_result->conditions, NozzleChemistryType::FROZEN);
+
+    // Create and solve RocketProblem
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    auto results = problem.solve();
+
+    // Extract all states
+    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
+    // States: [0]=inlet/chamber, [1]=throat, [2+]=exits
+    size_t num_exits = thermo_states.size() > 2 ? thermo_states.size() - 2 : 0;
+    std::cout << "Goddard has " << num_exits << " exit state(s)" << std::endl;
+
+    // Compare each exit state
+    for (size_t i = 0; i < std::min(num_exits, cea_exits.size()); i++) {
+        const auto& goddard_exit = thermo_states[i + 2];
+        const auto* cea_exit = cea_exits[i];
+
+        if (cea_exit->temperature_k == 0) continue;
+
+        std::cout << "\nExit " << i << ":" << std::endl;
+        std::cout << "  CEA: T=" << cea_exit->temperature_k << "K, P="
+                  << cea_exit->pressure_bar << "bar" << std::endl;
+        std::cout << "  Goddard: T=" << goddard_exit.temperature << "K, P="
+                  << goddard_exit.pressure / 1e5 << "bar" << std::endl;
+
+        auto comparisons = CEATestUtils::compare_chamber_states(goddard_exit, *cea_exit);
+        CEATestUtils::print_comparison_summary(comparisons, "Exit " + std::to_string(i));
+
+        for (const auto& result : comparisons) {
+            EXPECT_TRUE(result.passed) << "Exit " << i << ": " << result.message;
+        }
+    }
+}

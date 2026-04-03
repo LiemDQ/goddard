@@ -78,6 +78,10 @@ struct CEAResult {
     const CEAState* find_chamber_state() const;
     const CEAState* find_throat_state() const;
     std::vector<const CEAState*> find_exit_states() const;
+
+    const CEAState* find_frozen_chamber_state() const;
+    const CEAState* find_frozen_throat_state() const;
+    std::vector<const CEAState*> find_frozen_exit_states() const;
 };
 
 
