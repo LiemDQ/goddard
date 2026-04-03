@@ -50,6 +50,10 @@ from goddard._core import (
     ConvergenceError,
     # Functions
     create_solution,
+    # Kinetic nozzle
+    KineticNozzle,
+    KineticNozzleStation,
+    KineticNozzleResults
 )
 
 from goddard.convenience import (
