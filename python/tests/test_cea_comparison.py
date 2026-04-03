@@ -129,12 +129,10 @@ def test_chamber_state(case: RocketTestCase):
     """Compare chamber thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.get_chamber_state(case.name, 0)
-    assert chamber is not None, "Goddard returned no chamber state"
+    chamber = results.chamber(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
-    
 
     compare_thermo_states(chamber, cea_sol, stations["chamber"], label="chamber")
 
@@ -144,8 +142,7 @@ def test_throat_state(case: RocketTestCase):
     """Compare throat thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    throat = results.get_throat_state(case.name, 0)
-    assert throat is not None, "Goddard returned no throat state"
+    throat = results.throat(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -159,7 +156,7 @@ def test_exit_states(case: RocketTestCase):
     """Compare exit/expansion thermodynamic states between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    exits = results.get_exit_states(case.name, 0)
+    exits = [s.thermo for s in results.exits(0, case.name)]
     assert len(exits) == len(case.area_ratios), (
         f"Expected {len(case.area_ratios)} exit states, got {len(exits)}")
 
@@ -192,10 +189,9 @@ def test_performance(case: RocketTestCase):
     problem = build_goddard_problem(case)
     results = problem.solve()
 
-    chamber = results.get_chamber_state(case.name, 0)
-    throat = results.get_throat_state(case.name, 0)
-    exits = results.get_exit_states(case.name, 0)
-    assert chamber is not None and throat is not None
+    chamber = results.chamber(0, case.name).thermo
+    throat = results.throat(0, case.name).thermo
+    exits = [s.thermo for s in results.exits(0, case.name)]
     assert len(exits) > 0
 
     cea_sol = solve_cea_problem(case)
@@ -240,8 +236,7 @@ def test_chamber_composition(case: RocketTestCase):
     """Compare chamber species mass fractions between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.get_chamber_state(case.name, 0)
-    assert chamber is not None
+    chamber = results.chamber(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)

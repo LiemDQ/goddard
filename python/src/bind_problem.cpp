@@ -31,17 +31,6 @@ void bind_problem(nb::module_& m) {
     }, "yaml_file"_a, "phase_name"_a = "", "species"_a = std::unordered_set<std::string>{},
        "Create a Cantera Solution handle from a YAML thermodynamic data file.");
 
-    // RocketProblemCaseResult
-    nb::class_<Goddard::RocketProblemCaseResult>(m, "RocketProblemCaseResult")
-        .def_ro("problem_type", &Goddard::RocketProblemCaseResult::problem_type)
-        .def_ro("inlet_states", &Goddard::RocketProblemCaseResult::inlet_states)
-        .def_ro("chemistry", &Goddard::RocketProblemCaseResult::chemistry)
-        .def_ro("nozzle_states", &Goddard::RocketProblemCaseResult::nozzle_states)
-        .def_ro("OF_ratios", &Goddard::RocketProblemCaseResult::OF_ratios)
-        .def_ro("pressures", &Goddard::RocketProblemCaseResult::pressures)
-        .def_ro("expansion_ratios", &Goddard::RocketProblemCaseResult::expansion_ratios)
-        .def_ro("expansion_type", &Goddard::RocketProblemCaseResult::expansion_type);
-
     // RocketProblem
     nb::class_<Goddard::RocketProblem>(m, "RocketProblem")
         .def(nb::init<const Goddard::ChemicalParameters&,
@@ -60,32 +49,40 @@ void bind_problem(nb::module_& m) {
 
     // RocketProblemResults
     nb::class_<Goddard::RocketProblemResults>(m, "RocketProblemResults")
-        .def("extract_thermo_info", &Goddard::RocketProblemResults::extract_thermo_info,
-             "case_name"_a, "index"_a)
-        .def("get_chamber_state", &Goddard::RocketProblemResults::get_chamber_state,
-             "case_name"_a, "of_index"_a)
-        .def("get_throat_state", &Goddard::RocketProblemResults::get_throat_state,
-             "case_name"_a, "of_index"_a)
-        .def("get_exit_states", &Goddard::RocketProblemResults::get_exit_states,
-             "case_name"_a, "of_index"_a)
-        .def_static("calculate_performance",
-             &Goddard::RocketProblemResults::calculate_performance,
-             "chamber"_a, "throat"_a, "exit"_a)
-        .def("get_case", [](Goddard::RocketProblemResults& self, const std::string& name)
-                -> Goddard::RocketProblemCaseResult& {
-            return self.cases.at(name);
-        }, nb::rv_policy::reference_internal, "name"_a,
-           "Get case result by name. Raises KeyError if not found.")
-        .def("case_names", [](Goddard::RocketProblemResults& self) {
-            std::vector<std::string> names;
-            names.reserve(self.cases.size());
-            for (auto& [k, v] : self.cases) {
-                names.push_back(k);
-            }
-            return names;
-        }, "Get list of case names.")
+        .def_prop_ro("stations", &Goddard::RocketProblemResults::stations,
+             "Flat list of all RocketStation objects across all cases.")
+        .def("stations_of_type", &Goddard::RocketProblemResults::stations_of_type,
+             "type"_a, "case_name"_a = "",
+             "Return all stations of a given StationType, optionally filtered to a case.")
+        .def("chamber", &Goddard::RocketProblemResults::chamber,
+             "of_index"_a = 0, "case_name"_a = "",
+             "Chamber station for the given O/F index. "
+             "case_name may be omitted when there is only one case.",
+             nb::rv_policy::reference_internal)
+        .def("throat", &Goddard::RocketProblemResults::throat,
+             "of_index"_a = 0, "case_name"_a = "",
+             "Throat station for the given O/F index. "
+             "case_name may be omitted when there is only one case.",
+             nb::rv_policy::reference_internal)
+        .def("exits", &Goddard::RocketProblemResults::exits,
+             "of_index"_a = 0, "case_name"_a = "",
+             "Exit stations for the given O/F index, ordered by expansion ratio. "
+             "case_name may be omitted when there is only one case.")
+        .def("performance", &Goddard::RocketProblemResults::performance,
+             "of_index"_a = 0, "exit_index"_a = 0, "case_name"_a = "",
+             "Compute rocket performance for the given O/F index and exit station.")
+        .def("case_names", &Goddard::RocketProblemResults::case_names,
+             "List all case names.")
+        .def("of_ratios", &Goddard::RocketProblemResults::of_ratios,
+             "case_name"_a = "",
+             "O/F ratios used for a case.",
+             nb::rv_policy::reference_internal)
         .def("report", &Goddard::RocketProblemResults::report,
              "case_name"_a = "",
              "Generate a CEA-style formatted text report. "
-             "If case_name is empty, reports all cases.");
+             "If case_name is empty, all cases are reported.")
+        .def_static("calculate_performance",
+             &Goddard::RocketProblemResults::calculate_performance,
+             "chamber"_a, "throat"_a, "exit"_a,
+             "Compute performance metrics from individual ThermoStateInfo objects.");
 }
