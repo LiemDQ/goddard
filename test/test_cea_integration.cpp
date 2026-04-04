@@ -222,12 +222,8 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract chamber (inlet) state - index 0 is the first state
-    auto thermo_states = results.extract_thermo_info("H2_O2_equilibrium", 0);
-    ASSERT_GE(thermo_states.size(), 1) << "No thermo states extracted";
-
-    const auto& goddard_chamber = thermo_states[0]; // inlet = chamber
-    // const auto& goddard_chamber = results.get_chamber_state("H2_O2_equilibrium", 0);
+    // Extract chamber state
+    const auto& goddard_chamber = results.chamber(0, "H2_O2_equilibrium").thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -274,11 +270,8 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract throat state - index 1 is the throat
-    auto thermo_states = results.extract_thermo_info("H2_O2_equilibrium", 0);
-    ASSERT_GE(thermo_states.size(), 2) << "Not enough thermo states (need throat)";
-
-    const auto& goddard_throat = thermo_states[1]; // throat
+    // Extract throat state
+    const auto& goddard_throat = results.throat(0, "H2_O2_equilibrium").thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -317,15 +310,13 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract all states
-    auto thermo_states = results.extract_thermo_info("H2_O2_equilibrium", 0);
-    // States: [0]=inlet/chamber, [1]=throat, [2+]=exits
-    size_t num_exits = thermo_states.size() > 2 ? thermo_states.size() - 2 : 0;
-    std::cout << "Goddard has " << num_exits << " exit state(s)" << std::endl;
+    // Extract exit states
+    auto goddard_exits = results.exits(0, "H2_O2_equilibrium");
+    std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state
-    for (size_t i = 0; i < std::min(num_exits, cea_exits.size()); i++) {
-        const auto& goddard_exit = thermo_states[i + 2];
+    for (size_t i = 0; i < std::min(goddard_exits.size(), cea_exits.size()); i++) {
+        const auto& goddard_exit = goddard_exits[i].thermo;
         const auto* cea_exit = cea_exits[i];
 
         if (cea_exit->temperature_k == 0) continue;
@@ -376,12 +367,8 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract chamber (inlet) state - index 0 is the first state
-    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
-    ASSERT_GE(thermo_states.size(), 1) << "No thermo states extracted";
-
-    const auto& goddard_chamber = thermo_states[0]; // inlet = chamber
-    // const auto& goddard_chamber = results.get_chamber_state("H2_O2_equilibrium", 0);
+    // Extract chamber state
+    const auto& goddard_chamber = results.chamber(0, "H2_O2_frozen").thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -429,11 +416,8 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract throat state - index 1 is the throat
-    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
-    ASSERT_GE(thermo_states.size(), 2) << "Not enough thermo states (need throat)";
-
-    const auto& goddard_throat = thermo_states[1]; // throat
+    // Extract throat state
+    const auto& goddard_throat = results.throat(0, "H2_O2_frozen").thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -470,15 +454,13 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     auto results = problem.solve();
 
-    // Extract all states
-    auto thermo_states = results.extract_thermo_info("H2_O2_frozen", 0);
-    // States: [0]=inlet/chamber, [1]=throat, [2+]=exits
-    size_t num_exits = thermo_states.size() > 2 ? thermo_states.size() - 2 : 0;
-    std::cout << "Goddard has " << num_exits << " exit state(s)" << std::endl;
+    // Extract exit states
+    auto goddard_exits = results.exits(0, "H2_O2_frozen");
+    std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state
-    for (size_t i = 0; i < std::min(num_exits, cea_exits.size()); i++) {
-        const auto& goddard_exit = thermo_states[i + 2];
+    for (size_t i = 0; i < std::min(goddard_exits.size(), cea_exits.size()); i++) {
+        const auto& goddard_exit = goddard_exits[i].thermo;
         const auto* cea_exit = cea_exits[i];
 
         if (cea_exit->temperature_k == 0) continue;
