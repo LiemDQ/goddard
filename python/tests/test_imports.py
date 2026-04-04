@@ -36,7 +36,7 @@ def test_import_structs():
 def test_import_classes():
     from goddard import (
         RocketProblem, RocketProblemResults, ThermoArray,
-        Combustor, NozzleBase, EquilibriumNozzle, FrozenNozzle,
+        Combustor, Nozzle,
         MixtureRatio, MixtureRatios, SolutionHandle,
     )
 
