@@ -16,9 +16,11 @@ double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity)
 
 Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity);
 
-double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma);
+double perfect_gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma);
 
-Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma);
+Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma);
+
+double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity);
 
 double stagnation_factor(double mach, double gamma);
 
