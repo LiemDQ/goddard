@@ -92,25 +92,12 @@ RocketProblemResults RocketProblem::solve() {
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
-        std::unique_ptr<NozzleBase> nozzle;
-
-        switch (params.nozzle_options.chemistry) {
-            case NozzleChemistryType::FROZEN: {
-                nozzle = std::make_unique<FrozenNozzle>(*m_sln);
-                break;
-            }
-            case NozzleChemistryType::EQUILIBRIUM: {
-                nozzle = std::make_unique<EquilibriumNozzle>(*m_sln);
-                break;
-            }
-            default: throw NotImplementedError("Nozzle type is not implemented.");
-            //TODO: separate execution path for "NONE" nozzle chemistry
-        }
+        Nozzle nozzle(*m_sln, params.nozzle_options.chemistry);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);
-            nozzle->set_inlet_state(state);
-            NozzleResults expansions = nozzle->solve(params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
+            nozzle.set_inlet_state(state);
+            NozzleResults expansions = nozzle.solve(params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
             expansion_results.push_back(expansions);
         }
 
