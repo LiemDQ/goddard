@@ -1,6 +1,7 @@
 #include <cmath>
 #include <vector>
 #include <stdexcept>
+#include <iostream>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
 #include "goddard/error.hpp"
@@ -42,6 +43,23 @@ ShockResult normal_shock(double mach, double gamma) {
     return result;
 }
 
+double normal_shock_control_factor(int iter) {
+    double cf;
+    if (iter > 20) {
+        cf = 0.04879016;
+    }
+    else if (iter > 12) {
+        cf = 0.09531018;
+    }
+    else if (iter > 4) {
+        cf = 0.22314355;
+    }
+    else {
+        cf = 0.40546511;
+    }
+    return cf;
+}
+
 ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     ShockResult result;
     result.mach_in = mach;
@@ -59,6 +77,7 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     const double P1 = thermo.pressure();
     const double T1 = thermo.temperature();
     const double rho1 = thermo.density();
+    const double mw1 = thermo.meanMolecularWeight();
 
     std::vector<double> state1(thermo.stateSize());
     thermo.saveState(state1);
@@ -66,18 +85,18 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     
     // TODO: change this based on whether equilibrium chemistry is used
     const double gamma1 = thermo.cp_mass()/thermo.cv_mass();
-    const double u1 = gas_sonic_velocity(thermo, gamma1);
+    const double u1 = gas_sonic_velocity(thermo, gamma1)*mach;
     const double h_stag = gas_stagnation_enthalpy(thermo, u1);
     const double P_stag1 = gas_stagnation_pressure(thermo, u1);
     // initial guesses
     double P2_P1 = (2*gamma1*mach*mach-gamma1+1)/(gamma1+1);
-    // NOTE: for equilibrium we need to perform an isobaric equilibrium solve for 
+    // NOTE: for equilibrium we need to perform an isobaric equilibrium solve for temperature ratio
     double T2_T1 = P2_P1 * (2/(mach*mach) + gamma1-1)/(gamma1+1);
     double P2 = P2_P1 * P1;
     double T2 = T2_T1 * T1;
 
-    const double dP_coeff = mach*u1*u1*divR/T1;
-    const double dh_coeff = u1*u1*divR;
+    const double dP_coeff = mw1*u1*u1*divR/T1; // MW1*u^2/(R*T1)
+    const double dh_coeff = u1*u1*divR; //u1^2/R
 
     double logP2_P1 = log(P2_P1);
     double logT2_T1 = log(T2_T1);
@@ -87,20 +106,19 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     int k = 0;
     int max_iters = 100;
     double residual = 100.0;
-    // TODO: implement control factor schedule
-    const double control_factor_coeff = 0.40546511;
+    double control_factor_coeff = normal_shock_control_factor(k);
     const double abstol = 5e-5;
-    
+
     // Use Newton's method to solve for shock conditions.
     // See NASA RP-1311 Part I, section 7. 
     while (residual >= abstol) {
         if (k > max_iters) 
             throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
-        
+        std::cout << "Iter: " << k << "\n";
+        std::cout << "P2/P1: " << P2_P1 << ", T2/T1: " << T2/T1 << "\n";
         double mw2 = thermo.meanMolecularWeight();
-        double cp2 = thermo.cp_mass(); //TODO: check units for cp
+        double cp2 = thermo.cp_mass(); 
         double h2 = thermo.enthalpy_mass();
-        
         double rho2 = thermo.density();
         double rho1_rho2 = rho1/rho2;
         double rho1_rho2_sq = rho1_rho2*rho1_rho2;
@@ -113,30 +131,28 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
 
         // partial derivatives
         double dP_dlogP2P1 = -rho1_rho2 * dP_coeff * dlogV_dlogP_T - P2_P1;
-        double dP_dlogT2T1 = -rho1_rho2 * dP_coeff * dlogV_dlogT_P; //TODO: verify this equation
+        double dP_dlogT2T1 = -rho1_rho2 * dP_coeff * dlogV_dlogT_P; 
         double dh_dlogP2P1 = -dh_coeff_rho * dlogV_dlogP_T + T2/mw2 * (dlogV_dlogT_P - 1);
         double dh_dlogT2T1 = -dh_coeff_rho * dlogV_dlogT_P - T2*cp2*divR;
         
         double P2P1_minus_Pstar = P2_P1 - 1 + dP_coeff*(rho1_rho2 - 1);
         double h2_minus_hstar_R = (h2-h1)*divR - 0.5*dh_coeff*(1- rho1_rho2_sq);
-        Eigen::Matrix2d jacobian{
-            {dP_dlogP2P1, dP_dlogT2T1},
-            {dh_dlogP2P1, dh_dlogT2T1}
-        };
-        Eigen::Vector2d b{P2P1_minus_Pstar, h2_minus_hstar_R};
-        Eigen::Vector2d x = jacobian.partialPivLu().solve(b);
-        
-        double dlogP2_P1 = x(0);
-        double dlogT2_T1 = x(1);
+
+       
+        // directly solve system of equations
+        double dlogT2_T1 = (P2P1_minus_Pstar - dP_dlogP2P1/dh_dlogP2P1 * h2_minus_hstar_R)/(dP_dlogT2T1 - dP_dlogP2P1/dh_dlogP2P1 * dh_dlogT2T1);
+        double dlogP2_P1 = (h2_minus_hstar_R - dh_dlogT2T1*dlogT2_T1)/dh_dlogP2P1;
+
         double abs_dlogP2_P1 = abs(dlogP2_P1);
         double abs_dlogT2_T1 = abs(dlogT2_T1);
         
+        control_factor_coeff = normal_shock_control_factor(k);
         double control_factor = std::min(control_factor_coeff/abs_dlogP2_P1, control_factor_coeff/abs_dlogT2_T1);
         control_factor = std::min(control_factor, 1.0);
         
         logP2_P1 += control_factor * dlogP2_P1;
         logT2_T1 += control_factor * dlogT2_T1;
-        
+
         P2_P1 = exp(logP2_P1);
         P2 = P2_P1*P1;
         T2 = exp(logT2_T1)*T1;

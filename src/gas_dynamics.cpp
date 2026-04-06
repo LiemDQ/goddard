@@ -29,16 +29,16 @@ double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity)
     return gas.enthalpy_mass() + velocity*velocity/2;
 }
 
-Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity) {
+Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd& velocity) {
     return gas.enthalpy_mass() + velocity * velocity / 2;
 }
 
-double perfect_gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma) {
-    return gas.pressure() * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
+double perfect_gas_stagnation_pressure(double P, double mach, double gamma) {
+    return P * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
 }
 
-Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma) {
-    return gas.pressure() * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
+Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd& gamma) {
+    return P * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
 }
 
 double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity) {
@@ -49,7 +49,7 @@ double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity)
     // initial guess
     double gamma = gas.cp_mass()/gas.cv_mass();
     double mach = velocity / gas_sonic_velocity(*thermo, gamma);
-    double P_stag = perfect_gas_stagnation_pressure(*thermo, mach, gamma);
+    double P_stag = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
     
     int max_iters = 10;
     int k = 0;
@@ -64,7 +64,7 @@ double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity)
             throw ConvergenceError("Failed to converge to stagnation pressure.", k, abstol, residual);
         thermo->setState_SP(entropy, P_stag);
         double rho = thermo->density();
-        residual = h_stag - thermo->enthalpy_mass();
+        residual = thermo->enthalpy_mass() - h_stag;
         P_stag = P_stag - residual * rho;
         k++;
     }
