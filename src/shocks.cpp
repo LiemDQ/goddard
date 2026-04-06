@@ -67,7 +67,6 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     // TODO: change this based on whether equilibrium chemistry is used
     const double gamma1 = thermo.cp_mass()/thermo.cv_mass();
     const double u1 = gas_sonic_velocity(thermo, gamma1);
-    const double u1sq = u1*u1;
     const double h_stag = gas_stagnation_enthalpy(thermo, u1);
     const double P_stag1 = gas_stagnation_pressure(thermo, u1);
     // initial guesses
@@ -135,8 +134,8 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
         double control_factor = std::min(control_factor_coeff/abs_dlogP2_P1, control_factor_coeff/abs_dlogT2_T1);
         control_factor = std::min(control_factor, 1.0);
         
-        double logP2_P1 = logP2_P1 + control_factor * dlogP2_P1;
-        double logT2_T1 = logT2_T1 + control_factor * dlogT2_T1;
+        logP2_P1 += control_factor * dlogP2_P1;
+        logT2_T1 += control_factor * dlogT2_T1;
         
         P2_P1 = exp(logP2_P1);
         P2 = P2_P1*P1;
@@ -165,19 +164,19 @@ std::pair<double, double> oblique_shock_wave_angle(double mach, double deflectio
     double M2 = mach*mach;
     double stagnation = stagnation_factor(mach, gamma);
     double lambda = std::sqrt((M2-1)*(M2-1) - 3*stagnation*(1 + (gamma+1)/2.0 * M2)*tan_theta*tan_theta);
-    double chi = (pow(M2-1, 3.0) 
-        - 9*(1 + stagnation*(stagnation+(gamma+1)/4.0*M2*M2)
-        *tan_theta*tan_theta))
+    double chi = (pow(M2-1, 3.0)
+        - 9*stagnation*(stagnation+(gamma+1)/4.0*M2*M2)
+        *tan_theta*tan_theta)
         / pow(lambda, 3.0);
 
     double weak_beta_cos = cos((4*M_PI + acos(chi))/3);
     double strong_beta_cos = cos((acos(chi))/3);
 
-    double weak_beta = (M2-1 + 2*lambda*weak_beta_cos)
-        / (3 * stagnation * tan_theta);
-    
-    double strong_beta = (M2-1 + 2*lambda*strong_beta_cos)
-        / (3 * stagnation * tan_theta);
+    double weak_beta = atan((M2-1 + 2*lambda*weak_beta_cos)
+        / (3 * stagnation * tan_theta));
+
+    double strong_beta = atan((M2-1 + 2*lambda*strong_beta_cos)
+        / (3 * stagnation * tan_theta));
 
     return {weak_beta, strong_beta};
 }
@@ -191,7 +190,7 @@ double oblique_shock_deflection_angle(double mach, double wave_angle, double gam
         /((mach*mach )*(gamma + cos_2beta)+2));   
 }
 
-double oblique_shock_max_deflection(double mach, double gamma) {
+double oblique_shock_max_deflection(double /*mach*/, double /*gamma*/) {
     throw NotImplementedError("Max deflection is not implemented.");
 }
 
@@ -261,7 +260,6 @@ ObliqueShockResult oblique_shock_from_deflection(
 {
     ObliqueShockResult result;
     const double gamma1 = gas.cp_mass()/gas.cv_mass();
-    const double a1 = gas_sonic_velocity(gas, gamma1);
 
     // this is the point where tan(beta-theta)/tan(beta) is maximized
     // 
@@ -295,7 +293,7 @@ ObliqueShockResult oblique_shock_from_deflection(
     double left_residual = left_result.theta - deflection_angle;
     double right_residual = right_result.theta - deflection_angle;
     
-    if ((left_residual)*(right_residual) <= 0) {
+    if ((left_residual)*(right_residual) >= 0) {
         throw std::runtime_error("Bisection method error: product of bounds should be negative.");
     }
 

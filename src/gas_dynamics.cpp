@@ -48,8 +48,8 @@ double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity)
     
     // initial guess
     double gamma = gas.cp_mass()/gas.cv_mass();
-    double mach = velocity / gas_sonic_velocity(thermo, gamma);
-    double P_stag = perfect_gas_stagnation_pressure(thermo, mach, gamma);
+    double mach = velocity / gas_sonic_velocity(*thermo, gamma);
+    double P_stag = perfect_gas_stagnation_pressure(*thermo, mach, gamma);
     
     int max_iters = 10;
     int k = 0;
