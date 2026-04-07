@@ -21,7 +21,7 @@ KineticNozzle::KineticNozzle(
     Cantera::Solution& gas,
     NozzleProfile& profile,
     double mass_flow_rate,
-    NozzleChemistryType chemistry)
+    GasChemistry chemistry)
 : m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry),
   m_gas(gas.shared_from_this())
 {
@@ -34,7 +34,7 @@ KineticNozzle::KineticNozzle(
         NozzleProfile& profile,
         double mass_flow_rate,
         std::vector<double> inlet_state,
-        NozzleChemistryType chemistry)
+        GasChemistry chemistry)
 : m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry, inlet_state),
   m_inlet_state(inlet_state), m_gas(gas.shared_from_this())
 {

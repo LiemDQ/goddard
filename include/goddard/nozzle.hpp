@@ -5,14 +5,9 @@
 
 
 #include "goddard/thermoarray.hpp"
+#include "goddard/chemistry.hpp"
 
 namespace Goddard {
-
-enum class NozzleChemistryType {
-    FROZEN,
-    EQUILIBRIUM,
-    KINETIC
-};
 
 enum class ExpansionType {
     SUPERSONIC_AREA_RATIO,
@@ -22,7 +17,7 @@ enum class ExpansionType {
 
 
 struct NozzleOptions {
-    NozzleChemistryType chemistry;
+    GasChemistry chemistry;
     ExpansionType expansion_type;
     std::vector<double> expansion_ratios;
     unsigned int frozen_NFZ = 1;
@@ -56,8 +51,8 @@ struct NozzleResults {
 
 class Nozzle {
     public:
-    Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry);
-    Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry, std::vector<double> state);
+    Nozzle(Cantera::Solution& gas, GasChemistry chemistry);
+    Nozzle(Cantera::Solution& gas, GasChemistry chemistry, std::vector<double> state);
 
     NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
@@ -73,7 +68,7 @@ class Nozzle {
 
     private:
     std::shared_ptr<Cantera::Solution> m_gas;
-    NozzleChemistryType m_chemistry;
+    GasChemistry m_chemistry;
 
     void solve_chemistry(Cantera::ThermoPhase& state);
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);

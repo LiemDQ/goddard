@@ -11,12 +11,12 @@ void bind_nozzle(nb::module_& m) {
     nb::class_<Goddard::Nozzle>(m, "Nozzle")
         .def("__init__", [](Goddard::Nozzle* self,
                             std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::NozzleChemistryType chemistry) {
+                            Goddard::GasChemistry chemistry) {
             new (self) Goddard::Nozzle(*sol, chemistry);
         }, "solution"_a, "chemistry"_a)
         .def("__init__", [](Goddard::Nozzle* self,
                             std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::NozzleChemistryType chemistry,
+                            Goddard::GasChemistry chemistry,
                             std::vector<double> state) {
             new (self) Goddard::Nozzle(*sol, chemistry, std::move(state));
         }, "solution"_a, "chemistry"_a, "state"_a)

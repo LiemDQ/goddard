@@ -17,11 +17,6 @@ void bind_moc(nb::module_& m) {
         .value("PLANAR", Goddard::MocFlowKind::PLANAR)
         .value("AXISYMMETRIC", Goddard::MocFlowKind::AXISYMMETRIC);
 
-    nb::enum_<Goddard::MocChemistry>(m, "MocChemistry")
-        .value("PERFECT_GAS", Goddard::MocChemistry::PERFECT_GAS)
-        .value("FROZEN", Goddard::MocChemistry::FROZEN)
-        .value("EQUILIBRIUM", Goddard::MocChemistry::EQUILIBRIUM);
-
     nb::enum_<Goddard::MocMode>(m, "MocMode")
         .value("DESIGN_MIN_LENGTH", Goddard::MocMode::DESIGN_MIN_LENGTH)
         .value("DESIGN_RAO", Goddard::MocMode::DESIGN_RAO)
@@ -71,13 +66,12 @@ void bind_moc(nb::module_& m) {
     nb::class_<Goddard::MocOptions>(m, "MocOptions")
         .def("__init__", [](Goddard::MocOptions* self,
                             Goddard::MocFlowKind flow_type,
-                            Goddard::MocChemistry chemistry,
+                            Goddard::GasChemistry chemistry,
                             Goddard::MocMode mode,
                             Goddard::MocInitialization initialization,
                             int num_characteristics,
                             double gamma,
-                            double reltol,
-                            double abstol,
+                            Goddard::SolverOptions solver_options,
                             Goddard::ThroatGeometry geometry,
                             double theta_max,
                             double exit_mach,
@@ -90,21 +84,19 @@ void bind_moc(nb::module_& m) {
             self->initialization = initialization;
             self->num_characteristics = num_characteristics;
             self->gamma = gamma;
-            self->reltol = reltol;
-            self->abstol = abstol;
+            self->solver_options = solver_options;
             self->geometry = std::move(geometry);
             self->theta_max = theta_max;
             self->exit_mach = exit_mach;
             self->theta_schedule = std::move(theta_schedule);
             self->nozzle_profile = std::move(nozzle_profile);
         },  "flow_type"_a = Goddard::MocFlowKind::PLANAR,
-            "chemistry"_a = Goddard::MocChemistry::PERFECT_GAS,
+            "chemistry"_a = Goddard::GasChemistry::PERFECT_GAS,
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
             "initialization"_a = Goddard::MocInitialization::STRAIGHT_SONIC_LINE,
             "num_characteristics"_a = 10,
             "gamma"_a = 1.4,
-            "reltol"_a = 1e-5,
-            "abstol"_a = 1e-10,
+            "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10, .reltol = 1e-5},
             "geometry"_a = Goddard::ThroatGeometry{1.0, 1.5, 0.382},
             "theta_max"_a = 0.0,
             "exit_mach"_a = 0.0,
@@ -116,8 +108,7 @@ void bind_moc(nb::module_& m) {
         .def_rw("initialization", &Goddard::MocOptions::initialization)
         .def_rw("num_characteristics", &Goddard::MocOptions::num_characteristics)
         .def_rw("gamma", &Goddard::MocOptions::gamma)
-        .def_rw("reltol", &Goddard::MocOptions::reltol)
-        .def_rw("abstol", &Goddard::MocOptions::abstol)
+        .def_rw("solver_options", &Goddard::MocOptions::solver_options)
         .def_rw("geometry", &Goddard::MocOptions::geometry)
         .def_rw("theta_max", &Goddard::MocOptions::theta_max)
         .def_rw("exit_mach", &Goddard::MocOptions::exit_mach)

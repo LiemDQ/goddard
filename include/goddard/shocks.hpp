@@ -1,5 +1,6 @@
 #pragma once
 #include "cantera/core.h"
+#include "goddard/chemistry.hpp"
 #include <utility>
 namespace Goddard {
 
@@ -29,7 +30,8 @@ ShockResult normal_shock(double mach, double gamma);
  * Solve for post-shock conditions for a general gas, assuming
  * frozen composition (no chemical reactions). 
  */
-ShockResult normal_shock(Cantera::ThermoPhase& gas, double mach);
+ShockResult normal_shock(Cantera::ThermoPhase& gas, double mach,
+    SolverOptions opts = {.abstol = 5e-5, .max_iterations = 100});
 
 /**
  * Solve for perfect gas properties across a reflected shock.
@@ -39,7 +41,8 @@ ShockResult reflected_shock(double mach, double gamma);
 /** 
  * Solve for frozen gas properties across a reflected shock. 
  */
-ShockResult reflected_shock(Cantera::ThermoPhase& gas, double mach);
+ShockResult reflected_shock(Cantera::ThermoPhase& gas, double mach,
+    SolverOptions opts = {.abstol = 5e-5, .max_iterations = 100});
 
 /**
  * Solve for oblique shock angles for a perfect gas oblique shock with known deflection angle.
@@ -63,7 +66,8 @@ ObliqueShockResult oblique_shock_from_wave_angle(
     double mach, double wave_angle, double gamma);
     
 ObliqueShockResult oblique_shock_from_wave_angle(
-    Cantera::ThermoPhase& gas, double mach, double wave_angle);
+    Cantera::ThermoPhase& gas, double mach, double wave_angle,
+    SolverOptions opts = {.abstol = 1e-8, .max_iterations = 100});
 
 /**
  * Get the full set of shock relations for a perfect gas with a specified deflection angle.
@@ -76,7 +80,8 @@ ObliqueShockResult oblique_shock_from_deflection(
  * specified deflection angle.
  */
 ObliqueShockResult oblique_shock_from_deflection(
-    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak = true);
+    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak = true,
+    SolverOptions opts = {.abstol = 1e-8, .max_iterations = 100});
 
 
 

@@ -5,12 +5,11 @@ import math
 from goddard._core import (
     CombustorType,
     CombustorOptions,
-    NozzleChemistryType,
+    GasChemistry,
     NozzleOptions,
     ExpansionType,
     create_solution,
     MocFlowKind,
-    MocChemistry,
     MocMode,
     MocOptions,
     NozzleProfile,
@@ -34,7 +33,7 @@ def supersonic_ratio(*ratios):
         supersonic_ratio(3.0, 5.0, 10.0, 15.0)
     """
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.EQUILIBRIUM
+    opts.chemistry = GasChemistry.EQUILIBRIUM
     opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
     opts.expansion_ratios = list(ratios)
     return opts
@@ -43,7 +42,7 @@ def supersonic_ratio(*ratios):
 def subsonic_ratio(*ratios):
     """Create NozzleOptions for subsonic area ratio expansion."""
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.EQUILIBRIUM
+    opts.chemistry = GasChemistry.EQUILIBRIUM
     opts.expansion_type = ExpansionType.SUBSONIC_AREA_RATIO
     opts.expansion_ratios = list(ratios)
     return opts
@@ -52,7 +51,7 @@ def subsonic_ratio(*ratios):
 def pressure_ratio(*ratios):
     """Create NozzleOptions for pressure ratio expansion."""
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.EQUILIBRIUM
+    opts.chemistry = GasChemistry.EQUILIBRIUM
     opts.expansion_type = ExpansionType.PRESSURE_RATIO
     opts.expansion_ratios = list(ratios)
     return opts
@@ -103,15 +102,15 @@ def equilibrium_nozzle(*ratios):
     area ratio expansion.
 
     Args:
-        *ratios: Expansion ratios. If empty, returns bare NozzleChemistryType.
+        *ratios: Expansion ratios. If empty, returns bare GasChemistry.
 
     Returns:
-        NozzleOptions if ratios provided, NozzleChemistryType.EQUILIBRIUM otherwise.
+        NozzleOptions if ratios provided, GasChemistry.EQUILIBRIUM otherwise.
     """
     if not ratios:
-        return NozzleChemistryType.EQUILIBRIUM
+        return GasChemistry.EQUILIBRIUM
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.EQUILIBRIUM
+    opts.chemistry = GasChemistry.EQUILIBRIUM
     opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
     opts.expansion_ratios = list(ratios)
     return opts
@@ -122,16 +121,16 @@ def frozen_nozzle(*ratios, frozen_NFZ=1):
     area ratio expansion.
 
     Args:
-        *ratios: Expansion ratios. If empty, returns bare NozzleChemistryType.
+        *ratios: Expansion ratios. If empty, returns bare GasChemistry.
         frozen_NFZ: Frozen flow station number.
 
     Returns:
-        NozzleOptions if ratios provided, NozzleChemistryType.FROZEN otherwise.
+        NozzleOptions if ratios provided, GasChemistry.FROZEN otherwise.
     """
     if not ratios:
-        return NozzleChemistryType.FROZEN
+        return GasChemistry.FROZEN
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.FROZEN
+    opts.chemistry = GasChemistry.FROZEN
     opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
     opts.expansion_ratios = list(ratios)
     opts.frozen_NFZ = frozen_NFZ
@@ -148,7 +147,7 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: MocChemistry (defaults to PERFECT_GAS).
+        chemistry: GasChemistry (defaults to PERFECT_GAS).
         throat_radius: Throat radius for throat geometry.
         solution: SolutionHandle for chemistry-based calculations. When
             provided, the chemistry constructor is used.
@@ -159,7 +158,7 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
     if chemistry is None:
-        chemistry = MocChemistry.PERFECT_GAS
+        chemistry = GasChemistry.PERFECT_GAS
 
     opts = MocOptions()
     opts.flow_type = flow_type
@@ -188,7 +187,7 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: MocChemistry (defaults to PERFECT_GAS).
+        chemistry: GasChemistry (defaults to PERFECT_GAS).
         throat_radius: Throat radius for throat geometry.
         solution: SolutionHandle for chemistry-based calculations. When
             provided, the chemistry constructor is used.
@@ -199,7 +198,7 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
     if chemistry is None:
-        chemistry = MocChemistry.PERFECT_GAS
+        chemistry = GasChemistry.PERFECT_GAS
 
     if isinstance(profile, str):
         profile = NozzleProfile.load_csv(profile)

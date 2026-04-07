@@ -12,18 +12,24 @@
 #include <iostream>
 namespace Goddard {
 
-Nozzle::Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry)
+Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry)
     : inlet_state(gas.thermo()->stateSize()), m_gas(gas.shared_from_this()), m_chemistry(chemistry) {
-    if (chemistry == NozzleChemistryType::KINETIC) {
-        throw std::invalid_argument("NozzleChemistryType::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+    if (chemistry == GasChemistry::KINETIC) {
+        throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+    }
+    if (chemistry == GasChemistry::PERFECT_GAS) {
+        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
     }
     m_gas->thermo()->saveState(inlet_state);
 }
 
-Nozzle::Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry, std::vector<double> state)
+Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry, std::vector<double> state)
     : inlet_state(std::move(state)), m_gas(gas.shared_from_this()), m_chemistry(chemistry) {
-    if (chemistry == NozzleChemistryType::KINETIC) {
-        throw std::invalid_argument("NozzleChemistryType::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+    if (chemistry == GasChemistry::KINETIC) {
+        throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+    }
+    if (chemistry == GasChemistry::PERFECT_GAS) {
+        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
     }
 }
 
@@ -135,7 +141,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
 }
 
 double Nozzle::get_gamma_s(Cantera::ThermoPhase& state) {
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (m_chemistry == GasChemistry::EQUILIBRIUM) {
         auto props = get_thermo_equilibrium_properties(state);
         return props.gamma_s;
     } else {
@@ -145,7 +151,7 @@ double Nozzle::get_gamma_s(Cantera::ThermoPhase& state) {
 }
 
 void Nozzle::solve_chemistry(Cantera::ThermoPhase& state) {
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (m_chemistry == GasChemistry::EQUILIBRIUM) {
         state.equilibrate("SP", "gibbs");
     }
     //for frozen nozzle, equilibration is a no-op
@@ -217,7 +223,7 @@ NozzleResult Nozzle::iterate_area_expansion(
     double T_exit = gas_thermo->temperature();
     std::vector<double> composition;
 
-    if (m_chemistry == NozzleChemistryType::FROZEN) {
+    if (m_chemistry == GasChemistry::FROZEN) {
         composition.resize(gas_thermo->nSpecies());
         gas_thermo->getMoleFractions(composition.data());
     } else {
@@ -238,14 +244,14 @@ NozzleResult Nozzle::iterate_area_expansion(
     while (std::abs(residual) > abstol) {
         iters++;
         if (iters >= max_iter) {
-            if (m_chemistry == NozzleChemistryType::FROZEN) {
+            if (m_chemistry == GasChemistry::FROZEN) {
                 throw std::runtime_error("Convergence failure: maximum number of iterations exceeded.");
             } else {
                 return {false, 0.0, 0.0, 0.0, {}};
             }
         }
 
-        if (m_chemistry == NozzleChemistryType::FROZEN) {
+        if (m_chemistry == GasChemistry::FROZEN) {
             T_exit = iterate_temperature(gas_thermo, throat_condition, pressure_ratio, T_exit, composition);
             if (T_exit < 0) {
                 throw std::runtime_error("Convergence failure: negative temperature detected.");
@@ -268,7 +274,7 @@ NozzleResult Nozzle::iterate_area_expansion(
         pressure_ratio = std::exp(log_pinf_pe);
     }
 
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (m_chemistry == GasChemistry::EQUILIBRIUM) {
         EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_thermo);
         return {true,
             final_props.gamma_s,
@@ -288,7 +294,7 @@ NozzleResult Nozzle::solve_pressure_ratio(
     std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
     gas_thermo->restoreState(throat_condition.state);
 
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (m_chemistry == GasChemistry::EQUILIBRIUM) {
         double P_exit = throat_condition.P_inlet/pressure_ratio;
         gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
         gas_thermo->equilibrate("SP", "gibbs");

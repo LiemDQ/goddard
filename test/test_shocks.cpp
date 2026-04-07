@@ -149,7 +149,6 @@ TEST(NormalShock, AndersonExercise3p6) {
 class NormalShockAnderson : public ::testing::TestWithParam<NormalShockData> {};
 
 TEST_P(NormalShockAnderson, TableA2) {
-    // TODO: Fill in expected values from Anderson's Modern Compressible Flow
     // normal shock tables (Appendix B or Table A.2). Each entry should list
     // M1, gamma, and the expected M2, P2/P1, T2/T1, P02/P01.
     auto data = GetParam();
@@ -393,7 +392,6 @@ TEST_F(CantNormalShockTests, ApproachesPerfectGas) {
 }
 
 TEST_F(CantNormalShockTests, RankineHugoniot) {
-    // TODO: Depends on gas_stagnation_pressure convergence fix.
     // Verify conservation of mass, momentum, and energy across the shock.
     // Pre-shock state
     double mach = 2.5;

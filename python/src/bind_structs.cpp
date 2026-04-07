@@ -42,7 +42,7 @@ void bind_structs(nb::module_& m) {
     nb::class_<Goddard::NozzleOptions>(m, "NozzleOptions")
         .def(nb::init<>())
         .def("__init__", [](Goddard::NozzleOptions* self,
-                            Goddard::NozzleChemistryType chemistry,
+                            Goddard::GasChemistry chemistry,
                             Goddard::ExpansionType expansion_type,
                             std::vector<double> expansion_ratios,
                             unsigned int frozen_NFZ) {
@@ -51,7 +51,7 @@ void bind_structs(nb::module_& m) {
             self->expansion_type = expansion_type;
             self->expansion_ratios = std::move(expansion_ratios);
             self->frozen_NFZ = frozen_NFZ;
-        },  "chemistry"_a = Goddard::NozzleChemistryType::EQUILIBRIUM,
+        },  "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM,
             "expansion_type"_a = Goddard::ExpansionType::SUPERSONIC_AREA_RATIO,
             "expansion_ratios"_a = std::vector<double>(),
             "frozen_NFZ"_a = 1u)

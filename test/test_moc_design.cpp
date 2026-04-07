@@ -65,7 +65,7 @@ protected:
 
         MocOptions opts;
         opts.flow_type = MocFlowKind::PLANAR;
-        opts.chemistry = MocChemistry::PERFECT_GAS;
+        opts.chemistry = GasChemistry::PERFECT_GAS;
         opts.mode = MocMode::DESIGN_MIN_LENGTH;
         opts.gamma = gamma;
         opts.theta_max = theta_max;
@@ -219,7 +219,7 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(MocDesign, MinLengthNozzleMonotonicWall) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = 1.4;
     opts.theta_max = 15.0 * DEG;
@@ -247,7 +247,7 @@ TEST(MocDesign, WavefrontSizeDecreases) {
     // wavefront has one fewer point
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = 1.4;
     opts.theta_max = 12.0 * DEG;
@@ -273,7 +273,7 @@ TEST(MocDesign, AreaRatioConsistent) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;
@@ -294,7 +294,7 @@ TEST(MocDesign, DifferentGammaProducesCorrectExitMach) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;
@@ -315,7 +315,7 @@ TEST(MocDesign, MonoatomicGas) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;

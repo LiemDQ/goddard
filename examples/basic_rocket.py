@@ -31,7 +31,7 @@ combust_opts = goddard.CombustorOptions(
 )
 
 nozzle_opts = goddard.NozzleOptions(
-    chemistry=goddard.NozzleChemistryType.EQUILIBRIUM,
+    chemistry=goddard.GasChemistry.EQUILIBRIUM,
     expansion_type=goddard.ExpansionType.SUPERSONIC_AREA_RATIO,
     expansion_ratios=[2.0, 5.0, 10.0, 50.0],
 )

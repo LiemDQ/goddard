@@ -44,7 +44,7 @@ struct RocketStation {
 struct RocketProblemCaseResult {
     std::string problem_type;
     ThermoArray inlet_states;
-    NozzleChemistryType chemistry;
+    GasChemistry chemistry;
     std::vector<NozzleResults> nozzle_states;
     std::vector<double> OF_ratios;
     std::vector<double> pressures;
@@ -100,7 +100,7 @@ private:
         std::vector<double> of_ratios;
         std::vector<double> pressures;
         std::vector<double> expansion_ratios;
-        NozzleChemistryType chemistry;
+        GasChemistry chemistry;
         ExpansionType expansion_type;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;

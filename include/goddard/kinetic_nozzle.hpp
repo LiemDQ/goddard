@@ -29,14 +29,14 @@ public:
         Cantera::Solution& gas, 
         NozzleProfile& profile, 
         double mass_flow_rate, 
-        NozzleChemistryType chemistry = NozzleChemistryType::EQUILIBRIUM);
+        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
 
     KineticNozzle(
         Cantera::Solution& gas, 
         NozzleProfile& profile, 
         double mass_flow_rate, 
         std::vector<double> inlet_state,
-        NozzleChemistryType chemistry = NozzleChemistryType::EQUILIBRIUM);
+        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
 
     KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 1e-3, int max_steps = 100000);
 

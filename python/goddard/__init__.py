@@ -1,14 +1,14 @@
 from goddard._core import (
     # Enums
     CombustorType,
-    NozzleChemistryType,
+    GasChemistry,
     ExpansionType,
     StationType,
     # MoC enums
     MocFlowKind,
-    MocChemistry,
     MocMode,
     MocInitialization,
+    SolverOptions,
     # Structs
     CombustorOptions,
     NozzleOptions,

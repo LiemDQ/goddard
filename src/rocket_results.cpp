@@ -78,7 +78,7 @@ RocketProblemResults::RocketProblemResults(
                 // Chamber gamma must be computed (not stored like throat/exit).
                 double inlet_gamma, inlet_dlP, inlet_dlT;
                 switch (case_result.chemistry) {
-                    case NozzleChemistryType::EQUILIBRIUM: {
+                    case GasChemistry::EQUILIBRIUM: {
                         tmo->restoreState(inlet_state);
                         auto props = get_thermo_equilibrium_properties(*tmo);
                         inlet_gamma = props.gamma_s;
@@ -86,7 +86,7 @@ RocketProblemResults::RocketProblemResults(
                         inlet_dlT   = props.dlogV_dlogT_P;
                         break;
                     }
-                    case NozzleChemistryType::FROZEN: {
+                    case GasChemistry::FROZEN: {
                         tmo->restoreState(inlet_state);
                         inlet_gamma = tmo->cp_mass() / tmo->cv_mass();
                         inlet_dlP   = -1.0;
@@ -287,7 +287,7 @@ constexpr double PA_TO_PSIA = 1.0 / 6894.757;
 constexpr double J_TO_KJ    = 1e-3;
 
 std::string build_report_page(
-    NozzleChemistryType chemistry,
+    GasChemistry chemistry,
     const std::vector<ThermoStateInfo>& states,
     double of_ratio,
     double chamber_pressure_pa)
@@ -295,11 +295,11 @@ std::string build_report_page(
     std::string page;
 
     switch (chemistry) {
-        case NozzleChemistryType::EQUILIBRIUM:
+        case GasChemistry::EQUILIBRIUM:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM\n\n";
             page += "      COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR\n\n";
             break;
-        case NozzleChemistryType::FROZEN:
+        case GasChemistry::FROZEN:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n\n";
             break;
         default: break;
@@ -339,7 +339,7 @@ std::string build_report_page(
     table.add_blank_line();
     table.add_row("M, (1/n)", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.molecular_weight, 10, 3); }));
 
-    if (chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (chemistry == GasChemistry::EQUILIBRIUM) {
         table.add_row("(dLV/dLP)t", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.dlV_dlP_T, 10, 5); }));
         table.add_row("(dLV/dLT)p", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.dlV_dlT_P, 10, 4); }));
     }
@@ -434,7 +434,7 @@ std::string build_report_page(
     table.add_section_header("MASS FRACTIONS");
     table.add_blank_line();
 
-    if (chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (chemistry == GasChemistry::EQUILIBRIUM) {
         std::set<std::string> all_species;
         for (const auto& s : states) {
             for (const auto& [name, frac] : s.composition) {

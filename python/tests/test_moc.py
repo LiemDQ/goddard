@@ -6,10 +6,10 @@ import pytest
 @pytest.fixture
 def planar_result():
     """A basic planar perfect-gas design solve (theta_max=15 deg, N=10)."""
-    from goddard import MocOptions, MocFlowKind, MocChemistry, MocMode, MocNozzle
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocNozzle
     opts = MocOptions()
     opts.flow_type = MocFlowKind.PLANAR
-    opts.chemistry = MocChemistry.PERFECT_GAS
+    opts.chemistry = GasChemistry.PERFECT_GAS
     opts.mode = MocMode.DESIGN_MIN_LENGTH
     opts.num_characteristics = 10
     opts.gamma = 1.4
@@ -114,14 +114,14 @@ def test_nozzle_profile_methods(planar_result):
 
 def test_analysis_round_trip(planar_result):
     """Design a nozzle, then analyse the resulting profile — exit Mach should match."""
-    from goddard import MocOptions, MocFlowKind, MocChemistry, MocMode, MocNozzle
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocNozzle
 
     design_mach = planar_result.exit_mach
     profile = planar_result.profile
 
     opts = MocOptions()
     opts.flow_type = MocFlowKind.PLANAR
-    opts.chemistry = MocChemistry.PERFECT_GAS
+    opts.chemistry = GasChemistry.PERFECT_GAS
     opts.mode = MocMode.ANALYSIS
     opts.num_characteristics = 10
     opts.gamma = 1.4

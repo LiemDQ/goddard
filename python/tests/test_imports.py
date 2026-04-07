@@ -8,16 +8,16 @@ def test_import_module():
 
 
 def test_import_enums():
-    from goddard import CombustorType, NozzleChemistryType, ExpansionType
+    from goddard import CombustorType, GasChemistry, ExpansionType
 
     assert CombustorType.INFINITE_AREA is not None
     assert CombustorType.FINITE_MASS_FLUX is not None
     assert CombustorType.FINITE_CONTRACTION_RATIO is not None
     assert CombustorType.NONE is not None
 
-    assert NozzleChemistryType.FROZEN is not None
-    assert NozzleChemistryType.EQUILIBRIUM is not None
-    assert NozzleChemistryType.KINETIC is not None
+    assert GasChemistry.FROZEN is not None
+    assert GasChemistry.EQUILIBRIUM is not None
+    assert GasChemistry.KINETIC is not None
 
     assert ExpansionType.SUPERSONIC_AREA_RATIO is not None
     assert ExpansionType.SUBSONIC_AREA_RATIO is not None
@@ -73,13 +73,13 @@ def test_combustor_options_construction():
 
 
 def test_nozzle_options_construction():
-    from goddard import NozzleOptions, NozzleChemistryType, ExpansionType
+    from goddard import NozzleOptions, GasChemistry, ExpansionType
 
     opts = NozzleOptions()
-    opts.chemistry = NozzleChemistryType.EQUILIBRIUM
+    opts.chemistry = GasChemistry.EQUILIBRIUM
     opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
     opts.expansion_ratios = [3.0, 5.0, 10.0]
-    assert opts.chemistry == NozzleChemistryType.EQUILIBRIUM
+    assert opts.chemistry == GasChemistry.EQUILIBRIUM
     assert opts.expansion_ratios == [3.0, 5.0, 10.0]
 
 
@@ -89,11 +89,11 @@ def test_convenience_of_ratio():
 
 
 def test_convenience_supersonic_ratio():
-    from goddard import supersonic_ratio, ExpansionType, NozzleChemistryType
+    from goddard import supersonic_ratio, ExpansionType, GasChemistry
 
     opts = supersonic_ratio(3.0, 5.0, 10.0)
     assert opts.expansion_type == ExpansionType.SUPERSONIC_AREA_RATIO
-    assert opts.chemistry == NozzleChemistryType.EQUILIBRIUM
+    assert opts.chemistry == GasChemistry.EQUILIBRIUM
     assert opts.expansion_ratios == [3.0, 5.0, 10.0]
 
 

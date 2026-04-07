@@ -60,7 +60,7 @@ double normal_shock_control_factor(int iter) {
     return cf;
 }
 
-ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
+ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach, SolverOptions opts) {
     ShockResult result;
     result.mach_in = mach;
 
@@ -104,15 +104,15 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     thermo.setState_TP(T2, P2);
     
     int k = 0;
-    int max_iters = 100;
+    int max_iters = opts.max_iterations;
     double residual = 100.0;
     double control_factor_coeff = normal_shock_control_factor(k);
-    const double abstol = 5e-5;
+    const double abstol = opts.abstol;
 
     // Use Newton's method to solve for shock conditions.
-    // See NASA RP-1311 Part I, section 7. 
+    // See NASA RP-1311 Part I, section 7.
     while (residual >= abstol) {
-        if (k > max_iters) 
+        if (k > max_iters)
             throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
         double mw2 = thermo.meanMolecularWeight();
         double cp2 = thermo.cp_mass(); 
@@ -195,7 +195,7 @@ ShockResult reflected_shock(double mach, double gamma) {
     return result;
 }
 
-ShockResult reflected_shock(Cantera::ThermoPhase& thermo, double mach) {
+ShockResult reflected_shock(Cantera::ThermoPhase& thermo, double mach, SolverOptions opts) {
     ShockResult result;
     result.mach_in = mach;
     if (mach < 1.0) {
@@ -240,15 +240,15 @@ ShockResult reflected_shock(Cantera::ThermoPhase& thermo, double mach) {
     thermo.setState_TP(T5, P5);
     
     int k = 0;
-    int max_iters = 100;
+    int max_iters = opts.max_iterations;
     double residual = 100.0;
     double control_factor_coeff = normal_shock_control_factor(k);
-    const double abstol = 5e-5;
+    const double abstol = opts.abstol;
 
     // Use Newton's method to solve for shock conditions.
-    // See NASA RP-1311 Part I, section 7.2.3. 
+    // See NASA RP-1311 Part I, section 7.2.3.
     while (residual >= abstol) {
-        if (k > max_iters) 
+        if (k > max_iters)
             throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
         double mw5 = thermo.meanMolecularWeight();
         double cp5 = thermo.cp_mass(); 
@@ -385,14 +385,14 @@ ObliqueShockResult oblique_shock_from_wave_angle(
 
 
 ObliqueShockResult oblique_shock_from_wave_angle(
-    Cantera::ThermoPhase& gas, double mach, double wave_angle)
+    Cantera::ThermoPhase& gas, double mach, double wave_angle, SolverOptions opts)
 {
     ObliqueShockResult result;
     double mach_n1 = mach * sin(wave_angle);
     double gamma = gas.cp_mass()/gas.cv_mass();
     double u1 = gas_sonic_velocity(gas, gamma)*mach_n1;
     
-    result.shock = normal_shock(gas, mach_n1);
+    result.shock = normal_shock(gas, mach_n1, opts);
     gamma = gas.cp_mass()/gas.cv_mass();
 
     double u2 = gas_sonic_velocity(gas, gamma)*result.shock.mach_out;
@@ -407,7 +407,7 @@ ObliqueShockResult oblique_shock_from_wave_angle(
 
 
 ObliqueShockResult oblique_shock_from_deflection(
-    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak) 
+    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak, SolverOptions opts)
 {
     ObliqueShockResult result;
     const double gamma1 = gas.cp_mass()/gas.cv_mass();
@@ -453,15 +453,15 @@ ObliqueShockResult oblique_shock_from_deflection(
     // is calculated from an oblique shock with the current beta angle.
     // In the regime bracketed by beta_peak, there is at least one root. 
     double residual = 1.0;
-    double abstol = 1e-8;
+    const double abstol = opts.abstol;
     int k = 0;
-    int max_iters = 100;
+    int max_iters = opts.max_iterations;
     while (abs(residual) > abstol) {
         if (k > max_iters)
             throw ConvergenceError("Wave angle failed to converge.", k, abstol, residual);
         
         gas.restoreState(state1);
-        result = oblique_shock_from_wave_angle(gas, mach, beta);
+        result = oblique_shock_from_wave_angle(gas, mach, beta, opts);
         residual = result.theta - deflection_angle;
         if (residual*left_residual <= 0) {
             right_bound = beta;

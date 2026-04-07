@@ -9,6 +9,7 @@
 
 #include "cantera/core.h" 
 #include "goddard/characteristics.hpp"
+#include "goddard/chemistry.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/profile.hpp"
 
@@ -21,13 +22,6 @@ enum class MocFlowKind {
     PLANAR,
     AXISYMMETRIC
 };
-
-enum class MocChemistry {
-    PERFECT_GAS,    // constant gamma, algebraic PRandtl-Meyer
-    FROZEN,         // variable gamma, but no composition change
-    EQUILIBRIUM     // full chemical equilibrium at each point
-};
-
 
 enum class MocMode {
     DESIGN_MIN_LENGTH,  // Minimum length nozzle with uniform exit flow
@@ -71,14 +65,13 @@ struct ThroatGeometry {
  */
 struct MocOptions {
     MocFlowKind flow_type = MocFlowKind::PLANAR;
-    MocChemistry chemistry = MocChemistry::PERFECT_GAS;
+    GasChemistry chemistry = GasChemistry::PERFECT_GAS;
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
     MocInitialization initialization = MocInitialization::STRAIGHT_SONIC_LINE;
 
     int num_characteristics;    // number of C+ lines from initial expansion fan
     double gamma;               // used only for PERFECT_GAS
-    double reltol = 1e-5;
-    double abstol = 1e-10;
+    SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
     ThroatGeometry geometry;     // throat geometry
 
     double theta_max;           // max wall angle (radians) for minimum length nozzle design mode
