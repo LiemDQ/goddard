@@ -115,7 +115,7 @@ TEST_F(NozzleTests, EquilibriumConverge) {
     Nozzle nozzle(*gas, GasChemistry::EQUILIBRIUM);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_TRUE(result.converged) << "Throat conditions should converge for typical rocket conditions";
     EXPECT_GT(result.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
@@ -126,7 +126,7 @@ TEST_F(NozzleTests, FrozenConverge) {
     Nozzle nozzle(*gas, GasChemistry::FROZEN);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_TRUE(result.converged) << "Throat conditions should converge for typical rocket conditions";
     EXPECT_GT(result.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
@@ -141,7 +141,7 @@ TEST_F(NozzleTests, EquilibriumSupersonicAreaExpansion) {
 
     for (double ratio : expansion_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Expansion should converge for area ratio " << ratio;
@@ -159,7 +159,7 @@ TEST_F(NozzleTests, FrozenSupersonicAreaExpansion) {
 
     for (double ratio : expansion_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Expansion should converge for area ratio " << ratio;
@@ -174,7 +174,7 @@ TEST_F(NozzleTests, SupersonicExpansionPressureDecreases) {
     double initial_pressure = gas->thermo()->pressure();
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     ASSERT_TRUE(result.converged);
 
@@ -194,7 +194,7 @@ TEST_F(NozzleTests, SupersonicExpansionTemperatureDecreases) {
     double initial_temp = gas->thermo()->temperature();
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     ASSERT_TRUE(result.converged);
 
@@ -216,7 +216,7 @@ TEST_F(NozzleTests, EquilibriumSubsonicAreaExpansion) {
 
     for (double ratio : expansion_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Subsonic expansion should converge for area ratio " << ratio;
@@ -232,7 +232,7 @@ TEST_F(NozzleTests, FrozenSubsonicAreaExpansion) {
 
     for (double ratio : expansion_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Subsonic expansion should converge for area ratio " << ratio;
@@ -251,7 +251,7 @@ TEST_F(NozzleTests, EquilibriumPressureRatioExpansion) {
 
     for (double ratio : pressure_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Pressure ratio expansion should converge for ratio " << ratio;
@@ -285,7 +285,7 @@ TEST_F(NozzleTests, FrozenPressureRatioExpansion) {
 
     for (double ratio : pressure_ratios) {
         NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, ratio);
-        NozzleResult result = results.expansions.front();
+        NozzleStation result = results.expansions.front();
 
         EXPECT_TRUE(result.converged)
             << "Pressure ratio expansion should converge for ratio " << ratio;
@@ -350,12 +350,12 @@ TEST_F(NozzleTests, GammaDifferencesBetweenEquilibriumAndFrozen) {
     Nozzle frozen_nozzle(*gas, GasChemistry::FROZEN);
 
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult eq_result = eq_results.expansions.front();
+    NozzleStation eq_result = eq_results.expansions.front();
 
     // Reset state for frozen nozzle
     gas->thermo()->restoreState(inlet_state);
     NozzleResults frozen_results = frozen_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
-    NozzleResult frozen_result = frozen_results.expansions.front();
+    NozzleStation frozen_result = frozen_results.expansions.front();
 
     ASSERT_TRUE(eq_result.converged);
     ASSERT_TRUE(frozen_result.converged);
@@ -372,7 +372,7 @@ TEST_F(NozzleTests, InvalidExpansionRatioTooSmall) {
 
     // Expansion ratio < 1.0001 should fail
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 0.5);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_FALSE(result.converged)
         << "Should not converge for invalid expansion ratio < 1";
@@ -383,7 +383,7 @@ TEST_F(NozzleTests, InvalidSubsonicExpansionRatioTooSmall) {
 
     // Subsonic expansion ratio < 1.0001 should fail
     NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 1.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_FALSE(result.converged)
         << "Should not converge for invalid subsonic expansion ratio ~1";
@@ -468,7 +468,7 @@ TEST_F(NozzleDifferentGasTests, H2O2EquilibriumNozzle) {
     Nozzle nozzle(*h2o2_gas, GasChemistry::EQUILIBRIUM);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_TRUE(result.converged) << "H2/O2 equilibrium nozzle should converge";
     EXPECT_GT(result.gamma_s, 1.0);
@@ -478,7 +478,7 @@ TEST_F(NozzleDifferentGasTests, H2O2FrozenNozzle) {
     Nozzle nozzle(*h2o2_gas, GasChemistry::FROZEN);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
-    NozzleResult result = results.expansions.front();
+    NozzleStation result = results.expansions.front();
 
     EXPECT_TRUE(result.converged) << "H2/O2 frozen nozzle should converge";
     EXPECT_GT(result.gamma_s, 1.0);

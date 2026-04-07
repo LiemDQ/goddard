@@ -44,7 +44,7 @@ struct ThroatCondition {
     std::vector<double> state;
 };
 
-struct NozzleResult {
+struct NozzleStation {
     bool converged;
     double gamma_s;
     double dlV_dlP_T;
@@ -54,7 +54,7 @@ struct NozzleResult {
 
 struct NozzleResults {
     ThroatCondition throat;
-    std::vector<NozzleResult> expansions;
+    std::vector<NozzleStation> expansions;
 };
 
 class Nozzle {
@@ -79,11 +79,11 @@ class Nozzle {
     Gas m_gas;
 
     void solve_chemistry();
-    NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
-    NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
-    NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol = 0.5e-5);
+    NozzleStation solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
+    NozzleStation solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
+    NozzleStation solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol = 0.5e-5);
 
-    NozzleResult iterate_area_expansion(
+    NozzleStation iterate_area_expansion(
         std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
         const ThroatCondition& throat_condition,
         double expansion_ratio, double pressure_ratio_guess, double abstol);

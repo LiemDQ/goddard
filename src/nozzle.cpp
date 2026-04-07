@@ -36,7 +36,7 @@ Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry, std::vector<doubl
 NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
 
     const ThroatCondition throat_condition = solve_throat_conditions();
-    std::vector<NozzleResult> result;
+    std::vector<NozzleStation> result;
     switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO: {
             result.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
@@ -59,7 +59,7 @@ NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
 NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<double>& ratios) {
 
     const ThroatCondition throat_condition = solve_throat_conditions();
-    std::vector<NozzleResult> results;
+    std::vector<NozzleStation> results;
 
     switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO: {
@@ -94,7 +94,7 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
     double x_range = x_end - x_start;
     double x_last = x_end - 1e-10 * x_range;
 
-    std::vector<NozzleResult> results;
+    std::vector<NozzleStation> results;
     for (int i = 1; i <= num_stations; i++) {
         double x = x_start + (x_last - x_start) * static_cast<double>(i) / num_stations;
         double A = profile.area_at(x);
@@ -173,7 +173,7 @@ void Nozzle::solve_chemistry() {
     //for frozen nozzle, equilibration is a no-op
 }
 
-NozzleResult Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
     std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     gas_thermo->restoreState(throat_condition.state);
 
@@ -195,7 +195,7 @@ NozzleResult Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat
     return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
 }
 
-NozzleResult Nozzle::solve_supersonic_area_expansion(
+NozzleStation Nozzle::solve_supersonic_area_expansion(
     const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
     std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     gas_thermo->restoreState(throat_condition.state);
@@ -226,7 +226,7 @@ NozzleResult Nozzle::solve_supersonic_area_expansion(
         abstol);
 }
 
-NozzleResult Nozzle::iterate_area_expansion(
+NozzleStation Nozzle::iterate_area_expansion(
     std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
     const ThroatCondition& throat_condition,
     double expansion_ratio, double pressure_ratio_guess, double abstol) {
@@ -302,7 +302,7 @@ NozzleResult Nozzle::iterate_area_expansion(
     }
 }
 
-NozzleResult Nozzle::solve_pressure_ratio(
+NozzleStation Nozzle::solve_pressure_ratio(
     const ThroatCondition& throat_condition,
     double pressure_ratio,
     double abstol) {

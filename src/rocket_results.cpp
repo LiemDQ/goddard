@@ -129,7 +129,7 @@ RocketProblemResults::RocketProblemResults(
 
                 // Exit stations — gamma and derivatives are stored in NozzleResult.
                 for (std::size_t exp_idx = 0; exp_idx < nozzle.expansions.size(); exp_idx++) {
-                    const NozzleResult& exp = nozzle.expansions[exp_idx];
+                    const NozzleStation& exp = nozzle.expansions[exp_idx];
                     RocketStation s;
                     s.case_name       = name;
                     s.type            = StationType::EXIT;
