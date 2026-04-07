@@ -7,6 +7,7 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/chemistry.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/profile.hpp"
 
 namespace Goddard {
 
@@ -18,10 +19,16 @@ enum class ExpansionType {
 
 
 struct NozzleOptions {
-    GasChemistry chemistry;
-    ExpansionType expansion_type;
+    GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
+    ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
     std::vector<double> expansion_ratios;
     unsigned int frozen_NFZ = 1;
+    SolverOptions solver;
+
+    // KineticNozzle-specific (ignored by Nozzle)
+    double dt_max = 1e-6;
+    double dx_max = 1e-3;
+    int max_steps = 100000;
 };
 
 
@@ -57,6 +64,7 @@ class Nozzle {
 
     NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
+    NozzleResults solve(const NozzleProfile& profile, int num_stations = 50);
     ThroatCondition solve_throat_conditions(double abstol = 4e-4);
 
     double get_gamma_s();

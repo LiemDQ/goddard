@@ -59,6 +59,8 @@ public:
     // Access to underlying Cantera objects
     std::shared_ptr<Cantera::Solution> solution() const;
     std::shared_ptr<Cantera::ThermoPhase> thermo() const;
+    std::shared_ptr<Cantera::Kinetics> kinetics() const;
+    std::shared_ptr<Cantera::Transport> transport() const;
 
     GasChemistry chemistry;
 

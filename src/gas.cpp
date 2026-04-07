@@ -156,5 +156,7 @@ double Gas::get_reference_entropy() const { return m_S0; }
 
 std::shared_ptr<Cantera::Solution> Gas::solution() const { return m_sol; }
 std::shared_ptr<Cantera::ThermoPhase> Gas::thermo() const { return m_sol->thermo(); }
+std::shared_ptr<Cantera::Kinetics> Gas::kinetics() const { return m_sol->kinetics(); }
+std::shared_ptr<Cantera::Transport> Gas::transport() const { return m_sol->transport(); }
 
 } // namespace Goddard

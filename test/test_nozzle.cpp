@@ -1,4 +1,5 @@
 #include "goddard/nozzle.hpp"
+#include "goddard/profile.hpp"
 #include "goddard/combustor.hpp"
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/utils.hpp"
@@ -481,4 +482,81 @@ TEST_F(NozzleDifferentGasTests, H2O2FrozenNozzle) {
 
     EXPECT_TRUE(result.converged) << "H2/O2 frozen nozzle should converge";
     EXPECT_GT(result.gamma_s, 1.0);
+}
+
+// ============================================================
+//  Profile-based solve
+// ============================================================
+
+static NozzleProfile make_conical_profile(
+    double r_throat, double r_exit, double length, int n_points)
+{
+    NozzleProfile profile;
+    for (int i = 0; i < n_points; i++) {
+        double frac = static_cast<double>(i) / (n_points - 1);
+        double x = length * frac;
+        double r = r_throat + (r_exit - r_throat) * frac;
+        profile.push_back({x, r});
+    }
+    return profile;
+}
+
+TEST_F(NozzleTests, ProfileSolveReturnsCorrectCount) {
+    NozzleProfile profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+    Nozzle nozzle(*gas, GasChemistry::EQUILIBRIUM);
+
+    int num_stations = 20;
+    NozzleResults results = nozzle.solve(profile, num_stations);
+
+    EXPECT_TRUE(results.throat.converged);
+    EXPECT_EQ(results.expansions.size(), static_cast<size_t>(num_stations));
+}
+
+TEST_F(NozzleTests, ProfileSolveAllConverged) {
+    NozzleProfile profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+    Nozzle nozzle(*gas, GasChemistry::EQUILIBRIUM);
+
+    NozzleResults results = nozzle.solve(profile, 20);
+
+    for (size_t i = 0; i < results.expansions.size(); i++) {
+        EXPECT_TRUE(results.expansions[i].converged)
+            << "Station " << i << " should converge";
+    }
+}
+
+TEST_F(NozzleTests, ProfileSolveMatchesAreaRatioSolve) {
+    // Cross-check: result at the exit area ratio from the profile should
+    // match a direct area-ratio solve at the same ratio
+    NozzleProfile profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+    // Query slightly inside the boundary to avoid interpolation boundary error
+    double x_near_exit = profile.x_max() - 1e-10 * (profile.x_max() - profile.x_min());
+    double exit_area_ratio = profile.area_at(x_near_exit) / profile.area_at(profile.x_min());
+
+    Nozzle nozzle_profile(*gas, GasChemistry::EQUILIBRIUM);
+    NozzleResults profile_results = nozzle_profile.solve(profile, 20);
+
+    gas->thermo()->restoreState(inlet_state);
+    Nozzle nozzle_ar(*gas, GasChemistry::EQUILIBRIUM);
+    NozzleResults ar_results = nozzle_ar.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_area_ratio);
+
+    ASSERT_TRUE(profile_results.expansions.back().converged);
+    ASSERT_TRUE(ar_results.expansions.front().converged);
+
+    // The last profile station should match the area-ratio solve
+    EXPECT_NEAR(profile_results.expansions.back().gamma_s,
+                ar_results.expansions.front().gamma_s,
+                max_fp_error(ar_results.expansions.front().gamma_s, 1e-6, 1e-10));
+}
+
+TEST_F(NozzleTests, ProfileSolveFrozen) {
+    NozzleProfile profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+    Nozzle nozzle(*gas, GasChemistry::FROZEN);
+
+    NozzleResults results = nozzle.solve(profile, 10);
+
+    EXPECT_TRUE(results.throat.converged);
+    for (size_t i = 0; i < results.expansions.size(); i++) {
+        EXPECT_TRUE(results.expansions[i].converged)
+            << "Frozen station " << i << " should converge";
+    }
 }

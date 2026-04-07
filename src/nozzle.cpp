@@ -82,6 +82,28 @@ NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<doub
     return {throat_condition, results};
 }
 
+NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
+    const ThroatCondition throat_condition = solve_throat_conditions();
+
+    // For a diverging-only profile (starting at throat), x_min is the throat.
+    double A_throat = profile.area_at(profile.x_min());
+
+    double x_start = profile.x_min();
+    double x_end = profile.x_max();
+    // Slightly inset from x_max to avoid out-of-bounds interpolation at the boundary
+    double x_range = x_end - x_start;
+    double x_last = x_end - 1e-10 * x_range;
+
+    std::vector<NozzleResult> results;
+    for (int i = 1; i <= num_stations; i++) {
+        double x = x_start + (x_last - x_start) * static_cast<double>(i) / num_stations;
+        double A = profile.area_at(x);
+        double area_ratio = A / A_throat;
+        results.push_back(solve_supersonic_area_expansion(throat_condition, area_ratio));
+    }
+    return {throat_condition, results};
+}
+
 void Nozzle::reset_state(){
     m_gas.thermo()->restoreState(inlet_state);
 }

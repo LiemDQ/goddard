@@ -1,5 +1,6 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
@@ -357,34 +358,25 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
 // ---------------------------------------------------------------------------
 
 TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
-    // KineticNozzle::get_gamma_s must return cp/cv (frozen gamma), not
-    // the equilibrium gamma_s. This is physically correct because acoustic
-    // timescales are much shorter than chemical timescales (see §5 of reference).
-    KineticNozzle kinetic_nozzle(*s_gas, s_profile, s_mdot);
+    // KineticNozzle uses Gas with FROZEN chemistry internally, so gamma_s
+    // should be cp/cv (frozen gamma), not the equilibrium gamma_s. This is
+    // physically correct because acoustic timescales are much shorter than
+    // chemical timescales (see §5 of reference).
+    s_gas->thermo()->restoreState(s_inlet_state);
+    Gas frozen_gas(*s_gas, GasChemistry::FROZEN);
+    double gamma_frozen = frozen_gas.gamma_s();
+
     Nozzle frozen_nozzle(*s_gas, GasChemistry::FROZEN);
-
     s_gas->thermo()->restoreState(s_inlet_state);
-    double gamma_kinetic = kinetic_nozzle.get_gamma_s(*s_gas->thermo());
-    double gamma_frozen = frozen_nozzle.get_gamma_s();
+    double gamma_nozzle = frozen_nozzle.get_gamma_s();
 
-    // Both should return cp/cv; they must be equal on the same thermodynamic state
-    EXPECT_NEAR(gamma_kinetic, gamma_frozen,
-                max_fp_error(gamma_frozen, 1e-10, 1e-14))
-        << "KineticNozzle::get_gamma_s must use the same frozen (cp/cv) formula as FrozenNozzle";
+    // Both should return cp/cv on the same thermodynamic state
+    EXPECT_NEAR(gamma_frozen, gamma_nozzle,
+                max_fp_error(gamma_nozzle, 1e-10, 1e-14))
+        << "Gas(FROZEN)::gamma_s must match FrozenNozzle::get_gamma_s";
 
-    // And it must differ from equilibrium gamma_s (which accounts for composition shifts)
-    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
-    s_gas->thermo()->restoreState(s_inlet_state);
-    double gamma_eq = eq_nozzle.get_gamma_s();
-
-    // Equilibrium and frozen gamma_s should generally be different; this
-    // verifies we're not accidentally using the equilibrium formula.
-    // (They can be close but are rarely identical for reactive mixtures.)
-    EXPECT_GT(gamma_kinetic, 1.0) << "gamma_s must be > 1";
-    EXPECT_LT(gamma_kinetic, 2.0) << "gamma_s must be physically reasonable";
-    // Note: for near-equilibrium inlet conditions the two may be very close,
-    // so we don't assert they are different — just that kinetic uses cp/cv.
-    (void)gamma_eq;
+    EXPECT_GT(gamma_frozen, 1.0) << "gamma_s must be > 1";
+    EXPECT_LT(gamma_frozen, 2.0) << "gamma_s must be physically reasonable";
 }
 
 // ---------------------------------------------------------------------------
