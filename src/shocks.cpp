@@ -1,7 +1,6 @@
 #include <cmath>
 #include <vector>
 #include <stdexcept>
-#include <iostream>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
 #include "goddard/error.hpp"
@@ -18,6 +17,7 @@ ShockResult normal_shock(double mach, double gamma) {
         result.valid = false;
         result.static_pressure_ratio = -1.0;
         result.static_temperature_ratio = -1.0;
+        result.total_pressure_ratio = -1.0;
         return result;
     }
     
@@ -114,8 +114,6 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     while (residual >= abstol) {
         if (k > max_iters) 
             throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
-        std::cout << "Iter: " << k << "\n";
-        std::cout << "P2/P1: " << P2_P1 << ", T2/T1: " << T2/T1 << "\n";
         double mw2 = thermo.meanMolecularWeight();
         double cp2 = thermo.cp_mass(); 
         double h2 = thermo.enthalpy_mass();
@@ -171,6 +169,143 @@ ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
     result.static_pressure_ratio = P2_P1;
     result.static_temperature_ratio = T2/T1;
     result.total_pressure_ratio = P_stag2/P_stag1;
+
+    return result;
+}
+
+ShockResult reflected_shock(double mach, double gamma) {
+    if (mach < 1.0) {
+        ShockResult result;
+        result.static_pressure_ratio = -1.0;
+        result.static_temperature_ratio = -1.0;
+        result.total_pressure_ratio = -1.0;
+        result.valid = false;
+        return result;
+    }
+
+    double MR_relation = mach/(mach*mach - 1) 
+        * std::sqrt(1 + 2*(gamma-1)/((gamma+1)*(gamma+1))*(mach*mach -1)*(gamma + 1/(mach*mach)));
+
+    double mach_R = (1 + std::sqrt(1 + 4*MR_relation*MR_relation))/(2*MR_relation);
+    ShockResult result = normal_shock(mach_R, gamma);
+
+    result.mach_in = mach;
+    result.mach_out = mach_R;
+    
+    return result;
+}
+
+ShockResult reflected_shock(Cantera::ThermoPhase& thermo, double mach) {
+    ShockResult result;
+    result.mach_in = mach;
+    if (mach < 1.0) {
+        result.static_pressure_ratio = -1.0;
+        result.static_temperature_ratio = -1.0;
+        result.total_pressure_ratio = -1.0;
+        result.valid = false;
+        return result;
+    }
+
+    const double divR = 1.0/Cantera::GasConstant;
+
+    const double h2 = thermo.enthalpy_mass();
+    const double P2 = thermo.pressure();
+    const double T2 = thermo.temperature();
+    const double rho2 = thermo.density();
+    const double mw2 = thermo.meanMolecularWeight();
+
+    std::vector<double> state1(thermo.stateSize());
+    thermo.saveState(state1);
+    std::vector<double> state2(state1);
+    
+    // TODO: change this based on whether equilibrium chemistry is used
+    const double gamma2 = thermo.cp_mass()/thermo.cv_mass();
+    const double u2 = gas_sonic_velocity(thermo, gamma2)*mach;
+    const double h_stag = gas_stagnation_enthalpy(thermo, u2);
+    const double P_stag2 = gas_stagnation_pressure(thermo, u2);
+    // initial guesses
+    // See 
+    double b = -(gamma2+1)/(gamma2-1);
+    double P52 = (-b + std::sqrt(b*b + 4*2))/2.0;
+    double T52 = 2.0;
+    double P5 = P52 * P2;
+    double T5 = T52 * T2;
+
+    const double dP_coeff = mw2*u2*u2*divR/T2; // MW2*v2^2/(R*T2)
+    const double dh_coeff = u2*u2*divR; //v2^2/R
+
+    double logP52 = log(P52);
+    double logT52 = log(T52);
+
+    thermo.setState_TP(T5, P5);
+    
+    int k = 0;
+    int max_iters = 100;
+    double residual = 100.0;
+    double control_factor_coeff = normal_shock_control_factor(k);
+    const double abstol = 5e-5;
+
+    // Use Newton's method to solve for shock conditions.
+    // See NASA RP-1311 Part I, section 7.2.3. 
+    while (residual >= abstol) {
+        if (k > max_iters) 
+            throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
+        double mw5 = thermo.meanMolecularWeight();
+        double cp5 = thermo.cp_mass(); 
+        double h5 = thermo.enthalpy_mass();
+        double rho5 = thermo.density();
+        double rho52 = rho5/rho2;
+        double rho25m1sq = (rho52 - 1)*(rho52 - 1);
+        
+        //volumetric derivatives
+        double dlogV_dlogT_P = 1.0;
+        double dlogV_dlogP_T = -1.0;
+
+        double dP_coeff_rho25 = dP_coeff * rho52/rho25m1sq;
+        double dh_coeff_rho25 = dh_coeff * rho52/rho25m1sq;
+
+        // partial derivatives
+        double dP_dlogP52 = dP_coeff_rho25 * dlogV_dlogP_T - P52;
+        double dP_dlogT52 = dP_coeff_rho25 * dlogV_dlogT_P; 
+        double dh_dlogP52 = -dh_coeff_rho25 * dlogV_dlogP_T + T5/mw5 * (dlogV_dlogT_P - 1);
+        double dh_dlogT52 = -dh_coeff_rho25 * dlogV_dlogT_P - T5*cp5*divR;
+        
+        double P52_minus_Pprime = P52 - 1 - dP_coeff*rho52/(rho52-1);
+        double h5_minus_hprime_R = (h5-h2)*divR - 0.5*dh_coeff*(rho52+1)/(rho52-1);
+
+       
+        // directly solve system of equations
+        double dlogT52 = (P52_minus_Pprime - dP_dlogP52/dh_dlogP52 * h5_minus_hprime_R)/(dP_dlogT52 - dP_dlogP52/dh_dlogP52 * dh_dlogT52);
+        double dlogP52 = (h5_minus_hprime_R - dh_dlogT52*dlogT52)/dh_dlogP52;
+
+        double abs_dlogP52 = abs(dlogP52);
+        double abs_dlogT52 = abs(dlogT52);
+        
+        control_factor_coeff = normal_shock_control_factor(k);
+        double control_factor = std::min(control_factor_coeff/abs_dlogP52, control_factor_coeff/abs_dlogT52);
+        control_factor = std::min(control_factor, 1.0);
+        
+        logP52 += control_factor * dlogP52;
+        logT52 += control_factor * dlogT52;
+
+        P52 = exp(logP52);
+        P5 = P52*P2;
+        T5 = exp(logT52)*T2;
+        thermo.setState_TP(T5, P5);
+
+        residual = std::max(abs_dlogP52, abs_dlogT52);
+        k++;
+    }
+    
+    double gamma5 = thermo.cp_mass()/thermo.cv_mass();
+    double u5 = gas_isenthalpic_velocity(thermo, h_stag);
+    double P_stag5 = gas_stagnation_pressure(thermo, u5);
+
+    result.valid = true;
+    result.mach_out = u2/gas_sonic_velocity(thermo, gamma5);
+    result.static_pressure_ratio = P52;
+    result.static_temperature_ratio = T5/T2;
+    result.total_pressure_ratio = P_stag5/P_stag2;
 
     return result;
 }

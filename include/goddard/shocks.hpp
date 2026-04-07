@@ -32,6 +32,16 @@ ShockResult normal_shock(double mach, double gamma);
 ShockResult normal_shock(Cantera::ThermoPhase& gas, double mach);
 
 /**
+ * Solve for perfect gas properties across a reflected shock.
+ */
+ShockResult reflected_shock(double mach, double gamma);
+
+/** 
+ * Solve for frozen gas properties across a reflected shock. 
+ */
+ShockResult reflected_shock(Cantera::ThermoPhase& gas, double mach);
+
+/**
  * Solve for oblique shock angles for a perfect gas oblique shock with known deflection angle.
  * @returns First entry is the weak shock angle, second entry is the strong shock angle.
  */
