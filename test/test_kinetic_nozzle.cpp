@@ -365,7 +365,7 @@ TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
 
     s_gas->thermo()->restoreState(s_inlet_state);
     double gamma_kinetic = kinetic_nozzle.get_gamma_s(*s_gas->thermo());
-    double gamma_frozen = frozen_nozzle.get_gamma_s(*s_gas->thermo());
+    double gamma_frozen = frozen_nozzle.get_gamma_s();
 
     // Both should return cp/cv; they must be equal on the same thermodynamic state
     EXPECT_NEAR(gamma_kinetic, gamma_frozen,
@@ -375,7 +375,7 @@ TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
     // And it must differ from equilibrium gamma_s (which accounts for composition shifts)
     Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     s_gas->thermo()->restoreState(s_inlet_state);
-    double gamma_eq = eq_nozzle.get_gamma_s(*s_gas->thermo());
+    double gamma_eq = eq_nozzle.get_gamma_s();
 
     // Equilibrium and frozen gamma_s should generally be different; this
     // verifies we're not accidentally using the equilibrium formula.
