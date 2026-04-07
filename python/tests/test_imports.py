@@ -29,7 +29,7 @@ def test_import_structs():
         CombustorOptions, NozzleOptions, ThroatCondition,
         NozzleResult, NozzleResults, RocketCaseParameters,
         ChemicalParameters, ThermoStateInfo, RocketPerformance,
-        RocketState, EquilibriumProperties, EquilibriumDerivatives,
+        RocketState, ExpansionProperties, EquilibriumDerivatives,
     )
 
 

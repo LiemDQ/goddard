@@ -215,6 +215,7 @@ void bind_structs(nb::module_& m) {
                             double dlV_dlP_T,
                             double dlV_dlT_P,
                             double speed_of_sound,
+                            double stagnation_enthalpy,
                             std::unordered_map<std::string, double> composition) {
             new (self) Goddard::ThermoStateInfo();
             self->pressure = pressure;
@@ -230,6 +231,7 @@ void bind_structs(nb::module_& m) {
             self->dlV_dlP_T = dlV_dlP_T;
             self->dlV_dlT_P = dlV_dlT_P;
             self->speed_of_sound = speed_of_sound;
+            self->stagnation_enthalpy = stagnation_enthalpy;
             self->composition = std::move(composition);
         },  "pressure"_a = 0.0,
             "temperature"_a = 0.0,
@@ -244,6 +246,7 @@ void bind_structs(nb::module_& m) {
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
             "speed_of_sound"_a = 0.0,
+            "stagnation_enthalpy"_a = 0.0,
             "composition"_a = std::unordered_map<std::string, double>())
         .def_ro("pressure", &Goddard::ThermoStateInfo::pressure)
         .def_ro("temperature", &Goddard::ThermoStateInfo::temperature)
@@ -258,6 +261,7 @@ void bind_structs(nb::module_& m) {
         .def_ro("dlV_dlP_T", &Goddard::ThermoStateInfo::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::ThermoStateInfo::dlV_dlT_P)
         .def_ro("speed_of_sound", &Goddard::ThermoStateInfo::speed_of_sound)
+        .def_ro("stagnation_enthalpy", &Goddard::ThermoStateInfo::stagnation_enthalpy)
         .def_ro("composition", &Goddard::ThermoStateInfo::composition);
 
     // StationType

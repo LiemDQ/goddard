@@ -21,7 +21,7 @@ from goddard._core import (
     RocketStation,
     RocketPerformance,
     RocketState,
-    EquilibriumProperties,
+    ExpansionProperties,
     EquilibriumDerivatives,
     # MoC structs
     ThroatGeometry,
