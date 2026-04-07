@@ -2,6 +2,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/nozzle.hpp"
+#include "goddard/profile.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -28,6 +29,10 @@ void bind_nozzle(nb::module_& m) {
              nb::overload_cast<Goddard::ExpansionType, const std::vector<double>&>(
                  &Goddard::Nozzle::solve),
              "expansion_type"_a, "ratios"_a)
+        .def("solve_profile",
+             nb::overload_cast<const Goddard::NozzleProfile&, int>(
+                 &Goddard::Nozzle::solve),
+             "profile"_a, "num_stations"_a = 50)
         .def("solve_throat_conditions",
              &Goddard::Nozzle::solve_throat_conditions,
              "abstol"_a = 4e-4)

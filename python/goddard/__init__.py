@@ -52,7 +52,19 @@ from goddard._core import (
     # Kinetic nozzle
     KineticNozzle,
     KineticNozzleStation,
-    KineticNozzleResults
+    KineticNozzleResults,
+    # Gas wrapper
+    Gas,
+    # Shocks
+    ShockResult,
+    ObliqueShockResult,
+    ShockSolver,
+    normal_shock,
+    reflected_shock,
+    oblique_shock_wave_angle,
+    oblique_shock_deflection_angle,
+    oblique_shock_from_wave_angle,
+    oblique_shock_from_deflection,
 )
 
 from goddard.convenience import (

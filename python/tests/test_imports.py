@@ -48,6 +48,40 @@ def test_import_kinetic_nozzle():
     assert KineticNozzleResults is not None
 
 
+def test_import_gas():
+    from goddard import Gas
+    assert Gas is not None
+
+
+def test_import_shocks():
+    from goddard import (
+        ShockResult, ObliqueShockResult, ShockSolver,
+        normal_shock, reflected_shock,
+        oblique_shock_wave_angle, oblique_shock_deflection_angle,
+        oblique_shock_from_wave_angle, oblique_shock_from_deflection,
+    )
+    assert ShockResult is not None
+    assert ShockSolver is not None
+
+
+def test_perfect_gas_normal_shock():
+    from goddard import normal_shock
+    r = normal_shock(2.0, 1.4)
+    assert r.valid
+    assert r.mach_out < 1.0
+    assert r.static_pressure_ratio > 1.0
+
+
+def test_nozzle_options_new_fields():
+    from goddard import NozzleOptions, SolverOptions
+    opts = NozzleOptions()
+    assert opts.dt_max == 1e-6
+    assert opts.dx_max == 1e-3
+    assert opts.max_steps == 100000
+    opts.solver = SolverOptions(abstol=1e-8)
+    assert opts.solver.abstol == 1e-8
+
+
 def test_import_errors():
     from goddard import ConvergenceError
     assert issubclass(ConvergenceError, Exception)

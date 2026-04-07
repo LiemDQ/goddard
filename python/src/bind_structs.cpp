@@ -45,20 +45,36 @@ void bind_structs(nb::module_& m) {
                             Goddard::GasChemistry chemistry,
                             Goddard::ExpansionType expansion_type,
                             std::vector<double> expansion_ratios,
-                            unsigned int frozen_NFZ) {
+                            unsigned int frozen_NFZ,
+                            Goddard::SolverOptions solver,
+                            double dt_max,
+                            double dx_max,
+                            int max_steps) {
             new (self) Goddard::NozzleOptions();
             self->chemistry = chemistry;
             self->expansion_type = expansion_type;
             self->expansion_ratios = std::move(expansion_ratios);
             self->frozen_NFZ = frozen_NFZ;
+            self->solver = solver;
+            self->dt_max = dt_max;
+            self->dx_max = dx_max;
+            self->max_steps = max_steps;
         },  "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM,
             "expansion_type"_a = Goddard::ExpansionType::SUPERSONIC_AREA_RATIO,
             "expansion_ratios"_a = std::vector<double>(),
-            "frozen_NFZ"_a = 1u)
+            "frozen_NFZ"_a = 1u,
+            "solver"_a = Goddard::SolverOptions(),
+            "dt_max"_a = 1e-6,
+            "dx_max"_a = 1e-3,
+            "max_steps"_a = 100000)
         .def_rw("chemistry", &Goddard::NozzleOptions::chemistry)
         .def_rw("expansion_type", &Goddard::NozzleOptions::expansion_type)
         .def_rw("expansion_ratios", &Goddard::NozzleOptions::expansion_ratios)
-        .def_rw("frozen_NFZ", &Goddard::NozzleOptions::frozen_NFZ);
+        .def_rw("frozen_NFZ", &Goddard::NozzleOptions::frozen_NFZ)
+        .def_rw("solver", &Goddard::NozzleOptions::solver)
+        .def_rw("dt_max", &Goddard::NozzleOptions::dt_max)
+        .def_rw("dx_max", &Goddard::NozzleOptions::dx_max)
+        .def_rw("max_steps", &Goddard::NozzleOptions::max_steps);
 
     // ThroatCondition
     nb::class_<Goddard::ThroatCondition>(m, "ThroatCondition")
