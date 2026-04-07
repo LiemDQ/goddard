@@ -22,20 +22,11 @@ KineticNozzle::KineticNozzle(
     NozzleProfile& profile,
     double mass_flow_rate,
     NozzleChemistryType chemistry)
-: m_profile(profile), m_mdot(mass_flow_rate), m_gas(gas.shared_from_this())
+: m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry),
+  m_gas(gas.shared_from_this())
 {
     m_inlet_state.resize(gas.thermo()->stateSize());
     gas.thermo()->saveState(m_inlet_state);
-    switch (chemistry) {
-        case NozzleChemistryType::EQUILIBRIUM:
-            m_throat_solver = std::make_unique<EquilibriumNozzle>(gas, m_inlet_state);
-            break;
-        case NozzleChemistryType::FROZEN:
-            m_throat_solver = std::make_unique<FrozenNozzle>(gas, m_inlet_state);
-            break;
-        default:
-            throw std::runtime_error("Chemistry type not supported for kinetic nozzle throat model.");
-    }
 }
 
 KineticNozzle::KineticNozzle(
@@ -44,18 +35,9 @@ KineticNozzle::KineticNozzle(
         double mass_flow_rate,
         std::vector<double> inlet_state,
         NozzleChemistryType chemistry)
-: m_profile(profile), m_mdot(mass_flow_rate), m_inlet_state(inlet_state), m_gas(gas.shared_from_this())
+: m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry, inlet_state),
+  m_inlet_state(inlet_state), m_gas(gas.shared_from_this())
 {
-    switch (chemistry) {
-        case NozzleChemistryType::EQUILIBRIUM:
-            m_throat_solver = std::make_unique<EquilibriumNozzle>(gas, inlet_state);
-            break;
-        case NozzleChemistryType::FROZEN:
-            m_throat_solver = std::make_unique<FrozenNozzle>(gas, inlet_state);
-            break;
-        default:
-            throw std::runtime_error("Chemistry type not supported for kinetic nozzle throat model.");
-    }
 }
 
 double KineticNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
@@ -93,7 +75,7 @@ static std::string diagnose_cvodes_failure(
 }
 
 KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_steps) {
-    ThroatCondition throat = m_throat_solver->solve_throat_conditions();
+    ThroatCondition throat = m_throat_solver.solve_throat_conditions();
     auto thermo = m_gas->thermo();
     thermo->restoreState(throat.state);
 

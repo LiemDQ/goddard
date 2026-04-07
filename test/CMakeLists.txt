@@ -23,6 +23,7 @@ add_executable(
     test_moc_design.cpp
     test_moc_phases.cpp
     test_kinetic_nozzle.cpp
+    test_shocks.cpp
 )
 
 target_include_directories(goddardTests      

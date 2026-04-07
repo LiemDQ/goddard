@@ -9,6 +9,7 @@
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/problem.hpp"
+#include "goddard/rocket_results.hpp"
 #include "goddard/thermo.hpp"
 
 namespace nb = nanobind;
@@ -258,6 +259,23 @@ void bind_structs(nb::module_& m) {
         .def_ro("dlV_dlT_P", &Goddard::ThermoStateInfo::dlV_dlT_P)
         .def_ro("speed_of_sound", &Goddard::ThermoStateInfo::speed_of_sound)
         .def_ro("composition", &Goddard::ThermoStateInfo::composition);
+
+    // StationType
+    nb::enum_<Goddard::StationType>(m, "StationType")
+        .value("CHAMBER", Goddard::StationType::CHAMBER)
+        .value("THROAT",  Goddard::StationType::THROAT)
+        .value("EXIT",    Goddard::StationType::EXIT);
+
+    // RocketStation
+    nb::class_<Goddard::RocketStation>(m, "RocketStation")
+        .def_ro("case_name",       &Goddard::RocketStation::case_name)
+        .def_ro("type",            &Goddard::RocketStation::type)
+        .def_ro("of_index",        &Goddard::RocketStation::of_index)
+        .def_ro("pressure_index",  &Goddard::RocketStation::pressure_index)
+        .def_ro("expansion_index", &Goddard::RocketStation::expansion_index)
+        .def_ro("area_ratio",      &Goddard::RocketStation::area_ratio)
+        .def_ro("thermo",          &Goddard::RocketStation::thermo)
+        .def_ro("converged",       &Goddard::RocketStation::converged);
 
     // RocketPerformance
     nb::class_<Goddard::RocketPerformance>(m, "RocketPerformance")

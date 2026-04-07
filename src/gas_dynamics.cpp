@@ -1,6 +1,8 @@
-#include "goddard/gas_dynamics.hpp"
-
 #include <cmath>
+#include "goddard/gas_dynamics.hpp"
+#include "goddard/utils.hpp"
+#include "goddard/error.hpp"
+
 namespace Goddard {
 
 double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagnation){
@@ -27,12 +29,47 @@ double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity)
     return gas.enthalpy_mass() + velocity*velocity/2;
 }
 
-Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd velocity) {
+Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd& velocity) {
     return gas.enthalpy_mass() + velocity * velocity / 2;
 }
 
-double stagnation_pressure(const Cantera::ThermoPhase& gas, double mach, double gamma) {
-    return gas.pressure() * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
+double perfect_gas_stagnation_pressure(double P, double mach, double gamma) {
+    return P * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
+}
+
+Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd& gamma) {
+    return P * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
+}
+
+double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity) {
+    auto thermo = gas.clone();
+    const double h_stag = gas_stagnation_enthalpy(gas, velocity);
+    const double entropy = gas.entropy_mass();
+    
+    // initial guess
+    double gamma = gas.cp_mass()/gas.cv_mass();
+    double mach = velocity / gas_sonic_velocity(*thermo, gamma);
+    double P_stag = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
+    
+    int max_iters = 10;
+    int k = 0;
+    const double abstol = 1e-8;
+    double residual = 1.0;
+    // Use Newton's method to solve for stagnation pressure.
+    // As energy is conserved, h_stag - h(S, P_stag) = 0.
+    // Thus: P_{k+1} = P_k - (h_stag - h(S, P_stag))/(dh/dP)_S
+    // Note that by definition, (dh/dP)_S = V = 1/rho
+    while (abs(residual) > abstol) {
+        if (k > max_iters)
+            throw ConvergenceError("Failed to converge to stagnation pressure.", k, abstol, residual);
+        thermo->setState_SP(entropy, P_stag);
+        double rho = thermo->density();
+        residual = thermo->enthalpy_mass() - h_stag;
+        P_stag = P_stag - residual * rho;
+        k++;
+    }
+
+    return P_stag;
 }
 
 double stagnation_factor(double mach, double gamma) {
@@ -43,9 +80,6 @@ Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::Arra
     return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
 }
 
-Eigen::ArrayXXd stagnation_pressure(const Cantera::ThermoPhase& gas, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd gamma) {
-    return gas.pressure() * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
-}
 
 double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity) {
     return gas.temperature()*Cantera::GasConstant / (gas.pressure() * velocity * gas.meanMolecularWeight());

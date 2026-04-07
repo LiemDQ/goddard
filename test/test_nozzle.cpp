@@ -43,18 +43,18 @@ protected:
 // Test basic construction and state management
 TEST_F(NozzleTests, EquilibriumNozzleConstruction) {
     ASSERT_NO_THROW({
-        EquilibriumNozzle nozzle(*gas);
+        Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
     });
 }
 
 TEST_F(NozzleTests, FrozenNozzleConstruction) {
     ASSERT_NO_THROW({
-        FrozenNozzle nozzle(*gas);
+        Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
     });
 }
 
 TEST_F(NozzleTests, NozzleStateManagement) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     std::vector<double> original_state = nozzle.get_inlet_state();
     ASSERT_EQ(original_state.size(), gas->thermo()->stateSize());
@@ -74,7 +74,7 @@ TEST_F(NozzleTests, NozzleStateManagement) {
 }
 
 TEST_F(NozzleTests, SetInletState) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     // Create a new state
     gas->thermo()->setState_TPX(2000.0, 10.0 * Cantera::OneAtm, "H2O:1.0");
@@ -92,7 +92,7 @@ TEST_F(NozzleTests, SetInletState) {
 }
 
 TEST_F(NozzleTests, EqThroatConditionsConverge) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     ThroatCondition conditions = nozzle.solve_throat_conditions();
     EXPECT_TRUE(conditions.converged);
@@ -111,7 +111,7 @@ TEST_F(NozzleTests, EqThroatConditionsConverge) {
 
 // Test throat condition calculation
 TEST_F(NozzleTests, EquilibriumConverge) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
     NozzleResult result = results.expansions.front();
@@ -122,7 +122,7 @@ TEST_F(NozzleTests, EquilibriumConverge) {
 }
 
 TEST_F(NozzleTests, FrozenConverge) {
-    FrozenNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
     NozzleResult result = results.expansions.front();
@@ -134,7 +134,7 @@ TEST_F(NozzleTests, FrozenConverge) {
 
 // Test supersonic area expansion
 TEST_F(NozzleTests, EquilibriumSupersonicAreaExpansion) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     std::vector<double> expansion_ratios = {2.0, 5.0, 10.0, 20.0};
 
@@ -152,7 +152,7 @@ TEST_F(NozzleTests, EquilibriumSupersonicAreaExpansion) {
 }
 
 TEST_F(NozzleTests, FrozenSupersonicAreaExpansion) {
-    FrozenNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
 
     std::vector<double> expansion_ratios = {2.0, 5.0, 10.0, 20.0};
 
@@ -168,7 +168,7 @@ TEST_F(NozzleTests, FrozenSupersonicAreaExpansion) {
 }
 
 TEST_F(NozzleTests, SupersonicExpansionPressureDecreases) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     double initial_pressure = gas->thermo()->pressure();
 
@@ -188,7 +188,7 @@ TEST_F(NozzleTests, SupersonicExpansionPressureDecreases) {
 }
 
 TEST_F(NozzleTests, SupersonicExpansionTemperatureDecreases) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     double initial_temp = gas->thermo()->temperature();
 
@@ -208,7 +208,7 @@ TEST_F(NozzleTests, SupersonicExpansionTemperatureDecreases) {
 
 // Test subsonic area expansion
 TEST_F(NozzleTests, EquilibriumSubsonicAreaExpansion) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     // Subsonic expansion ratios are > 1 but smaller than supersonic
     std::vector<double> expansion_ratios = {1.1, 1.2, 1.5};
@@ -225,7 +225,7 @@ TEST_F(NozzleTests, EquilibriumSubsonicAreaExpansion) {
 }
 
 TEST_F(NozzleTests, FrozenSubsonicAreaExpansion) {
-    FrozenNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
 
     std::vector<double> expansion_ratios = {1.1, 1.2, 1.5};
 
@@ -242,7 +242,7 @@ TEST_F(NozzleTests, FrozenSubsonicAreaExpansion) {
 
 // Test pressure ratio expansion
 TEST_F(NozzleTests, EquilibriumPressureRatioExpansion) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
     gas->thermo()->restoreState(inlet_state);
     double inlet_pressure = gas->thermo()->pressure();
 
@@ -276,7 +276,7 @@ TEST_F(NozzleTests, EquilibriumPressureRatioExpansion) {
 }
 
 TEST_F(NozzleTests, FrozenPressureRatioExpansion) {
-    FrozenNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
     gas->thermo()->restoreState(inlet_state);
     double inlet_pressure = gas->thermo()->pressure();
     
@@ -306,7 +306,7 @@ TEST_F(NozzleTests, FrozenPressureRatioExpansion) {
 
 // Test batch solving with multiple ratios
 TEST_F(NozzleTests, EquilibriumBatchSolve) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     std::vector<double> ratios = {2.0, 5.0, 10.0, 15.0, 20.0};
 
@@ -325,7 +325,7 @@ TEST_F(NozzleTests, EquilibriumBatchSolve) {
 }
 
 TEST_F(NozzleTests, FrozenBatchSolve) {
-    FrozenNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::FROZEN);
 
     std::vector<double> ratios = {2.0, 5.0, 10.0, 15.0, 20.0};
 
@@ -345,8 +345,8 @@ TEST_F(NozzleTests, FrozenBatchSolve) {
 TEST_F(NozzleTests, GammaDifferencesBetweenEquilibriumAndFrozen) {
     gas->thermo()->restoreState(inlet_state);
 
-    EquilibriumNozzle eq_nozzle(*gas);
-    FrozenNozzle frozen_nozzle(*gas);
+    Nozzle eq_nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle frozen_nozzle(*gas, NozzleChemistryType::FROZEN);
 
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
     NozzleResult eq_result = eq_results.expansions.front();
@@ -367,7 +367,7 @@ TEST_F(NozzleTests, GammaDifferencesBetweenEquilibriumAndFrozen) {
 
 // Test invalid expansion ratios
 TEST_F(NozzleTests, InvalidExpansionRatioTooSmall) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     // Expansion ratio < 1.0001 should fail
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 0.5);
@@ -378,7 +378,7 @@ TEST_F(NozzleTests, InvalidExpansionRatioTooSmall) {
 }
 
 TEST_F(NozzleTests, InvalidSubsonicExpansionRatioTooSmall) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     // Subsonic expansion ratio < 1.0001 should fail
     NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 1.0);
@@ -390,7 +390,7 @@ TEST_F(NozzleTests, InvalidSubsonicExpansionRatioTooSmall) {
 
 // Test throat condition properties
 TEST_F(NozzleTests, EquilibriumThroatConditionProperties) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
     double initial_entropy = gas->thermo()->entropy_mass();
     double initial_enthalpy = gas->thermo()->enthalpy_mass();
     double initial_pressure = gas->thermo()->pressure();
@@ -425,7 +425,7 @@ TEST_F(NozzleTests, EquilibriumThroatConditionProperties) {
 
 // Test state restoration
 TEST_F(NozzleTests, StatePreservationAfterSolve) {
-    EquilibriumNozzle nozzle(*gas);
+    Nozzle nozzle(*gas, NozzleChemistryType::EQUILIBRIUM);
 
     double initial_temp = gas->thermo()->temperature();
     double initial_pressure = gas->thermo()->pressure();
@@ -464,7 +464,7 @@ protected:
 };
 
 TEST_F(NozzleDifferentGasTests, H2O2EquilibriumNozzle) {
-    EquilibriumNozzle nozzle(*h2o2_gas);
+    Nozzle nozzle(*h2o2_gas, NozzleChemistryType::EQUILIBRIUM);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
     NozzleResult result = results.expansions.front();
@@ -474,7 +474,7 @@ TEST_F(NozzleDifferentGasTests, H2O2EquilibriumNozzle) {
 }
 
 TEST_F(NozzleDifferentGasTests, H2O2FrozenNozzle) {
-    FrozenNozzle nozzle(*h2o2_gas);
+    Nozzle nozzle(*h2o2_gas, NozzleChemistryType::FROZEN);
 
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
     NozzleResult result = results.expansions.front();

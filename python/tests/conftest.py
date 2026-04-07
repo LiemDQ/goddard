@@ -157,7 +157,7 @@ def solve_cea_problem(case: RocketTestCase):
     if case.nozzle_chemistry == "frozen":
         # CEA station numbering: 1=combustor, 2=throat
         # frozen_NFZ=1 in Goddard (freeze at throat) maps to n_frz=2 in CEA
-        solve_kwargs["n_frz"] = case.frozen_NFZ + 1
+        solve_kwargs["n_frz"] = case.frozen_NFZ
 
     # CEA requires at least one pressure ratio; use a large one to get all stations
     pi_p = [1000.0]
@@ -225,39 +225,3 @@ def compare_thermo_states(goddard_state, cea_solution, cea_station_idx: int,
                      tol.sound_speed_rel, f"{prefix}speed_of_sound")
 
 
-# ---------------------------------------------------------------------------
-# Predefined test cases
-# ---------------------------------------------------------------------------
-
-H2O2_SPECIES = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
-
-H2_O2_GAS_EQUILIBRIUM = RocketTestCase(
-    name="h2_o2_gas_eq",
-    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
-    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
-    of_ratio=6.0,
-    chamber_pressure_bar=206.84,
-    area_ratios=[15.0, 35.0],
-    thermo_file="h2o2.yaml",
-    phase_name="ohmech",
-    species=H2O2_SPECIES,
-    nozzle_chemistry="equilibrium",
-)
-
-H2_O2_GAS_FROZEN = RocketTestCase(
-    name="h2_o2_gas_frz",
-    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
-    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
-    of_ratio=6.0,
-    chamber_pressure_bar=206.84,
-    area_ratios=[15.0, 35.0],
-    thermo_file="h2o2.yaml",
-    phase_name="ohmech",
-    species=H2O2_SPECIES,
-    nozzle_chemistry="frozen",
-    frozen_NFZ=1,
-)
-
-ALL_TEST_CASES = [H2_O2_GAS_EQUILIBRIUM, H2_O2_GAS_FROZEN]
-EQUILIBRIUM_CASES = [H2_O2_GAS_EQUILIBRIUM]
-FROZEN_CASES = [H2_O2_GAS_FROZEN]

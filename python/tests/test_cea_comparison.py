@@ -16,13 +16,50 @@ from conftest import (
     compare_thermo_states,
     assert_close_rel,
     assert_close_abs,
-    EQUILIBRIUM_CASES,
-    FROZEN_CASES,
+    ReactantSpec
 )
+
+
+# ---------------------------------------------------------------------------
+# Predefined test cases
+# ---------------------------------------------------------------------------
+
+H2O2_SPECIES = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
+
+H2_O2_GAS_EQUILIBRIUM = RocketTestCase(
+    name="h2_o2_gas_eq",
+    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
+    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
+    of_ratio=6.0,
+    chamber_pressure_bar=206.84,
+    area_ratios=[15.0, 35.0],
+    thermo_file="h2o2.yaml",
+    phase_name="ohmech",
+    species=H2O2_SPECIES,
+    nozzle_chemistry="equilibrium",
+)
+
+H2_O2_GAS_FROZEN = RocketTestCase(
+    name="h2_o2_gas_frz",
+    fuel=ReactantSpec(cea_name="H2", cantera_composition="H2:1", temperature=300.0),
+    oxidizer=ReactantSpec(cea_name="O2", cantera_composition="O2:1", temperature=300.0),
+    of_ratio=6.0,
+    chamber_pressure_bar=206.84,
+    area_ratios=[15.0, 35.0],
+    thermo_file="h2o2.yaml",
+    phase_name="ohmech",
+    species=H2O2_SPECIES,
+    nozzle_chemistry="frozen",
+    frozen_NFZ=1,
+)
+
+ALL_TEST_CASES = [H2_O2_GAS_EQUILIBRIUM, H2_O2_GAS_FROZEN]
+EQUILIBRIUM_CASES = [H2_O2_GAS_EQUILIBRIUM]
+FROZEN_CASES = [H2_O2_GAS_FROZEN]
 
 # Frozen cases excluded from default runs pending gamma_s fix.
 # Use FROZEN_CASES when ready to enable them.
-DEFAULT_CASES = FROZEN_CASES
+DEFAULT_CASES = ALL_TEST_CASES
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +129,7 @@ def test_chamber_state(case: RocketTestCase):
     """Compare chamber thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.get_chamber_state(case.name, 0)
-    assert chamber is not None, "Goddard returned no chamber state"
+    chamber = results.chamber(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -106,8 +142,7 @@ def test_throat_state(case: RocketTestCase):
     """Compare throat thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    throat = results.get_throat_state(case.name, 0)
-    assert throat is not None, "Goddard returned no throat state"
+    throat = results.throat(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -121,7 +156,7 @@ def test_exit_states(case: RocketTestCase):
     """Compare exit/expansion thermodynamic states between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    exits = results.get_exit_states(case.name, 0)
+    exits = [s.thermo for s in results.exits(0, case.name)]
     assert len(exits) == len(case.area_ratios), (
         f"Expected {len(case.area_ratios)} exit states, got {len(exits)}")
 
@@ -154,10 +189,9 @@ def test_performance(case: RocketTestCase):
     problem = build_goddard_problem(case)
     results = problem.solve()
 
-    chamber = results.get_chamber_state(case.name, 0)
-    throat = results.get_throat_state(case.name, 0)
-    exits = results.get_exit_states(case.name, 0)
-    assert chamber is not None and throat is not None
+    chamber = results.chamber(0, case.name).thermo
+    throat = results.throat(0, case.name).thermo
+    exits = [s.thermo for s in results.exits(0, case.name)]
     assert len(exits) > 0
 
     cea_sol = solve_cea_problem(case)
@@ -197,13 +231,12 @@ def test_performance(case: RocketTestCase):
 # Species composition comparison tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("case", EQUILIBRIUM_CASES, ids=lambda c: c.name)
+@pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
 def test_chamber_composition(case: RocketTestCase):
     """Compare chamber species mass fractions between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.get_chamber_state(case.name, 0)
-    assert chamber is not None
+    chamber = results.chamber(0, case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)

@@ -3,6 +3,7 @@ from goddard._core import (
     CombustorType,
     NozzleChemistryType,
     ExpansionType,
+    StationType,
     # MoC enums
     MocFlowKind,
     MocChemistry,
@@ -17,9 +18,9 @@ from goddard._core import (
     RocketCaseParameters,
     ChemicalParameters,
     ThermoStateInfo,
+    RocketStation,
     RocketPerformance,
     RocketState,
-    RocketProblemCaseResult,
     EquilibriumProperties,
     EquilibriumDerivatives,
     # MoC structs
@@ -37,9 +38,7 @@ from goddard._core import (
     RocketProblemResults,
     ThermoArray,
     Combustor,
-    NozzleBase,
-    EquilibriumNozzle,
-    FrozenNozzle,
+    Nozzle,
     MixtureRatio,
     MixtureRatios,
     ThermodynamicState,
@@ -50,6 +49,10 @@ from goddard._core import (
     ConvergenceError,
     # Functions
     create_solution,
+    # Kinetic nozzle
+    KineticNozzle,
+    KineticNozzleStation,
+    KineticNozzleResults
 )
 
 from goddard.convenience import (

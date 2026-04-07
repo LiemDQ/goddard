@@ -46,7 +46,7 @@ public:
     double m_mdot;
 
 protected:
-    std::unique_ptr<NozzleBase> m_throat_solver;
+    Nozzle m_throat_solver;
     std::vector<double> m_inlet_state;
     std::shared_ptr<Cantera::Solution> m_gas;
 };

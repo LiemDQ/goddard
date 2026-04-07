@@ -22,6 +22,25 @@ struct RocketPerformance {
     double ivac;
 };
 
+enum class StationType {
+    CHAMBER,
+    THROAT,
+    EXIT
+};
+
+struct RocketStation {
+    std::string case_name;
+    StationType type;
+    std::size_t of_index;        // index into the case's OF_ratios vector
+    std::size_t pressure_index;  // index into the case's pressures vector
+    std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
+    double area_ratio;           // 0.0 for CHAMBER, 1.0 for THROAT, >1 for EXIT
+    ThermoStateInfo thermo;
+    bool converged;
+};
+
+// Internal type: used by RocketProblem::solve() to pass results to RocketProblemResults.
+// Not part of the public API.
 struct RocketProblemCaseResult {
     std::string problem_type;
     ThermoArray inlet_states;
@@ -35,59 +54,62 @@ struct RocketProblemCaseResult {
 
 class RocketProblemResults {
 
-    public:
-    RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results, std::shared_ptr<Cantera::Solution> sln);
+public:
+    RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results,
+                         std::shared_ptr<Cantera::Solution> sln);
 
-    /**
-     * Extract all thermo states for a case at a given O/F index.
-     * Returns [inlet, throat, exit1, exit2, ...] in order.
-     */
-    std::vector<ThermoStateInfo> extract_thermo_info(const std::string& case_name, std::size_t index);
+    // Direct access to the flat station list.
+    const std::vector<RocketStation>& stations() const { return m_stations; }
 
-    /**
-     * Get chamber/inlet state for a specific case and O/F index.
-     * @param case_name Name of the case
-     * @param of_index Index into the O/F ratio array
-     * @return Chamber state, or nullopt if not found
-     */
-    std::optional<ThermoStateInfo> get_chamber_state(const std::string& case_name, std::size_t of_index);
+    // All stations of a given type, optionally filtered to a single case.
+    // If case_name is empty and there is exactly one case, that case is used.
+    std::vector<RocketStation> stations_of_type(StationType type, const std::string& case_name = "") const;
 
-    /**
-     * Get throat state for a specific case and O/F index.
-     * @param case_name Name of the case
-     * @param of_index Index into the O/F ratio array
-     * @return Throat state, or nullopt if not found
-     */
-    std::optional<ThermoStateInfo> get_throat_state(const std::string& case_name, std::size_t of_index);
+    // Single-station convenience accessors.
+    // If case_name is empty and there is exactly one case, that case is used.
+    const RocketStation& chamber(std::size_t of_index = 0, const std::string& case_name = "") const;
+    const RocketStation& throat(std::size_t of_index = 0, const std::string& case_name = "") const;
+    std::vector<RocketStation> exits(std::size_t of_index = 0, const std::string& case_name = "") const;
 
-    /**
-     * Get all exit states for a specific case and O/F index.
-     * @param case_name Name of the case
-     * @param of_index Index into the O/F ratio array
-     * @return Vector of exit states (may be empty if no exits)
-     */
-    std::vector<ThermoStateInfo> get_exit_states(const std::string& case_name, std::size_t of_index);
+    // Compute rocket performance for a given operating point and exit station.
+    // If case_name is empty and there is exactly one case, that case is used.
+    RocketPerformance performance(std::size_t of_index = 0, std::size_t exit_index = 0,
+                                  const std::string& case_name = "") const;
 
-    /**
-     * Calculate rocket performance metrics from chamber, throat, and exit states.
-     * @param chamber Chamber/inlet state
-     * @param throat Throat state
-     * @param exit Exit state
-     * @return Performance metrics (cstar, CF, Isp, Ivac, etc.)
-     */
+    // List all case names.
+    std::vector<std::string> case_names() const;
+
+    // The OF ratios used for a case.
+    // If case_name is empty and there is exactly one case, that case is used.
+    const std::vector<double>& of_ratios(const std::string& case_name = "") const;
+
+    // Generate a CEA-style formatted text report.
+    // If case_name is empty, all cases are reported in sorted order.
+    std::string report(const std::string& case_name = "") const;
+
+    // Compute performance metrics from individual thermo states.
     static RocketPerformance calculate_performance(
         const ThermoStateInfo& chamber,
         const ThermoStateInfo& throat,
         const ThermoStateInfo& exit);
 
-    std::string report(const std::string& case_name = "");
+private:
+    std::vector<RocketStation> m_stations;
 
-    std::unordered_map<std::string, RocketProblemCaseResult> cases;
-
-    private:
+    struct CaseMeta {
+        std::vector<double> of_ratios;
+        std::vector<double> pressures;
+        std::vector<double> expansion_ratios;
+        NozzleChemistryType chemistry;
+        ExpansionType expansion_type;
+    };
+    std::unordered_map<std::string, CaseMeta> m_case_meta;
     std::shared_ptr<Cantera::Solution> m_sln;
 
-    inline std::shared_ptr<Cantera::ThermoPhase> thermo() {return m_sln->thermo();}
+    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_sln->thermo(); }
+
+    // Resolve case_name: if empty, returns the single case name; throws if ambiguous.
+    std::string resolve_case(const std::string& case_name) const;
 };
 
 

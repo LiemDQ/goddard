@@ -41,27 +41,18 @@ MocResult MocNozzle::solve() {
     } 
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
-        std::unique_ptr<NozzleBase> nozzle;
-        switch (m_options.chemistry) {
-            case MocChemistry::FROZEN: {
-                nozzle = std::make_unique<FrozenNozzle>(*m_gas);
-                break;
-            }
-            case MocChemistry::EQUILIBRIUM: {
-                nozzle = std::make_unique<EquilibriumNozzle>(*m_gas);
-                break;
-            }
-            default:
-                break;
-        }
-        auto throat = nozzle->solve_throat_conditions();
+        NozzleChemistryType nozzle_chemistry = (m_options.chemistry == MocChemistry::FROZEN)
+            ? NozzleChemistryType::FROZEN
+            : NozzleChemistryType::EQUILIBRIUM;
+        Nozzle nozzle(*m_gas, nozzle_chemistry);
+        auto throat = nozzle.solve_throat_conditions();
 
         m_L_ref = m_options.geometry.throat_radius;
         m_P_ref = throat.P_inlet;
         m_T_ref = m_gas->thermo()->temperature();
         m_S_ref = throat.S_inlet;
 
-        double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle->get_gamma_s(*m_gas->thermo()));
+        double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle.get_gamma_s(*m_gas->thermo()));
         
         pm_table.build_table(
             *m_gas->thermo(),
