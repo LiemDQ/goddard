@@ -48,6 +48,7 @@ struct ThermoStateInfo {
     double dlV_dlP_T;
     double dlV_dlT_P;
     double speed_of_sound;
+    double stagnation_enthalpy;
     std::unordered_map<std::string, double> composition;
 };
 

@@ -49,7 +49,7 @@ MocResult MocNozzle::solve() {
         m_T_ref = m_gas->thermo()->temperature();
         m_S_ref = throat.S_inlet;
 
-        double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle.get_gamma_s(*m_gas->thermo()));
+        double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle.get_gamma_s());
         
         pm_table.build_table(
             *m_gas->thermo(),

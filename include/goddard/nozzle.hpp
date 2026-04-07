@@ -6,6 +6,7 @@
 
 #include "goddard/thermoarray.hpp"
 #include "goddard/chemistry.hpp"
+#include "goddard/gas.hpp"
 
 namespace Goddard {
 
@@ -58,7 +59,7 @@ class Nozzle {
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
     ThroatCondition solve_throat_conditions(double abstol = 4e-4);
 
-    double get_gamma_s(Cantera::ThermoPhase& state);
+    double get_gamma_s();
 
     void reset_state();
     inline void set_inlet_state(const std::vector<double>& state) { inlet_state = state; }
@@ -67,10 +68,9 @@ class Nozzle {
     std::vector<double> inlet_state;
 
     private:
-    std::shared_ptr<Cantera::Solution> m_gas;
-    GasChemistry m_chemistry;
+    Gas m_gas;
 
-    void solve_chemistry(Cantera::ThermoPhase& state);
+    void solve_chemistry();
     NozzleResult solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
     NozzleResult solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
     NozzleResult solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol = 0.5e-5);

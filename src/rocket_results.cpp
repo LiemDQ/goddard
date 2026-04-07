@@ -49,6 +49,7 @@ RocketProblemResults::RocketProblemResults(
             dlV_dlP_T,
             dlV_dlT_P,
             gas_sonic_velocity(*tmo, gamma),
+            0.0,
             make_composition(state)
         };
     };

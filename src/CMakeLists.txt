@@ -33,6 +33,7 @@ add_library(
   equilibrium.cpp
   thermoarray.cpp
   thermo.cpp
+  gas.cpp
   combustor.cpp
   mixture_ratio.cpp
   error.cpp
