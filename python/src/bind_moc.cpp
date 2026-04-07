@@ -6,6 +6,7 @@
 
 #include "goddard/moc.hpp"
 #include "goddard/characteristics.hpp"
+#include "goddard/gas.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -189,6 +190,11 @@ void bind_moc(nb::module_& m) {
                             Goddard::MocOptions options) {
             new (self) Goddard::MocNozzle(std::move(sol), std::move(options));
         }, "solution"_a, "options"_a)
+        .def("__init__", [](Goddard::MocNozzle* self,
+                            Goddard::Gas& gas,
+                            Goddard::MocOptions options) {
+            new (self) Goddard::MocNozzle(gas.solution(), std::move(options));
+        }, "gas"_a, "options"_a)
         .def("solve", &Goddard::MocNozzle::solve);
 
     // ---- compute_thrust_coefficient ----

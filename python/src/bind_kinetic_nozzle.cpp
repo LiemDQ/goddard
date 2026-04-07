@@ -2,6 +2,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/kinetic_nozzle.hpp"
+#include "goddard/gas.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -52,6 +53,25 @@ void bind_kinetic_nozzle(nb::module_& m) {
              },
              "solution"_a, "profile"_a, "mdot"_a, "state"_a,
              "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM)
+        // Gas-based constructors
+        .def("__init__",
+             [](Goddard::KineticNozzle* self,
+                Goddard::Gas gas,
+                Goddard::NozzleProfile profile,
+                double mdot) {
+                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot);
+             },
+             "gas"_a, "profile"_a, "mdot"_a)
+        .def("__init__",
+             [](Goddard::KineticNozzle* self,
+                Goddard::Gas gas,
+                Goddard::NozzleProfile profile,
+                double mdot,
+                std::vector<double> state) {
+                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot,
+                                                    std::move(state));
+             },
+             "gas"_a, "profile"_a, "mdot"_a, "state"_a)
         .def("solve", &Goddard::KineticNozzle::solve,
              "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000)
         .def_rw("m_profile", &Goddard::KineticNozzle::m_profile)

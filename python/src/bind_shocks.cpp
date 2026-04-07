@@ -10,29 +10,6 @@ namespace nb = nanobind;
 using namespace nb::literals;
 
 void bind_shocks(nb::module_& m) {
-    // Gas — thin wrapper around Cantera::Solution with chemistry-aware properties
-    nb::class_<Goddard::Gas>(m, "Gas")
-        .def("__init__",
-             [](Goddard::Gas* self,
-                std::shared_ptr<Cantera::Solution> sol,
-                Goddard::GasChemistry chemistry) {
-                 new (self) Goddard::Gas(sol, chemistry);
-             },
-             "solution"_a, "chemistry"_a = Goddard::GasChemistry::FROZEN)
-        .def("temperature", &Goddard::Gas::temperature)
-        .def("pressure", &Goddard::Gas::pressure)
-        .def("density", &Goddard::Gas::density)
-        .def("enthalpy_mass", &Goddard::Gas::enthalpy_mass)
-        .def("entropy_mass", &Goddard::Gas::entropy_mass)
-        .def("cp_mass", &Goddard::Gas::cp_mass)
-        .def("cv_mass", &Goddard::Gas::cv_mass)
-        .def("molecular_weight", &Goddard::Gas::molecular_weight)
-        .def("gamma_s", &Goddard::Gas::gamma_s)
-        .def("speed_of_sound", &Goddard::Gas::speed_of_sound)
-        .def("mach", &Goddard::Gas::mach, "velocity"_a)
-        .def("snapshot", &Goddard::Gas::snapshot)
-        .def_rw("chemistry", &Goddard::Gas::chemistry);
-
     // ShockResult
     nb::class_<Goddard::ShockResult>(m, "ShockResult")
         .def(nb::init<>())

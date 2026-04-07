@@ -5,6 +5,7 @@ import math
 from goddard._core import (
     CombustorType,
     CombustorOptions,
+    Gas,
     GasChemistry,
     NozzleOptions,
     ExpansionType,
@@ -220,28 +221,50 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     return nozzle.solve()
 
 
-def from_cantera(ct_solution):
-    """Create a Goddard SolutionHandle from a Python cantera.Solution object.
+def from_cantera(ct_solution, chemistry=GasChemistry.FROZEN):
+    """Create a Gas from a Python cantera.Solution object.
 
-    This reconstructs the thermodynamic state by extracting the source file,
+    Reconstructs the thermodynamic state by extracting the source file,
     species, and state from the Python Cantera object and creating a new
     internal C++ Solution with the same configuration.
 
     Args:
         ct_solution: A cantera.Solution Python object.
+        chemistry: GasChemistry mode for the Gas (default: FROZEN).
 
     Returns:
-        SolutionHandle that can be passed to Combustor/Nozzle constructors.
+        Gas object with state synchronized from the input Cantera solution.
     """
     source = ct_solution.source
     species_names = set(ct_solution.species_names)
     name = ct_solution.name
 
-    sol = create_solution(source, name, species_names)
+    gas = Gas(source, phase_name=name, species=species_names,
+              chemistry=chemistry)
 
-    # Sync thermodynamic state: set temperature, pressure, and composition
-    # Access the thermo handle to set state
-    # For now, we set state via the returned handle's methods
-    # This requires the SolutionHandle to expose setState_TPX or similar
-    # TODO: add state-setting methods to SolutionHandle binding if needed
-    return sol
+    T = ct_solution.T
+    P = ct_solution.P
+    X = ct_solution.X
+    comp_str = ", ".join(
+        f"{sp}:{x}" for sp, x in zip(ct_solution.species_names, X) if x > 0
+    )
+    gas.set_state_TPX(T, P, comp_str)
+
+    return gas
+
+
+def gas_from_yaml(yaml_file, phase_name="", species=None,
+                  chemistry=GasChemistry.FROZEN):
+    """Create a Gas from a YAML thermodynamic data file.
+
+    Args:
+        yaml_file: Path to a Cantera YAML thermodynamic data file.
+        phase_name: Name of the phase in the YAML file (default: "").
+        species: Set of species names to include (default: all).
+        chemistry: GasChemistry mode (default: FROZEN).
+
+    Returns:
+        Gas object.
+    """
+    return Gas(yaml_file, phase_name=phase_name,
+               species=species or set(), chemistry=chemistry)

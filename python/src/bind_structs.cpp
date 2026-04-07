@@ -115,15 +115,15 @@ void bind_structs(nb::module_& m) {
         .def_ro("state", &Goddard::ThroatCondition::state);
 
     // NozzleResult
-    nb::class_<Goddard::NozzleResult>(m, "NozzleResult")
+    nb::class_<Goddard::NozzleStation>(m, "NozzleResult")
         .def(nb::init<>())
-        .def("__init__", [](Goddard::NozzleResult* self,
+        .def("__init__", [](Goddard::NozzleStation* self,
                             bool converged,
                             double gamma_s,
                             double dlV_dlP_T,
                             double dlV_dlT_P,
                             std::vector<double> state) {
-            new (self) Goddard::NozzleResult();
+            new (self) Goddard::NozzleStation();
             self->converged = converged;
             self->gamma_s = gamma_s;
             self->dlV_dlP_T = dlV_dlP_T;
@@ -134,23 +134,23 @@ void bind_structs(nb::module_& m) {
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
             "state"_a = std::vector<double>())
-        .def_ro("converged", &Goddard::NozzleResult::converged)
-        .def_ro("gamma_s", &Goddard::NozzleResult::gamma_s)
-        .def_ro("dlV_dlP_T", &Goddard::NozzleResult::dlV_dlP_T)
-        .def_ro("dlV_dlT_P", &Goddard::NozzleResult::dlV_dlT_P)
-        .def_ro("state", &Goddard::NozzleResult::state);
+        .def_ro("converged", &Goddard::NozzleStation::converged)
+        .def_ro("gamma_s", &Goddard::NozzleStation::gamma_s)
+        .def_ro("dlV_dlP_T", &Goddard::NozzleStation::dlV_dlP_T)
+        .def_ro("dlV_dlT_P", &Goddard::NozzleStation::dlV_dlT_P)
+        .def_ro("state", &Goddard::NozzleStation::state);
 
     // NozzleResults
     nb::class_<Goddard::NozzleResults>(m, "NozzleResults")
         .def(nb::init<>())
         .def("__init__", [](Goddard::NozzleResults* self,
                             Goddard::ThroatCondition throat,
-                            std::vector<Goddard::NozzleResult> expansions) {
+                            std::vector<Goddard::NozzleStation> expansions) {
             new (self) Goddard::NozzleResults();
             self->throat = std::move(throat);
             self->expansions = std::move(expansions);
         },  "throat"_a = Goddard::ThroatCondition(),
-            "expansions"_a = std::vector<Goddard::NozzleResult>())
+            "expansions"_a = std::vector<Goddard::NozzleStation>())
         .def_ro("throat", &Goddard::NozzleResults::throat)
         .def_ro("expansions", &Goddard::NozzleResults::expansions);
 

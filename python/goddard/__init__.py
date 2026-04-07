@@ -78,6 +78,7 @@ from goddard.convenience import (
     equilibrium_nozzle,
     frozen_nozzle,
     from_cantera,
+    gas_from_yaml,
     moc_design,
     moc_analysis,
 )

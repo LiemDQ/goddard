@@ -9,6 +9,10 @@
 
 namespace Goddard {
 
+/**
+ * Main Goddard class for querying thermodynamic information. `Gas` wraps Cantera's `Solution`
+ * object and adds several convenience methods for processes involving reactive flow.
+ */
 class Gas {
 public:
     explicit Gas(std::shared_ptr<Cantera::Solution> gas,
@@ -18,7 +22,7 @@ public:
 
     // State setters
     void set_state_TP(double T, double P);
-    void set_state_TP(double T, double P, const std::string& composition);
+    void set_state_TPX(double T, double P, const std::string& composition);
     void set_state_HP(double H, double P);
     void set_state_SP(double S, double P);
     void save_state(std::vector<double>& state) const;
