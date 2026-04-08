@@ -43,13 +43,14 @@ MocResult MocNozzle::solve() {
         // Cantera-backed path for frozen/equilibrium chemistry
         Nozzle nozzle(*m_gas, m_options.chemistry);
         auto throat = nozzle.solve_throat_conditions();
+        m_gas->restore_state(throat.state);
 
         m_L_ref = m_options.geometry.throat_radius;
         m_P_ref = throat.P_inlet;
         m_T_ref = m_gas->thermo()->temperature();
         m_S_ref = throat.S_inlet;
 
-        double a_throat = gas_sonic_velocity(*m_gas->thermo(), nozzle.get_gamma_s());
+        double a_throat = m_gas->speed_of_sound();
         
         pm_table.build_table(
             *m_gas->thermo(),

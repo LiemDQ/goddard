@@ -17,7 +17,7 @@ class Gas {
 public:
     explicit Gas(std::shared_ptr<Cantera::Solution> gas,
                  GasChemistry chemistry = GasChemistry::FROZEN);
-    Gas(Cantera::Solution& gas,
+    Gas(const Cantera::Solution& gas,
         GasChemistry chemistry = GasChemistry::FROZEN);
     
     Gas(Cantera::Solution&& gas,
@@ -25,6 +25,11 @@ public:
 
     Gas(const Gas& gas);
     Gas operator=(const Gas& gas);
+
+    static Gas create(const std::string& filename, 
+        GasChemistry chemistry = GasChemistry::FROZEN,
+        const std::string& phase_name = "");
+
 
     // State setters
     void set_state_TP(double T, double P);
@@ -58,7 +63,7 @@ public:
     void equilibrate(const std::string& XY);
 
     // Snapshot
-    ThermoStateInfo snapshot() const;
+    ThermodynamicState snapshot() const;
 
     // Reference state
     void set_stagnation_enthalpy(double H);

@@ -12,8 +12,8 @@
 #include <iostream>
 namespace Goddard {
 
-Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry)
-    : inlet_state(gas.thermo()->stateSize()), m_gas(gas, chemistry) {
+Nozzle::Nozzle(const Gas& gas, GasChemistry chemistry)
+    : inlet_state(gas.thermo()->stateSize()), m_gas(gas.solution(), chemistry) {
     if (chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
@@ -23,8 +23,8 @@ Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry)
     m_gas.thermo()->saveState(inlet_state);
 }
 
-Nozzle::Nozzle(Cantera::Solution& gas, GasChemistry chemistry, std::vector<double> state)
-    : inlet_state(std::move(state)), m_gas(gas, chemistry) {
+Nozzle::Nozzle(const Gas& gas, GasChemistry chemistry, std::vector<double> state)
+    : inlet_state(std::move(state)), m_gas(gas.solution(), chemistry) {
     if (chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }

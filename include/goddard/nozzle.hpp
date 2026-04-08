@@ -2,6 +2,7 @@
 #include "cantera/core.h"
 #include <memory>
 #include <vector>
+#include <optional>
 
 
 #include "goddard/thermoarray.hpp"
@@ -22,8 +23,9 @@ struct NozzleOptions {
     GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
     ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
     std::vector<double> expansion_ratios;
-    unsigned int frozen_NFZ = 1;
+    unsigned int frozen_NFZ = 0;
     SolverOptions solver;
+    double gamma; // used only for PERFECT_GAS
 
     // KineticNozzle-specific (ignored by Nozzle)
     double dt_max = 1e-6;
@@ -59,8 +61,8 @@ struct NozzleResults {
 
 class Nozzle {
     public:
-    Nozzle(Cantera::Solution& gas, GasChemistry chemistry);
-    Nozzle(Cantera::Solution& gas, GasChemistry chemistry, std::vector<double> state);
+    Nozzle(const Gas& gas, GasChemistry chemistry);
+    Nozzle(const Gas& gas, GasChemistry chemistry, std::vector<double> state);
 
     NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
@@ -77,6 +79,7 @@ class Nozzle {
 
     private:
     Gas m_gas;
+    NozzleOptions m_opts;
 
     void solve_chemistry();
     NozzleStation solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);

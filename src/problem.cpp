@@ -1,6 +1,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/mixture_ratio.hpp"
 #include "goddard/error.hpp"
@@ -68,8 +69,8 @@ RocketProblemResults RocketProblem::solve() {
     std::shared_ptr<Cantera::ThermoPhase> thermo = m_sln->thermo();
     std::vector<double> state(m_sln->thermo()->stateSize());
 
-    std::vector<double> oxidizer_state = chemical_params.cantera_oxidizer_state.to_vector(*thermo);
-    std::vector<double> fuel_state = chemical_params.cantera_fuel_state.to_vector(*thermo);
+    std::vector<double> oxidizer_state = chemical_params.cantera_oxidizer_state.to_mole_vector(*thermo);
+    std::vector<double> fuel_state = chemical_params.cantera_fuel_state.to_mole_vector(*thermo);
 
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
@@ -92,7 +93,8 @@ RocketProblemResults RocketProblem::solve() {
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
-        Nozzle nozzle(*m_sln, params.nozzle_options.chemistry);
+        Gas gas(m_sln, params.nozzle_options.chemistry);
+        Nozzle nozzle(gas, params.nozzle_options.chemistry);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);

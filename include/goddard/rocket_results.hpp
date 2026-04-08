@@ -35,7 +35,7 @@ struct RocketStation {
     std::size_t pressure_index;  // index into the case's pressures vector
     std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
     double area_ratio;           // 0.0 for CHAMBER, 1.0 for THROAT, >1 for EXIT
-    ThermoStateInfo thermo;
+    ThermodynamicState thermo;
     bool converged;
 };
 
@@ -89,9 +89,9 @@ public:
 
     // Compute performance metrics from individual thermo states.
     static RocketPerformance calculate_performance(
-        const ThermoStateInfo& chamber,
-        const ThermoStateInfo& throat,
-        const ThermoStateInfo& exit);
+        const ThermodynamicState& chamber,
+        const ThermodynamicState& throat,
+        const ThermodynamicState& exit);
 
 private:
     std::vector<RocketStation> m_stations;

@@ -4,12 +4,12 @@
 namespace Goddard {
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas, GasChemistry chem)
-    : chemistry(chem), m_sol(gas->clone()) {
+    : chemistry(chem), m_sol(gas) {
     m_H_stagnation = m_sol->thermo()->enthalpy_mass();
     m_S0 = m_sol->thermo()->entropy_mass();
 }
 
-Gas::Gas(Cantera::Solution& gas, GasChemistry chem)
+Gas::Gas(const Cantera::Solution& gas, GasChemistry chem)
     : Gas(gas.clone(), chem) {}
 
 Gas::Gas(Cantera::Solution&& gas, GasChemistry chem)
@@ -21,6 +21,10 @@ Gas::Gas(const Gas& gas)
 
 Gas Gas::operator=(const Gas& gas) {
     return Gas(gas);
+}
+
+Gas Gas::create(const std::string& filename, GasChemistry chemistry, const std::string& phase_name) {
+    return Gas(Cantera::newSolution(filename, phase_name), chemistry);
 }
 // State setters
 
@@ -122,10 +126,10 @@ void Gas::equilibrate(const std::string& XY) {
 
 // Snapshot
 
-ThermoStateInfo Gas::snapshot() const {
+ThermodynamicState Gas::snapshot() const {
     auto t = m_sol->thermo();
 
-    ThermoStateInfo info;
+    ThermodynamicState info;
     info.pressure = t->pressure();
     info.temperature = t->temperature();
     info.density = t->density();

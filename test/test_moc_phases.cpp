@@ -240,7 +240,7 @@ TEST_F(MocFrozenTest, PlanarFrozenSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -263,7 +263,7 @@ TEST_F(MocFrozenTest, FrozenExitMachConsistent) {
     opts.num_characteristics = 5;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     // Exit Mach should be positive and reasonable
@@ -284,7 +284,7 @@ TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -306,7 +306,7 @@ TEST_F(MocFrozenTest, AxiFrozenSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -324,7 +324,7 @@ TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -342,7 +342,7 @@ TEST_F(MocFrozenTest, AxiFrozenMonotonicWall) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     for (size_t i = 1; i < result.net.wall_x.size(); i++) {
@@ -364,13 +364,13 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(gas, opts);
+    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
     ASSERT_TRUE(moc_result.converged);
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(*gas, GasChemistry::FROZEN);
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::FROZEN), GasChemistry::FROZEN);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
@@ -393,13 +393,13 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(gas, opts);
+    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
     ASSERT_TRUE(moc_result.converged);
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(*gas, GasChemistry::EQUILIBRIUM);
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::EQUILIBRIUM), GasChemistry::EQUILIBRIUM);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
@@ -422,7 +422,7 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
 
     // Frozen
     opts.chemistry = GasChemistry::FROZEN;
-    MocNozzle frozen_nozzle(gas, opts);
+    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state
@@ -430,7 +430,7 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(gas, opts);
+    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
     auto equil_result = equil_nozzle.solve();
 
     EXPECT_TRUE(frozen_result.converged);
@@ -449,7 +449,7 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
 
     // Frozen
     opts.chemistry = GasChemistry::FROZEN;
-    MocNozzle frozen_nozzle(gas, opts);
+    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state for equilibrium run
@@ -457,7 +457,7 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(gas, opts);
+    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
     auto equil_result = equil_nozzle.solve();
 
     // Both should converge

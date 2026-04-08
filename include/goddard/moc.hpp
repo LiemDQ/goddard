@@ -12,6 +12,7 @@
 #include "goddard/chemistry.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/profile.hpp"
+#include "goddard/gas.hpp"
 
 namespace Goddard {
 
@@ -148,7 +149,7 @@ public:
 
     MocNozzle(MocOptions options): m_options(options) {}
 
-    MocNozzle(std::shared_ptr<Cantera::Solution> gas, MocOptions options): m_options(options), m_gas(gas) {}
+    MocNozzle(Gas gas, MocOptions options): m_options(options), m_gas(gas) {}
 
     MocResult solve();
 
@@ -295,7 +296,7 @@ protected:
     }
     void log_info(const std::string& msg);
 
-    std::shared_ptr<Cantera::Solution> m_gas;
+    std::optional<Gas> m_gas;
     std::vector<double> m_theta_schedule;
     std::vector<std::string> m_messages;
 

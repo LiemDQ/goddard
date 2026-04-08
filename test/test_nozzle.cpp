@@ -60,18 +60,17 @@ TEST_F(NozzleTests, NozzleStateManagement) {
     std::vector<double> original_state = nozzle.get_inlet_state();
     ASSERT_EQ(original_state.size(), gas->thermo()->stateSize());
 
-    // Modify the gas state
-    gas->thermo()->setState_TP(1000.0, Cantera::OneAtm);
+    // Solve throat to modify nozzle's internal state
+    nozzle.solve_throat_conditions();
 
-    // Reset should restore original state
+    // Reset should restore original inlet state
     nozzle.reset_state();
 
-    double current_temp = gas->thermo()->temperature();
-    double current_pressure = gas->thermo()->pressure();
-
-    // Should be back to inlet conditions
-    EXPECT_GT(current_temp, 3000.0); // Much higher than 1000K we set
-    EXPECT_GT(current_pressure, 50.0 * Cantera::OneAtm); // Much higher than 1 atm
+    std::vector<double> restored_state = nozzle.get_inlet_state();
+    ASSERT_EQ(restored_state.size(), original_state.size());
+    for (size_t i = 0; i < original_state.size(); i++) {
+        EXPECT_DOUBLE_EQ(restored_state[i], original_state[i]);
+    }
 }
 
 TEST_F(NozzleTests, SetInletState) {

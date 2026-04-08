@@ -112,7 +112,7 @@ double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma) {
     return velocity/sonic;
 }
 
-double mach_area_relation(double mach, double gamma) {
+double area_mach_relation(double mach, double gamma) {
     return std::sqrt(
         (1/(mach*mach))
         *std::pow(2.0/(gamma+1)*stagnation_factor(mach, gamma), (gamma+1)/(gamma-1)));

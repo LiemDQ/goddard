@@ -61,7 +61,11 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // The CEA fuel_energy/oxidizer_energy fields contain the actual enthalpy.
     auto fuel_thermo = fuel->thermo();
     double fuel_temp = conditions.fuel_temp;
-    params.cantera_fuel_state = Goddard::ThermodynamicState(fuel_temp, 101325.0, "H2:1");
+    Goddard::ThermodynamicState fuel_state{};
+    fuel_state.temperature = fuel_temp;
+    fuel_state.pressure = 101325.0;
+    fuel_state.composition = {{"H2", 1.0}};
+    params.cantera_fuel_state = fuel_state;
     // double pressure_Pa = conditions.pressure_psia * 6894.76;
     
     // double fuel_MW = fuel_thermo->meanMolecularWeight();
@@ -71,7 +75,11 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // Set oxidizer state (O2)
     auto ox_thermo = oxidizer->thermo();
     double ox_temp = conditions.oxidizer_temp;
-    params.cantera_oxidizer_state = Goddard::ThermodynamicState(ox_temp, 101325.0, "O2:1");
+    Goddard::ThermodynamicState ox_state{};
+    ox_state.temperature = ox_temp;
+    ox_state.pressure = 101325.0;
+    ox_state.composition = {{"O2", 1.0}};
+    params.cantera_oxidizer_state = ox_state;
     // double ox_MW = ox_thermo->meanMolecularWeight();
     // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
     // ox_thermo->setState_HP(ox_energy, pressure_Pa);

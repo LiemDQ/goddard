@@ -2,6 +2,8 @@
 
 #include "cantera/core.h"
 #include <vector>
+#include <map>
+#include "goddard/chemistry.hpp"
 
 namespace Goddard {
 
@@ -32,9 +34,10 @@ inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
 }
 
 /**
- * Convenience struct containing relevant thermodynamic results
+ * Convenience class containing relevant thermodynamic results
  */
-struct ThermoStateInfo {
+class ThermodynamicState {
+public:
     double pressure;
     double temperature;
     double density;
@@ -49,40 +52,34 @@ struct ThermoStateInfo {
     double dlV_dlT_P;
     double speed_of_sound;
     double stagnation_enthalpy;
-    std::unordered_map<std::string, double> composition;
+    std::map<std::string, double> composition; // stored as mass fractions
+
+    size_t state_size() const;
+    /**
+     * Outputs a raw vector suitable for use with Cantera objects. 
+     */
+    std::vector<double> to_vector() const;
+    std::vector<double> to_mole_vector(Cantera::ThermoPhase& sln) const;
 };
 
 
 /**
  * Convenience class for containing thermodynamic data in one place.
  */
-class ThermodynamicState {
-public:
-    ThermodynamicState() = default;
-    ThermodynamicState(double temperature, double pressure, const std::string& comp)
-        : T(temperature), P(pressure), composition(comp) {}
+// class ThermodynamicState {
+// public:
+//     ThermodynamicState() = default;
+//     ThermodynamicState(double temperature, double pressure, const std::string& comp)
+//         : T(temperature), P(pressure), composition(comp) {}
 
-    double T = 0.0;
-    double P = 0.0;
-    std::string composition = {};
+//     double T = 0.0;
+//     double P = 0.0;
+//     std::string composition = {};
 
-    std::vector<double> to_vector(Cantera::ThermoPhase& sln);
-    std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln);
+//     std::vector<double> to_vector(Cantera::ThermoPhase& sln);
+//     std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln);
     
-};
+// };
 
-/**
- * Convenience class for querying thermodynamic data.
- */
-class ThermoData {
-    public:
-        ThermoData(std::shared_ptr<Cantera::Solution> sln);
-        ThermoData(std::shared_ptr<Cantera::ThermoPhase> thermo);
-
-        double molar_mass_from_composition(const std::vector<double>& state);
-    private:
-        std::shared_ptr<Cantera::ThermoPhase> m_thermo;
-        std::vector<double> m_state_vector;
-};
 
 } //namespace Goddard
