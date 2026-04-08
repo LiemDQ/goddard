@@ -55,6 +55,11 @@ double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
 double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
 
 /**
+ * For a perfect gas, calculates the area ratio for a given Mach number 
+ * using the Area-Mach number relation. 
+ */
+double mach_area_relation(double mach, double gamma);
+/**
  * @brief Calculate thrust coefficient.
  */
 double C_F(double gamma, double pressure_ratio, double area_ratio);
