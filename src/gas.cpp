@@ -4,21 +4,31 @@
 namespace Goddard {
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas, GasChemistry chem)
-    : chemistry(chem), m_sol(std::move(gas)) {
+    : chemistry(chem), m_sol(gas->clone()) {
     m_H_stagnation = m_sol->thermo()->enthalpy_mass();
     m_S0 = m_sol->thermo()->entropy_mass();
 }
 
 Gas::Gas(Cantera::Solution& gas, GasChemistry chem)
-    : Gas(gas.shared_from_this(), chem) {}
+    : Gas(gas.clone(), chem) {}
 
+Gas::Gas(Cantera::Solution&& gas, GasChemistry chem)
+    : chemistry(chem), m_sol(gas.shared_from_this()) {}
+
+Gas::Gas(const Gas& gas) 
+    : chemistry(gas.chemistry), m_sol(gas.m_sol->clone()), 
+      m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) {}
+
+Gas Gas::operator=(const Gas& gas) {
+    return Gas(gas);
+}
 // State setters
 
 void Gas::set_state_TP(double T, double P) {
     m_sol->thermo()->setState_TP(T, P);
 }
 
-void Gas::set_state_TP(double T, double P, const std::string& composition) {
+void Gas::set_state_TPX(double T, double P, const std::string& composition) {
     m_sol->thermo()->setState_TPX(T, P, composition);
 }
 

@@ -19,6 +19,12 @@ public:
                  GasChemistry chemistry = GasChemistry::FROZEN);
     Gas(Cantera::Solution& gas,
         GasChemistry chemistry = GasChemistry::FROZEN);
+    
+    Gas(Cantera::Solution&& gas,
+        GasChemistry chemistry = GasChemistry::FROZEN);
+
+    Gas(const Gas& gas);
+    Gas operator=(const Gas& gas);
 
     // State setters
     void set_state_TP(double T, double P);
