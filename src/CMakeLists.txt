@@ -35,7 +35,6 @@ add_library(
   thermo.cpp
   gas.cpp
   combustor.cpp
-  mixture_ratio.cpp
   error.cpp
   utils.cpp
   global.cpp

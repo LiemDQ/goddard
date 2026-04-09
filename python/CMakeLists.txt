@@ -15,7 +15,6 @@ nanobind_add_module(
     src/bind_thermoarray.cpp
     src/bind_combustor.cpp
     src/bind_nozzle.cpp
-    src/bind_mixture_ratio.cpp
     src/bind_equilibrium.cpp
     src/bind_thermo.cpp
     src/bind_moc.cpp

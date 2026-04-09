@@ -3,7 +3,6 @@
 #include "cea_comparer.hpp"
 
 #include "goddard/combustor.hpp"
-#include "goddard/mixture_ratio.hpp"
 #include "goddard/problem.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/thermo.hpp"
