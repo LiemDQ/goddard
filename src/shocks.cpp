@@ -482,7 +482,7 @@ ObliqueShockResult oblique_shock_from_deflection_frozen(
 ShockSolver::ShockSolver(Gas gas, SolverOptions options)
     : m_gas(std::move(gas)), m_options(options)
 {
-    m_gas.save_state(m_pre_shock_state);
+    m_gas.copy_state(m_pre_shock_state);
 }
 
 ShockResult ShockSolver::normal_shock(double mach) {
@@ -499,7 +499,7 @@ ShockResult ShockSolver::normal_shock(double mach) {
         case GasChemistry::KINETIC:
             throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for normal shocks.");
     }
-    m_gas.save_state(m_post_shock_state);
+    m_gas.copy_state(m_post_shock_state);
     return result;
 }
 
@@ -517,7 +517,7 @@ ShockResult ShockSolver::reflected_shock(double mach) {
         case GasChemistry::KINETIC:
             throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for reflected shocks.");
     }
-    m_gas.save_state(m_post_shock_state);
+    m_gas.copy_state(m_post_shock_state);
     return result;
 }
 
@@ -535,7 +535,7 @@ ObliqueShockResult ShockSolver::oblique_shock_from_wave_angle(double mach, doubl
         case GasChemistry::KINETIC:
             throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for oblique shocks.");
     }
-    m_gas.save_state(m_post_shock_state);
+    m_gas.copy_state(m_post_shock_state);
     return result;
 }
 
@@ -553,7 +553,7 @@ ObliqueShockResult ShockSolver::oblique_shock_from_deflection(double mach, doubl
         case GasChemistry::KINETIC:
             throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for oblique shocks.");
     }
-    m_gas.save_state(m_post_shock_state);
+    m_gas.copy_state(m_post_shock_state);
     return result;
 }
 

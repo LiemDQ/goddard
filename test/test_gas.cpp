@@ -185,7 +185,7 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
     Gas gas(sol, GasChemistry::FROZEN);
 
     std::vector<double> state;
-    gas.save_state(state);
+    gas.copy_state(state);
     double T_original = gas.temperature();
 
     // Modify state

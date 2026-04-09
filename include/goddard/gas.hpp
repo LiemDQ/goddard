@@ -32,12 +32,23 @@ public:
 
 
     // State setters
+    using Composition = Cantera::Composition;
+    void set_state_TD(double T, double D);
     void set_state_TP(double T, double P);
     void set_state_TPX(double T, double P, const std::string& composition);
+    void set_state_TPX(double T, double P, const Composition& composition);
+    void set_state_TPY(double T, double P, const std::string& composition);
+    void set_state_TPY(double T, double P, const Composition& composition);
     void set_state_HP(double H, double P);
     void set_state_SP(double S, double P);
-    void save_state(std::vector<double>& state) const;
+    void set_state_UV(double U, double V);
+
+    // Saving/loading state
+
+    std::vector<double> save_state() const;
+    void copy_state(std::vector<double>& state) const;
     void restore_state(const std::vector<double>& state);
+    ThermodynamicState snapshot() const;
 
     // Basic thermodynamic properties
     double temperature() const;
@@ -48,6 +59,7 @@ public:
     double cp_mass() const;
     double cv_mass() const;
     double molecular_weight() const;
+    size_t num_species() const;
 
     // Chemistry-aware derived properties
     double gamma_s() const;
@@ -58,24 +70,103 @@ public:
     double isenthalpic_velocity() const;
     double mach(double velocity) const;
 
+    // Mixture properties
+    double fuel_fraction(
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    double fuel_fraction(
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    
+    double equivalence_ratio() const;
+    double equivalence_ratio(
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    double equivalence_ratio(
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    
+    double stoich_OF_ratio(
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    double stoich_OF_ratio(
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
+    
+    void set_fuel_fraction(
+        double fuel_frac,
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+    void set_fuel_fraction(
+        double fuel_frac,
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+
+    void set_equivalence_ratio(
+        double phi,
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+    void set_equivalence_ratio(
+        double phi,
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+
+    void set_OF_ratio(
+        double OF,
+        const std::string& fuel_comp, 
+        const std::string& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+    void set_OF_ratio(
+        double OF,
+        const Composition& fuel_comp, 
+        const Composition& ox_comp,
+        Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
+
+
     // Expansion properties 
     ExpansionProperties expansion_properties() const;
     void equilibrate(const std::string& XY);
-
-    // Snapshot
-    ThermodynamicState snapshot() const;
+    
 
     // Reference state
+    /**
+     * Set stagnation enthalpy.The stagnation enthalpy is used to calculate 
+     * stagnation values and must be set explicitly. 
+     * It does not change when the thermodynamic state of `Gas` changes.
+     */
     void set_stagnation_enthalpy(double H);
+    /**
+     * Get stagnation enthalpy. The stagnation enthalpy is used to calculate 
+     * stagnation values and must be set explicitly. 
+     * It does not change when the thermodynamic state of `Gas` changes.
+     */
     double get_stagnation_enthalpy() const;
     void set_reference_entropy(double S);
     double get_reference_entropy() const;
+    
+
+    void set_current_state_as_reference();
 
     // Access to underlying Cantera objects
     std::shared_ptr<Cantera::Solution> solution() const;
     std::shared_ptr<Cantera::ThermoPhase> thermo() const;
     std::shared_ptr<Cantera::Kinetics> kinetics() const;
     std::shared_ptr<Cantera::Transport> transport() const;
+
+    /**
+     * Generate report string of underlying Cantera `ThermoPhase` object.
+     */
+    std::string report(bool show_thermo = true, double threshold = -1e-14) const;
 
     GasChemistry chemistry;
 

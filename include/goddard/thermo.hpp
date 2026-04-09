@@ -3,6 +3,7 @@
 #include "cantera/core.h"
 #include <vector>
 #include <map>
+#include <string_view>
 #include "goddard/chemistry.hpp"
 
 namespace Goddard {
@@ -64,22 +65,22 @@ public:
 
 
 /**
- * Convenience class for containing thermodynamic data in one place.
+ * Convenience class for initializing a thermodynamic state.
  */
-// class ThermodynamicState {
-// public:
-//     ThermodynamicState() = default;
-//     ThermodynamicState(double temperature, double pressure, const std::string& comp)
-//         : T(temperature), P(pressure), composition(comp) {}
+class InputState {
+public:
+    InputState() = default;
+    InputState(double temperature, double pressure, std::string_view comp)
+        : T(temperature), P(pressure), composition(comp) {}
 
-//     double T = 0.0;
-//     double P = 0.0;
-//     std::string composition = {};
+    double T = 0.0;
+    double P = 0.0;
+    std::string composition = {};
 
-//     std::vector<double> to_vector(Cantera::ThermoPhase& sln);
-//     std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln);
+    std::vector<double> to_vector(Cantera::ThermoPhase& sln) const;
+    std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln) const;
     
-// };
+};
 
 
 } //namespace Goddard

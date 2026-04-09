@@ -30,4 +30,23 @@ std::vector<double> ThermodynamicState::to_vector() const {
     return out;
 }
 
+std::vector<double> InputState::to_vector(Cantera::ThermoPhase& thermo) const {
+    std::vector<double> out(thermo.stateSize());
+
+    thermo.setState_TPX(T, P, composition);
+    thermo.saveState(out);
+
+    return out;
+}
+
+std::vector<double> InputState::to_mass_vector(Cantera::ThermoPhase& thermo) const {
+    std::vector<double> out(thermo.stateSize());
+
+    thermo.setState_TPY(T, P, composition);
+    thermo.saveState(out);
+
+    return out;
+}
+
+
 } //namespace goddard
