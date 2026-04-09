@@ -70,6 +70,9 @@ public:
     double isenthalpic_velocity(double H_stagnation) const;
     double isenthalpic_velocity() const;
     double mach(double velocity) const;
+    double cstar() const;
+    double isp() const;
+    double ivac() const;
 
     // Mixture properties
     double fuel_fraction(

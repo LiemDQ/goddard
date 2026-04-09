@@ -167,6 +167,19 @@ double Gas::mach(double velocity) const {
     return velocity / speed_of_sound();
 }
 
+double Gas::cstar() const {
+    return Goddard::cstar(gamma_s(), temperature(), molecular_weight());
+}
+
+double Gas::isp() const {
+    return isenthalpic_velocity()/cstar();
+}
+
+double Gas::ivac() const {
+    double exit_velocity = isp();
+    return exit_velocity + temperature()*Cantera::GasConstant/(exit_velocity * molecular_weight());
+}
+
 // Mixture properties
 double Gas::fuel_fraction(
     const std::string& fuel_comp, 
