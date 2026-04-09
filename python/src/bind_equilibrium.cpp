@@ -5,13 +5,13 @@
 namespace nb = nanobind;
 
 void bind_equilibrium(nb::module_& m) {
-    // EquilibriumProperties
-    nb::class_<Goddard::EquilibriumProperties>(m, "EquilibriumProperties")
+    // ExpansionProperties
+    nb::class_<Goddard::ExpansionProperties>(m, "ExpansionProperties")
         .def(nb::init<>())
-        .def_ro("dlogV_dlogT_P", &Goddard::EquilibriumProperties::dlogV_dlogT_P)
-        .def_ro("dlogV_dlogP_T", &Goddard::EquilibriumProperties::dlogV_dlogP_T)
-        .def_ro("spec_heat_p", &Goddard::EquilibriumProperties::spec_heat_p)
-        .def_ro("gamma_s", &Goddard::EquilibriumProperties::gamma_s);
+        .def_ro("dlogV_dlogT_P", &Goddard::ExpansionProperties::dlogV_dlogT_P)
+        .def_ro("dlogV_dlogP_T", &Goddard::ExpansionProperties::dlogV_dlogP_T)
+        .def_ro("spec_heat_p", &Goddard::ExpansionProperties::spec_heat_p)
+        .def_ro("gamma_s", &Goddard::ExpansionProperties::gamma_s);
 
     // EquilibriumDerivatives
     nb::class_<Goddard::EquilibriumDerivatives>(m, "EquilibriumDerivatives")

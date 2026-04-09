@@ -1,14 +1,14 @@
 from goddard._core import (
     # Enums
     CombustorType,
-    NozzleChemistryType,
+    GasChemistry,
     ExpansionType,
     StationType,
     # MoC enums
     MocFlowKind,
-    MocChemistry,
     MocMode,
     MocInitialization,
+    SolverOptions,
     # Structs
     CombustorOptions,
     NozzleOptions,
@@ -17,11 +17,12 @@ from goddard._core import (
     NozzleResults,
     RocketCaseParameters,
     ChemicalParameters,
-    ThermoStateInfo,
+    ThermodynamicState,
+    PhaseSpecification,
     RocketStation,
     RocketPerformance,
     RocketState,
-    EquilibriumProperties,
+    ExpansionProperties,
     EquilibriumDerivatives,
     # MoC structs
     ThroatGeometry,
@@ -39,8 +40,6 @@ from goddard._core import (
     ThermoArray,
     Combustor,
     Nozzle,
-    MixtureRatio,
-    MixtureRatios,
     ThermodynamicState,
     # MoC class + function
     MocNozzle,
@@ -52,7 +51,19 @@ from goddard._core import (
     # Kinetic nozzle
     KineticNozzle,
     KineticNozzleStation,
-    KineticNozzleResults
+    KineticNozzleResults,
+    # Gas wrapper
+    Gas,
+    # Shocks
+    ShockResult,
+    ObliqueShockResult,
+    ShockSolver,
+    normal_shock,
+    reflected_shock,
+    oblique_shock_wave_angle,
+    oblique_shock_deflection_angle,
+    oblique_shock_from_wave_angle,
+    oblique_shock_from_deflection,
 )
 
 from goddard.convenience import (
@@ -66,6 +77,7 @@ from goddard.convenience import (
     equilibrium_nozzle,
     frozen_nozzle,
     from_cantera,
+    gas_from_yaml,
     moc_design,
     moc_analysis,
 )

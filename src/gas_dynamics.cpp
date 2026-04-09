@@ -37,7 +37,7 @@ double perfect_gas_stagnation_pressure(double P, double mach, double gamma) {
     return P * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
 }
 
-Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd mach, const Eigen::ArrayXXd& gamma) {
+Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma) {
     return P * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
 }
 
@@ -76,7 +76,7 @@ double stagnation_factor(double mach, double gamma) {
     return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
 }
 
-Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd gamma) {
+Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma) {
     return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
 }
 
@@ -110,6 +110,12 @@ double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma) {
     double sonic = gas_sonic_velocity(gas, gamma);
     
     return velocity/sonic;
+}
+
+double area_mach_relation(double mach, double gamma) {
+    return std::sqrt(
+        (1/(mach*mach))
+        *std::pow(2.0/(gamma+1)*stagnation_factor(mach, gamma), (gamma+1)/(gamma-1)));
 }
 
 double C_F(double gamma, double pressure_ratio, double) {

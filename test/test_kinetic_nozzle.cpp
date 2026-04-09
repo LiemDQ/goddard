@@ -1,5 +1,6 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
@@ -79,26 +80,26 @@ KineticNozzleResults KineticNozzleTests::s_results;
 
 TEST_F(KineticNozzleTests, EquilibriumThroatModelConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, NozzleChemistryType::EQUILIBRIUM);
+        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, GasChemistry::EQUILIBRIUM);
     });
 }
 
 TEST_F(KineticNozzleTests, FrozenThroatModelConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, NozzleChemistryType::FROZEN);
+        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, GasChemistry::FROZEN);
     });
 }
 
 TEST_F(KineticNozzleTests, ExplicitInletStateConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, s_inlet_state, NozzleChemistryType::EQUILIBRIUM);
+        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, s_inlet_state, GasChemistry::EQUILIBRIUM);
     });
 }
 
 TEST_F(KineticNozzleTests, KineticThroatModelThrows) {
-    // NozzleChemistryType::KINETIC is not a valid throat model for KineticNozzle
+    // GasChemistry::KINETIC is not a valid throat model for KineticNozzle
     EXPECT_THROW(
-        { KineticNozzle nozzle(*s_gas, s_profile, s_mdot, NozzleChemistryType::KINETIC); },
+        { KineticNozzle nozzle(*s_gas, s_profile, s_mdot, GasChemistry::KINETIC); },
         std::invalid_argument);
 }
 
@@ -258,14 +259,14 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
 
     // Solve equilibrium and frozen to the same area ratio
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double T_equilibrium = s_gas->thermo()->temperature();
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle frz_nozzle(*s_gas, NozzleChemistryType::FROZEN);
+    Nozzle frz_nozzle(*s_gas, GasChemistry::FROZEN);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
@@ -295,14 +296,14 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     double H0 = s_results.throat.H_stagnation;
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double v_eq = std::sqrt(2.0 * (H0 - s_gas->thermo()->enthalpy_mass()));
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle frz_nozzle(*s_gas, NozzleChemistryType::FROZEN);
+    Nozzle frz_nozzle(*s_gas, GasChemistry::FROZEN);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
@@ -332,14 +333,14 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     double exit_ar = s_results.stations.back().area_ratio;
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double P_eq = s_gas->thermo()->pressure();
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle frz_nozzle(*s_gas, NozzleChemistryType::FROZEN);
+    Nozzle frz_nozzle(*s_gas, GasChemistry::FROZEN);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
@@ -357,34 +358,25 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
 // ---------------------------------------------------------------------------
 
 TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
-    // KineticNozzle::get_gamma_s must return cp/cv (frozen gamma), not
-    // the equilibrium gamma_s. This is physically correct because acoustic
-    // timescales are much shorter than chemical timescales (see §5 of reference).
-    KineticNozzle kinetic_nozzle(*s_gas, s_profile, s_mdot);
-    Nozzle frozen_nozzle(*s_gas, NozzleChemistryType::FROZEN);
-
+    // KineticNozzle uses Gas with FROZEN chemistry internally, so gamma_s
+    // should be cp/cv (frozen gamma), not the equilibrium gamma_s. This is
+    // physically correct because acoustic timescales are much shorter than
+    // chemical timescales (see §5 of reference).
     s_gas->thermo()->restoreState(s_inlet_state);
-    double gamma_kinetic = kinetic_nozzle.get_gamma_s(*s_gas->thermo());
-    double gamma_frozen = frozen_nozzle.get_gamma_s(*s_gas->thermo());
+    Gas frozen_gas(*s_gas, GasChemistry::FROZEN);
+    double gamma_frozen = frozen_gas.gamma_s();
 
-    // Both should return cp/cv; they must be equal on the same thermodynamic state
-    EXPECT_NEAR(gamma_kinetic, gamma_frozen,
-                max_fp_error(gamma_frozen, 1e-10, 1e-14))
-        << "KineticNozzle::get_gamma_s must use the same frozen (cp/cv) formula as FrozenNozzle";
-
-    // And it must differ from equilibrium gamma_s (which accounts for composition shifts)
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle frozen_nozzle(*s_gas, GasChemistry::FROZEN);
     s_gas->thermo()->restoreState(s_inlet_state);
-    double gamma_eq = eq_nozzle.get_gamma_s(*s_gas->thermo());
+    double gamma_nozzle = frozen_nozzle.get_gamma_s();
 
-    // Equilibrium and frozen gamma_s should generally be different; this
-    // verifies we're not accidentally using the equilibrium formula.
-    // (They can be close but are rarely identical for reactive mixtures.)
-    EXPECT_GT(gamma_kinetic, 1.0) << "gamma_s must be > 1";
-    EXPECT_LT(gamma_kinetic, 2.0) << "gamma_s must be physically reasonable";
-    // Note: for near-equilibrium inlet conditions the two may be very close,
-    // so we don't assert they are different — just that kinetic uses cp/cv.
-    (void)gamma_eq;
+    // Both should return cp/cv on the same thermodynamic state
+    EXPECT_NEAR(gamma_frozen, gamma_nozzle,
+                max_fp_error(gamma_nozzle, 1e-10, 1e-14))
+        << "Gas(FROZEN)::gamma_s must match FrozenNozzle::get_gamma_s";
+
+    EXPECT_GT(gamma_frozen, 1.0) << "gamma_s must be > 1";
+    EXPECT_LT(gamma_frozen, 2.0) << "gamma_s must be physically reasonable";
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +442,7 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     double exit_ar = s_results.stations.back().area_ratio;
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
@@ -474,7 +466,7 @@ TEST_F(KineticNozzleTests, DiagnosticBoundingValues) {
     double H0_check = s_gas->thermo()->enthalpy_mass() + 0.5*exit_station.velocity*exit_station.velocity;
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle eq_nozzle(*s_gas, GasChemistry::EQUILIBRIUM);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     double T_equilibrium = 0, v_eq = 0;
     if (eq_results.expansions.front().converged) {
@@ -484,7 +476,7 @@ TEST_F(KineticNozzleTests, DiagnosticBoundingValues) {
     }
 
     s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle frz_nozzle(*s_gas, NozzleChemistryType::FROZEN);
+    Nozzle frz_nozzle(*s_gas, GasChemistry::FROZEN);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
     double T_frozen = 0, v_frz = 0;
     if (frz_results.expansions.front().converged) {

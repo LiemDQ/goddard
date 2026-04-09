@@ -2,6 +2,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/kinetic_nozzle.hpp"
+#include "goddard/gas.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -27,7 +28,7 @@ void bind_kinetic_nozzle(nb::module_& m) {
 
     // KineticNozzle — 1D kinetic nozzle solver using Cantera IdealGasMoleReactor
     // NozzleProfile is passed by value (it is copyable).
-    // The NozzleChemistryType parameter selects the throat model: EQUILIBRIUM or FROZEN.
+    // The GasChemistry parameter selects the throat model: EQUILIBRIUM or FROZEN.
     // KINETIC is not a valid throat model and will throw.
     nb::class_<Goddard::KineticNozzle>(m, "KineticNozzle")
         .def("__init__",
@@ -35,23 +36,42 @@ void bind_kinetic_nozzle(nb::module_& m) {
                 std::shared_ptr<Cantera::Solution> sol,
                 Goddard::NozzleProfile profile,
                 double mdot,
-                Goddard::NozzleChemistryType chemistry) {
+                Goddard::GasChemistry chemistry) {
                  new (self) Goddard::KineticNozzle(*sol, profile, mdot, chemistry);
              },
              "solution"_a, "profile"_a, "mdot"_a,
-             "chemistry"_a = Goddard::NozzleChemistryType::EQUILIBRIUM)
+             "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM)
         .def("__init__",
              [](Goddard::KineticNozzle* self,
                 std::shared_ptr<Cantera::Solution> sol,
                 Goddard::NozzleProfile profile,
                 double mdot,
                 std::vector<double> state,
-                Goddard::NozzleChemistryType chemistry) {
+                Goddard::GasChemistry chemistry) {
                  new (self) Goddard::KineticNozzle(*sol, profile, mdot,
                                                     std::move(state), chemistry);
              },
              "solution"_a, "profile"_a, "mdot"_a, "state"_a,
-             "chemistry"_a = Goddard::NozzleChemistryType::EQUILIBRIUM)
+             "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM)
+        // Gas-based constructors
+        .def("__init__",
+             [](Goddard::KineticNozzle* self,
+                Goddard::Gas gas,
+                Goddard::NozzleProfile profile,
+                double mdot) {
+                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot);
+             },
+             "gas"_a, "profile"_a, "mdot"_a)
+        .def("__init__",
+             [](Goddard::KineticNozzle* self,
+                Goddard::Gas gas,
+                Goddard::NozzleProfile profile,
+                double mdot,
+                std::vector<double> state) {
+                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot,
+                                                    std::move(state));
+             },
+             "gas"_a, "profile"_a, "mdot"_a, "state"_a)
         .def("solve", &Goddard::KineticNozzle::solve,
              "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000)
         .def_rw("m_profile", &Goddard::KineticNozzle::m_profile)

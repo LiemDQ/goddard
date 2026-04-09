@@ -23,8 +23,7 @@ RocketProblemResults::RocketProblemResults(
 
     // Extract species mass fractions from a raw Cantera state vector.
     auto make_composition = [&](const std::vector<double>& state) {
-        std::unordered_map<std::string, double> comp;
-        comp.reserve(n_species);
+        std::map<std::string, double> comp;
         for (std::size_t i = 0; i < n_species; i++) {
             comp[species_names[i]] = state[i + 2];
         }
@@ -35,7 +34,7 @@ RocketProblemResults::RocketProblemResults(
     auto read_thermo = [&](const std::vector<double>& state,
                            double gamma, double dlV_dlP_T, double dlV_dlT_P) {
         tmo->restoreState(state);
-        return ThermoStateInfo{
+        return ThermodynamicState{
             tmo->pressure(),
             tmo->temperature(),
             tmo->density(),
@@ -49,6 +48,7 @@ RocketProblemResults::RocketProblemResults(
             dlV_dlP_T,
             dlV_dlT_P,
             gas_sonic_velocity(*tmo, gamma),
+            0.0,
             make_composition(state)
         };
     };
@@ -78,7 +78,7 @@ RocketProblemResults::RocketProblemResults(
                 // Chamber gamma must be computed (not stored like throat/exit).
                 double inlet_gamma, inlet_dlP, inlet_dlT;
                 switch (case_result.chemistry) {
-                    case NozzleChemistryType::EQUILIBRIUM: {
+                    case GasChemistry::EQUILIBRIUM: {
                         tmo->restoreState(inlet_state);
                         auto props = get_thermo_equilibrium_properties(*tmo);
                         inlet_gamma = props.gamma_s;
@@ -86,7 +86,7 @@ RocketProblemResults::RocketProblemResults(
                         inlet_dlT   = props.dlogV_dlogT_P;
                         break;
                     }
-                    case NozzleChemistryType::FROZEN: {
+                    case GasChemistry::FROZEN: {
                         tmo->restoreState(inlet_state);
                         inlet_gamma = tmo->cp_mass() / tmo->cv_mass();
                         inlet_dlP   = -1.0;
@@ -128,7 +128,7 @@ RocketProblemResults::RocketProblemResults(
 
                 // Exit stations — gamma and derivatives are stored in NozzleResult.
                 for (std::size_t exp_idx = 0; exp_idx < nozzle.expansions.size(); exp_idx++) {
-                    const NozzleResult& exp = nozzle.expansions[exp_idx];
+                    const NozzleStation& exp = nozzle.expansions[exp_idx];
                     RocketStation s;
                     s.case_name       = name;
                     s.type            = StationType::EXIT;
@@ -246,9 +246,9 @@ const std::vector<double>& RocketProblemResults::of_ratios(const std::string& ca
 }
 
 RocketPerformance RocketProblemResults::calculate_performance(
-    const ThermoStateInfo& chamber,
-    const ThermoStateInfo& throat,
-    const ThermoStateInfo& exit) {
+    const ThermodynamicState& chamber,
+    const ThermodynamicState& throat,
+    const ThermodynamicState& exit) {
 
     // Pressure ratios
     double pressure_ratio = chamber.pressure / exit.pressure;
@@ -287,19 +287,19 @@ constexpr double PA_TO_PSIA = 1.0 / 6894.757;
 constexpr double J_TO_KJ    = 1e-3;
 
 std::string build_report_page(
-    NozzleChemistryType chemistry,
-    const std::vector<ThermoStateInfo>& states,
+    GasChemistry chemistry,
+    const std::vector<ThermodynamicState>& states,
     double of_ratio,
     double chamber_pressure_pa)
 {
     std::string page;
 
     switch (chemistry) {
-        case NozzleChemistryType::EQUILIBRIUM:
+        case GasChemistry::EQUILIBRIUM:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM\n\n";
             page += "      COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR\n\n";
             break;
-        case NozzleChemistryType::FROZEN:
+        case GasChemistry::FROZEN:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n\n";
             break;
         default: break;
@@ -327,26 +327,26 @@ std::string build_report_page(
         return vals;
     };
 
-    table.add_row("Pinf/P",       row_vals([&](const ThermoStateInfo& s){ return format_fixed(ch.pressure / s.pressure, 10, 4); }));
-    table.add_row("P, BAR",       row_vals([](const ThermoStateInfo& s){ return format_fixed(s.pressure * PA_TO_BAR, 10, 4); }));
-    table.add_row("T, K",         row_vals([](const ThermoStateInfo& s){ return format_fixed(s.temperature, 10, 2); }));
-    table.add_row("RHO, KG/CU M", row_vals([](const ThermoStateInfo& s){ return format_cea_engineering(s.density, 10); }));
-    table.add_row("H, KJ/KG",     row_vals([](const ThermoStateInfo& s){ return format_fixed(s.enthalpy * J_TO_KJ, 10, 2); }));
-    table.add_row("U, KJ/KG",     row_vals([](const ThermoStateInfo& s){ return format_fixed(s.internal_energy * J_TO_KJ, 10, 2); }));
-    table.add_row("G, KJ/KG",     row_vals([](const ThermoStateInfo& s){ return format_fixed(s.gibbs * J_TO_KJ, 10, 1); }));
-    table.add_row("S, KJ/(KG)(K)",row_vals([](const ThermoStateInfo& s){ return format_fixed(s.entropy * J_TO_KJ, 10, 4); }));
+    table.add_row("Pinf/P",       row_vals([&](const ThermodynamicState& s){ return format_fixed(ch.pressure / s.pressure, 10, 4); }));
+    table.add_row("P, BAR",       row_vals([](const ThermodynamicState& s){ return format_fixed(s.pressure * PA_TO_BAR, 10, 4); }));
+    table.add_row("T, K",         row_vals([](const ThermodynamicState& s){ return format_fixed(s.temperature, 10, 2); }));
+    table.add_row("RHO, KG/CU M", row_vals([](const ThermodynamicState& s){ return format_cea_engineering(s.density, 10); }));
+    table.add_row("H, KJ/KG",     row_vals([](const ThermodynamicState& s){ return format_fixed(s.enthalpy * J_TO_KJ, 10, 2); }));
+    table.add_row("U, KJ/KG",     row_vals([](const ThermodynamicState& s){ return format_fixed(s.internal_energy * J_TO_KJ, 10, 2); }));
+    table.add_row("G, KJ/KG",     row_vals([](const ThermodynamicState& s){ return format_fixed(s.gibbs * J_TO_KJ, 10, 1); }));
+    table.add_row("S, KJ/(KG)(K)",row_vals([](const ThermodynamicState& s){ return format_fixed(s.entropy * J_TO_KJ, 10, 4); }));
 
     table.add_blank_line();
-    table.add_row("M, (1/n)", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.molecular_weight, 10, 3); }));
+    table.add_row("M, (1/n)", row_vals([](const ThermodynamicState& s){ return format_fixed(s.molecular_weight, 10, 3); }));
 
-    if (chemistry == NozzleChemistryType::EQUILIBRIUM) {
-        table.add_row("(dLV/dLP)t", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.dlV_dlP_T, 10, 5); }));
-        table.add_row("(dLV/dLT)p", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.dlV_dlT_P, 10, 4); }));
+    if (chemistry == GasChemistry::EQUILIBRIUM) {
+        table.add_row("(dLV/dLP)t", row_vals([](const ThermodynamicState& s){ return format_fixed(s.dlV_dlP_T, 10, 5); }));
+        table.add_row("(dLV/dLT)p", row_vals([](const ThermodynamicState& s){ return format_fixed(s.dlV_dlT_P, 10, 4); }));
     }
 
-    table.add_row("Cp, KJ/(KG)(K)", row_vals([](const ThermoStateInfo& s){ return format_fixed(s.cp * J_TO_KJ, 10, 4); }));
-    table.add_row("GAMMAs",          row_vals([](const ThermoStateInfo& s){ return format_fixed(s.gamma_s, 10, 4); }));
-    table.add_row("SON VEL,M/SEC",   row_vals([](const ThermoStateInfo& s){ return format_fixed(s.speed_of_sound, 10, 1); }));
+    table.add_row("Cp, KJ/(KG)(K)", row_vals([](const ThermodynamicState& s){ return format_fixed(s.cp * J_TO_KJ, 10, 4); }));
+    table.add_row("GAMMAs",          row_vals([](const ThermodynamicState& s){ return format_fixed(s.gamma_s, 10, 4); }));
+    table.add_row("SON VEL,M/SEC",   row_vals([](const ThermodynamicState& s){ return format_fixed(s.speed_of_sound, 10, 1); }));
 
     // Mach number: 0 at chamber, 1 at throat, computed for exits
     {
@@ -434,7 +434,7 @@ std::string build_report_page(
     table.add_section_header("MASS FRACTIONS");
     table.add_blank_line();
 
-    if (chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (chemistry == GasChemistry::EQUILIBRIUM) {
         std::set<std::string> all_species;
         for (const auto& s : states) {
             for (const auto& [name, frac] : s.composition) {
@@ -509,7 +509,7 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                 prev_pressure = meta.pressures[p_idx];
 
                 // Collect stations for this (of_idx, p_idx) in order: chamber, throat, exits.
-                std::vector<ThermoStateInfo> thermo_states;
+                std::vector<ThermodynamicState> thermo_states;
                 for (const auto& s : m_stations) {
                     if (s.case_name == name && s.type == StationType::CHAMBER &&
                         s.of_index == of_idx && s.pressure_index == p_idx) {

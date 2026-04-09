@@ -142,7 +142,7 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
 /**
  * @brief Calculate thermodynamic properties of a reacting gas at equilibrium: volume derivatives, heat capacity and adiabatic index.
 */
-EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivs){
+ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivs){
     auto moles = get_mole_vector(gas);
     
     auto stoich_coeffs = get_stoichiometric_coeffs(gas);
@@ -180,7 +180,7 @@ EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPha
     return {dlogV_dlogT_P, dlogV_dlogP_T, spec_heat_p, gamma_s};
 }
 
-EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas) {
+ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas) {
     return get_thermo_equilibrium_properties(gas, get_thermo_equilibrium_derivatives(gas));
 }
 

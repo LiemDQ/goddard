@@ -14,7 +14,7 @@ struct EquilibriumDerivatives {
     double dlogn_dlogP_T;
 };
 
-struct EquilibriumProperties {
+struct ExpansionProperties {
     double dlogV_dlogT_P;
     double dlogV_dlogP_T;
     double spec_heat_p;
@@ -33,8 +33,8 @@ Eigen::ArrayXd get_enthalpyRT_vector(const Cantera::ThermoPhase& gas);
 Eigen::ArrayXd get_cpR_vector(const Cantera::ThermoPhase& gas);
 
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoPhase& gas);
-EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivatives);
-EquilibriumProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas);
+ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivatives);
+ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas);
 double get_equilibrium_gamma(const Cantera::ThermoPhase& gas);
 
 } //namespace Goddard

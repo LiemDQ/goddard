@@ -9,6 +9,8 @@
 
 namespace Goddard {
 
+// ===== Perfect gas free functions =====
+
 ShockResult normal_shock(double mach, double gamma) {
 
     ShockResult result;
@@ -20,13 +22,13 @@ ShockResult normal_shock(double mach, double gamma) {
         result.total_pressure_ratio = -1.0;
         return result;
     }
-    
+
     //mach numbers
     double M1 = mach;
     double M2 = std::sqrt( (M1*M1 * (gamma - 1) + 2)/(2 *  gamma * M1 * M1 - (gamma - 1)));
     result.mach_in = M1;
     result.mach_out = M2;
-    
+
     //dynamic pressures
     result.static_pressure_ratio = (2 * gamma * M1 * M1)/(gamma + 1) - (gamma - 1)/(gamma + 1);
 
@@ -43,136 +45,6 @@ ShockResult normal_shock(double mach, double gamma) {
     return result;
 }
 
-double normal_shock_control_factor(int iter) {
-    double cf;
-    if (iter > 20) {
-        cf = 0.04879016;
-    }
-    else if (iter > 12) {
-        cf = 0.09531018;
-    }
-    else if (iter > 4) {
-        cf = 0.22314355;
-    }
-    else {
-        cf = 0.40546511;
-    }
-    return cf;
-}
-
-ShockResult normal_shock(Cantera::ThermoPhase& thermo, double mach) {
-    ShockResult result;
-    result.mach_in = mach;
-
-    if (mach < 1.0) {
-        result.valid = false;
-        result.static_pressure_ratio = -1.0;
-        result.static_temperature_ratio = -1.0;
-        return result;
-    }
-  
-    const double divR = 1.0/Cantera::GasConstant;
-
-    const double h1 = thermo.enthalpy_mass();
-    const double P1 = thermo.pressure();
-    const double T1 = thermo.temperature();
-    const double rho1 = thermo.density();
-    const double mw1 = thermo.meanMolecularWeight();
-
-    std::vector<double> state1(thermo.stateSize());
-    thermo.saveState(state1);
-    std::vector<double> state2(state1);
-    
-    // TODO: change this based on whether equilibrium chemistry is used
-    const double gamma1 = thermo.cp_mass()/thermo.cv_mass();
-    const double u1 = gas_sonic_velocity(thermo, gamma1)*mach;
-    const double h_stag = gas_stagnation_enthalpy(thermo, u1);
-    const double P_stag1 = gas_stagnation_pressure(thermo, u1);
-    // initial guesses
-    double P2_P1 = (2*gamma1*mach*mach-gamma1+1)/(gamma1+1);
-    // NOTE: for equilibrium we need to perform an isobaric equilibrium solve for temperature ratio
-    double T2_T1 = P2_P1 * (2/(mach*mach) + gamma1-1)/(gamma1+1);
-    double P2 = P2_P1 * P1;
-    double T2 = T2_T1 * T1;
-
-    const double dP_coeff = mw1*u1*u1*divR/T1; // MW1*u^2/(R*T1)
-    const double dh_coeff = u1*u1*divR; //u1^2/R
-
-    double logP2_P1 = log(P2_P1);
-    double logT2_T1 = log(T2_T1);
-
-    thermo.setState_TP(T2, P2);
-    
-    int k = 0;
-    int max_iters = 100;
-    double residual = 100.0;
-    double control_factor_coeff = normal_shock_control_factor(k);
-    const double abstol = 5e-5;
-
-    // Use Newton's method to solve for shock conditions.
-    // See NASA RP-1311 Part I, section 7. 
-    while (residual >= abstol) {
-        if (k > max_iters) 
-            throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
-        double mw2 = thermo.meanMolecularWeight();
-        double cp2 = thermo.cp_mass(); 
-        double h2 = thermo.enthalpy_mass();
-        double rho2 = thermo.density();
-        double rho1_rho2 = rho1/rho2;
-        double rho1_rho2_sq = rho1_rho2*rho1_rho2;
-        
-        //volumetric derivatives
-        double dlogV_dlogT_P = 1.0;
-        double dlogV_dlogP_T = -1.0;
-
-        double dh_coeff_rho = dh_coeff*rho1_rho2_sq;
-
-        // partial derivatives
-        double dP_dlogP2P1 = -rho1_rho2 * dP_coeff * dlogV_dlogP_T - P2_P1;
-        double dP_dlogT2T1 = -rho1_rho2 * dP_coeff * dlogV_dlogT_P; 
-        double dh_dlogP2P1 = -dh_coeff_rho * dlogV_dlogP_T + T2/mw2 * (dlogV_dlogT_P - 1);
-        double dh_dlogT2T1 = -dh_coeff_rho * dlogV_dlogT_P - T2*cp2*divR;
-        
-        double P2P1_minus_Pstar = P2_P1 - 1 + dP_coeff*(rho1_rho2 - 1);
-        double h2_minus_hstar_R = (h2-h1)*divR - 0.5*dh_coeff*(1- rho1_rho2_sq);
-
-       
-        // directly solve system of equations
-        double dlogT2_T1 = (P2P1_minus_Pstar - dP_dlogP2P1/dh_dlogP2P1 * h2_minus_hstar_R)/(dP_dlogT2T1 - dP_dlogP2P1/dh_dlogP2P1 * dh_dlogT2T1);
-        double dlogP2_P1 = (h2_minus_hstar_R - dh_dlogT2T1*dlogT2_T1)/dh_dlogP2P1;
-
-        double abs_dlogP2_P1 = abs(dlogP2_P1);
-        double abs_dlogT2_T1 = abs(dlogT2_T1);
-        
-        control_factor_coeff = normal_shock_control_factor(k);
-        double control_factor = std::min(control_factor_coeff/abs_dlogP2_P1, control_factor_coeff/abs_dlogT2_T1);
-        control_factor = std::min(control_factor, 1.0);
-        
-        logP2_P1 += control_factor * dlogP2_P1;
-        logT2_T1 += control_factor * dlogT2_T1;
-
-        P2_P1 = exp(logP2_P1);
-        P2 = P2_P1*P1;
-        T2 = exp(logT2_T1)*T1;
-        thermo.setState_TP(T2, P2);
-
-        residual = std::max(abs_dlogP2_P1, abs_dlogT2_T1);
-        k++;
-    }
-    
-    double gamma2 = thermo.cp_mass()/thermo.cv_mass();
-    double u2 = gas_isenthalpic_velocity(thermo, h_stag);
-    double P_stag2 = gas_stagnation_pressure(thermo, u2);
-
-    result.valid = true;
-    result.mach_out = u2/gas_sonic_velocity(thermo, gamma2);
-    result.static_pressure_ratio = P2_P1;
-    result.static_temperature_ratio = T2/T1;
-    result.total_pressure_ratio = P_stag2/P_stag1;
-
-    return result;
-}
-
 ShockResult reflected_shock(double mach, double gamma) {
     if (mach < 1.0) {
         ShockResult result;
@@ -183,7 +55,7 @@ ShockResult reflected_shock(double mach, double gamma) {
         return result;
     }
 
-    double MR_relation = mach/(mach*mach - 1) 
+    double MR_relation = mach/(mach*mach - 1)
         * std::sqrt(1 + 2*(gamma-1)/((gamma+1)*(gamma+1))*(mach*mach -1)*(gamma + 1/(mach*mach)));
 
     double mach_R = (1 + std::sqrt(1 + 4*MR_relation*MR_relation))/(2*MR_relation);
@@ -191,121 +63,6 @@ ShockResult reflected_shock(double mach, double gamma) {
 
     result.mach_in = mach;
     result.mach_out = mach_R;
-    
-    return result;
-}
-
-ShockResult reflected_shock(Cantera::ThermoPhase& thermo, double mach) {
-    ShockResult result;
-    result.mach_in = mach;
-    if (mach < 1.0) {
-        result.static_pressure_ratio = -1.0;
-        result.static_temperature_ratio = -1.0;
-        result.total_pressure_ratio = -1.0;
-        result.valid = false;
-        return result;
-    }
-
-    const double divR = 1.0/Cantera::GasConstant;
-
-    const double h2 = thermo.enthalpy_mass();
-    const double P2 = thermo.pressure();
-    const double T2 = thermo.temperature();
-    const double rho2 = thermo.density();
-    const double mw2 = thermo.meanMolecularWeight();
-
-    std::vector<double> state1(thermo.stateSize());
-    thermo.saveState(state1);
-    std::vector<double> state2(state1);
-    
-    // TODO: change this based on whether equilibrium chemistry is used
-    const double gamma2 = thermo.cp_mass()/thermo.cv_mass();
-    const double u2 = gas_sonic_velocity(thermo, gamma2)*mach;
-    const double h_stag = gas_stagnation_enthalpy(thermo, u2);
-    const double P_stag2 = gas_stagnation_pressure(thermo, u2);
-    // initial guesses
-    // See 
-    double b = -(gamma2+1)/(gamma2-1);
-    double P52 = (-b + std::sqrt(b*b + 4*2))/2.0;
-    double T52 = 2.0;
-    double P5 = P52 * P2;
-    double T5 = T52 * T2;
-
-    const double dP_coeff = mw2*u2*u2*divR/T2; // MW2*v2^2/(R*T2)
-    const double dh_coeff = u2*u2*divR; //v2^2/R
-
-    double logP52 = log(P52);
-    double logT52 = log(T52);
-
-    thermo.setState_TP(T5, P5);
-    
-    int k = 0;
-    int max_iters = 100;
-    double residual = 100.0;
-    double control_factor_coeff = normal_shock_control_factor(k);
-    const double abstol = 5e-5;
-
-    // Use Newton's method to solve for shock conditions.
-    // See NASA RP-1311 Part I, section 7.2.3. 
-    while (residual >= abstol) {
-        if (k > max_iters) 
-            throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
-        double mw5 = thermo.meanMolecularWeight();
-        double cp5 = thermo.cp_mass(); 
-        double h5 = thermo.enthalpy_mass();
-        double rho5 = thermo.density();
-        double rho52 = rho5/rho2;
-        double rho25m1sq = (rho52 - 1)*(rho52 - 1);
-        
-        //volumetric derivatives
-        double dlogV_dlogT_P = 1.0;
-        double dlogV_dlogP_T = -1.0;
-
-        double dP_coeff_rho25 = dP_coeff * rho52/rho25m1sq;
-        double dh_coeff_rho25 = dh_coeff * rho52/rho25m1sq;
-
-        // partial derivatives
-        double dP_dlogP52 = dP_coeff_rho25 * dlogV_dlogP_T - P52;
-        double dP_dlogT52 = dP_coeff_rho25 * dlogV_dlogT_P; 
-        double dh_dlogP52 = -dh_coeff_rho25 * dlogV_dlogP_T + T5/mw5 * (dlogV_dlogT_P - 1);
-        double dh_dlogT52 = -dh_coeff_rho25 * dlogV_dlogT_P - T5*cp5*divR;
-        
-        double P52_minus_Pprime = P52 - 1 - dP_coeff*rho52/(rho52-1);
-        double h5_minus_hprime_R = (h5-h2)*divR - 0.5*dh_coeff*(rho52+1)/(rho52-1);
-
-       
-        // directly solve system of equations
-        double dlogT52 = (P52_minus_Pprime - dP_dlogP52/dh_dlogP52 * h5_minus_hprime_R)/(dP_dlogT52 - dP_dlogP52/dh_dlogP52 * dh_dlogT52);
-        double dlogP52 = (h5_minus_hprime_R - dh_dlogT52*dlogT52)/dh_dlogP52;
-
-        double abs_dlogP52 = abs(dlogP52);
-        double abs_dlogT52 = abs(dlogT52);
-        
-        control_factor_coeff = normal_shock_control_factor(k);
-        double control_factor = std::min(control_factor_coeff/abs_dlogP52, control_factor_coeff/abs_dlogT52);
-        control_factor = std::min(control_factor, 1.0);
-        
-        logP52 += control_factor * dlogP52;
-        logT52 += control_factor * dlogT52;
-
-        P52 = exp(logP52);
-        P5 = P52*P2;
-        T5 = exp(logT52)*T2;
-        thermo.setState_TP(T5, P5);
-
-        residual = std::max(abs_dlogP52, abs_dlogT52);
-        k++;
-    }
-    
-    double gamma5 = thermo.cp_mass()/thermo.cv_mass();
-    double u5 = gas_isenthalpic_velocity(thermo, h_stag);
-    double P_stag5 = gas_stagnation_pressure(thermo, u5);
-
-    result.valid = true;
-    result.mach_out = u2/gas_sonic_velocity(thermo, gamma5);
-    result.static_pressure_ratio = P52;
-    result.static_temperature_ratio = T5/T2;
-    result.total_pressure_ratio = P_stag5/P_stag2;
 
     return result;
 }
@@ -338,19 +95,18 @@ double oblique_shock_deflection_angle(double mach, double wave_angle, double gam
     double cot_beta = 1.0/tan(wave_angle);
     return atan(2.0*cot_beta
         *(mach*mach*sin_beta*sin_beta -1)
-        /((mach*mach )*(gamma + cos_2beta)+2));   
+        /((mach*mach )*(gamma + cos_2beta)+2));
 }
 
 double oblique_shock_max_deflection(double /*mach*/, double /*gamma*/) {
     throw NotImplementedError("Max deflection is not implemented.");
 }
 
-
 ObliqueShockResult oblique_shock_from_deflection(
     double mach, double deflection_angle, double gamma, bool weak)
 {
     ObliqueShockResult result;
-    
+
     auto [weak_beta, strong_beta] = oblique_shock_wave_angle(mach, deflection_angle, gamma);
 
     if (weak) {
@@ -384,15 +140,258 @@ ObliqueShockResult oblique_shock_from_wave_angle(
 }
 
 
-ObliqueShockResult oblique_shock_from_wave_angle(
-    Cantera::ThermoPhase& gas, double mach, double wave_angle)
+// ===== Cantera-backed solvers (internal) =====
+
+namespace {
+
+double normal_shock_control_factor(int iter) {
+    double cf;
+    if (iter > 20) {
+        cf = 0.04879016;
+    }
+    else if (iter > 12) {
+        cf = 0.09531018;
+    }
+    else if (iter > 4) {
+        cf = 0.22314355;
+    }
+    else {
+        cf = 0.40546511;
+    }
+    return cf;
+}
+
+ShockResult normal_shock_frozen(Cantera::ThermoPhase& thermo, double mach, SolverOptions opts) {
+    ShockResult result;
+    result.mach_in = mach;
+
+    if (mach < 1.0) {
+        result.valid = false;
+        result.static_pressure_ratio = -1.0;
+        result.static_temperature_ratio = -1.0;
+        return result;
+    }
+
+    const double divR = 1.0/Cantera::GasConstant;
+
+    const double h1 = thermo.enthalpy_mass();
+    const double P1 = thermo.pressure();
+    const double T1 = thermo.temperature();
+    const double rho1 = thermo.density();
+    const double mw1 = thermo.meanMolecularWeight();
+
+    std::vector<double> state1(thermo.stateSize());
+    thermo.saveState(state1);
+
+    const double gamma1 = thermo.cp_mass()/thermo.cv_mass();
+    const double u1 = gas_sonic_velocity(thermo, gamma1)*mach;
+    const double h_stag = gas_stagnation_enthalpy(thermo, u1);
+    const double P_stag1 = gas_stagnation_pressure(thermo, u1);
+    // initial guesses
+    double P2_P1 = (2*gamma1*mach*mach-gamma1+1)/(gamma1+1);
+    double T2_T1 = P2_P1 * (2/(mach*mach) + gamma1-1)/(gamma1+1);
+    double P2 = P2_P1 * P1;
+    double T2 = T2_T1 * T1;
+
+    const double dP_coeff = mw1*u1*u1*divR/T1; // MW1*u^2/(R*T1)
+    const double dh_coeff = u1*u1*divR; //u1^2/R
+
+    double logP2_P1 = log(P2_P1);
+    double logT2_T1 = log(T2_T1);
+
+    thermo.setState_TP(T2, P2);
+
+    int k = 0;
+    int max_iters = opts.max_iterations;
+    double residual = 100.0;
+    double control_factor_coeff = normal_shock_control_factor(k);
+    const double abstol = opts.abstol;
+
+    // Use Newton's method to solve for shock conditions.
+    // See NASA RP-1311 Part I, section 7.
+    while (residual >= abstol) {
+        if (k > max_iters)
+            throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
+        double mw2 = thermo.meanMolecularWeight();
+        double cp2 = thermo.cp_mass();
+        double h2 = thermo.enthalpy_mass();
+        double rho2 = thermo.density();
+        double rho1_rho2 = rho1/rho2;
+        double rho1_rho2_sq = rho1_rho2*rho1_rho2;
+
+        //volumetric derivatives
+        double dlogV_dlogT_P = 1.0;
+        double dlogV_dlogP_T = -1.0;
+
+        double dh_coeff_rho = dh_coeff*rho1_rho2_sq;
+
+        // partial derivatives
+        double dP_dlogP2P1 = -rho1_rho2 * dP_coeff * dlogV_dlogP_T - P2_P1;
+        double dP_dlogT2T1 = -rho1_rho2 * dP_coeff * dlogV_dlogT_P;
+        double dh_dlogP2P1 = -dh_coeff_rho * dlogV_dlogP_T + T2/mw2 * (dlogV_dlogT_P - 1);
+        double dh_dlogT2T1 = -dh_coeff_rho * dlogV_dlogT_P - T2*cp2*divR;
+
+        double P2P1_minus_Pstar = P2_P1 - 1 + dP_coeff*(rho1_rho2 - 1);
+        double h2_minus_hstar_R = (h2-h1)*divR - 0.5*dh_coeff*(1- rho1_rho2_sq);
+
+
+        // directly solve system of equations
+        double dlogT2_T1 = (P2P1_minus_Pstar - dP_dlogP2P1/dh_dlogP2P1 * h2_minus_hstar_R)/(dP_dlogT2T1 - dP_dlogP2P1/dh_dlogP2P1 * dh_dlogT2T1);
+        double dlogP2_P1 = (h2_minus_hstar_R - dh_dlogT2T1*dlogT2_T1)/dh_dlogP2P1;
+
+        double abs_dlogP2_P1 = abs(dlogP2_P1);
+        double abs_dlogT2_T1 = abs(dlogT2_T1);
+
+        control_factor_coeff = normal_shock_control_factor(k);
+        double control_factor = std::min(control_factor_coeff/abs_dlogP2_P1, control_factor_coeff/abs_dlogT2_T1);
+        control_factor = std::min(control_factor, 1.0);
+
+        logP2_P1 += control_factor * dlogP2_P1;
+        logT2_T1 += control_factor * dlogT2_T1;
+
+        P2_P1 = exp(logP2_P1);
+        P2 = P2_P1*P1;
+        T2 = exp(logT2_T1)*T1;
+        thermo.setState_TP(T2, P2);
+
+        residual = std::max(abs_dlogP2_P1, abs_dlogT2_T1);
+        k++;
+    }
+
+    double gamma2 = thermo.cp_mass()/thermo.cv_mass();
+    double u2 = gas_isenthalpic_velocity(thermo, h_stag);
+    double P_stag2 = gas_stagnation_pressure(thermo, u2);
+
+    result.valid = true;
+    result.mach_out = u2/gas_sonic_velocity(thermo, gamma2);
+    result.static_pressure_ratio = P2_P1;
+    result.static_temperature_ratio = T2/T1;
+    result.total_pressure_ratio = P_stag2/P_stag1;
+
+    return result;
+}
+
+ShockResult reflected_shock_frozen(Cantera::ThermoPhase& thermo, double mach, SolverOptions opts) {
+    ShockResult result;
+    result.mach_in = mach;
+    if (mach < 1.0) {
+        result.static_pressure_ratio = -1.0;
+        result.static_temperature_ratio = -1.0;
+        result.total_pressure_ratio = -1.0;
+        result.valid = false;
+        return result;
+    }
+
+    const double divR = 1.0/Cantera::GasConstant;
+
+    const double h2 = thermo.enthalpy_mass();
+    const double P2 = thermo.pressure();
+    const double T2 = thermo.temperature();
+    const double rho2 = thermo.density();
+    const double mw2 = thermo.meanMolecularWeight();
+
+    std::vector<double> state1(thermo.stateSize());
+    thermo.saveState(state1);
+
+    const double gamma2 = thermo.cp_mass()/thermo.cv_mass();
+    const double u2 = gas_sonic_velocity(thermo, gamma2)*mach;
+    const double h_stag = gas_stagnation_enthalpy(thermo, u2);
+    const double P_stag2 = gas_stagnation_pressure(thermo, u2);
+    // initial guesses
+    double b = -(gamma2+1)/(gamma2-1);
+    double P52 = (-b + std::sqrt(b*b + 4*2))/2.0;
+    double T52 = 2.0;
+    double P5 = P52 * P2;
+    double T5 = T52 * T2;
+
+    const double dP_coeff = mw2*u2*u2*divR/T2; // MW2*v2^2/(R*T2)
+    const double dh_coeff = u2*u2*divR; //v2^2/R
+
+    double logP52 = log(P52);
+    double logT52 = log(T52);
+
+    thermo.setState_TP(T5, P5);
+
+    int k = 0;
+    int max_iters = opts.max_iterations;
+    double residual = 100.0;
+    double control_factor_coeff = normal_shock_control_factor(k);
+    const double abstol = opts.abstol;
+
+    // Use Newton's method to solve for shock conditions.
+    // See NASA RP-1311 Part I, section 7.2.3.
+    while (residual >= abstol) {
+        if (k > max_iters)
+            throw ConvergenceError("Normal shock properties failed to converge.", k, abstol, residual);
+        double mw5 = thermo.meanMolecularWeight();
+        double cp5 = thermo.cp_mass();
+        double h5 = thermo.enthalpy_mass();
+        double rho5 = thermo.density();
+        double rho52 = rho5/rho2;
+        double rho25m1sq = (rho52 - 1)*(rho52 - 1);
+
+        //volumetric derivatives
+        double dlogV_dlogT_P = 1.0;
+        double dlogV_dlogP_T = -1.0;
+
+        double dP_coeff_rho25 = dP_coeff * rho52/rho25m1sq;
+        double dh_coeff_rho25 = dh_coeff * rho52/rho25m1sq;
+
+        // partial derivatives
+        double dP_dlogP52 = dP_coeff_rho25 * dlogV_dlogP_T - P52;
+        double dP_dlogT52 = dP_coeff_rho25 * dlogV_dlogT_P;
+        double dh_dlogP52 = -dh_coeff_rho25 * dlogV_dlogP_T + T5/mw5 * (dlogV_dlogT_P - 1);
+        double dh_dlogT52 = -dh_coeff_rho25 * dlogV_dlogT_P - T5*cp5*divR;
+
+        double P52_minus_Pprime = P52 - 1 - dP_coeff*rho52/(rho52-1);
+        double h5_minus_hprime_R = (h5-h2)*divR - 0.5*dh_coeff*(rho52+1)/(rho52-1);
+
+
+        // directly solve system of equations
+        double dlogT52 = (P52_minus_Pprime - dP_dlogP52/dh_dlogP52 * h5_minus_hprime_R)/(dP_dlogT52 - dP_dlogP52/dh_dlogP52 * dh_dlogT52);
+        double dlogP52 = (h5_minus_hprime_R - dh_dlogT52*dlogT52)/dh_dlogP52;
+
+        double abs_dlogP52 = abs(dlogP52);
+        double abs_dlogT52 = abs(dlogT52);
+
+        control_factor_coeff = normal_shock_control_factor(k);
+        double control_factor = std::min(control_factor_coeff/abs_dlogP52, control_factor_coeff/abs_dlogT52);
+        control_factor = std::min(control_factor, 1.0);
+
+        logP52 += control_factor * dlogP52;
+        logT52 += control_factor * dlogT52;
+
+        P52 = exp(logP52);
+        P5 = P52*P2;
+        T5 = exp(logT52)*T2;
+        thermo.setState_TP(T5, P5);
+
+        residual = std::max(abs_dlogP52, abs_dlogT52);
+        k++;
+    }
+
+    double gamma5 = thermo.cp_mass()/thermo.cv_mass();
+    double u5 = gas_isenthalpic_velocity(thermo, h_stag);
+    double P_stag5 = gas_stagnation_pressure(thermo, u5);
+
+    result.valid = true;
+    result.mach_out = u2/gas_sonic_velocity(thermo, gamma5);
+    result.static_pressure_ratio = P52;
+    result.static_temperature_ratio = T5/T2;
+    result.total_pressure_ratio = P_stag5/P_stag2;
+
+    return result;
+}
+
+ObliqueShockResult oblique_shock_from_wave_angle_frozen(
+    Cantera::ThermoPhase& gas, double mach, double wave_angle, SolverOptions opts)
 {
     ObliqueShockResult result;
     double mach_n1 = mach * sin(wave_angle);
     double gamma = gas.cp_mass()/gas.cv_mass();
     double u1 = gas_sonic_velocity(gas, gamma)*mach_n1;
-    
-    result.shock = normal_shock(gas, mach_n1);
+
+    result.shock = normal_shock_frozen(gas, mach_n1, opts);
     gamma = gas.cp_mass()/gas.cv_mass();
 
     double u2 = gas_sonic_velocity(gas, gamma)*result.shock.mach_out;
@@ -405,27 +404,24 @@ ObliqueShockResult oblique_shock_from_wave_angle(
     return result;
 }
 
-
-ObliqueShockResult oblique_shock_from_deflection(
-    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak) 
+ObliqueShockResult oblique_shock_from_deflection_frozen(
+    Cantera::ThermoPhase& gas, double mach, double deflection_angle, bool weak, SolverOptions opts)
 {
     ObliqueShockResult result;
     const double gamma1 = gas.cp_mass()/gas.cv_mass();
 
-    // this is the point where tan(beta-theta)/tan(beta) is maximized
-    // 
-    const double beta_peak = deflection_angle/2 + M_PI/4; 
+    const double beta_peak = deflection_angle/2 + M_PI/4;
 
     std::vector<double> state1(gas.stateSize());
     gas.saveState(state1);
 
     //initial guess
     auto [weak_beta, strong_beta] = oblique_shock_wave_angle(mach, deflection_angle, gamma1);
-    
+
     double left_bound;
     double right_bound;
     double beta;
-    
+
     if (weak) {
         left_bound = 0.0;
         right_bound = beta_peak;
@@ -437,31 +433,27 @@ ObliqueShockResult oblique_shock_from_deflection(
         beta = strong_beta;
     }
 
-    ObliqueShockResult left_result = oblique_shock_from_wave_angle(gas, mach, left_bound);
+    ObliqueShockResult left_result = oblique_shock_from_wave_angle_frozen(gas, mach, left_bound, opts);
     gas.restoreState(state1);
-    ObliqueShockResult right_result = oblique_shock_from_wave_angle(gas, mach, right_bound);
+    ObliqueShockResult right_result = oblique_shock_from_wave_angle_frozen(gas, mach, right_bound, opts);
 
     double left_residual = left_result.theta - deflection_angle;
     double right_residual = right_result.theta - deflection_angle;
-    
+
     if ((left_residual)*(right_residual) >= 0) {
         throw std::runtime_error("Bisection method error: product of bounds should be negative.");
     }
 
-    // bisection method to find root
-    // the objective function is theta - theta_{calculated} where the second term 
-    // is calculated from an oblique shock with the current beta angle.
-    // In the regime bracketed by beta_peak, there is at least one root. 
     double residual = 1.0;
-    double abstol = 1e-8;
+    const double abstol = opts.abstol;
     int k = 0;
-    int max_iters = 100;
+    int max_iters = opts.max_iterations;
     while (abs(residual) > abstol) {
         if (k > max_iters)
             throw ConvergenceError("Wave angle failed to converge.", k, abstol, residual);
-        
+
         gas.restoreState(state1);
-        result = oblique_shock_from_wave_angle(gas, mach, beta);
+        result = oblique_shock_from_wave_angle_frozen(gas, mach, beta, opts);
         residual = result.theta - deflection_angle;
         if (residual*left_residual <= 0) {
             right_bound = beta;
@@ -469,18 +461,110 @@ ObliqueShockResult oblique_shock_from_deflection(
         }
         else if (residual*right_residual <= 0) {
             left_bound = beta;
-            left_residual = residual;            
+            left_residual = residual;
         }
         else {
             throw std::runtime_error("Bisection method failed: Bounds are not of opposite sign.");
         }
 
         beta = (left_bound + right_bound)/2.0;
-        k++;        
+        k++;
     }
     result.theta = deflection_angle;
     return result;
 }
 
+} // anonymous namespace
+
+
+// ===== ShockSolver =====
+
+ShockSolver::ShockSolver(Gas gas, SolverOptions options)
+    : m_gas(std::move(gas)), m_options(options)
+{
+    m_gas.copy_state(m_pre_shock_state);
+}
+
+ShockResult ShockSolver::normal_shock(double mach) {
+    m_gas.restore_state(m_pre_shock_state);
+    ShockResult result;
+    switch (m_gas.chemistry) {
+        case GasChemistry::PERFECT_GAS:
+            result = Goddard::normal_shock(mach, m_gas.gamma_s());
+            break;
+        case GasChemistry::FROZEN:
+            result = normal_shock_frozen(*m_gas.thermo(), mach, m_options);
+            break;
+        case GasChemistry::EQUILIBRIUM:
+        case GasChemistry::KINETIC:
+            throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for normal shocks.");
+    }
+    m_gas.copy_state(m_post_shock_state);
+    return result;
+}
+
+ShockResult ShockSolver::reflected_shock(double mach) {
+    m_gas.restore_state(m_pre_shock_state);
+    ShockResult result;
+    switch (m_gas.chemistry) {
+        case GasChemistry::PERFECT_GAS:
+            result = Goddard::reflected_shock(mach, m_gas.gamma_s());
+            break;
+        case GasChemistry::FROZEN:
+            result = reflected_shock_frozen(*m_gas.thermo(), mach, m_options);
+            break;
+        case GasChemistry::EQUILIBRIUM:
+        case GasChemistry::KINETIC:
+            throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for reflected shocks.");
+    }
+    m_gas.copy_state(m_post_shock_state);
+    return result;
+}
+
+ObliqueShockResult ShockSolver::oblique_shock_from_wave_angle(double mach, double wave_angle) {
+    m_gas.restore_state(m_pre_shock_state);
+    ObliqueShockResult result;
+    switch (m_gas.chemistry) {
+        case GasChemistry::PERFECT_GAS:
+            result = Goddard::oblique_shock_from_wave_angle(mach, wave_angle, m_gas.gamma_s());
+            break;
+        case GasChemistry::FROZEN:
+            result = oblique_shock_from_wave_angle_frozen(*m_gas.thermo(), mach, wave_angle, m_options);
+            break;
+        case GasChemistry::EQUILIBRIUM:
+        case GasChemistry::KINETIC:
+            throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for oblique shocks.");
+    }
+    m_gas.copy_state(m_post_shock_state);
+    return result;
+}
+
+ObliqueShockResult ShockSolver::oblique_shock_from_deflection(double mach, double deflection, bool weak) {
+    m_gas.restore_state(m_pre_shock_state);
+    ObliqueShockResult result;
+    switch (m_gas.chemistry) {
+        case GasChemistry::PERFECT_GAS:
+            result = Goddard::oblique_shock_from_deflection(mach, deflection, m_gas.gamma_s(), weak);
+            break;
+        case GasChemistry::FROZEN:
+            result = oblique_shock_from_deflection_frozen(*m_gas.thermo(), mach, deflection, weak, m_options);
+            break;
+        case GasChemistry::EQUILIBRIUM:
+        case GasChemistry::KINETIC:
+            throw NotImplementedError("ShockSolver: EQUILIBRIUM/KINETIC chemistry not implemented for oblique shocks.");
+    }
+    m_gas.copy_state(m_post_shock_state);
+    return result;
+}
+
+const Gas& ShockSolver::pre_shock_state() const {
+    m_gas.restore_state(m_pre_shock_state);
+    return m_gas;
+}
+
+const Gas& ShockSolver::post_shock_state() const {
+    m_gas.restore_state(m_post_shock_state);
+    return m_gas;
+}
 
 } //namespace Goddard

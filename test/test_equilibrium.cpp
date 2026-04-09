@@ -171,15 +171,15 @@ class PropertyTests: public ::testing::Test {
         gas->setState_TPX(temp, pressure, "H2O:1, N2:1, O2:1. AR:0.1"); //completely random composition lol
     }
     std::shared_ptr<Cantera::Solution> sln;
-    Goddard::EquilibriumProperties expected_props{0.9999999999999998,-0.9999999999999999,1604.459611106932,1.2435582661124545};
-    Goddard::EquilibriumProperties expected_eq_props{1.0198466495473248,-1.0006600595545954,1796.3940426543525,1.222008621037549};
+    Goddard::ExpansionProperties expected_props{0.9999999999999998,-0.9999999999999999,1604.459611106932,1.2435582661124545};
+    Goddard::ExpansionProperties expected_eq_props{1.0198466495473248,-1.0006600595545954,1796.3940426543525,1.222008621037549};
     size_t n_species;
     size_t n_elements;
 };
 
 TEST_F(PropertyTests, equilibriumPropertiesAreCorrect) {
     auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
-    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
+    Goddard::ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
     EXPECT_NEAR(props.dlogV_dlogT_P, expected_props.dlogV_dlogT_P, max_fp_error(expected_props.dlogV_dlogT_P));
     EXPECT_NEAR(props.dlogV_dlogP_T, expected_props.dlogV_dlogP_T, max_fp_error(expected_props.dlogV_dlogP_T));
@@ -190,7 +190,7 @@ TEST_F(PropertyTests, equilibriumPropertiesAreCorrect) {
 TEST_F(PropertyTests, equilibriumPropertiesAreCorrectAfterEquilibrium) {
     sln->thermo()->equilibrate("HP", "gibbs");
     auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
-    Goddard::EquilibriumProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
+    Goddard::ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
     EXPECT_NEAR(props.dlogV_dlogT_P, expected_eq_props.dlogV_dlogT_P, max_fp_error(expected_eq_props.dlogV_dlogT_P));
     EXPECT_NEAR(props.dlogV_dlogP_T, expected_eq_props.dlogV_dlogP_T, max_fp_error(expected_eq_props.dlogV_dlogP_T));

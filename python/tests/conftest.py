@@ -105,9 +105,9 @@ def build_goddard_problem(case: RocketTestCase):
     chem_params = goddard.ChemicalParameters()
     chem_params.thermo_file = yaml_path
     chem_params.species = case.species
-    chem_params.cantera_fuel_state = goddard.ThermodynamicState(
+    chem_params.cantera_fuel_state = goddard.PhaseSpecification(
         case.fuel.temperature, 101325.0, case.fuel.cantera_composition) 
-    chem_params.cantera_oxidizer_state = goddard.ThermodynamicState(
+    chem_params.cantera_oxidizer_state = goddard.PhaseSpecification(
         case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition)
     chem_params.OF_ratios = [case.of_ratio]
 

@@ -1,6 +1,8 @@
 #include "goddard/utils.hpp"
 #include "cantera/base/AnyMap.h"
 #include "cantera/base/global.h"
+#include "cantera/base/stringUtils.h"
+#include "cantera/base/ctexceptions.h"
 #include "cantera/core.h"
 #include <vector>
 
@@ -14,12 +16,21 @@ std::vector<double> save_thermo_state(const Cantera::ThermoPhase& thermo) {
     return state;
 }
 
-std::vector<double> build_state_TPX(Cantera::Solution& sln, double T, double P, std::string& composition) {
-    std::vector<double> out(sln.thermo()->stateSize());
-    sln.thermo()->setState_TPX(T, P, composition);
-    sln.thermo()->saveState(out);
-    return out;
+Cantera::AnyMap load_root_node(const std::string& infile) {
+    size_t dot = infile.find_last_of('c');
+    std::string extension;
+    if (dot != Cantera::npos) {
+        extension = Cantera::toLowerCopy(infile.substr(dot+1));
+    }
+
+    if (extension == "cti" || extension == "xml") {
+        throw Cantera::CanteraError("newSolution",
+                           "The CTI and XML formats are no longer supported.");
+    }
+    
+    return AnyMap::fromYamlFile(infile);
 }
+
 
 std::shared_ptr<Cantera::Solution> create_mixture_solution(Cantera::Solution& sol1, Cantera::Solution& sol2){
     auto thermo1 = sol1.thermo();

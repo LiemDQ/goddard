@@ -12,7 +12,7 @@ static constexpr double DEG = M_PI / 180.0;
 static MocNozzle make_perfect_gas_solver(double gamma, double theta_max, int num_chars) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;
@@ -75,7 +75,7 @@ TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {
     // Run a small solve and check the initial data line
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = 10.0 * DEG;
@@ -124,7 +124,7 @@ TEST(MocAxisPoint, SymmetryCondition) {
     double gamma = 1.4;
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = 15.0 * DEG;
@@ -152,7 +152,7 @@ TEST(MocAxisPoint, KMinusEqualsNu) {
     double gamma = 1.4;
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = 12.0 * DEG;
@@ -180,7 +180,7 @@ TEST(MocWallPoint, WallKPlusPreserved) {
     double gamma = 1.4;
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = 10.0 * DEG;
@@ -206,7 +206,7 @@ TEST(MocSolve, PerfectGasDoesNotRequireCantera) {
     // Perfect gas mode should work without any Cantera Solution object
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = 1.4;
     opts.theta_max = 10.0 * DEG;
@@ -230,7 +230,7 @@ TEST(MocSolve, CustomThetaSchedule) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = 10.0 * DEG;
@@ -252,7 +252,7 @@ TEST(MocSolve, ExitMachConsistentWithThetaMax) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;

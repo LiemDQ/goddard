@@ -42,14 +42,14 @@ public:
      * @return Vector of comparison results for each parameter
      */
     static std::vector<ComparisonResult> compare_chamber_states(
-        const Goddard::ThermoStateInfo& goddard_state,
+        const Goddard::ThermodynamicState& goddard_state,
         const CEAState& cea_state,
         const ComparisonTolerance& tolerance
     );
 
     // Overload with default tolerance
     static std::vector<ComparisonResult> compare_chamber_states(
-        const Goddard::ThermoStateInfo& goddard_state,
+        const Goddard::ThermodynamicState& goddard_state,
         const CEAState& cea_state
     );
     

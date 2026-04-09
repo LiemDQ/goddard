@@ -3,13 +3,13 @@
 
 // CEATestUtils implementation - overload with default tolerance
 std::vector<CEATestUtils::ComparisonResult> CEATestUtils::compare_chamber_states(
-    const Goddard::ThermoStateInfo& goddard_state,
+    const Goddard::ThermodynamicState& goddard_state,
     const CEAState& cea_state) {
     return compare_chamber_states(goddard_state, cea_state, ComparisonTolerance{});
 }
 
 std::vector<CEATestUtils::ComparisonResult> CEATestUtils::compare_chamber_states(
-    const Goddard::ThermoStateInfo& goddard_state,
+    const Goddard::ThermodynamicState& goddard_state,
     const CEAState& cea_state,
     const ComparisonTolerance& tolerance) {
     

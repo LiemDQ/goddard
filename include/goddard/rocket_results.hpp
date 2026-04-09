@@ -35,7 +35,7 @@ struct RocketStation {
     std::size_t pressure_index;  // index into the case's pressures vector
     std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
     double area_ratio;           // 0.0 for CHAMBER, 1.0 for THROAT, >1 for EXIT
-    ThermoStateInfo thermo;
+    ThermodynamicState thermo;
     bool converged;
 };
 
@@ -44,7 +44,7 @@ struct RocketStation {
 struct RocketProblemCaseResult {
     std::string problem_type;
     ThermoArray inlet_states;
-    NozzleChemistryType chemistry;
+    GasChemistry chemistry;
     std::vector<NozzleResults> nozzle_states;
     std::vector<double> OF_ratios;
     std::vector<double> pressures;
@@ -89,9 +89,9 @@ public:
 
     // Compute performance metrics from individual thermo states.
     static RocketPerformance calculate_performance(
-        const ThermoStateInfo& chamber,
-        const ThermoStateInfo& throat,
-        const ThermoStateInfo& exit);
+        const ThermodynamicState& chamber,
+        const ThermodynamicState& throat,
+        const ThermodynamicState& exit);
 
 private:
     std::vector<RocketStation> m_stations;
@@ -100,7 +100,7 @@ private:
         std::vector<double> of_ratios;
         std::vector<double> pressures;
         std::vector<double> expansion_ratios;
-        NozzleChemistryType chemistry;
+        GasChemistry chemistry;
         ExpansionType expansion_type;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;

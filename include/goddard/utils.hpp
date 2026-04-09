@@ -1,5 +1,6 @@
 #pragma once
 #include "cantera/core.h"
+#include "cantera/base/AnyMap.h"
 #include "eigen3/Eigen/Dense"
 #include <memory>
 #include <cmath>
@@ -10,7 +11,7 @@ namespace Goddard {
 
 std::vector<double> save_thermo_state(const Cantera::ThermoPhase& sol);
 
-std::vector<double> build_state_TP(Cantera::Solution& sln, double T, double P, std::string& composition);
+Cantera::AnyMap load_root_node(const std::string& infile);
 
 std::shared_ptr<Cantera::Solution> create_mixture_solution(Cantera::Solution& sol1, Cantera::Solution& sol2);
 

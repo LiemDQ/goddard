@@ -1,4 +1,5 @@
 #include "goddard/shocks.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/error.hpp"
 #include "goddard/global.hpp"
@@ -139,7 +140,7 @@ TEST(NormalShock, AndersonExercise3p6) {
     double T2_stag = stag_factor*r.static_temperature_ratio*T1;
     double P2_stag = r.total_pressure_ratio*P1_stag;
     ASSERT_TRUE(r.valid);
-    
+
     EXPECT_NEAR(T2_stag, 934.2,
                 max_fp_error(934.2, 1e-4, 1e-6));
     EXPECT_NEAR(P2_stag, 11935.0,
@@ -149,7 +150,6 @@ TEST(NormalShock, AndersonExercise3p6) {
 class NormalShockAnderson : public ::testing::TestWithParam<NormalShockData> {};
 
 TEST_P(NormalShockAnderson, TableA2) {
-    // TODO: Fill in expected values from Anderson's Modern Compressible Flow
     // normal shock tables (Appendix B or Table A.2). Each entry should list
     // M1, gamma, and the expected M2, P2/P1, T2/T1, P02/P01.
     auto data = GetParam();
@@ -342,12 +342,12 @@ INSTANTIATE_TEST_SUITE_P(
 );
 
 // ============================================================
-//  Cantera-based normal shock
+//  ShockSolver with frozen (Cantera-backed) chemistry
 // ============================================================
 
-class CantNormalShockTests : public ::testing::Test {
+class ShockSolverFrozenTests : public ::testing::Test {
 protected:
-    CantNormalShockTests() {
+    ShockSolverFrozenTests() {
         Goddard::setup_defaults();
         gas = Cantera::newSolution("h2o2.yaml", "ohmech");
         // Set to a simple diatomic-like state at moderate temperature
@@ -360,15 +360,16 @@ protected:
     std::vector<double> initial_state;
 };
 
-TEST_F(CantNormalShockTests, Converges) {
-    double mach = 2.0;
-    ShockResult r = normal_shock(*gas->thermo(), mach);
-    ASSERT_TRUE(r.valid) << "Cantera normal shock should converge at M=2";
+TEST_F(ShockSolverFrozenTests, Converges) {
+    Gas g(*gas, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    ShockResult r = solver.normal_shock(2.0);
+    ASSERT_TRUE(r.valid) << "ShockSolver normal shock should converge at M=2";
     EXPECT_GT(r.mach_out, 0.0);
     EXPECT_LT(r.mach_out, 1.0);
 }
 
-TEST_F(CantNormalShockTests, ApproachesPerfectGas) {
+TEST_F(ShockSolverFrozenTests, ApproachesPerfectGas) {
     // At 300 K where air behaves as a perfect gas with gamma ~ 1.4,
     // the Cantera result should be close to the perfect-gas solution
     double gamma = gas->thermo()->cp_mass() / gas->thermo()->cv_mass();
@@ -378,7 +379,9 @@ TEST_F(CantNormalShockTests, ApproachesPerfectGas) {
     ASSERT_TRUE(r_perf.valid);
 
     gas->thermo()->restoreState(initial_state);
-    ShockResult r_cant = normal_shock(*gas->thermo(), mach);
+    Gas g(*gas, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    ShockResult r_cant = solver.normal_shock(mach);
     ASSERT_TRUE(r_cant.valid);
 
     EXPECT_NEAR(r_cant.mach_out, r_perf.mach_out,
@@ -392,10 +395,8 @@ TEST_F(CantNormalShockTests, ApproachesPerfectGas) {
         << "Cantera T2/T1 should approximate perfect gas at low T";
 }
 
-TEST_F(CantNormalShockTests, RankineHugoniot) {
-    // TODO: Depends on gas_stagnation_pressure convergence fix.
+TEST_F(ShockSolverFrozenTests, RankineHugoniot) {
     // Verify conservation of mass, momentum, and energy across the shock.
-    // Pre-shock state
     double mach = 2.5;
     double gamma1 = gas->thermo()->cp_mass() / gas->thermo()->cv_mass();
     double a1 = gas_sonic_velocity(*gas->thermo(), gamma1);
@@ -404,14 +405,16 @@ TEST_F(CantNormalShockTests, RankineHugoniot) {
     double P1 = gas->thermo()->pressure();
     double h1 = gas->thermo()->enthalpy_mass();
 
-    ShockResult r = normal_shock(*gas->thermo(), mach);
+    Gas g(*gas, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    ShockResult r = solver.normal_shock(mach);
     ASSERT_TRUE(r.valid);
 
-    // Post-shock state is left in gas->thermo() by the solver
-    double rho2 = gas->thermo()->density();
-    double P2 = gas->thermo()->pressure();
-    double h2 = gas->thermo()->enthalpy_mass();
-    // Back out u2 from mass conservation: rho1*u1 = rho2*u2
+    // Access post-shock state via solver
+    const Gas& post = solver.post_shock_state();
+    double rho2 = post.density();
+    double P2 = post.pressure();
+    double h2 = post.enthalpy_mass();
     double u2 = rho1 * u1 / rho2;
 
     // Momentum: P1 + rho1*u1^2 = P2 + rho2*u2^2
@@ -429,7 +432,118 @@ TEST_F(CantNormalShockTests, RankineHugoniot) {
         << "Total enthalpy must be conserved across shock";
 }
 
-TEST_F(CantNormalShockTests, InvalidSubsonic) {
-    ShockResult r = normal_shock(*gas->thermo(), 0.5);
+TEST_F(ShockSolverFrozenTests, InvalidSubsonic) {
+    Gas g(*gas, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    ShockResult r = solver.normal_shock(0.5);
     EXPECT_FALSE(r.valid);
+}
+
+// ============================================================
+//  ShockSolver with perfect gas chemistry
+// ============================================================
+
+TEST(ShockSolverPerfectGas, MatchesFreeFunction) {
+    // ShockSolver with PERFECT_GAS should produce identical results to the free function
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+
+    Gas g(*sol, GasChemistry::PERFECT_GAS);
+    double gamma = g.gamma_s();
+    ShockSolver solver(g);
+
+    for (double mach : {1.5, 2.0, 3.0, 5.0}) {
+        ShockResult r_solver = solver.normal_shock(mach);
+        ShockResult r_free = normal_shock(mach, gamma);
+
+        ASSERT_TRUE(r_solver.valid);
+        ASSERT_TRUE(r_free.valid);
+        EXPECT_NEAR(r_solver.mach_out, r_free.mach_out, 1e-12);
+        EXPECT_NEAR(r_solver.static_pressure_ratio, r_free.static_pressure_ratio, 1e-12);
+        EXPECT_NEAR(r_solver.static_temperature_ratio, r_free.static_temperature_ratio, 1e-12);
+        EXPECT_NEAR(r_solver.total_pressure_ratio, r_free.total_pressure_ratio, 1e-12);
+    }
+}
+
+TEST(ShockSolverPerfectGas, ObliqueMatchesFreeFunction) {
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+
+    Gas g(*sol, GasChemistry::PERFECT_GAS);
+    double gamma = g.gamma_s();
+    ShockSolver solver(g);
+
+    double mach = 3.0;
+    double theta = 15.0 * DEG;
+
+    ObliqueShockResult r_solver = solver.oblique_shock_from_deflection(mach, theta, true);
+    ObliqueShockResult r_free = oblique_shock_from_deflection(mach, theta, gamma, true);
+
+    ASSERT_TRUE(r_solver.valid);
+    ASSERT_TRUE(r_free.valid);
+    EXPECT_NEAR(r_solver.beta, r_free.beta, 1e-12);
+    EXPECT_NEAR(r_solver.mach_out, r_free.mach_out, 1e-12);
+}
+
+// ============================================================
+//  ShockSolver state management
+// ============================================================
+
+TEST(ShockSolverState, PreShockStateRestored) {
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+    double T_orig = sol->thermo()->temperature();
+    double P_orig = sol->thermo()->pressure();
+
+    Gas g(*sol, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    solver.normal_shock(2.0);
+
+    // pre_shock_state() should restore original T and P
+    const Gas& pre = solver.pre_shock_state();
+    EXPECT_NEAR(pre.temperature(), T_orig, 1e-10);
+    EXPECT_NEAR(pre.pressure(), P_orig, 1e-6);
+}
+
+TEST(ShockSolverState, PostShockStateDiffers) {
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+    double T_orig = sol->thermo()->temperature();
+
+    Gas g(*sol, GasChemistry::FROZEN);
+    ShockSolver solver(g, {.abstol = 5e-5});
+    solver.normal_shock(2.0);
+
+    // post_shock_state() should have a different temperature
+    const Gas& post = solver.post_shock_state();
+    EXPECT_GT(post.temperature(), T_orig * 1.1)
+        << "Post-shock temperature should be significantly higher";
+}
+
+// ============================================================
+//  ShockSolver unsupported chemistry
+// ============================================================
+
+TEST(ShockSolverUnsupported, EquilibriumThrows) {
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+
+    Gas g(*sol, GasChemistry::EQUILIBRIUM);
+    ShockSolver solver(g);
+    EXPECT_THROW(solver.normal_shock(2.0), NotImplementedError);
+}
+
+TEST(ShockSolverUnsupported, KineticThrows) {
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+
+    Gas g(*sol, GasChemistry::KINETIC);
+    ShockSolver solver(g);
+    EXPECT_THROW(solver.normal_shock(2.0), NotImplementedError);
 }

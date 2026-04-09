@@ -1,6 +1,7 @@
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
+#include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/thermoarray.hpp"

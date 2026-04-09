@@ -17,13 +17,14 @@ public:
     double eval(double) const override { return m_velocity;}
 };
 
+// Solution& constructors: build Gas internally
 KineticNozzle::KineticNozzle(
     Cantera::Solution& gas,
     NozzleProfile& profile,
     double mass_flow_rate,
-    NozzleChemistryType chemistry)
+    GasChemistry chemistry)
 : m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry),
-  m_gas(gas.shared_from_this())
+  m_gas(gas, GasChemistry::FROZEN)
 {
     m_inlet_state.resize(gas.thermo()->stateSize());
     gas.thermo()->saveState(m_inlet_state);
@@ -34,17 +35,37 @@ KineticNozzle::KineticNozzle(
         NozzleProfile& profile,
         double mass_flow_rate,
         std::vector<double> inlet_state,
-        NozzleChemistryType chemistry)
+        GasChemistry chemistry)
 : m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry, inlet_state),
-  m_inlet_state(inlet_state), m_gas(gas.shared_from_this())
+  m_inlet_state(std::move(inlet_state)), m_gas(gas, GasChemistry::FROZEN)
 {
 }
 
-double KineticNozzle::get_gamma_s(Cantera::ThermoPhase& state) {
-    // Frozen gamma_s is the correct value to use here,
-    // because the composition is thermodynamically "decoupled" from the
-    // expansion and sound wave propagation.
-    return state.cp_mass()/state.cv_mass();
+// Gas constructors: use provided Gas, override chemistry to FROZEN
+KineticNozzle::KineticNozzle(
+    Gas gas,
+    NozzleProfile& profile,
+    double mass_flow_rate)
+: m_profile(profile), m_mdot(mass_flow_rate),
+  m_throat_solver(*gas.solution(), gas.chemistry),
+  m_gas(std::move(gas))
+{
+    m_gas.chemistry = GasChemistry::FROZEN;
+    m_inlet_state.resize(m_gas.thermo()->stateSize());
+    m_gas.thermo()->saveState(m_inlet_state);
+}
+
+KineticNozzle::KineticNozzle(
+    Gas gas,
+    NozzleProfile& profile,
+    double mass_flow_rate,
+    std::vector<double> inlet_state)
+: m_profile(profile), m_mdot(mass_flow_rate),
+  m_throat_solver(*gas.solution(), gas.chemistry, inlet_state),
+  m_inlet_state(std::move(inlet_state)),
+  m_gas(std::move(gas))
+{
+    m_gas.chemistry = GasChemistry::FROZEN;
 }
 
 // Parse a CanteraError from CVodes and return a diagnostic message with context.
@@ -76,12 +97,12 @@ static std::string diagnose_cvodes_failure(
 
 KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_steps) {
     ThroatCondition throat = m_throat_solver.solve_throat_conditions();
-    auto thermo = m_gas->thermo();
+    auto thermo = m_gas.thermo();
     thermo->restoreState(throat.state);
 
     double H0 = throat.H_stagnation;
     double x = m_profile.x_min();
-    double u = gas_isenthalpic_velocity(*thermo, H0);
+    double u = m_gas.isenthalpic_velocity(H0);
     double dudx = 0.0;
     double M = 1.0; // mach number is 1.0 by definition in the throat.
     double A_throat = m_profile.area_at(x);
@@ -89,12 +110,12 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     double rho = thermo->density();
     double V_init = m_mdot / rho;
 
-    auto reactor = std::make_shared<Cantera::IdealGasMoleReactor>(m_gas, false);
+    auto reactor = std::make_shared<Cantera::IdealGasMoleReactor>(m_gas.solution(), false);
     reactor->setInitialVolume(V_init);
     reactor->setEnergyEnabled(true); // adiabatic
     reactor->syncState();
 
-    auto reservoir = std::make_shared<Cantera::Reservoir>(m_gas, false);
+    auto reservoir = std::make_shared<Cantera::Reservoir>(m_gas.solution(), false);
 
     double wall_velocity = 0.0;
     auto vfunc = std::make_shared<VelocityFunc>(wall_velocity);
@@ -107,13 +128,13 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     net.setInitialTime(0.0);
 
     // production rates
-    std::vector<double> wdot(m_gas->kinetics()->nTotalSpecies());
-    m_gas->kinetics()->getNetProductionRates(wdot.data());
+    std::vector<double> wdot(m_gas.kinetics()->nTotalSpecies());
+    m_gas.kinetics()->getNetProductionRates(wdot.data());
 
     // concentrations
-    const size_t n_species = m_gas->thermo()->nSpecies();
+    const size_t n_species = m_gas.thermo()->nSpecies();
     std::vector<double> conc(n_species);
-    m_gas->thermo()->getConcentrations(conc.data());
+    m_gas.thermo()->getConcentrations(conc.data());
 
     std::vector<double> damkohler(n_species);
 
@@ -128,10 +149,10 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
 
     for (int step = 0; step < max_steps; step++) {
         if (x >= x_exit) break;
-        
+
         double max_xstep = std::min(x_exit - x, dx_max);
         double dt = std::min(dt_max, max_xstep/ u);
-        
+
         x += u * dt * 0.5;
 
         double r = m_profile.radius_at(x);
@@ -156,11 +177,11 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
         double dx = u*dt;
         double Da_min = std::numeric_limits<double>::max();
         int freeze_idx = 0;
-        m_gas->kinetics()->getNetProductionRates(wdot.data());
-        m_gas->thermo()->getConcentrations(conc.data());
+        m_gas.kinetics()->getNetProductionRates(wdot.data());
+        m_gas.thermo()->getConcentrations(conc.data());
 
-        u = gas_isenthalpic_velocity(*thermo, H0);
-        M = u / gas_sonic_velocity(*thermo, get_gamma_s(*thermo));
+        u = m_gas.isenthalpic_velocity(H0);
+        M = u / m_gas.speed_of_sound();
 
         for (size_t k = 0; k < n_species; k++) {
             if (conc[k] < conc_threshold) {

@@ -3,7 +3,6 @@
 #include "cea_comparer.hpp"
 
 #include "goddard/combustor.hpp"
-#include "goddard/mixture_ratio.hpp"
 #include "goddard/problem.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/thermo.hpp"
@@ -38,7 +37,7 @@ protected:
     Goddard::RocketCaseParameters createCaseParams(
         const std::string& name,
         const CEAConditions& conditions,
-        Goddard::NozzleChemistryType chemistry);
+        Goddard::GasChemistry chemistry);
 
     std::shared_ptr<Cantera::Solution> fuel, oxidizer, products;
     std::unique_ptr<CEADataLoader> cea_loader;
@@ -61,7 +60,8 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // The CEA fuel_energy/oxidizer_energy fields contain the actual enthalpy.
     auto fuel_thermo = fuel->thermo();
     double fuel_temp = conditions.fuel_temp;
-    params.cantera_fuel_state = Goddard::ThermodynamicState(fuel_temp, 101325.0, "H2:1");
+    Goddard::PhaseSpecification fuel_state{fuel_temp, 101325.0, "H2:1"};
+    params.cantera_fuel_state = fuel_state;
     // double pressure_Pa = conditions.pressure_psia * 6894.76;
     
     // double fuel_MW = fuel_thermo->meanMolecularWeight();
@@ -71,7 +71,8 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     // Set oxidizer state (O2)
     auto ox_thermo = oxidizer->thermo();
     double ox_temp = conditions.oxidizer_temp;
-    params.cantera_oxidizer_state = Goddard::ThermodynamicState(ox_temp, 101325.0, "O2:1");
+    Goddard::PhaseSpecification ox_state{ox_temp, 101325.0, "O2:1"};
+    params.cantera_oxidizer_state = ox_state;
     // double ox_MW = ox_thermo->meanMolecularWeight();
     // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
     // ox_thermo->setState_HP(ox_energy, pressure_Pa);
@@ -85,7 +86,7 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
 Goddard::RocketCaseParameters CEAIntegrationTests::createCaseParams(
     const std::string& name,
     const CEAConditions& conditions,
-    Goddard::NozzleChemistryType chemistry) {
+    Goddard::GasChemistry chemistry) {
 
     Goddard::RocketCaseParameters case_params;
     case_params.name = name;
@@ -216,7 +217,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, NozzleChemistryType::EQUILIBRIUM);
+        cea_result->conditions, GasChemistry::EQUILIBRIUM);
     
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
@@ -264,7 +265,7 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, NozzleChemistryType::EQUILIBRIUM);
+        cea_result->conditions, GasChemistry::EQUILIBRIUM);
 
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
@@ -304,7 +305,7 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, NozzleChemistryType::EQUILIBRIUM);
+        cea_result->conditions, GasChemistry::EQUILIBRIUM);
 
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
@@ -361,7 +362,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, NozzleChemistryType::FROZEN);
+        cea_result->conditions, GasChemistry::FROZEN);
     
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
@@ -410,7 +411,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, NozzleChemistryType::FROZEN);
+        cea_result->conditions, GasChemistry::FROZEN);
 
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");
@@ -448,7 +449,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
     // Create RocketProblem from CEA conditions
     auto chem_params = createChemParamsFromCEA(cea_result->conditions);
     auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, NozzleChemistryType::FROZEN);
+        cea_result->conditions, GasChemistry::FROZEN);
 
     // Create and solve RocketProblem
     RocketProblem problem(chem_params, {case_params}, "ohmech");

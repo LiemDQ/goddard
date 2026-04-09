@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/moc.hpp"
 
 namespace Goddard {
@@ -24,31 +25,42 @@ struct KineticNozzleResults {
 
 class KineticNozzle {
 public:
-    
+
+    // Construct from Solution reference (builds Gas internally with FROZEN chemistry)
     KineticNozzle(
-        Cantera::Solution& gas, 
-        NozzleProfile& profile, 
-        double mass_flow_rate, 
-        NozzleChemistryType chemistry = NozzleChemistryType::EQUILIBRIUM);
+        Cantera::Solution& gas,
+        NozzleProfile& profile,
+        double mass_flow_rate,
+        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
 
     KineticNozzle(
-        Cantera::Solution& gas, 
-        NozzleProfile& profile, 
-        double mass_flow_rate, 
+        Cantera::Solution& gas,
+        NozzleProfile& profile,
+        double mass_flow_rate,
         std::vector<double> inlet_state,
-        NozzleChemistryType chemistry = NozzleChemistryType::EQUILIBRIUM);
+        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
+
+    // Construct from Gas directly (chemistry is overridden to FROZEN internally)
+    KineticNozzle(
+        Gas gas,
+        NozzleProfile& profile,
+        double mass_flow_rate);
+
+    KineticNozzle(
+        Gas gas,
+        NozzleProfile& profile,
+        double mass_flow_rate,
+        std::vector<double> inlet_state);
 
     KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 1e-3, int max_steps = 100000);
 
-    double get_gamma_s(Cantera::ThermoPhase& state);
-    
     NozzleProfile m_profile;
     double m_mdot;
 
 protected:
     Nozzle m_throat_solver;
     std::vector<double> m_inlet_state;
-    std::shared_ptr<Cantera::Solution> m_gas;
+    Gas m_gas;
 };
 
 } // namespace Goddard

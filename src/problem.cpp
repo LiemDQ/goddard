@@ -1,8 +1,8 @@
 #include "goddard/problem.hpp"
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
-#include "goddard/mixture_ratio.hpp"
 #include "goddard/error.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/equilibrium.hpp"
@@ -68,31 +68,39 @@ RocketProblemResults RocketProblem::solve() {
     std::shared_ptr<Cantera::ThermoPhase> thermo = m_sln->thermo();
     std::vector<double> state(m_sln->thermo()->stateSize());
 
-    std::vector<double> oxidizer_state = chemical_params.cantera_oxidizer_state.to_vector(*thermo);
-    std::vector<double> fuel_state = chemical_params.cantera_fuel_state.to_vector(*thermo);
+    const auto& fuel_input = chemical_params.cantera_fuel_state;
+    const auto& ox_input = chemical_params.cantera_oxidizer_state;
+
+    // Parse fuel and oxidizer compositions into Cantera Composition maps
+    thermo->setState_TPX(fuel_input.T, fuel_input.P, fuel_input.composition);
+    Cantera::Composition fuel_comp = thermo->getMoleFractionsByName();
+    double fuel_T = fuel_input.T;
+
+    thermo->setState_TPX(ox_input.T, ox_input.P, ox_input.composition);
+    Cantera::Composition ox_comp = thermo->getMoleFractionsByName();
+    double ox_T = ox_input.T;
 
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
-        
-        double M_fuel = molar_mass_from_composition(*thermo, fuel_state);
-        double M_oxidizer = molar_mass_from_composition(*thermo, oxidizer_state);
-        MixtureRatios MRs(OFs, M_fuel, M_oxidizer);
-        Combustor combustor(m_sln, fuel_state, oxidizer_state);
+
+        Gas combustor_gas(m_sln);
+        Combustor combustor(combustor_gas, fuel_comp, ox_comp);
 
         // TODO: workaround for bug in Cantera SolutionArray
         // prevents incorrect values from being written in RocketProblemResults.
         // this will have to remain in place until Cantera merges a fix.
         // see https://github.com/Cantera/cantera/issues/2067
-        if (pressures.size() == 1 && MRs.size() == 1) {
+        if (pressures.size() == 1 && OFs.size() == 1) {
             pressures.conservativeResize(2);
             pressures(1) = pressures(0);
         }
-        ThermoArray combustion_states = combustor.solve(pressures, MRs, params.combustor_options);
+        ThermoArray combustion_states = combustor.solve(fuel_T, ox_T, pressures, OFs, params.combustor_options);
 
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
-        Nozzle nozzle(*m_sln, params.nozzle_options.chemistry);
+        Gas gas(m_sln, params.nozzle_options.chemistry);
+        Nozzle nozzle(gas, params.nozzle_options.chemistry);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);

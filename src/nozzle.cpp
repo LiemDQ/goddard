@@ -12,25 +12,31 @@
 #include <iostream>
 namespace Goddard {
 
-Nozzle::Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry)
-    : inlet_state(gas.thermo()->stateSize()), m_gas(gas.shared_from_this()), m_chemistry(chemistry) {
-    if (chemistry == NozzleChemistryType::KINETIC) {
-        throw std::invalid_argument("NozzleChemistryType::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+Nozzle::Nozzle(const Gas& gas, GasChemistry chemistry)
+    : inlet_state(gas.thermo()->stateSize()), m_gas(gas.solution(), chemistry) {
+    if (chemistry == GasChemistry::KINETIC) {
+        throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
-    m_gas->thermo()->saveState(inlet_state);
+    if (chemistry == GasChemistry::PERFECT_GAS) {
+        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
+    }
+    m_gas.thermo()->saveState(inlet_state);
 }
 
-Nozzle::Nozzle(Cantera::Solution& gas, NozzleChemistryType chemistry, std::vector<double> state)
-    : inlet_state(std::move(state)), m_gas(gas.shared_from_this()), m_chemistry(chemistry) {
-    if (chemistry == NozzleChemistryType::KINETIC) {
-        throw std::invalid_argument("NozzleChemistryType::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+Nozzle::Nozzle(const Gas& gas, GasChemistry chemistry, std::vector<double> state)
+    : inlet_state(std::move(state)), m_gas(gas.solution(), chemistry) {
+    if (chemistry == GasChemistry::KINETIC) {
+        throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
+    }
+    if (chemistry == GasChemistry::PERFECT_GAS) {
+        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
     }
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
 
     const ThroatCondition throat_condition = solve_throat_conditions();
-    std::vector<NozzleResult> result;
+    std::vector<NozzleStation> result;
     switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO: {
             result.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
@@ -53,7 +59,7 @@ NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
 NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<double>& ratios) {
 
     const ThroatCondition throat_condition = solve_throat_conditions();
-    std::vector<NozzleResult> results;
+    std::vector<NozzleStation> results;
 
     switch (expansion_type) {
         case ExpansionType::SUPERSONIC_AREA_RATIO: {
@@ -76,12 +82,34 @@ NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<doub
     return {throat_condition, results};
 }
 
+NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
+    const ThroatCondition throat_condition = solve_throat_conditions();
+
+    // For a diverging-only profile (starting at throat), x_min is the throat.
+    double A_throat = profile.area_at(profile.x_min());
+
+    double x_start = profile.x_min();
+    double x_end = profile.x_max();
+    // Slightly inset from x_max to avoid out-of-bounds interpolation at the boundary
+    double x_range = x_end - x_start;
+    double x_last = x_end - 1e-10 * x_range;
+
+    std::vector<NozzleStation> results;
+    for (int i = 1; i <= num_stations; i++) {
+        double x = x_start + (x_last - x_start) * static_cast<double>(i) / num_stations;
+        double A = profile.area_at(x);
+        double area_ratio = A / A_throat;
+        results.push_back(solve_supersonic_area_expansion(throat_condition, area_ratio));
+    }
+    return {throat_condition, results};
+}
+
 void Nozzle::reset_state(){
-    m_gas->thermo()->restoreState(inlet_state);
+    m_gas.thermo()->restoreState(inlet_state);
 }
 
 ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
-    auto gas_state = m_gas->thermo();
+    auto gas_state = m_gas.thermo();
     gas_state->restoreState(inlet_state);
 
     double P_inlet = gas_state->pressure();
@@ -91,7 +119,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     std::vector<double> X_inlet(gas_state->nSpecies());
     gas_state->getMoleFractions(X_inlet.data());
 
-    double gamma_s = get_gamma_s(*gas_state);
+    double gamma_s = m_gas.gamma_s();
     double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
 
     const int max_iters = 5;
@@ -109,8 +137,8 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
 
         //if equilibrium conditions are selected, the composition must reach chemical
         //equilibrium in the throat.
-        solve_chemistry(*gas_state);
-        gamma_s = get_gamma_s(*gas_state);
+        solve_chemistry();
+        gamma_s = m_gas.gamma_s();
 
         double velocity = gas_isenthalpic_velocity(*gas_state, H_inlet);
         double sonic_velocity = gas_sonic_velocity(*gas_state, gamma_s);
@@ -121,7 +149,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
         iter++;
     }
 
-    EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_state);
+    ExpansionProperties final_props = get_thermo_equilibrium_properties(*gas_state);
 
     return {true,
         gas_sonic_velocity(*gas_state, gamma_s),
@@ -134,25 +162,19 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
         save_thermo_state(*gas_state)};
 }
 
-double Nozzle::get_gamma_s(Cantera::ThermoPhase& state) {
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
-        auto props = get_thermo_equilibrium_properties(state);
-        return props.gamma_s;
-    } else {
-        //gamma_s = gamma for frozen. See CEA Part I Section 6.5.3.
-        return state.cp_mass()/state.cv_mass();
-    }
+double Nozzle::get_gamma_s() {
+    return m_gas.gamma_s();
 }
 
-void Nozzle::solve_chemistry(Cantera::ThermoPhase& state) {
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
-        state.equilibrate("SP", "gibbs");
+void Nozzle::solve_chemistry() {
+    if (m_gas.chemistry == GasChemistry::EQUILIBRIUM) {
+        m_gas.thermo()->equilibrate("SP", "gibbs");
     }
     //for frozen nozzle, equilibration is a no-op
 }
 
-NozzleResult Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
-    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     gas_thermo->restoreState(throat_condition.state);
 
     double ln_pressure_ratio = 0;
@@ -173,12 +195,12 @@ NozzleResult Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat
     return iterate_area_expansion(gas_thermo, throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
 }
 
-NozzleResult Nozzle::solve_supersonic_area_expansion(
+NozzleStation Nozzle::solve_supersonic_area_expansion(
     const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
-    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     gas_thermo->restoreState(throat_condition.state);
 
-    double gamma_s = get_gamma_s(*gas_thermo);
+    double gamma_s = m_gas.gamma_s();
 
     double ln_pressure_ratio = 0;
 
@@ -204,27 +226,27 @@ NozzleResult Nozzle::solve_supersonic_area_expansion(
         abstol);
 }
 
-NozzleResult Nozzle::iterate_area_expansion(
+NozzleStation Nozzle::iterate_area_expansion(
     std::shared_ptr<Cantera::ThermoPhase>& gas_thermo,
     const ThroatCondition& throat_condition,
     double expansion_ratio, double pressure_ratio_guess, double abstol) {
 
     double pressure_ratio = pressure_ratio_guess;
-    double gamma_s = get_gamma_s(*gas_thermo);
+    double gamma_s = m_gas.gamma_s();
     double velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
     const double A_mdot_thrt = area_per_mdot(*gas_thermo, velocity);
 
     double T_exit = gas_thermo->temperature();
     std::vector<double> composition;
 
-    if (m_chemistry == NozzleChemistryType::FROZEN) {
+    if (m_gas.chemistry == GasChemistry::FROZEN) {
         composition.resize(gas_thermo->nSpecies());
         gas_thermo->getMoleFractions(composition.data());
     } else {
         double P_exit = throat_condition.P_inlet / pressure_ratio;
         gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
         gas_thermo->equilibrate("SP", "gibbs");
-        gamma_s = get_gamma_s(*gas_thermo);
+        gamma_s = m_gas.gamma_s();
     }
 
     double Ae_At = area_per_mdot(*gas_thermo, velocity)/A_mdot_thrt;
@@ -238,14 +260,14 @@ NozzleResult Nozzle::iterate_area_expansion(
     while (std::abs(residual) > abstol) {
         iters++;
         if (iters >= max_iter) {
-            if (m_chemistry == NozzleChemistryType::FROZEN) {
+            if (m_gas.chemistry == GasChemistry::FROZEN) {
                 throw std::runtime_error("Convergence failure: maximum number of iterations exceeded.");
             } else {
                 return {false, 0.0, 0.0, 0.0, {}};
             }
         }
 
-        if (m_chemistry == NozzleChemistryType::FROZEN) {
+        if (m_gas.chemistry == GasChemistry::FROZEN) {
             T_exit = iterate_temperature(gas_thermo, throat_condition, pressure_ratio, T_exit, composition);
             if (T_exit < 0) {
                 throw std::runtime_error("Convergence failure: negative temperature detected.");
@@ -256,7 +278,7 @@ NozzleResult Nozzle::iterate_area_expansion(
             gas_thermo->equilibrate("SP", "gibbs");
         }
 
-        gamma_s = get_gamma_s(*gas_thermo);
+        gamma_s = m_gas.gamma_s();
         velocity = gas_isenthalpic_velocity(*gas_thermo, throat_condition.H_stagnation);
         sonic_velocity = gas_sonic_velocity(*gas_thermo, gamma_s);
         Ae_At = area_per_mdot(*gas_thermo, velocity)/A_mdot_thrt;
@@ -268,8 +290,8 @@ NozzleResult Nozzle::iterate_area_expansion(
         pressure_ratio = std::exp(log_pinf_pe);
     }
 
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
-        EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_thermo);
+    if (m_gas.chemistry == GasChemistry::EQUILIBRIUM) {
+        ExpansionProperties final_props = get_thermo_equilibrium_properties(*gas_thermo);
         return {true,
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
@@ -280,21 +302,21 @@ NozzleResult Nozzle::iterate_area_expansion(
     }
 }
 
-NozzleResult Nozzle::solve_pressure_ratio(
+NozzleStation Nozzle::solve_pressure_ratio(
     const ThroatCondition& throat_condition,
     double pressure_ratio,
     double abstol) {
 
-    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas->thermo();
+    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     gas_thermo->restoreState(throat_condition.state);
 
-    if (m_chemistry == NozzleChemistryType::EQUILIBRIUM) {
+    if (m_gas.chemistry == GasChemistry::EQUILIBRIUM) {
         double P_exit = throat_condition.P_inlet/pressure_ratio;
         gas_thermo->setState_SP(throat_condition.S_inlet, P_exit);
         gas_thermo->equilibrate("SP", "gibbs");
 
         //pressure ratio for equilibrium nozzle does not require iteration
-        EquilibriumProperties final_props = get_thermo_equilibrium_properties(*gas_thermo);
+        ExpansionProperties final_props = get_thermo_equilibrium_properties(*gas_thermo);
         return {true,
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
@@ -310,7 +332,7 @@ NozzleResult Nozzle::solve_pressure_ratio(
         if (T_exit < 0) {
             return {false, 0.0, 0.0, 0.0, {}};
         } else {
-            double gamma_s = get_gamma_s(*gas_thermo);
+            double gamma_s = m_gas.gamma_s();
             return {true, gamma_s, -1.0, 1.0, save_thermo_state(*gas_thermo)};
         }
     }

@@ -2,6 +2,7 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/error.hpp"
 #include "cantera/core.h"
+#include "cantera/base/stringUtils.h"
 #include <utility>
 #include <iostream>
 #include <cassert>
@@ -9,13 +10,11 @@ namespace Goddard {
 
 // ---- BaseCombustor ----
 
-BaseCombustor::BaseCombustor(
-    std::shared_ptr<Cantera::Solution> thermo
-) : m_thermo(std::move(thermo))
+BaseCombustor::BaseCombustor(Gas gas)
+    : m_gas(std::move(gas))
 {}
 
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
-    //combustion is adiabatic and isobaric for subsonic flames
     switch (options.type) {
         case CombustorType::INFINITE_AREA: {
             states.equilibrate("HP", "gibbs");
@@ -26,61 +25,78 @@ ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& 
     return states;
 }
 
-void BaseCombustor::assign_mole_frac_row_entries(
-    Eigen::ArrayXXd& matrix,
-    long row_idx,
-    const Cantera::Composition& composition,
-    double coeff) const {
-
-    auto row = matrix.row(row_idx);
-    auto product_thermo = m_thermo->thermo();
-
-    for (auto&& entry:composition){
-        long entry_idx = product_thermo->speciesIndex(entry.first);
-        row(entry_idx) += entry.second * coeff;
+void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
+    const Composition& fuel, const Composition& oxidizer) const {
+    switch (type) {
+        case MixtureRatioType::OF_RATIO:
+            m_gas.set_OF_ratio(value, fuel, oxidizer);
+            break;
+        case MixtureRatioType::PHI_RATIO:
+            m_gas.set_equivalence_ratio(value, fuel, oxidizer);
+            break;
+        case MixtureRatioType::FUEL_FRAC:
+            m_gas.set_fuel_fraction(value, fuel, oxidizer);
+            break;
     }
 }
 
 // ---- Combustor ----
 
-Combustor::Combustor(
-    std::shared_ptr<Cantera::Solution> thermo,
-    std::vector<double>& fuel,
-    std::vector<double>& oxidizer
-) : BaseCombustor(std::move(thermo)), fuel_state(fuel), oxidizer_state(oxidizer)
+Combustor::Combustor(Gas gas, const std::string& fuel_comp, const std::string& ox_comp)
+    : BaseCombustor(std::move(gas))
+{
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
+}
+
+Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer)
+    : BaseCombustor(std::move(gas)),
+      m_fuel_composition(fuel), m_oxidizer_composition(oxidizer)
 {}
 
-ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options) {
-    Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mr);
+ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
+    const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options) {
 
-    //NOTE: this assumes the species layout in "products" is the same as in the feed object
-    ThermoArray combustion_states = ThermoArray(m_thermo, {temperatures.size(), pressures.size(), mr.molar_ratio().size() });
+    Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type);
+
+    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
     return combust(combustion_states, options);
 }
 
-ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const MixtureRatios& mr, const CombustorOptions& options) {
-    auto thermo = m_thermo->thermo();
+ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperature,
+    const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
+    const CombustorOptions& options) {
 
-    Eigen::ArrayXd mass_ox = mr.oxidizer_mass_frac();
-    Eigen::ArrayXd mass_f = mr.fuel_mass_frac();
-    Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mr);
+    auto thermo = m_gas.thermo();
+    MixtureRatioType type = options.mixture_type;
 
-    thermo->restoreState(oxidizer_state);
-    double oxidizer_enthalpy = thermo->enthalpy_mass();
+    // Compute reactant enthalpies at their respective temperatures
+    // Use first pressure as reference (enthalpy is P-independent for ideal gas)
+    double ref_pressure = pressures[0];
 
-    thermo->restoreState(fuel_state);
+    thermo->setState_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
     double fuel_enthalpy = thermo->enthalpy_mass();
 
-    Eigen::ArrayXd enthalpies = oxidizer_enthalpy * mass_ox + fuel_enthalpy * mass_f;
+    thermo->setState_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
+    double oxidizer_enthalpy = thermo->enthalpy_mass();
 
-    // Each enthalpy[i] is derived from composition i, so they must be paired
-    // rather than broadcast. Set each state explicitly to avoid creating
-    // nonsensical cross-paired (enthalpy_j, composition_i) states.
-    long n_compositions = enthalpies.size();
+    Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mixture_ratios, type);
+
+    // Compute fuel mass fraction for each mixture ratio to blend enthalpies
+    long n_compositions = mixture_ratios.size();
     long n_pressures = pressures.size();
-    ThermoArray combustion_states = ThermoArray(m_thermo, {n_compositions, n_pressures});
+    Eigen::ArrayXd enthalpies(n_compositions);
+
+    for (long i = 0; i < n_compositions; i++) {
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        double fuel_mass_frac = thermo->mixtureFraction(
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+        enthalpies[i] = fuel_enthalpy * fuel_mass_frac + oxidizer_enthalpy * (1.0 - fuel_mass_frac);
+    }
+
+    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
 
     int loc = 0;
     for (long i = 0; i < n_compositions; i++) {
@@ -96,115 +112,119 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const MixtureRatio
     return combust(combustion_states, options);
 }
 
-/**
- * Create a matrix with the mole fractions of each component participating in the reaction.
- */
-Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(const MixtureRatios& mr) const {
-    auto thermo = m_thermo->thermo();
+Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(
+    const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type) const {
 
-    Eigen::ArrayXd mole_ratios = mr.molar_ratio();
-    Eigen::ArrayXd moles_ox = mole_ratios / (1 + mole_ratios);
-    Eigen::ArrayXd moles_f = 1 - moles_ox;
+    auto thermo = m_gas.thermo();
+    long n_species = static_cast<long>(thermo->nSpecies());
+    long n_ratios = mixture_ratios.size();
 
-    //create the matrix.
-    //this needs to include all species from both oxidizer and fuel
-    //this may be problematic if there are unused species in the reactants
-    Eigen::ArrayXXd mole_frac_matrix = Eigen::ArrayXXd::Zero(mole_ratios.size(), thermo->nSpecies());
-    thermo->restoreState(oxidizer_state);
-    Cantera::Composition ox_species = thermo->getMoleFractionsByName();
+    Eigen::ArrayXXd mole_frac_matrix = Eigen::ArrayXXd::Zero(n_ratios, n_species);
+    std::vector<double> mole_fracs(n_species);
 
-    thermo->restoreState(fuel_state);
-    Cantera::Composition fuel_species = thermo->getMoleFractionsByName();
-
-    for (int i = 0; i < mole_frac_matrix.rows(); i++) {
-        assign_mole_frac_row_entries(mole_frac_matrix, i, ox_species, moles_ox[i]);
-        assign_mole_frac_row_entries(mole_frac_matrix, i, fuel_species, moles_f[i]);
+    for (long i = 0; i < n_ratios; i++) {
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        thermo->getMoleFractions(mole_fracs.data());
+        for (long j = 0; j < n_species; j++) {
+            mole_frac_matrix(i, j) = mole_fracs[j];
+        }
     }
 
     assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
-
     return mole_frac_matrix;
 }
 
+Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(
+    const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type) const {
 
-/**
- * Create a matrix with the mass fractions of each component participating in the reaction.
- */
-Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(const MixtureRatios& mr) const {
-    auto thermo = m_thermo->thermo();
+    auto thermo = m_gas.thermo();
+    long n_species = static_cast<long>(thermo->nSpecies());
+    long n_ratios = mixture_ratios.size();
 
-    Eigen::ArrayXd moles_ox = mr.oxidizer_mass_frac();
-    Eigen::ArrayXd moles_f = mr.fuel_mass_frac();
+    Eigen::ArrayXXd mass_frac_matrix = Eigen::ArrayXXd::Zero(n_ratios, n_species);
+    std::vector<double> mass_fracs(n_species);
 
-    //create the matrix.
-    //this needs to include all species from both oxidizer and fuel
-    //this may be problematic if there are unused species in the reactants
-    Eigen::ArrayXXd mass_frac_matrix = Eigen::ArrayXXd::Zero(moles_ox.size(), thermo->nSpecies());
-    thermo->restoreState(oxidizer_state);
-    Cantera::Composition ox_species = thermo->getMassFractionsByName();
-
-    thermo->restoreState(fuel_state);
-    Cantera::Composition fuel_species = thermo->getMassFractionsByName();
-
-    for (int i = 0; i < mass_frac_matrix.rows(); i++) {
-        assign_mole_frac_row_entries(mass_frac_matrix, i, ox_species, moles_ox[i]);
-        assign_mole_frac_row_entries(mass_frac_matrix, i, fuel_species, moles_f[i]);
+    for (long i = 0; i < n_ratios; i++) {
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        thermo->getMassFractions(mass_fracs.data());
+        for (long j = 0; j < n_species; j++) {
+            mass_frac_matrix(i, j) = mass_fracs[j];
+        }
     }
 
-    assert((mass_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
-
+    assert((mass_frac_matrix >= 0).all() && "Mass fractions must be nonnegative");
     return mass_frac_matrix;
 }
 
 // ---- DilutedCombustor ----
 
-DilutedCombustor::DilutedCombustor(
-    std::shared_ptr<Cantera::Solution> thermo,
-    std::vector<double>& fuel,
-    std::vector<double>& oxidizer,
-    std::vector<double>& flue
-) : BaseCombustor(std::move(thermo)),
-    fuel_state(fuel), oxidizer_state(oxidizer), flue_state(flue)
+DilutedCombustor::DilutedCombustor(Gas gas, const std::string& fuel_comp,
+    const std::string& ox_comp, const std::string& dilute_comp)
+    : BaseCombustor(std::move(gas))
+{
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
+    m_flue_composition = Cantera::parseCompString(dilute_comp, gas.species_names());
+}
+
+DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,
+    const Composition& oxidizer, const Composition& flue)
+    : BaseCombustor(std::move(gas)),
+      m_fuel_composition(fuel), m_oxidizer_composition(oxidizer), m_flue_composition(flue)
 {}
 
-ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures, const MixtureRatios& mr, double recirculation_ratio, const CombustorOptions& options) {
-    Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mr, recirculation_ratio);
+ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
+    const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio, const CombustorOptions& options) {
 
-    ThermoArray combustion_states = ThermoArray(m_thermo, {temperatures.size(), pressures.size(), mr.molar_ratio().size()});
+    Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type, recirculation_ratio);
+
+    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
     return combust(combustion_states, options);
 }
 
-ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& pressures, const MixtureRatios& mr, double dilution_ratio, const CombustorOptions& options) {
-    auto thermo = m_thermo->thermo();
+ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_temperature,
+    double flue_temperature, const Eigen::ArrayXd& pressures,
+    const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio,
+    const CombustorOptions& options) {
 
-    double r = dilution_ratio;
-    double wReactant = 1.0 / (1.0 + r);
-    double wDilution = r / (1.0 + r);
+    auto thermo = m_gas.thermo();
+    MixtureRatioType type = options.mixture_type;
+    double r = recirculation_ratio;
+    double w_reactant = 1.0 / (1.0 + r);
+    double w_dilution = r / (1.0 + r);
 
-    // Mass fractions of fuel and oxidizer within the fresh feed, scaled by wFresh
-    Eigen::ArrayXd massFuelTotal = mr.fuel_mass_frac() * wReactant;
-    Eigen::ArrayXd massOxTotal = mr.oxidizer_mass_frac() * wReactant;
+    double ref_pressure = pressures[0];
 
-    Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mr, dilution_ratio);
+    thermo->setState_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
+    double fuel_enthalpy = thermo->enthalpy_mass();
 
-    thermo->restoreState(fuel_state);
-    double fuelEnthalpy = thermo->enthalpy_mass();
+    thermo->setState_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
+    double oxidizer_enthalpy = thermo->enthalpy_mass();
 
-    thermo->restoreState(oxidizer_state);
-    double oxidizerEnthalpy = thermo->enthalpy_mass();
+    thermo->setState_TPX(flue_temperature, ref_pressure, m_flue_composition);
+    double flue_enthalpy = thermo->enthalpy_mass();
 
-    thermo->restoreState(flue_state);
-    double flueEnthalpy = thermo->enthalpy_mass();
+    Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mixture_ratios, type, recirculation_ratio);
 
-    Eigen::ArrayXd enthalpies = fuelEnthalpy * massFuelTotal
-                              + oxidizerEnthalpy * massOxTotal
-                              + flueEnthalpy * wDilution;
-
-    long n_compositions = enthalpies.size();
+    long n_compositions = mixture_ratios.size();
     long n_pressures = pressures.size();
-    ThermoArray combustion_states = ThermoArray(m_thermo, {n_compositions, n_pressures});
+    Eigen::ArrayXd enthalpies(n_compositions);
+
+    for (long i = 0; i < n_compositions; i++) {
+        // Get fuel mass fraction within the fresh feed
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        double fuel_mass_frac_fresh = thermo->mixtureFraction(
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+        double ox_mass_frac_fresh = 1.0 - fuel_mass_frac_fresh;
+
+        enthalpies[i] = fuel_enthalpy * fuel_mass_frac_fresh * w_reactant
+                      + oxidizer_enthalpy * ox_mass_frac_fresh * w_reactant
+                      + flue_enthalpy * w_dilution;
+    }
+
+    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
 
     int loc = 0;
     for (long i = 0; i < n_compositions; i++) {
@@ -220,92 +240,77 @@ ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& pressures, const Mixtu
     return combust(combustion_states, options);
 }
 
-/**
- * Create a mole fraction matrix blending fuel, oxidizer, and flue gas streams.
- * The fuel/oxidizer split is determined by MixtureRatios (molar basis).
- * The fresh vs flue split is determined by dilution_ratio (mass basis),
- * converted to a molar basis using the mean molecular weights of each stream.
- */
-Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(const MixtureRatios& mr, double recirculation_ratio) const {
-    auto thermo = m_thermo->thermo();
+Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
+    const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type,
+    double recirculation_ratio) const {
 
+    auto thermo = m_gas.thermo();
+    long n_species = static_cast<long>(thermo->nSpecies());
+    long n_ratios = mixture_ratios.size();
     double r = recirculation_ratio;
 
-    // Compute molar weights of each stream to convert mass-based recirculation ratio to moles
-    thermo->restoreState(fuel_state);
-    double mwFuel = thermo->meanMolecularWeight();
-    Cantera::Composition fuel_species = thermo->getMoleFractionsByName();
+    // Get molecular weight and mole fractions for flue gas
+    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    double mw_flue = thermo->meanMolecularWeight();
+    std::vector<double> flue_mole_fracs(n_species);
+    thermo->getMoleFractions(flue_mole_fracs.data());
 
-    thermo->restoreState(oxidizer_state);
-    double mwOx = thermo->meanMolecularWeight();
-    Cantera::Composition ox_species = thermo->getMoleFractionsByName();
+    Eigen::ArrayXXd mole_frac_matrix = Eigen::ArrayXXd::Zero(n_ratios, n_species);
+    std::vector<double> fresh_mole_fracs(n_species);
 
-    thermo->restoreState(flue_state);
-    double mwFlue = thermo->meanMolecularWeight();
-    Cantera::Composition flue_species = thermo->getMoleFractionsByName();
+    for (long i = 0; i < n_ratios; i++) {
+        // Set fresh feed composition
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        double mw_fresh = thermo->meanMolecularWeight();
+        thermo->getMoleFractions(fresh_mole_fracs.data());
 
-    // Molar ratio of oxidizer to fuel (from MixtureRatios)
-    Eigen::ArrayXd moleRatios = mr.molar_ratio();
+        // Convert mass-based recirculation ratio to molar basis
+        // n_fresh = m_fresh / MW_fresh, n_flue = m_flue / MW_flue
+        // where m_fresh = 1/(1+r), m_flue = r/(1+r)
+        double n_fresh = 1.0 / ((1.0 + r) * mw_fresh);
+        double n_flue = r / ((1.0 + r) * mw_flue);
+        double n_total = n_fresh + n_flue;
 
-    // Mass of each stream per unit total mass (fuel + ox + flue):
-    //   m_fuel = 1/(OF+1) per unit fresh feed, scaled by 1/(1+r) for total
-    //   m_ox   = OF/(OF+1) per unit fresh feed, scaled by 1/(1+r) for total
-    //   m_flue = r/(1+r)
-    // Convert to moles: n_i = m_i / MW_i
-    // Then normalize to get mole fractions of each stream.
-    Eigen::ArrayXd OF = mr.OF_ratio();
-    Eigen::ArrayXd nFuel = (1.0 / (OF + 1.0)) / ((1.0 + r) * mwFuel);
-    Eigen::ArrayXd nOx = (OF / (OF + 1.0)) / ((1.0 + r) * mwOx);
-    double nFlueBase = r / ((1.0 + r) * mwFlue);
-    Eigen::ArrayXd nFlue = Eigen::ArrayXd::Constant(nFuel.size(), nFlueBase);
+        double mole_frac_fresh = n_fresh / n_total;
+        double mole_frac_flue = n_flue / n_total;
 
-    Eigen::ArrayXd nTotal = nFuel + nOx + nFlue;
-    Eigen::ArrayXd moleFracFuel = nFuel / nTotal;
-    Eigen::ArrayXd moleFracOx = nOx / nTotal;
-    Eigen::ArrayXd moleFracFlue = nFlue / nTotal;
-
-    Eigen::ArrayXXd mole_frac_matrix = Eigen::ArrayXXd::Zero(moleRatios.size(), thermo->nSpecies());
-
-    for (int i = 0; i < mole_frac_matrix.rows(); i++) {
-        assign_mole_frac_row_entries(mole_frac_matrix, i, fuel_species, moleFracFuel[i]);
-        assign_mole_frac_row_entries(mole_frac_matrix, i, ox_species, moleFracOx[i]);
-        assign_mole_frac_row_entries(mole_frac_matrix, i, flue_species, moleFracFlue[i]);
+        for (long j = 0; j < n_species; j++) {
+            mole_frac_matrix(i, j) = fresh_mole_fracs[j] * mole_frac_fresh
+                                   + flue_mole_fracs[j] * mole_frac_flue;
+        }
     }
 
     assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
-
     return mole_frac_matrix;
 }
 
-/**
- * Create a mass fraction matrix blending fuel, oxidizer, and flue gas streams.
- * Fresh feed mass fractions are scaled by 1/(1+r), flue gas by r/(1+r).
- */
-Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(const MixtureRatios& mr, double recirculation_ratio) const {
-    auto thermo = m_thermo->thermo();
+Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(
+    const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type,
+    double recirculation_ratio) const {
 
+    auto thermo = m_gas.thermo();
+    long n_species = static_cast<long>(thermo->nSpecies());
+    long n_ratios = mixture_ratios.size();
     double r = recirculation_ratio;
-    double wFresh = 1.0 / (1.0 + r);
-    double wFlue = r / (1.0 + r);
+    double w_fresh = 1.0 / (1.0 + r);
+    double w_flue = r / (1.0 + r);
 
-    Eigen::ArrayXd massFuel = mr.fuel_mass_frac() * wFresh;
-    Eigen::ArrayXd massOx = mr.oxidizer_mass_frac() * wFresh;
+    // Get mass fractions for flue gas
+    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    std::vector<double> flue_mass_fracs(n_species);
+    thermo->getMassFractions(flue_mass_fracs.data());
 
-    Eigen::ArrayXXd mass_frac_matrix = Eigen::ArrayXXd::Zero(massFuel.size(), thermo->nSpecies());
+    Eigen::ArrayXXd mass_frac_matrix = Eigen::ArrayXXd::Zero(n_ratios, n_species);
+    std::vector<double> fresh_mass_fracs(n_species);
 
-    thermo->restoreState(oxidizer_state);
-    Cantera::Composition ox_species = thermo->getMassFractionsByName();
+    for (long i = 0; i < n_ratios; i++) {
+        set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        thermo->getMassFractions(fresh_mass_fracs.data());
 
-    thermo->restoreState(fuel_state);
-    Cantera::Composition fuel_species = thermo->getMassFractionsByName();
-
-    thermo->restoreState(flue_state);
-    Cantera::Composition flue_species = thermo->getMassFractionsByName();
-
-    for (int i = 0; i < mass_frac_matrix.rows(); i++) {
-        assign_mole_frac_row_entries(mass_frac_matrix, i, fuel_species, massFuel[i]);
-        assign_mole_frac_row_entries(mass_frac_matrix, i, ox_species, massOx[i]);
-        assign_mole_frac_row_entries(mass_frac_matrix, i, flue_species, wFlue);
+        for (long j = 0; j < n_species; j++) {
+            mass_frac_matrix(i, j) = fresh_mass_fracs[j] * w_fresh
+                                   + flue_mass_fracs[j] * w_flue;
+        }
     }
 
     if (!((mass_frac_matrix >= 0).all())) {

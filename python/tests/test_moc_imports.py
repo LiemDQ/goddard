@@ -3,14 +3,14 @@ import pytest
 
 
 def test_import_moc_enums():
-    from goddard import MocFlowKind, MocChemistry, MocMode, MocInitialization
+    from goddard import MocFlowKind, GasChemistry, MocMode, MocInitialization
 
     assert MocFlowKind.PLANAR is not None
     assert MocFlowKind.AXISYMMETRIC is not None
 
-    assert MocChemistry.PERFECT_GAS is not None
-    assert MocChemistry.FROZEN is not None
-    assert MocChemistry.EQUILIBRIUM is not None
+    assert GasChemistry.PERFECT_GAS is not None
+    assert GasChemistry.FROZEN is not None
+    assert GasChemistry.EQUILIBRIUM is not None
 
     assert MocMode.DESIGN_MIN_LENGTH is not None
     assert MocMode.DESIGN_RAO is not None
@@ -76,35 +76,35 @@ def test_nozzle_profile_push_back():
 
 
 def test_moc_options_defaults():
-    from goddard import MocOptions, MocFlowKind, MocChemistry, MocMode, MocInitialization
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocInitialization
 
     opts = MocOptions()
     assert opts.flow_type == MocFlowKind.PLANAR
-    assert opts.chemistry == MocChemistry.PERFECT_GAS
+    assert opts.chemistry == GasChemistry.PERFECT_GAS
     assert opts.mode == MocMode.DESIGN_MIN_LENGTH
     assert opts.initialization == MocInitialization.STRAIGHT_SONIC_LINE
     assert opts.num_characteristics == 10
     assert opts.gamma == pytest.approx(1.4)
-    assert opts.reltol == pytest.approx(1e-5)
-    assert opts.abstol == pytest.approx(1e-10)
+    assert opts.solver_options.reltol == pytest.approx(1e-5)
+    assert opts.solver_options.abstol == pytest.approx(1e-10)
     assert opts.theta_max == pytest.approx(0.0)
     assert opts.exit_mach == pytest.approx(0.0)
     assert opts.theta_schedule == []
 
 
 def test_moc_options_kwargs():
-    from goddard import MocOptions, MocFlowKind, MocChemistry, MocMode, MocInitialization
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocInitialization
 
     opts = MocOptions(
         flow_type=MocFlowKind.AXISYMMETRIC,
-        chemistry=MocChemistry.FROZEN,
+        chemistry=GasChemistry.FROZEN,
         mode=MocMode.ANALYSIS,
         num_characteristics=20,
         gamma=1.3,
         theta_max=0.3,
     )
     assert opts.flow_type == MocFlowKind.AXISYMMETRIC
-    assert opts.chemistry == MocChemistry.FROZEN
+    assert opts.chemistry == GasChemistry.FROZEN
     assert opts.mode == MocMode.ANALYSIS
     assert opts.num_characteristics == 20
     assert opts.gamma == pytest.approx(1.3)

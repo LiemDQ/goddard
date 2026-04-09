@@ -19,7 +19,7 @@ static MocNozzle make_perfect_gas_solver(
 {
     MocOptions opts;
     opts.flow_type = flow_type;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.gamma = gamma;
     opts.theta_max = theta_max;
@@ -234,13 +234,13 @@ protected:
 TEST_F(MocFrozenTest, PlanarFrozenSolves) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::FROZEN;
+    opts.chemistry = GasChemistry::FROZEN;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 15.0 * DEG;
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -257,13 +257,13 @@ TEST_F(MocFrozenTest, PlanarFrozenSolves) {
 TEST_F(MocFrozenTest, FrozenExitMachConsistent) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::FROZEN;
+    opts.chemistry = GasChemistry::FROZEN;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 5;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     // Exit Mach should be positive and reasonable
@@ -278,13 +278,13 @@ TEST_F(MocFrozenTest, FrozenExitMachConsistent) {
 TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    opts.chemistry = GasChemistry::EQUILIBRIUM;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 15.0 * DEG;
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -300,13 +300,13 @@ TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
 TEST_F(MocFrozenTest, AxiFrozenSolves) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::FROZEN;
+    opts.chemistry = GasChemistry::FROZEN;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -318,13 +318,13 @@ TEST_F(MocFrozenTest, AxiFrozenSolves) {
 TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    opts.chemistry = GasChemistry::EQUILIBRIUM;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     EXPECT_TRUE(result.converged);
@@ -336,13 +336,13 @@ TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
 TEST_F(MocFrozenTest, AxiFrozenMonotonicWall) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::FROZEN;
+    opts.chemistry = GasChemistry::FROZEN;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(gas, opts);
+    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
     for (size_t i = 1; i < result.net.wall_x.size(); i++) {
@@ -358,19 +358,19 @@ TEST_F(MocFrozenTest, AxiFrozenMonotonicWall) {
 TEST_F(MocFrozenTest, AxiFrozenVs1D) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::FROZEN;
+    opts.chemistry = GasChemistry::FROZEN;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(gas, opts);
+    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
     ASSERT_TRUE(moc_result.converged);
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(*gas, NozzleChemistryType::FROZEN);
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::FROZEN), GasChemistry::FROZEN);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
@@ -387,19 +387,19 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
 TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::EQUILIBRIUM;
+    opts.chemistry = GasChemistry::EQUILIBRIUM;
     opts.mode = MocMode::DESIGN_MIN_LENGTH;
     opts.theta_max = 12.0 * DEG;
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(gas, opts);
+    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
     ASSERT_TRUE(moc_result.converged);
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(*gas, NozzleChemistryType::EQUILIBRIUM);
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::EQUILIBRIUM), GasChemistry::EQUILIBRIUM);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
@@ -421,16 +421,16 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
     opts.geometry.throat_radius = 0.05;
 
     // Frozen
-    opts.chemistry = MocChemistry::FROZEN;
-    MocNozzle frozen_nozzle(gas, opts);
+    opts.chemistry = GasChemistry::FROZEN;
+    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
 
     // Equilibrium
-    opts.chemistry = MocChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(gas, opts);
+    opts.chemistry = GasChemistry::EQUILIBRIUM;
+    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
     auto equil_result = equil_nozzle.solve();
 
     EXPECT_TRUE(frozen_result.converged);
@@ -448,16 +448,16 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
     opts.geometry.throat_radius = 0.05;
 
     // Frozen
-    opts.chemistry = MocChemistry::FROZEN;
-    MocNozzle frozen_nozzle(gas, opts);
+    opts.chemistry = GasChemistry::FROZEN;
+    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state for equilibrium run
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
 
     // Equilibrium
-    opts.chemistry = MocChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(gas, opts);
+    opts.chemistry = GasChemistry::EQUILIBRIUM;
+    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
     auto equil_result = equil_nozzle.solve();
 
     // Both should converge
@@ -558,7 +558,7 @@ TEST(MocAnalysis, PlanarRoundTrip) {
     // Step 2: Analysis mode with design contour
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::ANALYSIS;
     opts.gamma = gamma;
     opts.num_characteristics = 10;
@@ -586,7 +586,7 @@ TEST(MocAnalysis, PlanarWallPointsPopulated) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::ANALYSIS;
     opts.gamma = gamma;
     opts.num_characteristics = 7;
@@ -613,7 +613,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = MocChemistry::PERFECT_GAS;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::ANALYSIS;
     opts.gamma = gamma;
     opts.num_characteristics = 8;
