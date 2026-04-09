@@ -223,7 +223,7 @@ void bind_structs(nb::module_& m) {
         .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages);
 
     // ThermoStateInfo
-    nb::class_<Goddard::ThermodynamicState>(m, "ThermoStateInfo")
+    nb::class_<Goddard::ThermodynamicState>(m, "ThermodynamicState")
         .def(nb::init<>())
         .def("__init__", [](Goddard::ThermodynamicState* self,
                             double pressure,

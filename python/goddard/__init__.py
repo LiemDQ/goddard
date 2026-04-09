@@ -18,7 +18,7 @@ from goddard._core import (
     RocketCaseParameters,
     ChemicalParameters,
     ThermodynamicState,
-    InputState,
+    PhaseSpecification,
     RocketStation,
     RocketPerformance,
     RocketState,

@@ -209,10 +209,10 @@ def test_equilibrate(eq_gas):
 # ---------------------------------------------------------------------------
 
 def test_snapshot(gas):
-    from goddard import ThermoStateInfo
+    from goddard import ThermodynamicState
     gas.set_state_TP(1000.0, 1e5)
     info = gas.snapshot()
-    assert isinstance(info, ThermoStateInfo)
+    assert isinstance(info, ThermodynamicState)
     assert abs(info.temperature - 1000.0) < 0.1
     assert abs(info.pressure - 1e5) < 1.0
 

@@ -28,7 +28,7 @@ def test_import_structs():
     from goddard import (
         CombustorOptions, NozzleOptions, ThroatCondition,
         NozzleResult, NozzleResults, RocketCaseParameters,
-        ChemicalParameters, ThermoStateInfo, RocketPerformance,
+        ChemicalParameters, ThermodynamicState, RocketPerformance,
         RocketState, ExpansionProperties, EquilibriumDerivatives,
     )
 
@@ -36,8 +36,7 @@ def test_import_structs():
 def test_import_classes():
     from goddard import (
         RocketProblem, RocketProblemResults, ThermoArray,
-        Combustor, Nozzle,
-        MixtureRatio, MixtureRatios, SolutionHandle,
+        Combustor, Nozzle, Gas, MocNozzle, ShockSolver
     )
 
 

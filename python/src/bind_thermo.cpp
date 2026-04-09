@@ -13,6 +13,10 @@ void bind_thermo(nb::module_& m) {
                         double,
                         const std::string&>(),
             "T"_a, "P"_a, "composition"_a = "")
+        .def(nb::init<double,
+                        double,
+                        const std::map<std::string,double>&>(),
+            "T"_a, "P"_a, "composition"_a)
         .def_rw("T", &Goddard::PhaseSpecification::T)
         .def_rw("P", &Goddard::PhaseSpecification::P)
         .def_rw("composition", &Goddard::PhaseSpecification::composition);
