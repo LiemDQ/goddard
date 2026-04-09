@@ -15,24 +15,50 @@ namespace Goddard {
  */
 class Gas {
 public:
+    /**
+     * @note The created `Gas` will reference the same `Solution` object pointed to
+     * by the `shared_ptr`.  
+     */
     explicit Gas(std::shared_ptr<Cantera::Solution> gas,
                  GasChemistry chemistry = GasChemistry::FROZEN);
+    
+    /**
+     * @note This constructor copies the `Solution` object. 
+     */
     Gas(const Cantera::Solution& gas,
         GasChemistry chemistry = GasChemistry::FROZEN);
     
+    /**
+     * @note This constructor will reference the same `Solution` object. 
+     */
     Gas(Cantera::Solution&& gas,
+        GasChemistry chemistry = GasChemistry::FROZEN);
+
+    /**
+     * Create `Gas` from input data file. 
+     */
+    Gas(const std::string& infile, 
+        const std::string& phase_name,
         GasChemistry chemistry = GasChemistry::FROZEN);
 
     Gas(const Gas& gas);
     Gas operator=(const Gas& gas);
 
-    static Gas create(const std::string& filename, 
-        GasChemistry chemistry = GasChemistry::FROZEN,
-        const std::string& phase_name = "");
-
+    static Gas create(const std::string& infile, 
+        const std::string& phase_name,
+        GasChemistry chemistry = GasChemistry::FROZEN);
+    
+    static Gas create_from_elements(const std::string& infile,
+        const std::string& name, 
+        const std::vector<std::string>& elements,
+        GasChemistry chemistry = GasChemistry::FROZEN);
+    
+    static Gas create_from_species(const std::string& infile, 
+        const std::string& name,
+        const std::vector<std::string>& species,
+        GasChemistry chemistry = GasChemistry::FROZEN);
 
     // State setters
-    using Composition = Cantera::Composition;
     void set_state_TD(double T, double D);
     void set_state_TP(double T, double P);
     void set_state_TPX(double T, double P, const std::string& composition);
@@ -49,6 +75,8 @@ public:
     void copy_state(std::vector<double>& state) const;
     void restore_state(const std::vector<double>& state);
     ThermodynamicState snapshot() const;
+    std::string name() const;
+    void set_name(const std::string& name);
 
     // Basic thermodynamic properties
     double temperature() const;

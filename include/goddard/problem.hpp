@@ -21,17 +21,11 @@ struct RocketCaseParameters {
     NozzleOptions nozzle_options;
 };
 
-struct Speciation { //TODO: implement speciation functionality
-    std::unordered_set<std::string> elements;
-    std::unordered_set<std::string> species;
-    int max_species = 10;
-};
-
 struct ChemicalParameters {
     std::string thermo_file;
     std::unordered_set<std::string> species;
-    InputState cantera_fuel_state;
-    InputState cantera_oxidizer_state;
+    PhaseSpecification cantera_fuel_state;
+    PhaseSpecification cantera_oxidizer_state;
     MixtureRatioType mixture_type;
     std::vector<double> mixtures;
     std::vector<double> OF_ratios;

@@ -53,7 +53,7 @@ public:
     double dlV_dlT_P;
     double speed_of_sound;
     double stagnation_enthalpy;
-    std::map<std::string, double> composition; // stored as mass fractions
+    Composition composition; // stored as mass fractions
 
     size_t state_size() const;
     /**
@@ -67,15 +67,16 @@ public:
 /**
  * Convenience class for initializing a thermodynamic state.
  */
-class InputState {
+class PhaseSpecification {
 public:
-    InputState() = default;
-    InputState(double temperature, double pressure, std::string_view comp)
-        : T(temperature), P(pressure), composition(comp) {}
+    PhaseSpecification() = default;
+    PhaseSpecification(double T, double P, const std::string& comp);
+    PhaseSpecification(double T, double P, const Composition& comp);
+
 
     double T = 0.0;
     double P = 0.0;
-    std::string composition = {};
+    Composition composition = {};
 
     std::vector<double> to_vector(Cantera::ThermoPhase& sln) const;
     std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln) const;

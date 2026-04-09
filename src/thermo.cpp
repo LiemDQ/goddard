@@ -1,5 +1,7 @@
+#include "cantera/base/stringUtils.h"
 #include "goddard/thermo.hpp"
 #include "goddard/error.hpp"
+
 namespace Goddard {
 
 size_t ThermodynamicState::state_size() const {
@@ -30,7 +32,18 @@ std::vector<double> ThermodynamicState::to_vector() const {
     return out;
 }
 
-std::vector<double> InputState::to_vector(Cantera::ThermoPhase& thermo) const {
+// -- PhaseSpecification --
+
+PhaseSpecification::PhaseSpecification(double temperature, double pressure, const std::string& comp) 
+: T(temperature), P(pressure), composition(Cantera::parseCompString(comp))
+{}
+
+PhaseSpecification::PhaseSpecification(double temperature, double pressure, const Composition& comp) 
+: T(temperature), P(pressure), composition(comp)
+{}
+
+
+std::vector<double> PhaseSpecification::to_vector(Cantera::ThermoPhase& thermo) const {
     std::vector<double> out(thermo.stateSize());
 
     thermo.setState_TPX(T, P, composition);
@@ -39,7 +52,7 @@ std::vector<double> InputState::to_vector(Cantera::ThermoPhase& thermo) const {
     return out;
 }
 
-std::vector<double> InputState::to_mass_vector(Cantera::ThermoPhase& thermo) const {
+std::vector<double> PhaseSpecification::to_mass_vector(Cantera::ThermoPhase& thermo) const {
     std::vector<double> out(thermo.stateSize());
 
     thermo.setState_TPY(T, P, composition);

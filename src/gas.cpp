@@ -1,3 +1,5 @@
+#include "goddard/utils.hpp"
+#include "goddard/speciate.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 
@@ -16,21 +18,52 @@ Gas::Gas(const Cantera::Solution& gas, GasChemistry chem)
 }
 
 Gas::Gas(Cantera::Solution&& gas, GasChemistry chem)
-    : chemistry(chem), m_sol(gas.shared_from_this()) {}
+    : chemistry(chem), m_sol(gas.shared_from_this()) 
+{}
+
+Gas::Gas(const std::string& infile, 
+        const std::string& phase_name,
+        GasChemistry chem) 
+    : chemistry(chem), m_sol(Cantera::newSolution(infile, phase_name)) 
+{}
 
 Gas::Gas(const Gas& gas) 
     : chemistry(gas.chemistry), m_sol(gas.m_sol->clone()), 
-      m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) {}
+      m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) 
+{}
 
+// copy assignment constructor
 Gas Gas::operator=(const Gas& gas) {
     return Gas(gas);
 }
 
-Gas Gas::create(const std::string& filename, GasChemistry chemistry, const std::string& phase_name) {
-    return Gas(Cantera::newSolution(filename, phase_name), chemistry);
+Gas Gas::create(const std::string& filename, const std::string& phase_name, GasChemistry chemistry) {
+    return Gas(filename, phase_name, chemistry);
 }
-// State setters
 
+Gas Gas::create_from_elements(
+    const std::string& infile,
+    const std::string& name, 
+    const std::vector<std::string>& elements,
+    GasChemistry chemistry)
+{
+    Cantera::AnyMap root_node = load_root_node(infile);
+    Cantera::AnyMap phase_node = create_speciated_phase_node(name, elements);
+    return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
+}
+
+Gas Gas::create_from_species(
+    const std::string& infile,
+    const std::string& name,
+    const std::vector<std::string>& species,
+    GasChemistry chemistry)
+{
+    Cantera::AnyMap root_node = load_root_node(infile);
+    Cantera::AnyMap phase_node = create_phase_node(name, species);
+    return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
+}
+
+// State setters
 void Gas::set_state_TD(double T, double D) {
     m_sol->thermo()->setState_TD(T,D);
 }
@@ -115,6 +148,14 @@ ThermodynamicState Gas::snapshot() const {
     }
 
     return info;
+}
+
+std::string Gas::name() const {
+    return m_sol->name();
+}
+
+void Gas::set_name(const std::string& name) {
+    m_sol->setName(name);
 }
 
 // Basic thermodynamic properties
