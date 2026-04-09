@@ -17,7 +17,8 @@ from goddard._core import (
     NozzleResults,
     RocketCaseParameters,
     ChemicalParameters,
-    ThermoStateInfo,
+    ThermodynamicState,
+    InputState,
     RocketStation,
     RocketPerformance,
     RocketState,
@@ -39,8 +40,6 @@ from goddard._core import (
     ThermoArray,
     Combustor,
     Nozzle,
-    MixtureRatio,
-    MixtureRatios,
     ThermodynamicState,
     # MoC class + function
     MocNozzle,

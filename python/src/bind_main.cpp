@@ -7,7 +7,6 @@ void bind_enums(nb::module_& m);
 void bind_errors(nb::module_& m);
 void bind_structs(nb::module_& m);
 void bind_equilibrium(nb::module_& m);
-void bind_mixture_ratio(nb::module_& m);
 void bind_thermoarray(nb::module_& m);
 void bind_combustor(nb::module_& m);
 void bind_nozzle(nb::module_& m);
@@ -31,7 +30,6 @@ NB_MODULE(_core, m) {
     bind_thermo(m);
     bind_structs(m);
     bind_equilibrium(m);
-    bind_mixture_ratio(m);
     bind_thermoarray(m);
     bind_combustor(m);
     bind_problem(m);

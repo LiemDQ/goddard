@@ -137,19 +137,3 @@ def test_convenience_combustor():
     opts = infinite_area_combustor([1e6])
     assert opts.type == CombustorType.INFINITE_AREA
     assert opts.pressures == [1e6]
-
-
-def test_mixture_ratio():
-    from goddard import MixtureRatio
-
-    mr = MixtureRatio(3.0, 2.016, 32.0)
-    assert mr.OF_ratio == 3.0
-    assert mr.M_fuel == 2.016
-
-
-def test_mixture_ratios():
-    import numpy as np
-    from goddard import MixtureRatios
-
-    mrs = MixtureRatios(np.array([2.0, 3.0, 4.0]), 2.016, 32.0)
-    assert mrs.size() == 3
