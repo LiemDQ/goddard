@@ -1,7 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <nanobind/stl/unordered_map.h>
+#include <nanobind/stl/map.h>
 #include <nanobind/stl/unordered_set.h>
 #include <unordered_set>
 #include <vector>
@@ -215,9 +215,9 @@ void bind_structs(nb::module_& m) {
         .def_rw("valance_equivalences", &Goddard::ChemicalParameters::valance_equivalences);
 
     // ThermoStateInfo
-    nb::class_<Goddard::ThermoStateInfo>(m, "ThermoStateInfo")
+    nb::class_<Goddard::ThermodynamicState>(m, "ThermoStateInfo")
         .def(nb::init<>())
-        .def("__init__", [](Goddard::ThermoStateInfo* self,
+        .def("__init__", [](Goddard::ThermodynamicState* self,
                             double pressure,
                             double temperature,
                             double density,
@@ -232,8 +232,8 @@ void bind_structs(nb::module_& m) {
                             double dlV_dlT_P,
                             double speed_of_sound,
                             double stagnation_enthalpy,
-                            std::unordered_map<std::string, double> composition) {
-            new (self) Goddard::ThermoStateInfo();
+                            std::map<std::string, double> composition) {
+            new (self) Goddard::ThermodynamicState();
             self->pressure = pressure;
             self->temperature = temperature;
             self->density = density;
@@ -263,22 +263,22 @@ void bind_structs(nb::module_& m) {
             "dlV_dlT_P"_a = 0.0,
             "speed_of_sound"_a = 0.0,
             "stagnation_enthalpy"_a = 0.0,
-            "composition"_a = std::unordered_map<std::string, double>())
-        .def_ro("pressure", &Goddard::ThermoStateInfo::pressure)
-        .def_ro("temperature", &Goddard::ThermoStateInfo::temperature)
-        .def_ro("density", &Goddard::ThermoStateInfo::density)
-        .def_ro("enthalpy", &Goddard::ThermoStateInfo::enthalpy)
-        .def_ro("internal_energy", &Goddard::ThermoStateInfo::internal_energy)
-        .def_ro("gibbs", &Goddard::ThermoStateInfo::gibbs)
-        .def_ro("entropy", &Goddard::ThermoStateInfo::entropy)
-        .def_ro("molecular_weight", &Goddard::ThermoStateInfo::molecular_weight)
-        .def_ro("cp", &Goddard::ThermoStateInfo::cp)
-        .def_ro("gamma_s", &Goddard::ThermoStateInfo::gamma_s)
-        .def_ro("dlV_dlP_T", &Goddard::ThermoStateInfo::dlV_dlP_T)
-        .def_ro("dlV_dlT_P", &Goddard::ThermoStateInfo::dlV_dlT_P)
-        .def_ro("speed_of_sound", &Goddard::ThermoStateInfo::speed_of_sound)
-        .def_ro("stagnation_enthalpy", &Goddard::ThermoStateInfo::stagnation_enthalpy)
-        .def_ro("composition", &Goddard::ThermoStateInfo::composition);
+            "composition"_a = std::map<std::string, double>())
+        .def_ro("pressure", &Goddard::ThermodynamicState::pressure)
+        .def_ro("temperature", &Goddard::ThermodynamicState::temperature)
+        .def_ro("density", &Goddard::ThermodynamicState::density)
+        .def_ro("enthalpy", &Goddard::ThermodynamicState::enthalpy)
+        .def_ro("internal_energy", &Goddard::ThermodynamicState::internal_energy)
+        .def_ro("gibbs", &Goddard::ThermodynamicState::gibbs)
+        .def_ro("entropy", &Goddard::ThermodynamicState::entropy)
+        .def_ro("molecular_weight", &Goddard::ThermodynamicState::molecular_weight)
+        .def_ro("cp", &Goddard::ThermodynamicState::cp)
+        .def_ro("gamma_s", &Goddard::ThermodynamicState::gamma_s)
+        .def_ro("dlV_dlP_T", &Goddard::ThermodynamicState::dlV_dlP_T)
+        .def_ro("dlV_dlT_P", &Goddard::ThermodynamicState::dlV_dlT_P)
+        .def_ro("speed_of_sound", &Goddard::ThermodynamicState::speed_of_sound)
+        .def_ro("stagnation_enthalpy", &Goddard::ThermodynamicState::stagnation_enthalpy)
+        .def_ro("composition", &Goddard::ThermodynamicState::composition);
 
     // StationType
     nb::enum_<Goddard::StationType>(m, "StationType")

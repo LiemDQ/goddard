@@ -27,12 +27,6 @@ struct Speciation { //TODO: implement speciation functionality
     int max_species = 10;
 };
 
-enum class MixtureRatioType {
-    FUEL_FRAC, // fuel fraction
-    OF_RATIO,  // oxidizer-to-fuel
-    PHI_RATIO, // equivalence ratio
-};
-
 struct ChemicalParameters {
     std::string thermo_file;
     std::unordered_set<std::string> species;

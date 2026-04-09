@@ -71,7 +71,8 @@ void Gas::set_state_UV(double U, double V) {
 
 std::vector<double> Gas::save_state() const {
     std::vector<double> out(thermo()->stateSize());
-
+    m_sol->thermo()->saveState(out);
+    return out;
 }
 
 void Gas::copy_state(std::vector<double>& state) const {
@@ -169,14 +170,14 @@ double Gas::mach(double velocity) const {
 double Gas::fuel_fraction(
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->mixtureFraction(fuel_comp, ox_comp, basis);
 }
 double Gas::fuel_fraction(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->mixtureFraction(fuel_comp, ox_comp, basis);
 }
@@ -188,14 +189,14 @@ double Gas::equivalence_ratio() const {
 double Gas::equivalence_ratio(
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis);
 }
 double Gas::equivalence_ratio(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis);
 }
@@ -203,14 +204,14 @@ double Gas::equivalence_ratio(
 double Gas::stoich_OF_ratio(
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis);
 }
 double Gas::stoich_OF_ratio(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const 
+    Cantera::ThermoBasis basis) const 
 {
     return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis);
 }
@@ -219,7 +220,7 @@ void Gas::set_fuel_fraction(
     double fuel_frac,
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis);
     set_current_state_as_reference();
@@ -228,7 +229,7 @@ void Gas::set_fuel_fraction(
     double fuel_frac,
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis);
     set_current_state_as_reference();
@@ -238,7 +239,7 @@ void Gas::set_equivalence_ratio(
     double phi,
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis);
     set_current_state_as_reference();
@@ -247,7 +248,7 @@ void Gas::set_equivalence_ratio(
     double phi,
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis);
     set_current_state_as_reference();
@@ -257,7 +258,7 @@ void Gas::set_OF_ratio(
     double OF,
     const std::string& fuel_comp, 
     const std::string& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     double frac = 1.0/(OF+1.0);
     thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis);
@@ -267,7 +268,7 @@ void Gas::set_OF_ratio(
     double OF,
     const Composition& fuel_comp, 
     const Composition& ox_comp,
-    Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar)
+    Cantera::ThermoBasis basis)
 {
     double frac = 1.0/(OF+1.0);
     thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis);
@@ -318,7 +319,7 @@ std::shared_ptr<Cantera::Kinetics> Gas::kinetics() const { return m_sol->kinetic
 std::shared_ptr<Cantera::Transport> Gas::transport() const { return m_sol->transport(); }
 
 std::string Gas::report(bool show_thermo, double threshold) const {
-    m_sol->thermo()->report(show_thermo, threshold);
+    return m_sol->thermo()->report(show_thermo, threshold);
 }
 
 } // namespace Goddard

@@ -72,7 +72,7 @@ void bind_gas_properties(nb::module_& m) {
         .def("set_state_TP", &Goddard::Gas::set_state_TP,
              "T"_a, "P"_a,
              "Set state from temperature (K) and pressure (Pa).")
-        .def("set_state_TPX", &Goddard::Gas::set_state_TPX,
+        .def("set_state_TPX", nb::overload_cast<double, double, const std::string&>(&Goddard::Gas::set_state_TPX),
              "T"_a, "P"_a, "composition"_a,
              "Set state from temperature (K), pressure (Pa), and composition string.")
         .def("set_state_HP", &Goddard::Gas::set_state_HP,
@@ -86,7 +86,7 @@ void bind_gas_properties(nb::module_& m) {
 
         .def("save_state", [](const Goddard::Gas& self) {
             std::vector<double> state;
-            self.save_state(state);
+            self.copy_state(state);
             return state;
         }, "Save the current thermodynamic state as a vector.")
         .def("restore_state", &Goddard::Gas::restore_state,
