@@ -21,19 +21,23 @@ void bind_structs(nb::module_& m) {
         .def(nb::init<>())
         .def("__init__", [](Goddard::CombustorOptions* self,
                             Goddard::CombustorType type,
+                            Goddard::MixtureRatioType mixture_type,
                             std::vector<double> pressures,
                             double mass_flux,
                             double contraction_ratio) {
             new (self) Goddard::CombustorOptions();
             self->type = type;
+            self->mixture_type = mixture_type;
             self->pressures = std::move(pressures);
             self->mass_flux = mass_flux;
             self->contraction_ratio = contraction_ratio;
         },  "type"_a = Goddard::CombustorType::INFINITE_AREA,
+            "mixture_type"_a = Goddard::MixtureRatioType::OF_RATIO,
             "pressures"_a = std::vector<double>(),
             "mass_flux"_a = 0.0,
             "contraction_ratio"_a = 0.0)
         .def_rw("type", &Goddard::CombustorOptions::type)
+        .def_rw("mixture_type", &Goddard::CombustorOptions::mixture_type)
         .def_rw("pressures", &Goddard::CombustorOptions::pressures)
         .def_rw("mass_flux", &Goddard::CombustorOptions::mass_flux)
         .def_rw("contraction_ratio", &Goddard::CombustorOptions::contraction_ratio);
@@ -182,37 +186,41 @@ void bind_structs(nb::module_& m) {
         .def("__init__", [](Goddard::ChemicalParameters* self,
                             std::string thermo_file,
                             std::unordered_set<std::string> species,
-                            Goddard::ThermodynamicState cantera_fuel_state,
-                            Goddard::ThermodynamicState cantera_oxidizer_state,
+                            Goddard::InputState cantera_fuel_state,
+                            Goddard::InputState cantera_oxidizer_state,
+                            Goddard::MixtureRatioType mixture_type,
+                            std::vector<double> mixtures,
                             std::vector<double> OF_ratios,
                             std::vector<double> phi_ratios,
-                            std::vector<double> fuel_weight_percentages,
-                            std::vector<double> valance_equivalences) {
+                            std::vector<double> fuel_weight_percentages)
+                            {
             new (self) Goddard::ChemicalParameters();
             self->thermo_file = std::move(thermo_file);
             self->species = std::move(species);
             self->cantera_fuel_state = std::move(cantera_fuel_state);
             self->cantera_oxidizer_state = std::move(cantera_oxidizer_state);
+            self->mixtures = std::move(mixtures);
             self->OF_ratios = std::move(OF_ratios);
             self->phi_ratios = std::move(phi_ratios);
             self->fuel_weight_percentages = std::move(fuel_weight_percentages);
-            self->valance_equivalences = std::move(valance_equivalences);
         },  "thermo_file"_a = "",
             "species"_a = std::unordered_set<std::string>(),
-            "cantera_fuel_state"_a = Goddard::ThermodynamicState(),
-            "cantera_oxidizer_state"_a = Goddard::ThermodynamicState(),
+            "cantera_fuel_state"_a = Goddard::InputState(),
+            "cantera_oxidizer_state"_a = Goddard::InputState(),
+            "mixture_type"_a = Goddard::MixtureRatioType::FUEL_FRAC,
+            "mixtures"_a = std::vector<double>(),
             "OF_ratios"_a = std::vector<double>(),
             "phi_ratios"_a = std::vector<double>(),
-            "fuel_weight_percentages"_a = std::vector<double>(),
-            "valance_equivalences"_a = std::vector<double>())
+            "fuel_weight_percentages"_a = std::vector<double>())
         .def_rw("thermo_file", &Goddard::ChemicalParameters::thermo_file)
         .def_rw("species", &Goddard::ChemicalParameters::species)
         .def_rw("cantera_fuel_state", &Goddard::ChemicalParameters::cantera_fuel_state)
         .def_rw("cantera_oxidizer_state", &Goddard::ChemicalParameters::cantera_oxidizer_state)
+        .def_rw("mixture_ratio_type", &Goddard::ChemicalParameters::mixture_type)
+        .def_rw("mixtures", &Goddard::ChemicalParameters::mixtures)
         .def_rw("OF_ratios", &Goddard::ChemicalParameters::OF_ratios)
         .def_rw("phi_ratios", &Goddard::ChemicalParameters::phi_ratios)
-        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages)
-        .def_rw("valance_equivalences", &Goddard::ChemicalParameters::valance_equivalences);
+        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages);
 
     // ThermoStateInfo
     nb::class_<Goddard::ThermodynamicState>(m, "ThermoStateInfo")
