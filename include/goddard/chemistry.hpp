@@ -1,6 +1,8 @@
 #pragma once
-
+#include "cantera/core.h"
 namespace Goddard {
+
+using Composition = Cantera::Composition;
 
 enum class GasChemistry {
     PERFECT_GAS,    // constant gamma, no Cantera dependency

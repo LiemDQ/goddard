@@ -60,6 +60,7 @@ public:
     double cv_mass() const;
     double molecular_weight() const;
     size_t num_species() const;
+    std::vector<std::string> species_names() const;
 
     // Chemistry-aware derived properties
     double gamma_s() const;

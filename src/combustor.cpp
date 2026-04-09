@@ -2,6 +2,7 @@
 #include "goddard/thermoarray.hpp"
 #include "goddard/error.hpp"
 #include "cantera/core.h"
+#include "cantera/base/stringUtils.h"
 #include <utility>
 #include <iostream>
 #include <cassert>
@@ -41,10 +42,11 @@ void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
 
 // ---- Combustor ----
 
-Combustor::Combustor(Gas gas, const std::string& /*fuel*/, const std::string& /*oxidizer*/)
+Combustor::Combustor(Gas gas, const std::string& fuel_comp, const std::string& ox_comp)
     : BaseCombustor(std::move(gas))
 {
-    throw NotImplementedError("String-based Combustor constructor is not yet implemented. Use Composition maps.");
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
 }
 
 Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer)
@@ -156,11 +158,13 @@ Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(
 
 // ---- DilutedCombustor ----
 
-DilutedCombustor::DilutedCombustor(Gas gas, const std::string& /*fuel*/,
-    const std::string& /*oxidizer*/, const std::string& /*flue*/)
+DilutedCombustor::DilutedCombustor(Gas gas, const std::string& fuel_comp,
+    const std::string& ox_comp, const std::string& dilute_comp)
     : BaseCombustor(std::move(gas))
 {
-    throw NotImplementedError("String-based DilutedCombustor constructor is not yet implemented. Use Composition maps.");
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
+    m_flue_composition = Cantera::parseCompString(dilute_comp, gas.species_names());
 }
 
 DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,

@@ -128,6 +128,7 @@ double Gas::cp_mass() const { return m_sol->thermo()->cp_mass(); }
 double Gas::cv_mass() const { return m_sol->thermo()->cv_mass(); }
 double Gas::molecular_weight() const { return m_sol->thermo()->meanMolecularWeight(); }
 size_t Gas::num_species() const { return m_sol->thermo()->nSpecies(); }
+std::vector<std::string> Gas::species_names() const { return m_sol->thermo()->speciesNames(); }
 // Chemistry-aware derived properties
 
 double Gas::gamma_s() const {

@@ -34,8 +34,6 @@ struct CombustorOptions {
     double contraction_ratio = 0.0;
 };
 
-using Composition = Cantera::Composition;
-
 /**
  * @brief Base class for isobaric combustion reactions.
  * Provides shared utilities for stream mixing and equilibration.
