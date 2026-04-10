@@ -61,6 +61,7 @@ extra:
 
 markdown_extensions:
   - admonition
+  - footnotes
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.highlight:
@@ -78,6 +79,8 @@ markdown_extensions:
 
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
   - Home: index.md
@@ -87,6 +90,8 @@ nav:
       - Nozzle Flow: theory/nozzle_flow.md
       - Method of Characteristics: theory/method_of_characteristics.md
       - Shocks: theory/shocks.md
+      - Heat Capacity Ratio: theory/heat_capacity.md
+      - Numerical Algorithms: theory/numerics.md 
   - Tutorials:
       - Getting Started: tutorials/getting_started.md
   - Examples:
