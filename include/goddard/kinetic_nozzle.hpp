@@ -31,31 +31,34 @@ public:
         Cantera::Solution& gas,
         NozzleProfile& profile,
         double mass_flow_rate,
-        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
+        NozzleOptions options = {});
 
     KineticNozzle(
         Cantera::Solution& gas,
         NozzleProfile& profile,
         double mass_flow_rate,
         std::vector<double> inlet_state,
-        GasChemistry chemistry = GasChemistry::EQUILIBRIUM);
+        NozzleOptions options = {});
 
     // Construct from Gas directly (chemistry is overridden to FROZEN internally)
     KineticNozzle(
-        Gas gas,
-        NozzleProfile& profile,
-        double mass_flow_rate);
-
-    KineticNozzle(
-        Gas gas,
+        const Gas& gas,
         NozzleProfile& profile,
         double mass_flow_rate,
-        std::vector<double> inlet_state);
+        NozzleOptions options = {});
+
+    KineticNozzle(
+        const Gas& gas,
+        NozzleProfile& profile,
+        double mass_flow_rate,
+        std::vector<double> inlet_state,
+        NozzleOptions options = {});
 
     KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 1e-3, int max_steps = 100000);
 
-    NozzleProfile m_profile;
-    double m_mdot;
+    NozzleProfile profile;
+    double mdot;
+    NozzleOptions opts;
 
 protected:
     Nozzle m_throat_solver;

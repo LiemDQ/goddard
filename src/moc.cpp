@@ -41,7 +41,9 @@ MocResult MocNozzle::solve() {
     } 
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
-        Nozzle nozzle(*m_gas, m_options.chemistry);
+        NozzleOptions nozzle_opts;
+        nozzle_opts.chemistry = m_options.chemistry;
+        Nozzle nozzle(*m_gas, nozzle_opts);
         auto throat = nozzle.solve_throat_conditions();
         m_gas->restore_state(throat.state);
 

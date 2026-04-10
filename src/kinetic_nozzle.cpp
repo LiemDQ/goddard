@@ -20,10 +20,10 @@ public:
 // Solution& constructors: build Gas internally
 KineticNozzle::KineticNozzle(
     Cantera::Solution& gas,
-    NozzleProfile& profile,
+    NozzleProfile& prof,
     double mass_flow_rate,
-    GasChemistry chemistry)
-: m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry),
+    NozzleOptions options)
+: profile(prof), mdot(mass_flow_rate), opts(options), m_throat_solver(gas, options),
   m_gas(gas, GasChemistry::FROZEN)
 {
     m_inlet_state.resize(gas.thermo()->stateSize());
@@ -32,23 +32,24 @@ KineticNozzle::KineticNozzle(
 
 KineticNozzle::KineticNozzle(
         Cantera::Solution& gas,
-        NozzleProfile& profile,
+        NozzleProfile& prof,
         double mass_flow_rate,
         std::vector<double> inlet_state,
-        GasChemistry chemistry)
-: m_profile(profile), m_mdot(mass_flow_rate), m_throat_solver(gas, chemistry, inlet_state),
+        NozzleOptions options)
+: profile(prof), mdot(mass_flow_rate), opts(options), m_throat_solver(gas, inlet_state, options),
   m_inlet_state(std::move(inlet_state)), m_gas(gas, GasChemistry::FROZEN)
 {
 }
 
 // Gas constructors: use provided Gas, override chemistry to FROZEN
 KineticNozzle::KineticNozzle(
-    Gas gas,
-    NozzleProfile& profile,
-    double mass_flow_rate)
-: m_profile(profile), m_mdot(mass_flow_rate),
-  m_throat_solver(*gas.solution(), gas.chemistry),
-  m_gas(std::move(gas))
+    const Gas& gas,
+    NozzleProfile& prof,
+    double mass_flow_rate,
+    NozzleOptions options)
+: profile(prof), mdot(mass_flow_rate), opts(options),
+  m_throat_solver(gas),
+  m_gas(gas)
 {
     m_gas.chemistry = GasChemistry::FROZEN;
     m_inlet_state.resize(m_gas.thermo()->stateSize());
@@ -56,16 +57,19 @@ KineticNozzle::KineticNozzle(
 }
 
 KineticNozzle::KineticNozzle(
-    Gas gas,
-    NozzleProfile& profile,
+    const Gas& gas,
+    NozzleProfile& prof,
     double mass_flow_rate,
-    std::vector<double> inlet_state)
-: m_profile(profile), m_mdot(mass_flow_rate),
-  m_throat_solver(*gas.solution(), gas.chemistry, inlet_state),
+    std::vector<double> inlet_state,
+    NozzleOptions options)
+: profile(prof), mdot(mass_flow_rate), opts(options),
+  m_throat_solver(gas),
   m_inlet_state(std::move(inlet_state)),
-  m_gas(std::move(gas))
+  m_gas(gas)
 {
     m_gas.chemistry = GasChemistry::FROZEN;
+    m_gas.restore_state(m_inlet_state);
+    m_gas.set_current_state_as_reference();
 }
 
 // Parse a CanteraError from CVodes and return a diagnostic message with context.
@@ -101,14 +105,14 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     thermo->restoreState(throat.state);
 
     double H0 = throat.H_stagnation;
-    double x = m_profile.x_min();
+    double x = profile.x_min();
     double u = m_gas.isenthalpic_velocity(H0);
     double dudx = 0.0;
     double M = 1.0; // mach number is 1.0 by definition in the throat.
-    double A_throat = m_profile.area_at(x);
+    double A_throat = profile.area_at(x);
 
     double rho = thermo->density();
-    double V_init = m_mdot / rho;
+    double V_init = mdot / rho;
 
     auto reactor = std::make_shared<Cantera::IdealGasMoleReactor>(m_gas.solution(), false);
     reactor->setInitialVolume(V_init);
@@ -144,7 +148,7 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     double x_old = x;
 
     const double conc_threshold = 1e-10; // skip trace species in Damkohler calculations
-    const double x_exit = m_profile.x_max();
+    const double x_exit = profile.x_max();
 
 
     for (int step = 0; step < max_steps; step++) {
@@ -155,9 +159,9 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
 
         x += u * dt * 0.5;
 
-        double r = m_profile.radius_at(x);
-        double drdx = m_profile.slope_at(x);
-        double A_At = m_profile.area_at(x)/A_throat;
+        double r = profile.radius_at(x);
+        double drdx = profile.slope_at(x);
+        double A_At = profile.area_at(x)/A_throat;
         double V = reactor->volume();
 
         dudx = (u - u_old)/(x-x_old);

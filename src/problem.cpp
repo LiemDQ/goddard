@@ -100,7 +100,7 @@ RocketProblemResults RocketProblem::solve() {
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
         Gas gas(m_sln, params.nozzle_options.chemistry);
-        Nozzle nozzle(gas, params.nozzle_options.chemistry);
+        Nozzle nozzle(gas, params.nozzle_options);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);

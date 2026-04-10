@@ -63,8 +63,10 @@ public:
     void set_state_TP(double T, double P);
     void set_state_TPX(double T, double P, const std::string& composition);
     void set_state_TPX(double T, double P, const Composition& composition);
+    void set_state_TPX(double T, double P, const double* composition);
     void set_state_TPY(double T, double P, const std::string& composition);
     void set_state_TPY(double T, double P, const Composition& composition);
+    void set_state_TPY(double T, double P, const double* composition);
     void set_state_HP(double H, double P);
     void set_state_SP(double S, double P);
     void set_state_UV(double U, double V);
@@ -87,6 +89,9 @@ public:
     double cp_mass() const;
     double cv_mass() const;
     double molecular_weight() const;
+    std::vector<double> mole_fractions() const;
+    std::vector<double> mass_fractions() const;
+
     size_t num_species() const;
     std::vector<std::string> species_names() const;
 
@@ -97,6 +102,7 @@ public:
     double stagnation_pressure(double velocity) const;
     double isenthalpic_velocity(double H_stagnation) const;
     double isenthalpic_velocity() const;
+    double area_per_mdot(double velocity) const;
     double mach(double velocity) const;
     double cstar() const;
     double isp() const;
@@ -167,7 +173,7 @@ public:
 
     // Expansion properties 
     ExpansionProperties expansion_properties() const;
-    void equilibrate(const std::string& XY);
+    void equilibrate(const std::string& XY, const std::string& solver = "gibbs");
     
 
     // Reference state

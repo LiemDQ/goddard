@@ -80,11 +80,19 @@ void Gas::set_state_TPX(double T, double P, const Composition& composition) {
     m_sol->thermo()->setState_TPX(T, P, composition);
 }
 
+void Gas::set_state_TPX(double T, double P, const double* composition) {
+    m_sol->thermo()->setState_TPX(T, P, composition);
+}
+
 void Gas::set_state_TPY(double T, double P, const std::string& composition) {
     m_sol->thermo()->setState_TPY(T, P, composition);
 }
 
 void Gas::set_state_TPY(double T, double P, const Composition& composition) {
+    m_sol->thermo()->setState_TPY(T, P, composition);
+}
+
+void Gas::set_state_TPY(double T, double P, const double* composition) {
     m_sol->thermo()->setState_TPY(T, P, composition);
 }
 
@@ -168,6 +176,17 @@ double Gas::entropy_mass() const { return m_sol->thermo()->entropy_mass(); }
 double Gas::cp_mass() const { return m_sol->thermo()->cp_mass(); }
 double Gas::cv_mass() const { return m_sol->thermo()->cv_mass(); }
 double Gas::molecular_weight() const { return m_sol->thermo()->meanMolecularWeight(); }
+std::vector<double> Gas::mole_fractions() const { 
+    std::vector<double> fracs(num_species());
+    m_sol->thermo()->getMoleFractions(fracs.data());
+    return fracs; 
+}
+std::vector<double> Gas::mass_fractions() const { 
+    std::vector<double> fracs(num_species());
+    m_sol->thermo()->getMassFractions(fracs.data());
+    return fracs; 
+}
+
 size_t Gas::num_species() const { return m_sol->thermo()->nSpecies(); }
 std::vector<std::string> Gas::species_names() const { return m_sol->thermo()->speciesNames(); }
 // Chemistry-aware derived properties
@@ -202,6 +221,10 @@ double Gas::isenthalpic_velocity(double H_stagnation) const {
 
 double Gas::isenthalpic_velocity() const {
     return gas_isenthalpic_velocity(*m_sol->thermo(), m_H_stagnation);
+}
+
+double Gas::area_per_mdot(double velocity) const {
+    return Goddard::area_per_mdot(*thermo(), velocity);
 }
 
 double Gas::mach(double velocity) const {
@@ -349,8 +372,8 @@ ExpansionProperties Gas::expansion_properties() const {
             m_sol->thermo()->cp_mass() / m_sol->thermo()->cv_mass()}; // unreachable
 }
 
-void Gas::equilibrate(const std::string& XY) {
-    m_sol->thermo()->equilibrate(XY, "gibbs");
+void Gas::equilibrate(const std::string& XY, const std::string& solver) {
+    m_sol->thermo()->equilibrate(XY, solver);
 }
 
 
