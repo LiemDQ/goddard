@@ -25,34 +25,11 @@ void bind_gas_properties(nb::module_& m) {
              [](Goddard::Gas* self,
                 const std::string& yaml_file,
                 const std::string& phase_name,
-                const std::unordered_set<std::string>& species,
                 Goddard::GasChemistry chemistry) {
-                 std::shared_ptr<Cantera::Solution> sln;
-                 if (species.empty()) {
-                     sln = Cantera::newSolution(yaml_file, phase_name);
-                 } else {
-                     auto root_node = Goddard::select_species(yaml_file, species);
-                     const Cantera::AnyMap& phase_node =
-                         root_node.at("phases").getMapWhere("name", phase_name);
-                     sln = Cantera::newSolution(phase_node, root_node);
-                 }
-                 sln->setSource(yaml_file);
-                 new (self) Goddard::Gas(sln, chemistry);
+                 new (self) Goddard::Gas(yaml_file, phase_name, chemistry);
              },
-             "yaml_file"_a, "phase_name"_a = "",
-             "species"_a = std::unordered_set<std::string>{},
-             "chemistry"_a = Goddard::GasChemistry::FROZEN,
+             "yaml_file"_a, "phase_name"_a, "chemistry"_a = Goddard::GasChemistry::FROZEN,
              "Create a Gas from a YAML thermodynamic data file.")
-
-        // SolutionHandle constructor
-        .def("__init__",
-             [](Goddard::Gas* self,
-                std::shared_ptr<Cantera::Solution> sol,
-                Goddard::GasChemistry chemistry) {
-                 new (self) Goddard::Gas(sol, chemistry);
-             },
-             "solution"_a, "chemistry"_a = Goddard::GasChemistry::FROZEN,
-             "Create a Gas from an existing SolutionHandle.")
 
         // ---- Read-only thermodynamic properties ----
 
@@ -84,11 +61,8 @@ void bind_gas_properties(nb::module_& m) {
 
         // ---- State save/restore ----
 
-        .def("save_state", [](const Goddard::Gas& self) {
-            std::vector<double> state;
-            self.copy_state(state);
-            return state;
-        }, "Save the current thermodynamic state as a vector.")
+        .def("save_state", &Goddard::Gas::save_state,
+             "Save the current thermodynamic state as a vector.")
         .def("restore_state", &Goddard::Gas::restore_state,
              "state"_a,
              "Restore a previously saved thermodynamic state.")
@@ -117,7 +91,7 @@ void bind_gas_properties(nb::module_& m) {
         .def("expansion_properties", &Goddard::Gas::expansion_properties,
              "Compute expansion properties (gamma_s, dlV/dlT_P, dlV/dlP_T, cp).")
         .def("equilibrate", &Goddard::Gas::equilibrate,
-             "XY"_a,
+             "XY"_a, "solver"_a="gibbs",
              "Equilibrate the gas mixture. XY is e.g. 'HP', 'TP', 'SP'.")
 
         // ---- Snapshot ----

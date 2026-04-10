@@ -370,7 +370,9 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(Gas(gas, GasChemistry::FROZEN), GasChemistry::FROZEN);
+    NozzleOptions nozzle_opts;
+    nozzle_opts.chemistry = GasChemistry::FROZEN;
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::FROZEN), nozzle_opts);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
@@ -399,7 +401,8 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-    Nozzle nozzle_1d(Gas(gas, GasChemistry::EQUILIBRIUM), GasChemistry::EQUILIBRIUM);
+    NozzleOptions nozzle_opts;
+    Nozzle nozzle_1d(Gas(gas, GasChemistry::EQUILIBRIUM), nozzle_opts);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());

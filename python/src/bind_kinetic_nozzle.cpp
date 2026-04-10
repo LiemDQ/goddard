@@ -31,28 +31,7 @@ void bind_kinetic_nozzle(nb::module_& m) {
     // The GasChemistry parameter selects the throat model: EQUILIBRIUM or FROZEN.
     // KINETIC is not a valid throat model and will throw.
     nb::class_<Goddard::KineticNozzle>(m, "KineticNozzle")
-        .def("__init__",
-             [](Goddard::KineticNozzle* self,
-                std::shared_ptr<Cantera::Solution> sol,
-                Goddard::NozzleProfile profile,
-                double mdot,
-                Goddard::GasChemistry chemistry) {
-                 new (self) Goddard::KineticNozzle(*sol, profile, mdot, chemistry);
-             },
-             "solution"_a, "profile"_a, "mdot"_a,
-             "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM)
-        .def("__init__",
-             [](Goddard::KineticNozzle* self,
-                std::shared_ptr<Cantera::Solution> sol,
-                Goddard::NozzleProfile profile,
-                double mdot,
-                std::vector<double> state,
-                Goddard::GasChemistry chemistry) {
-                 new (self) Goddard::KineticNozzle(*sol, profile, mdot,
-                                                    std::move(state), chemistry);
-             },
-             "solution"_a, "profile"_a, "mdot"_a, "state"_a,
-             "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM)
+    
         // Gas-based constructors
         .def("__init__",
              [](Goddard::KineticNozzle* self,
@@ -67,13 +46,14 @@ void bind_kinetic_nozzle(nb::module_& m) {
                 Goddard::Gas gas,
                 Goddard::NozzleProfile profile,
                 double mdot,
-                std::vector<double> state) {
+                std::vector<double> state,
+                Goddard::NozzleOptions options) {
                  new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot,
-                                                    std::move(state));
+                                                    std::move(state), options);
              },
-             "gas"_a, "profile"_a, "mdot"_a, "state"_a)
+             "gas"_a, "profile"_a, "mdot"_a, "state"_a, "options"_a=Goddard::NozzleOptions{})
         .def("solve", &Goddard::KineticNozzle::solve,
              "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000)
-        .def_rw("m_profile", &Goddard::KineticNozzle::m_profile)
-        .def_rw("m_mdot",    &Goddard::KineticNozzle::m_mdot);
+        .def_rw("m_profile", &Goddard::KineticNozzle::profile)
+        .def_rw("mdot",    &Goddard::KineticNozzle::mdot);
 }

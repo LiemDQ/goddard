@@ -11,25 +11,17 @@ using namespace nb::literals;
 void bind_nozzle(nb::module_& m) {
     // Constructor takes Solution& but calls shared_from_this(), so we wrap with a lambda
     nb::class_<Goddard::Nozzle>(m, "Nozzle")
-        .def("__init__", [](Goddard::Nozzle* self,
-                            std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::GasChemistry chemistry) {
-            new (self) Goddard::Nozzle(*sol, chemistry);
-        }, "solution"_a, "chemistry"_a)
-        .def("__init__", [](Goddard::Nozzle* self,
-                            std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::GasChemistry chemistry,
-                            std::vector<double> state) {
-            new (self) Goddard::Nozzle(*sol, chemistry, std::move(state));
-        }, "solution"_a, "chemistry"_a, "state"_a)
+   
         // Gas-based constructors
-        .def("__init__", [](Goddard::Nozzle* self, Goddard::Gas& gas) {
-            new (self) Goddard::Nozzle(*gas.solution(), gas.chemistry);
-        }, "gas"_a)
-        .def("__init__", [](Goddard::Nozzle* self, Goddard::Gas& gas,
-                            std::vector<double> state) {
-            new (self) Goddard::Nozzle(*gas.solution(), gas.chemistry, std::move(state));
-        }, "gas"_a, "state"_a)
+        .def("__init__", [](Goddard::Nozzle* self, 
+                            const Goddard::Gas& gas, 
+                            Goddard::NozzleOptions options) {
+            new (self) Goddard::Nozzle(gas, options);
+        }, "gas"_a, "options"_a=Goddard::NozzleOptions{})
+        .def("__init__", [](Goddard::Nozzle* self, const Goddard::Gas& gas,
+                            std::vector<double> state, Goddard::NozzleOptions options) {
+            new (self) Goddard::Nozzle(gas, std::move(state), options);
+        }, "gas"_a, "state"_a, "options"_a=Goddard::NozzleOptions{})
         .def("solve",
              nb::overload_cast<Goddard::ExpansionType, double>(
                  &Goddard::Nozzle::solve),
