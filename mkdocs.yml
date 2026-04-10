@@ -45,6 +45,8 @@ plugins:
             members_order: source
             show_signature_annotations: true
             separate_signature: true
+            filters:
+              - "!^_"
             docstring_style: google
   - mkdocs-jupyter:
       execute: false
