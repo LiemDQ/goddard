@@ -207,6 +207,43 @@ Keep things simple and sparingly use newer language features (post C++17). `auto
 However, external facing APIs should use a minimum of post-C++11 features to keep language interop and bindings simple.
 
 
+## Documentation
+
+### Documentation pipeline
+
+Goddard uses MkDocs + Material for MkDocs + mkdocstrings to generate its documentation site. The docs source lives in `docs/` and the site config is `mkdocs.yml` at the project root.
+
+C++ Doxygen comments are the single source of truth for API docstrings. They flow into the Python API via this pipeline:
+
+1. CMake runs `pybind11_mkdoc` (via `scripts/generate_docstrings.py`) to parse C++ headers with libclang and emit `python/src/goddard_docstrings.h` containing `DOC(Namespace, Class, method)` macros. When `goddard_BUILD_DOCSTRINGS=OFF` (default), a stub header is emitted instead so bindings still compile.
+2. nanobind binding files `#include "goddard_docstrings.h"` and pass `DOC(...)` as the docstring argument to `.def()`.
+3. The `docs-stubs` pixi task runs `nanobind.stubgen` to emit `python/goddard/_core.pyi` with embedded docstrings. This runs outside CMake (as a pixi task after compilation) because stubgen needs to import the compiled module, which requires the full Python environment.
+4. mkdocstrings reads the stubs and renders the Python API reference.
+
+Both `goddard_docstrings.h` and `_core.pyi` are generated artifacts (gitignored). The `docs` pixi environment enables `goddard_BUILD_DOCSTRINGS=ON` automatically.
+
+### Quick commands
+
+```bash
+# Build the full docs site (configure + compile + copy notebooks + mkdocs build)
+pixi run -e docs docs
+
+# Live-preview server with hot reload
+pixi run -e docs docs-serve
+
+# Deploy a versioned build to gh-pages
+pixi run -e docs docs-deploy 0.1
+```
+
+### Writing docstrings
+
+When adding or modifying public C++ APIs or Python bindings, follow the conventions in `docs/contributing/docstring_style.md`. Key points:
+
+- Use `/** ... */` Doxygen block comments on C++ headers. Always document units.
+- In binding files, use `DOC(Goddard, Class, method)` instead of literal strings.
+- Pure-Python functions use Google-style docstrings.
+- Do not duplicate docstrings between C++ headers and binding files.
+
 ## Instructions
 
 ### File reads
