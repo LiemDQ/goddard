@@ -141,6 +141,11 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Generated documentation artifacts
+python/src/goddard_docstrings.h
+python/goddard/_core.pyi
+docs/examples/*.ipynb
+
 # mypy
 .mypy_cache/
 .dmypy.json
