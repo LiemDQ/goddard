@@ -8,7 +8,17 @@ Goddard is a C++/Python rocket engine simulation toolkit that uses Cantera for c
 
 ## Core Architecture
 
+### Features
+Goddard performs 5 main types of computations:
+1. General thermodynamic and compressible flow properties: speed of sound, stagnation pressure, stagnation enthalpy, heat capacity ratio, etc, integrated with Cantera's thermodynamic solvers.
+2. Combustion/equilibrium calculations. 
+3. 1D nozzle flow: frozen, equilibrium and kinetic chemistries.
+4. Method of characteristics for 2D or axisymmetric supersonic flow fields for design and analysis.
+5. Shock properties (incident, reflected, and oblique)
+
+
 ### C++ Core Components
+- **Gas** (`gas.hpp/cpp`): Core primitive for querying thermodynamic properties. Building block for the main solvers. 
 - **Equilibrium** (`equilibrium.hpp/cpp`): Chemical equilibrium calculations and thermodynamic derivatives
 - **Combustor** (`combustor.hpp/cpp`): Isobaric combustion reaction handling with support for infinite area, finite mass flux, and finite contraction ratio modes
 - **Nozzle** (`nozzle.hpp/cpp`): Nozzle flow calculations with inheritance hierarchy:
@@ -16,7 +26,6 @@ Goddard is a C++/Python rocket engine simulation toolkit that uses Cantera for c
   - `EquilibriumNozzle`: Chemical equilibrium nozzle flow
   - `FrozenNozzle`: Frozen composition nozzle flow
 - **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations
-- **MixtureRatio** (`mixture_ratio.hpp/cpp`): Fuel/oxidizer mixture ratio handling
 - **MoC** (`moc.hpp/cpp`, `characteristics.hpp/cpp`, `prandtlmeyer.hpp/cpp`): 2D supersonic nozzle flow via Method of Characteristics
   - `MocNozzle`: Solver class supporting design (minimum-length) and analysis modes
   - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
@@ -24,14 +33,15 @@ Goddard is a C++/Python rocket engine simulation toolkit that uses Cantera for c
   - `NozzleProfile`: Wall contour representation with CSV I/O
   - `PrandtlMeyerTable`: Precomputed isentropic expansion data for non-ideal gas
   - `compute_thrust_coefficient()`: Exit plane integration for thrust performance
+- **KineticNozzle** (`kinetic_nozzle.hpp/cpp`): 1D supersonic nozzle with finite-rate chemistry via Cantera's `IdealGasMoleReactor`. Standalone class — does not inherit `NozzleBase` because its spatially-resolved output is incompatible with the discrete area-ratio interface. Instead uses composition: owns a `NozzleBase`-derived object internally for throat conditions only. Output is `KineticNozzleResults` containing a `ThroatCondition` and a vector of `KineticNozzleStation` (x, velocity, Mach, area_ratio, thermo state, per-species Damköhler numbers). The `NozzleChemistryType` constructor parameter selects the throat model (EQUILIBRIUM or FROZEN); KINETIC is not valid as a throat model.
+- **Shocks** (`shocks.hpp/cpp`): Normal shock relations (Rankine-Hugoniot) with perfect-gas and Cantera-state variants. `ShockResult` and `ObliqueShockResult` structs. Oblique shock API is declared but not yet fully implemented.
 
 ### Python Bindings (`python/`)
 - Built with **nanobind** (`python/src/bind_*.cpp`), exposed as `goddard._core` extension module
-- One binding file per C++ domain (enums, structs, problem, combustor, nozzle, thermoarray, mixture_ratio, equilibrium, errors, moc)
+- One binding file per C++ domain (enums, structs, problem, combustor, nozzle, thermoarray, mixture_ratio, equilibrium, errors, moc, kinetic_nozzle)
 - Each file defines a `void bind_X(nb::module_& m)` function called from `bind_main.cpp`
 - Pure-Python convenience layer in `python/goddard/` (`__init__.py` re-exports, `convenience.py` has factory functions)
-- `Cantera::Solution` exposed as opaque `shared_ptr` handle (`SolutionHandle`) — no Cantera internals in the Python API
-- Cantera Python interop via state reconstruction (`from_cantera()` in `convenience.py`), not pointer extraction (Cython bindings don't expose `shared_ptr`)
+- No Cantera internals such as `Cantera::Solution` should be exposed in the Python API. Only Goddard and STL types (which are converted to corresponding Python types).
 - Dev workflow: `pixi run compile` builds `_core.cpython-*.so` and copies it to `python/goddard/` automatically; use `PYTHONPATH=python` to import
 - Install workflow: `pip install -e . --no-build-isolation` via scikit-build-core
 
@@ -75,8 +85,11 @@ cmake --build .
 cmake --build . --target goddard_main     # Main executable
 cmake --build . --target goddard_lib      # Shared library
 ```
-
-### Testing
+To update the Python package, use
+```bash
+pixi run pip-install
+```
+### C++ tests
 ```bash
 # Build and run tests
 cmake --build . --target goddardTests
@@ -86,16 +99,13 @@ cmake --build . --target goddardTests
 ctest -R "goddard"
 ```
 
-### Python Bindings
+### Python binding tests
 ```bash
-# Build (included in normal compile)
-pixi run compile
-
 # Install as editable package
-pixi run pip-install
+pixi run -e test pip-install
 
 # Run Python tests
-pixi run test-python
+pixi run -e test test-python
 ```
 
 ## Data Files Structure
@@ -109,13 +119,9 @@ Data file paths are configured via CMake and accessible through `DATA_DIR` macro
 
 ## Development Patterns
 
-### Architecture
-Goddard is rocket science, so its codebase shouldn't be. 
-- The code should be as simple and readable as possible even at the cost of some repetition. 
-- Avoid overabstraction and excessive use of inheritance.
-- Prefer composition over inheritance. 
-- As the scope of the library is relatively constrained, there is little need to write 'modular' and 'extensible' code except in cases where modularity is clearly needed (e.g. output report formatting).
-- Long functions are OK if it makes sense for everything in them to be computed together, and intermediate results aren't needed.
+### Architecture & User API
+Users start by constructing a `Gas` object by specifying thermodynamic data. `Gas` is the fundamental construct and should be the most feature-rich API. Next, `Gas` is passed to different solver objects like `MocNozzle`, `Nozzle`, `ShockSolver` along with configuration options, which are then solved.  
+
 
 ### Formatting
 - Snake case for functions and variable names, Pascal case for types.
@@ -136,6 +142,12 @@ Goddard is rocket science, so its codebase shouldn't be.
 - `ThermoArray` class handles vectorized thermodynamic calculations
 - Eigen arrays used for efficient numerical operations on multiple states
 - Temperature/pressure arrays processed in parallel where possible
+
+### Miscellaneous
+
+- As the scope of the library is relatively constrained, there is little need to write 'modular' and 'extensible' code except in cases where modularity is clearly needed (e.g. output report formatting).
+- Long functions are OK if it makes sense for everything in them to be computed together, and intermediate results aren't needed.
+
 
 ## Python Integration
 
@@ -171,13 +183,13 @@ In general, the paradigm is "data-oriented with algebraic data types", reminisce
 ### Code organization
 
 - Classes are used primarily as a way to manage state and organize functions.
-- Standalone functions are "pure", i.e. don't mutate state.
+- Standalone functions should be "pure", i.e. don't mutate state.
 - Structs are used as "dumb" data containers.
 
 ### Class design
 Class members are public by default unless directly modifying them can violate an invariant of the class (e.g. size attribute in a container).
 
-Minimize inheritance. Most classes are standalone. In cases where it is needed  the inheritance hierarchies are generally "shallow" (at most 1-2 layers of inheritance) and flat.
+Most classes are standalone. In cases where it is needed  the inheritance hierarchies are generally "shallow" (at most 1-2 layers of inheritance) and flat.
 
 ### Function dispatch and polymorphism
 
@@ -185,26 +197,9 @@ Dispatch is primarily achieved with enum classes (AKA discriminated unions) and 
 
 Create enum classes liberally, and avoid:
 * Raw C enums because of namespace pollution. 
-* `std::variant`: it's bloated, makes compilation and debugging harder and [the performance can be mediocre depending on the stdlib implementation](https://stackoverflow.com/questions/57726401/stdvariant-vs-inheritance-vs-other-ways-performance). `std::visit` often results in verbose and hard-to-understand code. Using it properly often requires defining custom functors and overload helper classes 
+* `std::variant`
 
-Polymorphism (virtual functions) is used in the rare event where "2D" dispatch is needed as it keeps the code simpler than multiple levels of switch cases, in my opinion.
-
-### Generics
-Templates are fine in moderation, and are the right tool in many contexts, particularly library code. Using heavily templated libraries like Boost or Eigen is acceptable when appropriate.
-
-But in practice maintaining 2-3 overloaded function signatures is often a more pragmatic choice and it's rare that you'll need to support more types than that unless you're writing e.g. a numerics library.
-
-Using C++20 Concepts in library code is a good idea if appropriate. 
-
-The STL is mostly fine, but stick to a handful of things that are useful and practical: `vector`, `string`, `memory`, `utility` (mostly `std::move`), and `iostream`. `unordered_map` if a quick-and-dirty hashmap is needed and performance is unimportant. Other things are outside of this are acceptable on occasion if it makes a lot of sense and saves a lot of time.
-
-### Memory management
-Raw pointers should rarely be used. Modifying state is achieved via member functions. Avoiding copies is achieved via const references. 
-Having to modify two different objects in a single function call is usually a code smell.
-
-Using `shared_ptr` everywhere is an anti pattern. I find that I rarely need to use `shared_ptr` or really direct heap allocations in general. When I do, `unique_ptr` is often sufficient. In my opinion, many instances of heap allocation are due to a need for polymorphic dispatch and that simply doesn't happen often when enum-based dispatch is the default.
-
-In practice, most dynamic memory allocation use cases are covered by containers like `vector`.
+Polymorphism (virtual functions) is used in the rare event where "2D" dispatch is needed when it keeps the code simpler than multiple levels of switch cases.
 
 ### Other language features
 Keep things simple and sparingly use newer language features (post C++17). `auto` is fine in moderation but prefer to be explicit with type declarations if they aren't too verbose.
