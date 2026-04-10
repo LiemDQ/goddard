@@ -13,6 +13,9 @@ project(
     LANGUAGES CXX C)
 
 option(goddard_BUILD_PYTHON "Build Python bindings" ON)
+option(goddard_BUILD_DOCSTRINGS
+  "Extract C++ docstrings into the Python bindings via pybind11_mkdoc and \
+generate nanobind stubs (requires the docs pixi environment)" OFF)
 if(goddard_BUILD_PYTHON)
   find_package(Python 3.11 COMPONENTS Interpreter Development.Module REQUIRED)
 endif()
