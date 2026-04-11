@@ -1,16 +1,124 @@
-#include <stdexcept>
 #include <string>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include "goddard/profile.hpp"
+#include "goddard/error.hpp"
 
 namespace Goddard {
 
-
+double to_radians(double deg) {
+    return deg/360.0 * 2 * M_PI;
+}
     
 // -- NozzleProfile --
+
+NozzleProfile NozzleProfile::generate_conical_nozzle(
+    double area_ratio, 
+    double r_throat, 
+    double angle, 
+    size_t n_points)
+{
+    NozzleProfile profile;
+    if (angle <= 0.0 || angle >= 90.0 ) {
+        throw std::invalid_argument("Specified angle must be between 0 and 90 degrees.");
+    }
+    if (area_ratio <= 1.0) {
+        throw std::invalid_argument("Area ratio must be greater than 1.");
+    }
+    if (r_throat <= 0.0) {
+        throw std::invalid_argument("Throat radius must be positive.");
+    }
+    double rad = to_radians(angle);
+    double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
+    double length = (r_exit-r_throat) / tan(rad);
+    for (size_t i = 0; i < n_points; i++) {
+        double frac = static_cast<double>(i) / (n_points - 1);
+        double x = length * frac;
+        double r = r_throat + (r_exit - r_throat) * frac;
+        profile.push_back({x,r});
+    }
+    return profile;
+}
+
+NozzleProfile NozzleProfile::generate_TOP_nozzle(
+    double area_ratio, 
+    double r_throat, 
+    double length_frac, 
+    size_t n_points)
+{
+    if (length_frac <= 0.0 || length_frac >= 1.0 ) {
+        throw std::invalid_argument("Specified length fraction must be between 0 and 1.");
+    }
+    if (area_ratio <= 1.0) {
+        throw std::invalid_argument("Area ratio must be greater than 1.");
+    }
+    if (r_throat <= 0.0) {
+        throw std::invalid_argument("Throat radius must be positive.");
+    }
+
+    throw NotImplementedError("TOP nozzle profiles are not implemented.");
+
+    double theta_n = to_radians(30.0); //TODO: find equation for theta_n
+    double theta_e = to_radians(15.0);
+   
+    return NozzleProfile::generate_bezier_nozzle(
+        area_ratio, theta_n, theta_e, 0.382, r_throat, length_frac, n_points);
+}
+
+NozzleProfile NozzleProfile::generate_bezier_nozzle(
+    double area_ratio,
+    double theta_n, double theta_e, 
+    double r_expansion_curve,
+    double r_throat, double length_frac,
+    size_t n_points)
+{
+    NozzleProfile profile;
+    if (length_frac <= 0.0 || length_frac >= 1.0 ) {
+        throw std::invalid_argument("Specified length fraction must be between 0 and 1.");
+    }
+    if (area_ratio <= 1.0) {
+        throw std::invalid_argument("Area ratio must be greater than 1.");
+    }
+    if (r_throat <= 0.0) {
+        throw std::invalid_argument("Throat radius must be positive.");
+    }
+
+    double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
+    double length = length_frac*(r_exit-r_throat) / tan(15);
+    double theta_exp_rad = to_radians(theta_n - 90.0);
+    double n_x = r_expansion_curve*r_throat*cos(theta_exp_rad);
+    double n_y = r_expansion_curve*r_throat*sin(theta_exp_rad) + r_expansion_curve*r_throat + r_throat;
+    
+    double theta_n_rad = to_radians(theta_n);
+    double theta_e_rad = to_radians(theta_e);
+    double slope_n = tan(theta_n_rad);
+    double slope_e = tan(theta_e_rad);
+
+    double mid_n_intercept = n_y - slope_n * n_x;
+    double mid_e_intercept = r_exit - slope_e * length;
+    double mid_x = (mid_e_intercept- mid_n_intercept)/(slope_n-slope_e);
+    double mid_y = (slope_n*mid_e_intercept - slope_e*mid_n_intercept)/(slope_n - slope_e);
+    size_t i = 0;
+    //Generate expansion curve
+    for (size_t i = 0; i < n_points; i++) {
+        double frac = static_cast<double>(i) / (n_points - 1);
+        double theta = frac*(theta_exp_rad - to_radians(-90.0)) + to_radians(-90.0);
+        double x = r_expansion_curve*r_throat*cos(theta);
+        double r = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
+        profile.push_back({x,r});
+    }
+    for (size_t i = 0; i < n_points; i++) {
+        double frac = static_cast<double>(i) / (n_points - 1);
+        double a = (1.0 - frac)*(1.0 - frac);
+        double x = a * n_x + 2 * (1.0 - frac) * frac * mid_x + frac*frac*length;
+        double r = a * n_y + 2 * (1.0 - frac) * frac * mid_y + frac*frac*r_exit;
+        profile.push_back({x,r});
+    }
+    return profile;
+}
+
 
 double NozzleProfile::slope_at(double x_query) const {
     return slope_at_idx(find_index(x_query));

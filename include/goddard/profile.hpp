@@ -16,6 +16,7 @@ class NozzleProfile {
 public:
     std::vector<double> x;
     std::vector<double> y;
+    size_t throat_index = 0;
     
     // Interpolate wall slope at a given x-position.
     // Only used in analysis mode.
@@ -50,6 +51,47 @@ public:
     size_t size() const;
 
     static NozzleProfile load_profile_csv(const std::string& filename);
+    /**
+     * Generate a conical nozzle profile. 
+     * 
+     * @param area_ratio Ratio of the exit area to the throat area. 
+     * @param r_throat Throat radius. 
+     * @param angle Conical expansion angle from the centerline, in degrees.
+     * @param n_points Number of points in the profile. 
+     */
+    static NozzleProfile generate_conical_nozzle(
+        double area_ratio, double r_throat = 1.0,  
+        double angle = 15.0, size_t n_points = 50);
+    /**
+     * Generate a thrust-optimized parabolic nozzle based on the approximations 
+     * by Rao.
+     * 
+     * @param area_ratio Ratio of the exit area to the throat area. 
+     * @param r_throat Throat radius. 
+     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. 
+     * @param n_points Number of points in the profile. 
+     */
+    static NozzleProfile generate_TOP_nozzle(
+        double area_ratio, double r_throat = 1.0,
+        double length_frac = 0.8, size_t n_points = 50);
+    /**
+     * Generate a parabolic nozzle parametrized by Bezier curves. 
+     * 
+     * @param area_ratio Ratio of the exit area to the throat area.
+     * @param theta_n Maximum expansion angle from centerline, in degrees.
+     * @param theta_e Expansion angle from centerline at the nozzle exit, in degrees.
+     * @param r_expansion_curve Radius of curvature of the expansion region 
+     * as a fraction of the throat radius.
+     * @param r_throat Throat radius. 
+     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. 
+     * @param n_points Number of points in the profile. 
+     */
+    static NozzleProfile generate_bezier_nozzle(
+        double area_ratio,
+        double theta_n, double theta_e, 
+        double r_expansion_curve = 0.382,
+        double r_throat = 1.0, double length_frac = 0.8,
+        size_t n_points = 50);
 
     void save_profile_csv(const std::string& filename);
 
