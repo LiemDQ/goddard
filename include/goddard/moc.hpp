@@ -32,14 +32,15 @@ enum class MocMode {
 
 enum class MocInitialization {
     STRAIGHT_SONIC_LINE,    // centered expansion fan at throat (default)
+    SAUER_CURVE             // Sauer's curve for sonic lines
     // HALL_TRANSONIC,      // future: Hall's parabolic sonic line
     // WALL_MARCH,          // future: march from slightly supersonic wall region
 };
 
 struct ThroatGeometry {
     double throat_radius;
-    double upstream_wall_curvature_radius;
-    double downstream_wall_curvature_radius;
+    double upstream_wall_curvature_radius = 1.5;
+    double downstream_wall_curvature_radius = 0.382;
 };
 
 
