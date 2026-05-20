@@ -1,4 +1,5 @@
 #include "goddard/moc.hpp"
+#include "goddard/moc_nozzle.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include <cmath>
