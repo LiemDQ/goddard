@@ -48,6 +48,7 @@ add_library(
   prandtlmeyer.cpp
   characteristics.cpp
   moc.cpp
+  moc_nozzle.cpp
   shocks.cpp
   profile.cpp
   kinetic_nozzle.cpp
