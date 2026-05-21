@@ -1081,7 +1081,7 @@ void MocNozzle::update_thermodynamic_state_from_nu(
             point.mach = mach_from_prandtl_meyer(nu, point.gamma_s, mach_guess);
             point.V = point.mach;
             break;            
-        };
+        }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
             auto [idx, weight] = pm_table.find_nu_index_and_weight(nu);
@@ -1148,6 +1148,10 @@ void MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, do
     }
     update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
+}
+
+ThermodynamicContext MocNozzle::build_thermo_context() {
+    return ThermodynamicContext{.gas = m_gas, .table = pm_table, .T_ref = m_T_ref, .P_ref = m_P_ref, .gamma_s = m_options.gamma};
 }
 
 std::pair<double,double> MocNozzle::find_wall_hit(

@@ -2,10 +2,21 @@
 #include <vector>
 #include <utility>
 #include <cmath>
+#include <optional>
 
+#include "goddard/prandtlmeyer.hpp"
+#include "goddard/gas.hpp"
 namespace Goddard {
 
-struct CharacteristicPoint {
+struct ThermodynamicContext {
+    std::optional<Gas> gas;
+    const PrandtlMeyerTable& table;
+    double T_ref = 273.15;
+    double P_ref = 101325.0;
+    double gamma_s = 1.4;
+};
+class CharacteristicPoint {
+    public:
     double theta; // flow angle
     double nu; // Prandtl-Meyer angle (or generalized PM function)
     double pressure;
@@ -23,6 +34,14 @@ struct CharacteristicPoint {
     double y;
     // for chemistry
     std::vector<double> cantera_state; 
+
+    void update_thermodynamic_state_from_nu(ThermodynamicContext& ctxt, double nu, double mach_guess = 1.0);
+    void update_thermodynamic_state_from_mach(ThermodynamicContext& ctxt, double mach);
+    void update_thermodynamic_state_from_V(ThermodynamicContext& ctxt, double V);
+    void update_Ks();
+
+    private:
+    void update_thermodynamic_state(ThermodynamicContext& ctxt);
 };
 
 constexpr double average_angle(double angle1, double angle2) {

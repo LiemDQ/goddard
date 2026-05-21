@@ -133,6 +133,8 @@ protected:
     /* Find where wall intersects with line extending outwards from a characteristic point, for a specified angle */
     std::pair<double,double> find_wall_hit(const CharacteristicPoint& p, const NozzleProfile& wall, double char_angle) const;
 
+    ThermodynamicContext build_thermo_context();
+
     void update_thermodynamic_state(CharacteristicPoint& point);
     void update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
     void update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
