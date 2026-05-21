@@ -12,6 +12,8 @@ namespace Goddard {
 /**
  * Main Goddard class for querying thermodynamic information. `Gas` wraps Cantera's `Solution`
  * object and adds several convenience methods for processes involving reactive flow.
+ * 
+ * `Gas` is itself a wrapper class that carries very little data, and is cheap to copy. 
  */
 class Gas {
 public:
@@ -40,6 +42,11 @@ public:
     Gas(const std::string& infile, 
         const std::string& phase_name,
         GasChemistry chemistry = GasChemistry::FROZEN);
+    
+    /**
+     * Create a perfect gas object from the adiabatic index.
+     */
+    Gas(double gamma);
 
     Gas(const Gas& gas);
     Gas operator=(const Gas& gas);
@@ -270,6 +277,13 @@ public:
      * Generate report string of underlying Cantera `ThermoPhase` object.
      */
     std::string report(bool show_thermo = true, double threshold = -1e-14) const;
+    
+    /**
+     * True if underlying Cantera Solution object has been initialized.
+     */
+    inline bool has_cantera_sln() const {
+        return m_sol != nullptr;
+    }
 
     GasChemistry chemistry;
 
@@ -277,6 +291,11 @@ private:
     std::shared_ptr<Cantera::Solution> m_sol;
     double m_H_stagnation;
     double m_S0;
+    double m_gamma;
+
+    inline void check_for_valid_cantera() const {
+        if (!has_cantera_sln()) throw std::runtime_error("No Cantera Solution owned by this Gas object.");
+    }
 };
 
 } // namespace Goddard
