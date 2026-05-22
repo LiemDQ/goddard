@@ -7,6 +7,14 @@ double gquad(double gamma, double a, double b, double c, double d) {
     return (a*gamma*gamma + b*gamma + c)/d;
 }
 
+MocInitialization::MocInitialization(
+    ThroatGeometry geom, 
+    ThermodynamicContext& thermo, 
+    const MocOptions& options) 
+    : geometry(geom), m_thermo(thermo), m_options(options)
+{
+
+}
 
 std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const ThroatCondition& throat) {
     
@@ -24,8 +32,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const Throa
         pt.y = dy * i;
         pt.x = (gamma + 1)*alpha/(2*(3+delta()))*(1.0 - pt.y*pt.y);
         pt.theta = 0.0; // by definition
-        double u_prime = alpha*pt.x + (gamma+1)*alpha*alpha*pt.y*pt.y/(2*(1+delt));
-        pt.update_thermodynamic_state_from_V(thermo, u_prime);
+        double machx = 1+alpha*pt.x + (gamma+1)*alpha*alpha*pt.y*pt.y/(2*(1+delt));
+        pt.update_thermodynamic_state_from_mach(m_thermo, machx);
         pt.update_Ks();
     }
 
@@ -39,7 +47,7 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     size_t num_points = static_cast<size_t>(m_options.num_characteristics);
     double dy = 1.0/(num_points-1);
     double delt = delta();
-    double R = geometry.downstream_wall_curvature_radius/geometry.throat_radius;
+    double R = KL_R();
     double alpha = sauer_alpha(gamma);
 
     std::vector<CharacteristicPoint> points(num_points);
@@ -51,8 +59,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
         
         // Solve for x using root solving method
         pt.x = KL_solve_transonic_x(pt.y, gamma, R, x_guess);
-        double u_prime = KL_xMach(pt.y, pt.x, gamma, R);
-        pt.update_thermodynamic_state_from_V(thermo, u_prime);
+        double machx = KL_xMach(pt.y, pt.x, gamma, R);
+        pt.update_thermodynamic_state_from_mach(m_thermo, machx);
         pt.update_Ks();
     }
 
@@ -86,7 +94,7 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
         pt.y = sonic_point.y; // dimensionless throat radius
         pt.theta = dtheta_initial + i*dtheta;
         
-        pt.update_thermodynamic_state_from_nu(thermo, pt.theta, 1.0);
+        pt.update_thermodynamic_state_from_nu(m_thermo, pt.theta, 1.0);
         pt.update_Ks();
     }
     return points;
@@ -94,7 +102,7 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
 
 double MocInitialization::KL_z_coordinate(double x, double gamma) const {
     double r = geometry.throat_radius;
-    double R = geometry.downstream_wall_curvature_radius/r;
+    double R = KL_R();
     return std::sqrt(2*R/(gamma+1))*x/r;
 }
 
@@ -102,6 +110,10 @@ double MocInitialization::KL_dzdx(double x, double gamma) const {
     double r = geometry.throat_radius;
     double R = geometry.downstream_wall_curvature_radius/r;
     return std::sqrt(2*R/(gamma+1))/r;
+}
+
+double MocInitialization::KL_R() const {
+    return geometry.downstream_wall_curvature_radius/geometry.throat_radius;
 }
 
 double MocInitialization::KL_u1(double r, double z) const {

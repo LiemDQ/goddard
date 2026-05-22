@@ -12,12 +12,14 @@ namespace Goddard {
 
 class MocInitialization {
     public:
+    MocInitialization(ThroatGeometry geom, ThermodynamicContext& thermo, const MocOptions& options);
 
     std::vector<CharacteristicPoint> initialize_sauer(const ThroatCondition& throat);
     std::vector<CharacteristicPoint> initialize_kliegel_levine(const ThroatCondition& throat);
     std::vector<CharacteristicPoint> initialize_centered_expansion(const ThroatCondition& throat);
 
     ThroatGeometry geometry;
+
     protected:
     inline double delta() const {
         if (m_options.flow_type == MocFlowKind::AXISYMMETRIC) return 1.0;
@@ -31,6 +33,7 @@ class MocInitialization {
     // Kliegel-Levine utility functions
     
     double KL_z_coordinate(double x, double gamma) const;
+    double KL_R() const;
     double KL_dzdx(double x, double gamma) const;
     double KL_u1(double r, double z) const;
     double KL_u2(double r, double z, double gamma) const;
@@ -47,9 +50,8 @@ class MocInitialization {
     double KL_dyMachdx(double x, double y, double gamma, double R) const;
     double KL_solve_transonic_x(double y, double gamma, double R, double x_guess = 0.0) const;
 
+    ThermodynamicContext m_thermo;
     MocOptions m_options;
-    PrandtlMeyerTable table;
-    ThermodynamicContext thermo;
 
 };
 

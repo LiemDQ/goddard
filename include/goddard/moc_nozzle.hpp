@@ -35,14 +35,9 @@ protected:
     std::vector<CharacteristicPoint> generate_initial_data_line_perfect_gas(
         size_t num_points);
 
-    // generate data line based on Kliegel-Levine perturbation.
-    std::vector<CharacteristicPoint> generate_kliegel_levine_line(
-        const ThroatCondition& throat,
-        const ThroatGeometry& geometry,
-        size_t num_points);
 
     // propagate kernel region (C+/C- intersections)
-    void solve_kernel_region(CharacteristicNet& net);
+    void solve_characteristic_kernel(CharacteristicNet& net);
     // compute wall points (straightening section)
     void solve_wall_region(CharacteristicNet& net);
 

@@ -27,15 +27,8 @@ enum class MocFlowKind {
 enum class MocMode {
     DESIGN_MIN_LENGTH,  // Minimum length nozzle with uniform exit flow
     DESIGN_RAO, // Rao-type length-optimized thrust nozzle
-    DESIGN_CENTERLINE, // design optimal nozzle based on prescribed centerline
+    DESIGN_CENTERLINE, // Designs an optimal nozzle based on prescribed centerline values. @warning Currently unimplemented! 
     ANALYSIS    // wall contour is input
-};
-
-enum class MocInitialization {
-    STRAIGHT_SONIC_LINE,    // centered expansion fan at throat (default)
-    HALL_PARABOLIC,         // Hall parabolic for sonic line
-    KLIEGEL_LEVINE          // Kleigel & Levine's solution for small throat radii
-    // WALL_MARCH,          // future: march from slightly supersonic wall region
 };
 
 struct ThroatGeometry {
@@ -52,7 +45,6 @@ struct MocOptions {
     MocFlowKind flow_type = MocFlowKind::PLANAR;
     GasChemistry chemistry = GasChemistry::PERFECT_GAS;
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
-    MocInitialization initialization = MocInitialization::STRAIGHT_SONIC_LINE;
 
     int num_characteristics;    // number of C+ lines from initial expansion fan
     double gamma;               // used only for PERFECT_GAS

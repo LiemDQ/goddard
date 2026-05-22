@@ -135,10 +135,44 @@ std::pair<double, double> characteristic_intersection_coordinates(
 
     return {x,y};
 } 
-    
-int CharacteristicNet::row_offset(int j) const {
-    // row 0 starts at 0, row 1 at N, row 2 at (N-1), etc.
-    return j * num_c_plus - j * (j -1) / 2;
+
+// -- CharacteristicNet --
+
+size_t CharacteristicNet::add_point(const CharacteristicPoint& pt, PointMembership m) {
+    points.push_back(pt);
+    membership.push_back(m);
+    return points.size() - 1;
 }
+
+size_t CharacteristicNet::reflect_c_plus_off_wall(size_t c_plus_chain_idx, const CharacteristicPoint& pt) {
+    const size_t new_c_minus_chain_idx = c_minus_chains.size();
+    size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = new_c_minus_chain_idx});
+
+    // cap off the chain and create a new one
+    c_plus_chains[c_plus_chain_idx].push_back(idx);
+    c_minus_chains.push_back({idx});
+
+    wall_point_indices.push_back(idx);
+    
+    return idx;
+}
+
+size_t CharacteristicNet::reflect_c_minus_off_axis(size_t c_minus_chain_idx, const CharacteristicPoint& pt) {
+    const size_t new_c_plus_chain_idx = c_plus_chains.size();
+    size_t idx = add_point(pt, {.c_plus_chain_idx = new_c_plus_chain_idx, .c_minus_chain_idx = c_minus_chain_idx});
+
+    // cap off the chain and create a new one
+    c_minus_chains[c_minus_chain_idx].push_back(idx);
+    c_plus_chains.push_back({idx});
+
+    axis_point_indices.push_back(idx);
+    
+    return idx;
+}
+
+size_t CharacteristicNet::terminate_c_plus_at_wall(size_t c_plus_chain_idx, const CharacteristicPoint& pt) {
+    
+}
+    
 
 } // namespace Goddard

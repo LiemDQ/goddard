@@ -77,25 +77,61 @@ std::pair<double, double> characteristic_intersection_coordinates(
     double angle1,
     double angle2);
 
+
+struct ChainMetadata {
+    bool active = true;
+    enum class TerminationType {
+        NOT_TERMINATED, WALL, AXIS, OUTFLOW, CORNER_FAN_ORIGIN
+    } termination = TerminationType::NOT_TERMINATED;
+    size_t origin_point_idx;
+    size_t latest_point_idx;
+    size_t left_neighbor_chain_idx;
+    size_t right_neighbor_chain_idx;
+};
 class CharacteristicNet {
     
     public:
     
-    int num_c_plus;
-    int num_c_minus;
+    // Index is opaque; access via family chains
+    std::vector<CharacteristicPoint> points;
     
     using Wavefront = std::vector<CharacteristicPoint>;
     // access point at (i_plus, j_minus)
     std::vector<Wavefront> wavefronts;
 
+    
 
+    // Each entry is the chain of point indices along one characteristic
+    // Note that wall and axis points terminate a chain, and also start the next chain
+    std::vector<std::vector<size_t>> c_plus_chains;
+    std::vector<std::vector<size_t>> c_minus_chains;
+
+    // Given a point index, which chains does it belong to?
+    struct PointMembership {size_t c_plus_chain_idx; size_t c_minus_chain_idx; };
+    // membership at index i describes point i
+    std::vector<PointMembership> membership;
+
+    std::vector<ChainMetadata> c_plus_metadata;
+    std::vector<ChainMetadata> c_minus_metadata;
+    
     // Wall contour (profile output)
     std::vector<double> wall_x;
     std::vector<double> wall_y;
-    std::vector<CharacteristicPoint> wall_points;
+    
+    // Wall and axis lists for boundary tracking
+    std::vector<size_t> wall_point_indices;
+    std::vector<size_t> axis_point_indices;
 
-private:
-    int row_offset(int j) const; //triangular indexing
+    size_t add_point(const CharacteristicPoint& pt, PointMembership m);
+    size_t add_starting_point(const CharacteristicPoint& pt);
+
+    size_t add_plus_chain(std::vector<size_t> chain, ChainMetadata metadata);
+    
+    size_t reflect_c_plus_off_wall(size_t chain_idx, const CharacteristicPoint& pt);
+    size_t reflect_c_minus_off_axis(size_t chain_idx, const CharacteristicPoint& pt);
+
+    // Add a point where the C+ characteristic hits the wall without emitting a reflected C- characteristic.
+    size_t terminate_c_plus_at_wall(size_t chain_idx, const CharacteristicPoint& pt);
 };
 
 } // namespace Goddard

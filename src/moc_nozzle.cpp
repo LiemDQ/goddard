@@ -8,6 +8,7 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/moc_nozzle.hpp"
+#include "goddard/moc_initialization.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/error.hpp"
 
@@ -69,8 +70,11 @@ MocResult MocNozzle::solve() {
     net.wall_x.push_back(0.0);
     net.wall_y.push_back(1.0);
 
-    solve_kernel_region(net);
-    solve_wall_region(net);
+    //TODO: needs to be reworked. In the general case, we cannot separately solve the wall and internal regions.
+    //this only applies to the special case of minimum length nozzles, where reflected characteristics are
+    //cancelled at the wall.
+    solve_characteristic_kernel(net);
+    
 
     // Check for invalid points (details already logged by individual solvers)
     bool all_valid = true;
@@ -146,7 +150,7 @@ MocResult MocNozzle::solve() {
 
 std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     const ThroatCondition& throat,
-    const ThroatGeometry& /*geometry*/,
+    const ThroatGeometry& geometry,
     size_t num_points)
 {
     auto thermo = m_gas->thermo();
@@ -155,20 +159,8 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     std::vector<CharacteristicPoint> data_line;
     data_line.reserve(num_points);
     
-
-    CharacteristicPoint sonic_point;
-    sonic_point.temperature = thermo->temperature()/m_T_ref; // should be 1.0 by definition
-    sonic_point.pressure = thermo->pressure()/m_P_ref;
-    sonic_point.cantera_state = throat.state;
-    sonic_point.mach = 1.0; // by definition
-    sonic_point.theta = 0.0; // by definition
-    sonic_point.nu = 0.0;
-    sonic_point.x = 0.0;
-    sonic_point.y = 1.0; // dimensionless throat radius
-    sonic_point.K_minus = 0.0;
-    sonic_point.K_plus = 0.0;
-
-    sonic_point.gamma_s = gamma_s_from_nu(sonic_point.nu);
+    ThermodynamicContext context = build_thermo_context();
+    MocInitialization initializer{geometry, context, m_options};
     
     switch (m_options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
@@ -176,25 +168,12 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // a centered expansion fan is the "exact" solution.
             // Therefore all initialization methods simplify to straight line initialization.
     
-            // the first theta should be small to minimize approximation error.
-            double dtheta_initial = m_options.theta_max/(num_points*10);
-            double dtheta = (m_options.theta_max-dtheta_initial)/(num_points - 1);
+            auto expansion_line = initializer.initialize_centered_expansion(throat);
             CharacteristicPoint upstream_point;
-            
             //for a minimum length nozzle, the sonic line is straight.
             //the initial data line is generated through a single Prandtl-Meyer expansion at the throat.
-            for (size_t i = 0; i < num_points; i++){
-                CharacteristicPoint expansion_point;
-                expansion_point.x = sonic_point.x;
-                expansion_point.y = sonic_point.y; // dimensionless throat radius
-                expansion_point.theta = dtheta_initial + i*dtheta;
-                // save theta for later use in wall solver
-                m_theta_schedule.push_back(expansion_point.theta);
-                // for a centered expansion fan, nu = theta by definition
-                update_thermodynamic_state_from_nu(expansion_point, expansion_point.theta, 1.0);
-                expansion_point.K_plus = expansion_point.theta - expansion_point.nu;
-                expansion_point.K_minus = expansion_point.theta + expansion_point.nu;
-                
+            for (size_t i = 0; i < expansion_line.size(); i++){
+                const auto& expansion_point = expansion_line[i];
                 // special case: the first point is on the centerline
                 if (i == 0) {
                     upstream_point = solve_axis_point(expansion_point);
@@ -207,29 +186,16 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             }
             break;
         }
-        case MocMode::DESIGN_RAO: {
-            throw NotImplementedError("Rao nozzle initialization not implemented.");
-        }
+        case MocMode::DESIGN_RAO:
         case MocMode::ANALYSIS: {
              // the first theta should be small to minimize approximation error.
-            double dtheta_initial = m_options.theta_max/(num_points*10);
-            double dtheta = (m_options.theta_max-dtheta_initial)/(num_points - 1);
             CharacteristicPoint upstream_point;
+            auto expansion_line = initializer.initialize_kliegel_levine(throat);
             
             //for a minimum length nozzle, the sonic line is straight.
             //the initial data line is generated through a single Prandtl-Meyer expansion at the throat.
-            for (size_t i = 0; i < num_points; i++){
-                CharacteristicPoint expansion_point;
-                expansion_point.x = sonic_point.x;
-                expansion_point.y = sonic_point.y; // dimensionless throat radius
-                expansion_point.theta = dtheta_initial + i*dtheta;
-                // save theta for later use in wall solver
-                m_theta_schedule.push_back(expansion_point.theta);
-                // for a centered expansion fan, nu = theta by definition
-                update_thermodynamic_state_from_nu(expansion_point, expansion_point.theta, 1.0);
-                expansion_point.K_plus = expansion_point.theta - expansion_point.nu;
-                expansion_point.K_minus = expansion_point.theta + expansion_point.nu;
-                
+            for (size_t i = 0; i < expansion_line.size(); i++){
+                const auto& expansion_point = expansion_line[i];
                 // special case: the first point is on the centerline
                 if (i == 0) {
                     upstream_point = solve_axis_point(expansion_point);
@@ -320,38 +286,11 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
     return data_line;
 }
 
-std::vector<CharacteristicPoint> MocNozzle::generate_kliegel_levine_line(
-        const ThroatCondition& throat,
-        const ThroatGeometry& geometry,
-        size_t num_points)
-{
-    // double centerline_mach = 1.05;
-    const double R = geometry.downstream_wall_curvature_radius/geometry.throat_radius; // normalized curvature radius
 
-    double dy = 1.0/num_points;
-
-    CharacteristicPoint throat_point;
-    // initial point starts at throat boundary
-    throat_point.y = 1.0;
-    throat_point.x = 0.0;
-    throat_point.theta = 0.0;
-
-    double delta = 0.0;
-    if (m_options.flow_type == MocFlowKind::AXISYMMETRIC) {
-        delta = 1.0;
-    } 
-    else {
-        delta = 0.0;
-    }
-
-
-}
-
-void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
+void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     switch (m_options.mode) {
-        case MocMode::DESIGN_MIN_LENGTH:
-        case MocMode::ANALYSIS: {
-            // For both min-length design and analysis mode with straight sonic line
+        case MocMode::DESIGN_MIN_LENGTH: {
+            // For min-length design mode with straight sonic line
             // initialization, the kernel uses the same triangular marching scheme.
             // The number of characteristics is determined by the initial data line.
             // In analysis mode, wall reflections in the expansion region are not modeled
@@ -376,9 +315,37 @@ void MocNozzle::solve_kernel_region(CharacteristicNet& net) {
                 }
                 net.wavefronts.push_back(next_wavefront);
             }
+            // once interior kernel is solved, solve the wall regions.
+            solve_wall_region(net);
             break;
         }
         case MocMode::DESIGN_RAO: {
+            break;
+        }
+        case MocMode::ANALYSIS: {
+            //TODO: rework this
+            // In analysis mode, characteristics are reflected
+            // off the walls. There are no "cancelled" characteristics. 
+            size_t num_characteristics = static_cast<size_t>(m_options.num_characteristics);
+            for (size_t i = 0; i < num_characteristics-1; i++) {
+                CharacteristicNet::Wavefront next_wavefront;
+                auto& curr_wavefront = net.wavefronts[i];
+                // skip the first node in a wavefront -- it is the centerline node which doesn't impact
+                // downstream nodes. The C- characteristic is irrelevant due to symmetry,
+                // and the C+ characteristic impacts nodes on the same wavefront.
+                CharacteristicPoint prev_point;
+                for (size_t j = 1; j < curr_wavefront.size(); j++) {
+                    const CharacteristicPoint& parent_point = curr_wavefront[j];
+                    if (j == 1) {
+                        prev_point = solve_axis_point(parent_point);
+                    }
+                    else {
+                        prev_point = solve_interior_point(parent_point, prev_point);
+                    }
+                    next_wavefront.push_back(prev_point);
+                }
+                net.wavefronts.push_back(next_wavefront);
+            }
             break;
         }
     }
@@ -407,6 +374,9 @@ void MocNozzle::solve_wall_region(CharacteristicNet& net) {
             }
             break;
         }
+        case MocMode::DESIGN_RAO: {
+            break;
+        }
         case MocMode::ANALYSIS: {
             // In analysis mode, wall points are determined by the prescribed wall contour.
             // solve_wall_point dispatches to solve_wall_point_analysis which intersects
@@ -420,9 +390,6 @@ void MocNozzle::solve_wall_region(CharacteristicNet& net) {
                 net.wall_y.push_back(wall_point.y);
                 net.wall_points.push_back(wall_point);
             }
-            break;
-        }
-        case MocMode::DESIGN_RAO: {
             break;
         }
     }
@@ -1151,7 +1118,12 @@ void MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, do
 }
 
 ThermodynamicContext MocNozzle::build_thermo_context() {
-    return ThermodynamicContext{.gas = m_gas, .table = pm_table, .T_ref = m_T_ref, .P_ref = m_P_ref, .gamma_s = m_options.gamma};
+    return ThermodynamicContext{
+        .gas = m_gas, 
+        .table = pm_table, 
+        .T_ref = m_T_ref, 
+        .P_ref = m_P_ref, 
+        .gamma_s = m_options.gamma};
 }
 
 std::pair<double,double> MocNozzle::find_wall_hit(
