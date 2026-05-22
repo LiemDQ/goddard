@@ -5,11 +5,13 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "goddard"
 version = "0.1.0"
-description = "Rocket engine simulation toolkit"
+description = "Reactive flow simulation toolkit"
 readme = "readme.md"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
+    "matplotlib",
+    "pandas"
 ]
 
 [project.optional-dependencies]
