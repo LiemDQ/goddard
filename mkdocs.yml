@@ -1,0 +1,108 @@
+site_name: Goddard
+site_description: A C++/Python rocket engine simulation toolkit
+repo_url: https://github.com/LiemDQ/goddard
+repo_name: LiemDQ/goddard
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 2
+            members_order: source
+            show_signature_annotations: true
+            separate_signature: true
+            filters:
+              - "!^_"
+            docstring_style: google
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+  - mike:
+      alias_type: symlink
+      canonical_version: latest
+
+extra:
+  version:
+    provider: mike
+
+markdown_extensions:
+  - admonition
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Theory:
+      - Thermodynamics: theory/thermodynamics.md
+      - Combustion: theory/combustion.md
+      - Nozzle Flow: theory/nozzle_flow.md
+      - Method of Characteristics: theory/method_of_characteristics.md
+      - Shocks: theory/shocks.md
+      - Heat Capacity Ratio: theory/heat_capacity.md
+      - Numerical Algorithms: theory/numerics.md 
+  - Tutorials:
+      - Getting Started: tutorials/getting_started.md
+  - Examples:
+      - Basic Rocket: examples/basic_rocket.ipynb
+  - API Reference:
+      - Gas: api/gas.md
+      - Combustor: api/combustor.md
+      - Nozzle: api/nozzle.md
+      - Method of Characteristics: api/moc.md
+      - Kinetic Nozzle: api/kinetic_nozzle.md
+      - Shocks: api/shocks.md
+      - Convenience Functions: api/convenience.md
+  - Contributing:
+      - Docstring Style Guide: contributing/docstring_style.md

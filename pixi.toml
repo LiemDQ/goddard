@@ -23,6 +23,8 @@ cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type 
 args = [{arg="build_type", default = "Release"}]
 cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }} -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF"
 
+[tasks.parse-cea]
+cmd="bash scripts/cea_to_json.sh --pretty"
 
 [dependencies]
 # cantera = "3.2.*"
@@ -65,8 +67,53 @@ cea = "*"
 [feature.test.tasks]
 test-cea = "pytest python/tests/test_cea_comparison.py -v"
 
+[feature.docs.dependencies]
+mkdocs = "*"
+mkdocs-material = "*"
+libclang = "*"  # libclang runtime, used by pybind11_mkdoc
+
+[feature.docs.pypi-dependencies]
+mkdocstrings = { version = "*", extras = ["python"] }
+mkdocs-jupyter = "*"
+mike = "*"
+pybind11-mkdoc = "*"
+
+[feature.docs.tasks.docs-configure]
+cmd = "mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -Dgoddard_BUILD_DOCSTRINGS=ON -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF"
+
+[feature.docs.tasks.docs-compile]
+cmd = "cmake --build build"
+depends-on = ["docs-configure"]
+
+[feature.docs.tasks.docs-stubs]
+cmd = "PYTHONPATH=python LD_LIBRARY_PATH=build/src python -m nanobind.stubgen -m goddard._core -o python/goddard/_core.pyi"
+depends-on = ["docs-compile"]
+
+[feature.docs.tasks.docs-prepare]
+cmd = "python scripts/copy_notebooks_to_docs.py"
+depends-on = ["docs-stubs"]
+
+# Note: --strict is omitted because griffe emits warnings for untyped
+# parameters in convenience.py. Re-enable once type annotations are added.
+[feature.docs.tasks.docs-build]
+cmd = "mkdocs build"
+depends-on = ["docs-prepare"]
+
+[feature.docs.tasks.docs-serve]
+cmd = "mkdocs serve"
+depends-on = ["docs-prepare"]
+
+[feature.docs.tasks.docs]
+depends-on = ["docs-build"]
+
+[feature.docs.tasks.docs-deploy]
+args = [{arg="version", default = "0.1"}]
+cmd = "mike deploy --push --update-aliases {{ version }} latest"
+depends-on = ["docs-build"]
+
 [environments]
 default = {solve-group = "default"}
 examples = {features = ["examples"], solve-group = "default"}
 data = {features = ["data"], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
+docs = {features = ["docs", "examples"], solve-group = "default"}
