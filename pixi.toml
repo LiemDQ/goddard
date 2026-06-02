@@ -1,5 +1,5 @@
 [workspace]
-authors = ["Liem Dam-Quang <liem.dam-quang@mail.mcgill.ca>"]
+authors = ["Liem Dam-Quang <dq@liem.ca>"]
 channels = ["conda-forge"]
 name = "goddard"
 platforms = ["linux-64", "win-64", "osx-64"]

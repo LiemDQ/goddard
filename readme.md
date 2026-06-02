@@ -10,7 +10,7 @@ At a basic level, Goddard provides similar functionality as NASA's [Chemical Equ
 - **Thermochemical physics** — chemical equilibrium and kinetics with self-consistent thermodynamics.
 - **Compressible flow** — 1-D equilibrium, frozen, and kinetic nozzle expansions
 - **Method of Characteristics** — automated nozzle contour design and analysis of 2D & axisymmetric supersonic flows.
-- **Shock relations** — thermodynamically consistent normal, reflected, and oblique shocks
+- **Shock relations** — thermodynamically consistent normal, reflected, and (TBD) oblique shocks
 - **Thermodynamic data** — integrated with the NASA Glenn thermodynamic database, covering nearly 2,000 gaseous and condensed species.
 
 ## Quick start
@@ -51,6 +51,6 @@ Questions? Reach out by opening a discussion topic, or via email at [dq@liem.ca]
 
 
 ## License
-Goddard is subject to the terms of the GNU Lesser General Public License License, v. 2.1.
+Goddard is subject to the terms of the GNU Lesser General Public License, v. 2.1.
 
 Copyright © 2026 Liem Dam-Quang
