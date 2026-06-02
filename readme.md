@@ -15,6 +15,11 @@ At a basic level, Goddard provides similar functionality as NASA's [Chemical Equ
 
 ## Quick start
 
+### Requirements
+
+* [Pixi](https://pixi.prefix.dev/latest/) package manager.
+* C++20 compiler.
+
 ### Installation
 
 ```bash
