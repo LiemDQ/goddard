@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same ref when a new commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpp-tests:
+    name: C++ build & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          environments: default
+          cache: true
+
+      - name: Configure
+        run: pixi run configure
+
+      - name: Compile
+        run: pixi run compile
+
+      - name: Run C++ tests
+        run: pixi run ctest --output-on-failure
+
+  python-tests:
+    name: Python build & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          environments: test
+          cache: true
+
+      - name: Build & install Python package
+        run: pixi run -e test pip-install
+
+      - name: Run Python tests
+        run: pixi run -e test test-python
