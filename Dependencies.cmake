@@ -36,7 +36,7 @@ function(goddard_setup_dependencies)
 
 
     GoddardFindPackage(Threads REQUIRED)
-    GoddardFindPackage(Eigen3 3.4 REQUIRED)
+    GoddardFindPackage(Eigen3 5.0 REQUIRED)
 
 
 endfunction()

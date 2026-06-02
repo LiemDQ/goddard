@@ -4,6 +4,9 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "goddard"
+authors = [
+    {name = "Liem Dam-Quang", email="dq@liem.ca"}
+]
 version = "0.1.0"
 description = "Reactive flow simulation toolkit"
 readme = "readme.md"
@@ -13,7 +16,8 @@ dependencies = [
     "matplotlib",
     "pandas"
 ]
-
+license = { file = "LICENSE" }
+urls ={ Repository = "https://github.com/LiemDQ/goddard", Issues = "https://github.com/LiemDQ/goddard/issues"}
 [project.optional-dependencies]
 dev = ["pytest"]
 

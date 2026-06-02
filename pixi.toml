@@ -1,5 +1,5 @@
 [workspace]
-authors = ["Liem Dam-Quang <liem.dam-quang@mail.mcgill.ca>"]
+authors = ["Liem Dam-Quang <dq@liem.ca>"]
 channels = ["conda-forge"]
 name = "goddard"
 platforms = ["linux-64", "win-64", "osx-64"]
@@ -39,7 +39,7 @@ cxx-compiler = "*"
 nanobind = "*"
 ccache = { channel = "conda-forge" }
 gtest = ">=1.15"
-eigen = ">=3.4"
+eigen = ">=5.0"
 python = ">3.11"
 pip = "*"
 scikit-build-core = ">=0.10"
