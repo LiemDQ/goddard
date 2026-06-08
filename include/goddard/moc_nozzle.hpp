@@ -1,4 +1,5 @@
 #pragma once
+#include <queue>
 #include "goddard/moc.hpp"
 
 namespace Goddard {
@@ -25,6 +26,7 @@ public:
     MocOptions m_options;
 
 protected:
+   
     // generate initial data line (Cantera-backed path)
     std::vector<CharacteristicPoint> generate_initial_data_line(
         const ThroatCondition& throat,
@@ -38,8 +40,6 @@ protected:
 
     // propagate kernel region (C+/C- intersections)
     void solve_characteristic_kernel(CharacteristicNet& net);
-    // compute wall points (straightening section)
-    void solve_wall_region(CharacteristicNet& net);
 
     // unit processes
 
@@ -155,6 +155,17 @@ protected:
         const CharacteristicPoint& p1, 
         double new_y) const;
 
+
+    struct LeadingEdgeView {
+        ChainMetadata::Family family;
+        std::vector<double> y_values;
+        std::vector<size_t> chain_indices;
+        std::vector<size_t> leading_pt_indices;
+    };
+    // Generate struct-of-array of leading edge values for a specified family.
+    LeadingEdgeView leading_edges(const CharacteristicNet& net, ChainMetadata::Family family) const;
+
+    void update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const;
 
     // Logging helpers
     template <typename... Args>

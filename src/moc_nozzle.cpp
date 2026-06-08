@@ -1,8 +1,7 @@
 #include <cmath>
 #include <algorithm>
-#include <fstream>
-#include <iomanip>
-#include <sstream>
+#include <optional>
+#include <limits>
 #include <format>
 #include "goddard/equilibrium.hpp"
 #include "goddard/gas_dynamics.hpp"
@@ -64,11 +63,13 @@ MocResult MocNozzle::solve() {
                 
         data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
     }
-    net.num_c_minus = data_line.size();
-    net.num_c_plus = data_line.size();
-    net.wavefronts.push_back(data_line);
-    net.wall_x.push_back(0.0);
-    net.wall_y.push_back(1.0);
+    
+    if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+        net.add_initial_characteristic(data_line);
+    }
+    else {
+        net.add_initial_data_line(data_line);
+    }
 
     //TODO: needs to be reworked. In the general case, we cannot separately solve the wall and internal regions.
     //this only applies to the special case of minimum length nozzles, where reflected characteristics are
@@ -78,12 +79,10 @@ MocResult MocNozzle::solve() {
 
     // Check for invalid points (details already logged by individual solvers)
     bool all_valid = true;
-    for (const auto& wf : net.wavefronts) {
-        for (const auto& pt : wf) {
-            if (pt.mach < 0.0) {
-                all_valid = false;
-                break;
-            }
+    for (const auto& pt : net.points) {
+        if (pt.mach < 0.0) {
+            all_valid = false;
+            break;
         }
         if (!all_valid) break;
     }
@@ -109,19 +108,22 @@ MocResult MocNozzle::solve() {
     // Exit Mach: from the last wavefront's last point (outermost at exit plane)
     // For a min-length nozzle, the last wavefront has one point and the exit
     // plane Mach should be uniform.
-    if (!net.wavefronts.empty() && !net.wavefronts.back().empty()) {
-        result.exit_mach = net.wavefronts.back().back().mach;
+    if (!net.points.empty()) {
+        result.exit_mach = net.points.back().mach;
     }
 
     // Build wall profile from computed wall coordinates
     result.profile.x = net.wall_x;
     result.profile.y = net.wall_y;
 
+
+    // TODO: this needs to be generalized to all nozzles, not just min length ones.
+
     // Exit plane extraction:
     // For a min-length nozzle, the exit plane is the last wavefront + last wall point.
     // The last wavefront contains the axis point, and each preceding wavefront's
     // last point was absorbed into wall calculations.
-    if (!net.wavefronts.empty()) {
+    if (!net.points.empty()) {
         const auto& last_wf = net.wavefronts.back();
         for (const auto& pt : last_wf) {
             result.exit_plane.y.push_back(pt.y);
@@ -286,115 +288,128 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_g
     return data_line;
 }
 
-
 void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
-    switch (m_options.mode) {
-        case MocMode::DESIGN_MIN_LENGTH: {
-            // For min-length design mode with straight sonic line
-            // initialization, the kernel uses the same triangular marching scheme.
-            // The number of characteristics is determined by the initial data line.
-            // In analysis mode, wall reflections in the expansion region are not modeled
-            // (this is a limitation of the straight sonic line approach).
-            size_t num_characteristics = static_cast<size_t>(net.num_c_plus);
-            for (size_t i = 0; i < num_characteristics-1; i++) {
-                CharacteristicNet::Wavefront next_wavefront;
-                auto& curr_wavefront = net.wavefronts[i];
-                // skip the first node in a wavefront -- it is the centerline node which doesn't impact
-                // downstream nodes. The C- characteristic is irrelevant due to symmetry,
-                // and the C+ characteristic impacts nodes on the same wavefront.
-                CharacteristicPoint prev_point;
-                for (size_t j = 1; j < curr_wavefront.size(); j++) {
-                    const CharacteristicPoint& parent_point = curr_wavefront[j];
-                    if (j == 1) {
-                        prev_point = solve_axis_point(parent_point);
-                    }
-                    else {
-                        prev_point = solve_interior_point(parent_point, prev_point);
-                    }
-                    next_wavefront.push_back(prev_point);
+    using Family = ChainMetadata::Family;
+    LeadingEdgeView plus_edges = leading_edges(net, Family::PLUS);
+    LeadingEdgeView minus_edges = leading_edges(net, Family::MINUS);
+    
+    std::vector<std::pair<CharacteristicPoint, PointMembership>> intersections;
+    std::vector<size_t> paired_cminus;
+    intersections.reserve(net.c_chains.size());
+    paired_cminus.reserve(net.c_chains.size());
+
+    const int maxiter = 1e5;
+    int iters = 0;
+    // TODO: need to terminate the chains once at the nozzle exit boundary.
+    while (net.has_active_chains() && iters < maxiter) {
+        intersections.clear();
+        paired_cminus.clear();
+
+        for (size_t i = 0; i < plus_edges.chain_indices.size(); i++) {
+            double plus_y = plus_edges.y_values[i];
+            double best_dy = std::numeric_limits<double>::max();
+            std::optional<size_t> best_partner = std::nullopt;
+            size_t best_partner_pt_idx = 0;
+            for (size_t j = 0; j < minus_edges.chain_indices.size(); j++) {
+                double dy = minus_edges.y_values[j] - plus_y;
+                if (dy > 0 && dy < best_dy) {
+                    best_dy = dy;
+                    best_partner = minus_edges.chain_indices[j];
+                    best_partner_pt_idx = minus_edges.leading_pt_indices[j];
                 }
-                net.wavefronts.push_back(next_wavefront);
-            }
-            // once interior kernel is solved, solve the wall regions.
-            solve_wall_region(net);
-            break;
-        }
-        case MocMode::DESIGN_RAO: {
-            break;
-        }
-        case MocMode::ANALYSIS: {
-            //TODO: rework this
-            // In analysis mode, characteristics are reflected
-            // off the walls. There are no "cancelled" characteristics. 
-            size_t num_characteristics = static_cast<size_t>(m_options.num_characteristics);
-            for (size_t i = 0; i < num_characteristics-1; i++) {
-                CharacteristicNet::Wavefront next_wavefront;
-                auto& curr_wavefront = net.wavefronts[i];
-                // skip the first node in a wavefront -- it is the centerline node which doesn't impact
-                // downstream nodes. The C- characteristic is irrelevant due to symmetry,
-                // and the C+ characteristic impacts nodes on the same wavefront.
-                CharacteristicPoint prev_point;
-                for (size_t j = 1; j < curr_wavefront.size(); j++) {
-                    const CharacteristicPoint& parent_point = curr_wavefront[j];
-                    if (j == 1) {
-                        prev_point = solve_axis_point(parent_point);
+                // edge case: multiple points at literally the same y due to an expansion fan
+                // the tiebreaker is determined by the characteristic angle theta-mu
+                if (best_partner.has_value() && best_dy == dy) [[unlikely]] {
+                    const CharacteristicPoint& old_pt = net.points[best_partner_pt_idx];
+                    const CharacteristicPoint& new_pt = net.points[minus_edges.leading_pt_indices[j]];
+                    double old_angle = old_pt.theta - old_pt.mu;
+                    double new_angle = new_pt.theta - new_pt.mu;
+                    if (new_angle < old_angle) {
+                        best_partner = minus_edges.chain_indices[j];
+                        best_partner_pt_idx = minus_edges.leading_pt_indices[j];
                     }
-                    else {
-                        prev_point = solve_interior_point(parent_point, prev_point);
-                    }
-                    next_wavefront.push_back(prev_point);
                 }
-                net.wavefronts.push_back(next_wavefront);
             }
-            break;
+            // intersect C+ with closest C- above it.
+            if (best_partner.has_value()) [[likely]] {
+                intersections.push_back({
+                    solve_interior_point(
+                        net.points[plus_edges.leading_pt_indices[i]], 
+                        net.points[best_partner_pt_idx]
+                    ),
+                    PointMembership {
+                        .c_plus_chain_idx = plus_edges.chain_indices[i], 
+                        .c_minus_chain_idx = *best_partner
+                    }
+                });
+                paired_cminus.push_back(*best_partner);
+            }
+            else [[unlikely]] {
+                // C+ intersects with wall
+                intersections.push_back({
+                    solve_wall_point(
+                        net.points[plus_edges.leading_pt_indices[i]],
+                        net.leading_wall_point(),
+                        net.wall_point_indices.size() - 1
+                    ),
+                    PointMembership {
+                        .c_plus_chain_idx = plus_edges.chain_indices[i],
+                        .c_minus_chain_idx = std::nullopt
+                    }
+                });
+            }
         }
+        // solve C- characteristic reflecting off axis.
+        double min_cminus_y = std::numeric_limits<double>::max();
+        size_t min_y_cminus_idx = 0;
+        for (size_t i = 0; i < minus_edges.chain_indices.size(); i++) {
+            if (minus_edges.y_values[i] < min_cminus_y) {
+                min_cminus_y = minus_edges.y_values[i];
+                min_y_cminus_idx = minus_edges.chain_indices[i];
+            }
+        }
+        // if the lowest C- characteristic is unpaired, reflect it off the axis
+        if (std::none_of(
+                paired_cminus.cbegin(), 
+                paired_cminus.cend(), 
+                [min_y_cminus_idx](size_t x) {return x == min_y_cminus_idx;})
+            )
+        {
+            intersections.push_back({
+                solve_axis_point(net.leading_point(min_y_cminus_idx)),
+                PointMembership {
+                    .c_plus_chain_idx = std::nullopt,
+                    .c_minus_chain_idx = min_y_cminus_idx
+                }
+            });
+        }
+        // insert all intersections into net
+        for (auto&& [pt, mem] : intersections) {
+            if (!mem.c_minus_chain_idx.has_value()) {
+                // wall intersection
+                //TODO: special handling for minimum nozzle.
+                if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+                    net.terminate_c_plus_at_wall(*mem.c_plus_chain_idx, pt);
+                }
+                else {
+                    net.reflect_c_plus_off_wall(*mem.c_plus_chain_idx, pt);
+                }
+                net.wall_x.push_back(pt.x);
+                net.wall_y.push_back(pt.y);
+            }
+            else if (!mem.c_plus_chain_idx.has_value()) {
+                // axis intersection
+                net.reflect_c_minus_off_axis(*mem.c_minus_chain_idx, pt);
+            } else {
+                net.add_point(pt, mem);
+            }
+        }
+        update_leading_edges(plus_edges, net, Family::PLUS);
+        update_leading_edges(minus_edges, net, Family::MINUS);
+
+        iters++;
     }
 }
-
-void MocNozzle::solve_wall_region(CharacteristicNet& net) {
-    switch (m_options.mode) {
-        case MocMode::DESIGN_MIN_LENGTH: {
-            CharacteristicPoint wall_point;
-            // For a minimum length nozzle, the first wall point is located at the throat.
-            // We only use the coordinates and angle to determine the position of the next wall point,
-            // so the other fields can be left empty.
-            wall_point.theta = m_options.theta_max;
-            wall_point.x = 0.0;
-            wall_point.y = 1.0;
-
-            // for the min length nozzle case, every wavefront has a wall node
-            // impacted by the last node in the wavefront
-            for (size_t i = 0; i < net.wavefronts.size(); i++) {
-                auto& wavefront = net.wavefronts[i];
-                const CharacteristicPoint& parent_point = wavefront.back();
-                wall_point = solve_wall_point(parent_point, wall_point, static_cast<int>(i));
-                net.wall_x.push_back(wall_point.x);
-                net.wall_y.push_back(wall_point.y);
-                net.wall_points.push_back(wall_point);
-            }
-            break;
-        }
-        case MocMode::DESIGN_RAO: {
-            break;
-        }
-        case MocMode::ANALYSIS: {
-            // In analysis mode, wall points are determined by the prescribed wall contour.
-            // solve_wall_point dispatches to solve_wall_point_analysis which intersects
-            // the C+ characteristic with the wall and applies corrector iterations.
-            for (size_t i = 0; i < net.wavefronts.size(); i++) {
-                auto& wavefront = net.wavefronts[i];
-                const CharacteristicPoint& parent_point = wavefront.back();
-                // solve_wall_point_analysis only needs the interior parent
-                CharacteristicPoint wall_point = solve_wall_point_analysis(parent_point);
-                net.wall_x.push_back(wall_point.x);
-                net.wall_y.push_back(wall_point.y);
-                net.wall_points.push_back(wall_point);
-            }
-            break;
-        }
-    }
-}
-
 
 CharacteristicPoint MocNozzle::solve_wall_point(
     const CharacteristicPoint& interior_parent,
@@ -408,9 +423,7 @@ CharacteristicPoint MocNozzle::solve_wall_point(
             
             return solve_wall_point_design(interior_parent, previous_wall_point, theta_wall);
         }
-        case MocMode::DESIGN_RAO: {
-            throw NotImplementedError("Rao nozzle design is not implemented.");
-        }
+        case MocMode::DESIGN_RAO: 
         case MocMode::ANALYSIS: {
             
             return solve_wall_point_analysis(interior_parent);
@@ -569,7 +582,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_planar(
     double c_minus_angle = average_cminus_angle(p1, p3);
     double c_plus_angle = average_cplus_angle(p2, p3);
 
-    auto [x, y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
     p3.x = x;
     p3.y = y;
 
@@ -599,7 +612,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
     double c_minus_angle = p1.theta - p1.mu;
     double c_plus_angle = p2.theta + p2.mu;
 
-    auto [x, y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
     p3.x = x;
     p3.y = y;
 
@@ -625,7 +638,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
     // ultimately h^2 error
     double c_minus_angle_corrected = average_cminus_angle(p1, p3);
     double c_plus_angle_corrected = average_cplus_angle(p2, p3);
-    auto [x_corrected, y_corrected] = characteristic_intersection_coordinates(
+    auto [x_corrected, y_corrected] = characteristic_intersection_with_angle(
         p1, p2, 
         c_minus_angle_corrected, 
         c_plus_angle_corrected);
@@ -686,7 +699,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     double c_minus_angle = p1.theta - p1.mu;
     double c_plus_angle = p2.theta + p2.mu;
 
-    auto [x, y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
     p3.x = x;
     p3.y = y;
     double S1 = cminus_source_term(p1, y);
@@ -705,7 +718,7 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     for (int i = 0; i < max_iters; i++) {
         c_minus_angle = average_cminus_angle(p1, p3);
         c_plus_angle = average_cplus_angle(p2, p3);
-        auto [new_x, new_y] = characteristic_intersection_coordinates(p1, p2, c_minus_angle, c_plus_angle);
+        auto [new_x, new_y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
         p3.x = new_x;
         p3.y = new_y;
         double S1_new = cminus_source_term(p1, new_y);
@@ -774,7 +787,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
     // is given by wall_theta. 
     double prev_wall_angle = 0.5*(previous_wall_point.theta + wall_point.theta);
 
-    auto [x,y] = characteristic_intersection_coordinates(
+    auto [x,y] = characteristic_intersection_with_angle(
         interior_parent, previous_wall_point, 
         c_plus_angle, prev_wall_angle);
 
@@ -816,7 +829,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
                 wall_point.K_plus = wall_point.theta - wall_point.nu;
                 wall_point.K_minus = wall_point.theta + wall_point.nu;
                 double corrected_cplus_angle = average_cplus_angle(interior_parent, wall_point);
-                auto [new_x,new_y] = characteristic_intersection_coordinates(
+                auto [new_x,new_y] = characteristic_intersection_with_angle(
                     interior_parent,
                     previous_wall_point,
                     corrected_cplus_angle,
@@ -1181,6 +1194,34 @@ double MocNozzle::cminus_source_term(
     double y_avg = 0.5 * (p.y + new_y);
     double dy = new_y - p.y;
     return -sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
+}
+
+MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net, ChainMetadata::Family fam) const {
+    LeadingEdgeView view;
+    view.family = fam;
+    for (int i = 0; i < net.chain_metadata.size(); i++) {
+        const ChainMetadata& meta = net.chain_metadata[i];
+        if (meta.active && meta.family == fam) {
+            view.y_values.push_back(net.points[meta.latest_point_idx].y);
+            view.chain_indices.push_back(i);
+            view.leading_pt_indices.push_back(meta.latest_point_idx);
+        }
+    }
+    return view;
+}
+
+void MocNozzle::update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const {
+    view.y_values.clear();
+    view.chain_indices.clear();
+    view.leading_pt_indices.clear();
+    for (int i = 0; i < net.chain_metadata.size(); i++) {
+        const ChainMetadata& meta = net.chain_metadata[i];
+        if (meta.active && meta.family == view.family) {
+            view.y_values.push_back(net.points[meta.latest_point_idx].y);
+            view.chain_indices.push_back(i);
+            view.leading_pt_indices.push_back(meta.latest_point_idx);
+        }
+    }
 }
 
 
