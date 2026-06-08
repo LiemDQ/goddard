@@ -9,6 +9,7 @@
 
 #include "cantera/core.h" 
 #include "goddard/characteristics.hpp"
+#include "goddard/characteristic_net.hpp"
 #include "goddard/chemistry.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/profile.hpp"

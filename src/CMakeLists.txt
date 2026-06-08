@@ -21,6 +21,7 @@ add_library(
   rocket_results.cpp
   prandtlmeyer.cpp
   characteristics.cpp
+  characteristic_net.cpp
   moc.cpp
   moc_nozzle.cpp
   shocks.cpp

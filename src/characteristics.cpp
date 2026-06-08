@@ -1,4 +1,5 @@
 #include <cmath>
+#include <utility>
 #include "goddard/characteristics.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/error.hpp"
@@ -124,7 +125,17 @@ void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const 
     point.pressure = parent.pressure * pow(ratio, average_gamma / (average_gamma - 1.0));
 }
 
-std::pair<double, double> characteristic_intersection_coordinates(
+std::pair<double, double> characteristic_intersection_with_angle(
+    const CharacteristicPoint& p1, 
+    const CharacteristicPoint& p2)
+{
+    double angle1 = p1.theta - p1.mu;
+    double angle2 = p2.theta + p2.mu;
+
+    return characteristic_intersection_with_angle(p1, p2, angle1, angle2);
+}
+
+std::pair<double, double> characteristic_intersection_with_angle(
     const CharacteristicPoint& p1, 
     const CharacteristicPoint& p2, 
     double angle1,
@@ -138,41 +149,5 @@ std::pair<double, double> characteristic_intersection_coordinates(
 
 // -- CharacteristicNet --
 
-size_t CharacteristicNet::add_point(const CharacteristicPoint& pt, PointMembership m) {
-    points.push_back(pt);
-    membership.push_back(m);
-    return points.size() - 1;
-}
-
-size_t CharacteristicNet::reflect_c_plus_off_wall(size_t c_plus_chain_idx, const CharacteristicPoint& pt) {
-    const size_t new_c_minus_chain_idx = c_minus_chains.size();
-    size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = new_c_minus_chain_idx});
-
-    // cap off the chain and create a new one
-    c_plus_chains[c_plus_chain_idx].push_back(idx);
-    c_minus_chains.push_back({idx});
-
-    wall_point_indices.push_back(idx);
-    
-    return idx;
-}
-
-size_t CharacteristicNet::reflect_c_minus_off_axis(size_t c_minus_chain_idx, const CharacteristicPoint& pt) {
-    const size_t new_c_plus_chain_idx = c_plus_chains.size();
-    size_t idx = add_point(pt, {.c_plus_chain_idx = new_c_plus_chain_idx, .c_minus_chain_idx = c_minus_chain_idx});
-
-    // cap off the chain and create a new one
-    c_minus_chains[c_minus_chain_idx].push_back(idx);
-    c_plus_chains.push_back({idx});
-
-    axis_point_indices.push_back(idx);
-    
-    return idx;
-}
-
-size_t CharacteristicNet::terminate_c_plus_at_wall(size_t c_plus_chain_idx, const CharacteristicPoint& pt) {
-    
-}
-    
 
 } // namespace Goddard
