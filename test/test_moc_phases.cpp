@@ -38,11 +38,12 @@ TEST(MocPhase2, WallPointsStored) {
     auto result = solver.solve();
 
     // Wall points should be stored with full flow properties
-    EXPECT_GT(result.net.wall_points.size(), 0u);
-    EXPECT_EQ(result.net.wall_points.size(), result.net.wall_x.size() - 1);
+    EXPECT_GT(result.net.points.size(), 0u);
+    EXPECT_EQ(result.net.points.size(), result.net.wall_x.size() - 1);
     // wall_x/wall_y has an extra entry for the throat point at (0,1)
 
-    for (const auto& wp : result.net.wall_points) {
+    const auto wall_pts = result.net.wall_points();
+    for (const auto& wp : wall_pts) {
         EXPECT_GT(wp.mach, 1.0) << "Wall point should be supersonic";
         EXPECT_GT(wp.x, 0.0) << "Wall point should be downstream of throat";
         EXPECT_GT(wp.y, 0.0) << "Wall point should be above axis";
@@ -55,13 +56,15 @@ TEST(MocPhase2, WallPointThetaDecreasing) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
     auto result = solver.solve();
 
+    auto wall_points = result.net.wall_points();
+
     // For a min-length nozzle, wall theta should decrease from theta_max to ~0
-    for (size_t i = 1; i < result.net.wall_points.size(); i++) {
-        EXPECT_LE(result.net.wall_points[i].theta, result.net.wall_points[i-1].theta)
+    for (size_t i = 1; i < wall_points.size(); i++) {
+        EXPECT_LE(wall_points[i].theta, wall_points[i-1].theta)
             << "Wall theta should decrease monotonically";
     }
     // Last wall point should have theta near 0
-    EXPECT_NEAR(result.net.wall_points.back().theta, 0.0, 1.0 * DEG);
+    EXPECT_NEAR(wall_points.back().theta, 0.0, 1.0 * DEG);
 }
 
 // ============================================================
@@ -159,12 +162,12 @@ TEST(MocPhase3, AxiSymmetryOnAxis) {
 
     // All axis points (first point in each wavefront after the initial data line)
     // should have theta=0 and y=0
-    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
-        const auto& wf = result.net.wavefronts[i];
-        ASSERT_FALSE(wf.empty());
-        EXPECT_NEAR(wf[0].theta, 0.0, 1e-8)
+    const auto axis_pts = result.net.axis_points();
+    for (size_t i = 0; i < axis_pts.size(); i++) {
+        const auto& wp = axis_pts[i];
+        EXPECT_NEAR(wp.theta, 0.0, 1e-8)
             << "Axis theta should be 0 in wavefront " << i;
-        EXPECT_NEAR(wf[0].y, 0.0, 1e-8)
+        EXPECT_NEAR(wp.y, 0.0, 1e-8)
             << "Axis y should be 0 in wavefront " << i;
     }
 }
@@ -600,8 +603,8 @@ TEST(MocAnalysis, PlanarWallPointsPopulated) {
     MocNozzle analysis_solver(opts);
     auto result = analysis_solver.solve();
 
-    EXPECT_GT(result.net.wall_points.size(), 0u);
-    for (const auto& wp : result.net.wall_points) {
+    EXPECT_GT(result.net.points.size(), 0u);
+    for (const auto& wp : result.net.outflow_points()) {
         EXPECT_GT(wp.mach, 1.0) << "Wall points should be supersonic";
         EXPECT_GT(wp.x, 0.0) << "Wall points should be downstream of throat";
     }

@@ -192,6 +192,10 @@ double NozzleProfile::x_max() const {
     return x.back();
 }
 
+double NozzleProfile::length() const {
+    return x_max() - x[throat_index];
+}
+
 std::pair<size_t, double> NozzleProfile::radius_max() const {
     double ymax = 0.0;
     size_t idx = 0;

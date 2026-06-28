@@ -132,7 +132,7 @@ double MocInitialization::KL_u3(double r, double z, double gamma) const {
     return gquad(gamma, 556, 1737, 3069, 10368)*r4*r2
     - gquad(gamma, 388, 1161, 1881, 2304)*r4
     + gquad(gamma, 304, 831, 1242, 1728)*r2
-    - gquad(gamma, 2708, 7839, 14211, 82944);
+    - gquad(gamma, 2708, 7839, 14211, 82944)
     + z*(gquad(gamma, 52, 51, 327, 384)*r4 - gquad(gamma, 52, 75, 279, 192)*r2 + gquad(gamma, 92, 180, 639, 1152))
     + z*z*(-(7*gamma-3)/8*r2 + (13*gamma-27)/48)
     + z*z*z*gquad(gamma, 4, -57, 27, 144);
@@ -158,7 +158,7 @@ double MocInitialization::KL_v3(double r, double z, double gamma) const {
     return gquad(gamma, 6836, 23031, 30627, 82944)*r3*r2*r2
         - gquad(gamma, 3380, 11391, 15291, 13824)*r3*r2
         + gquad(gamma, 3424, 11271, 15228, 13824)*r3
-        - gquad(gamma, 7100, 22311, 30249, 82944)*r;
+        - gquad(gamma, 7100, 22311, 30249, 82944)*r
         + z*(gquad(gamma, 556, 1737, 3069, 1728)*r3*r2 - gquad(gamma, 388, 1161, 1881, 576)*r3 + gquad(gamma, 304, 831, 1242, 864)*r)
         + z*z*(gquad(gamma, 52, 51, 327, 192)*r3 - gquad(gamma, 52, 75, 279, 192)*r)
         - z*z*z*gquad(gamma, 0, 7, -3, 12)*r;

@@ -49,6 +49,8 @@ class CharacteristicNet {
     std::vector<double> wall_x;
     std::vector<double> wall_y;
 
+    bool empty() const;
+
     /**
      * Get the leading point of the chain at the given index.
      */
@@ -86,7 +88,7 @@ class CharacteristicNet {
     void add_initial_data_line(const std::vector<CharacteristicPoint>& points);
 
     /** Add points from an initial data line that happens to be along a characteristic. 
-     * 
+     * This is primarily used when the initial data line originates from a centered expansion.
     */
     void add_initial_characteristic(const std::vector<CharacteristicPoint>& points, Family family = Family::PLUS);
 
@@ -118,11 +120,18 @@ class CharacteristicNet {
      * This is used when designing minimum length nozzles. 
      */
     size_t terminate_c_plus_at_wall(size_t chain_idx, const CharacteristicPoint& pt);
+
+    // Mark a chain as inactive.
+    void terminate_chain(size_t chain_idx, TerminationType termtype);
     
-    // Mark a chain as inactive. 
-    void terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype);
+    // Mark a chain as inactive while updating the last point. 
+    void update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype);
 
     bool has_active_chains() const;
+
+    std::vector<CharacteristicPoint> outflow_points() const;
+    std::vector<CharacteristicPoint> axis_points() const;
+    std::vector<CharacteristicPoint> wall_points() const;
 
     // Generate view of metadata of active chains that belong to a given family.
     auto active_chains(Family family = Family::UNSPECIFIED) {

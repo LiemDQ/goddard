@@ -3,6 +3,11 @@
 
 namespace Goddard {
 
+
+bool CharacteristicNet::empty() const {
+    return points.empty();
+}
+
 CharacteristicPoint& CharacteristicNet::leading_point(size_t chain_idx) {
     return points[chain_metadata[chain_idx].latest_point_idx];
 }
@@ -36,7 +41,7 @@ size_t CharacteristicNet::add_point(CharacteristicPoint pt, PointMembership m)
     }
     if (m.c_minus_chain_idx.has_value()) {
         c_chains[*m.c_minus_chain_idx].push_back(idx);
-        chain_metadata[*m.c_plus_chain_idx].latest_point_idx = idx;
+        chain_metadata[*m.c_minus_chain_idx].latest_point_idx = idx;
     }
     membership.push_back(std::move(m));
     return idx;
@@ -50,11 +55,11 @@ size_t CharacteristicNet::add_initialization_point(
     PointMembership m;
     if (cminus) {
         size_t minus_idx = create_chain(idx, Family::MINUS);
-        *m.c_minus_chain_idx = minus_idx;
+        m.c_minus_chain_idx = minus_idx;
     }
     if (cplus) {
         size_t plus_idx = create_chain(idx, Family::PLUS);
-        *m.c_plus_chain_idx = plus_idx;
+        m.c_plus_chain_idx = plus_idx;
     }
     membership.push_back(m);
     return idx;
@@ -93,10 +98,10 @@ void CharacteristicNet::add_initial_characteristic(const std::vector<Characteris
         chain_metadata[init_chain_index].latest_point_idx = idx;
         PointMembership& mem = membership[idx];
         if (!cplus) {
-            *mem.c_plus_chain_idx = init_chain_index;
+            mem.c_plus_chain_idx = init_chain_index;
         }
         if (!cminus) {
-            *mem.c_minus_chain_idx = init_chain_index;
+            mem.c_minus_chain_idx = init_chain_index;
         }
     }
 }
@@ -109,7 +114,7 @@ std::pair<size_t,size_t> CharacteristicNet::reflect_c_plus_off_wall(
 
     // cap off the chain and create a new one
     c_chains[c_plus_chain_idx].push_back(idx);
-    terminate_chain(c_plus_chain_idx, idx, TerminationType::WALL);
+    update_and_terminate_chain(c_plus_chain_idx, idx, TerminationType::WALL);
 
     ChainMetadata minus_metadata;
     minus_metadata.family = Family::MINUS;
@@ -129,7 +134,7 @@ std::pair<size_t,size_t> CharacteristicNet::reflect_c_minus_off_axis(size_t c_mi
     // cap off the chain and create a new one
     
     c_chains[c_minus_chain_idx].push_back(idx);
-    terminate_chain(c_minus_chain_idx, idx,TerminationType::AXIS);
+    update_and_terminate_chain(c_minus_chain_idx, idx,TerminationType::AXIS);
 
     ChainMetadata plus_metadata;
     plus_metadata.family = Family::PLUS;
@@ -147,7 +152,7 @@ size_t CharacteristicNet::terminate_c_plus_at_wall(size_t c_plus_chain_idx, cons
     size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = std::nullopt});
 
     c_chains[c_plus_chain_idx].push_back(idx);
-    terminate_chain(c_plus_chain_idx, idx, ChainMetadata::TerminationType::WALL);
+    update_and_terminate_chain(c_plus_chain_idx, idx, ChainMetadata::TerminationType::WALL);
     return idx;
 }
 
@@ -167,11 +172,47 @@ size_t CharacteristicNet::push_chain(std::vector<size_t>&& chain, ChainMetadata 
     return c_chains.size() - 1;
 }
 
-void CharacteristicNet::terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype) {
+void CharacteristicNet::terminate_chain(size_t chain_idx, TerminationType termtype) {
+    ChainMetadata& meta = chain_metadata[chain_idx];
+    meta.active = false;
+    meta.termination = termtype;
+}
+
+void CharacteristicNet::update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype) {
     ChainMetadata& meta = chain_metadata[chain_idx];
     meta.active = false;
     meta.termination = termtype;
     meta.latest_point_idx = last_pt_idx;
+}
+
+std::vector<CharacteristicPoint> CharacteristicNet::outflow_points() const {
+    std::vector<CharacteristicPoint> outflow_pts;
+    for (auto&& meta: chain_metadata) {
+        if (!meta.active && meta.termination == TerminationType::OUTFLOW) {
+            outflow_pts.push_back(points[meta.latest_point_idx]);
+        }
+    }
+    return outflow_pts;
+}
+
+std::vector<CharacteristicPoint> CharacteristicNet::axis_points() const {
+    std::vector<CharacteristicPoint> axis_pts;
+    for (auto&& meta: chain_metadata) {
+        if (!meta.active && meta.termination == TerminationType::AXIS) {
+            axis_pts.push_back(points[meta.latest_point_idx]);
+        }
+    }
+    return axis_pts;
+}
+
+std::vector<CharacteristicPoint> CharacteristicNet::wall_points() const {
+    std::vector<CharacteristicPoint> wall_pts;
+    for (auto&& meta: chain_metadata) {
+        if (!meta.active && meta.termination == TerminationType::WALL) {
+            wall_pts.push_back(points[meta.latest_point_idx]);
+        }
+    }
+    return wall_pts;
 }
 
 bool CharacteristicNet::has_active_chains() const {

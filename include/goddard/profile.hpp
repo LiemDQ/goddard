@@ -38,6 +38,9 @@ public:
     double x_max() const;
 
     double x_min() const;
+    
+    // Get the length of the nozzle, measured from the throat.
+    double length() const;
 
     std::pair<size_t, double> radius_max() const;
 

@@ -1,8 +1,8 @@
 #pragma once
-#include <queue>
 #include "goddard/moc.hpp"
 
 namespace Goddard {
+
 
 /** 
  * Main class for performing 2D nozzle supersonic flow simulations using
@@ -22,8 +22,10 @@ public:
     MocNozzle(Gas gas, MocOptions options): m_options(options), m_gas(gas) {}
 
     MocResult solve();
+    bool is_solved() const;
 
     MocOptions m_options;
+    
 
 protected:
    
@@ -81,11 +83,12 @@ protected:
     CharacteristicPoint solve_wall_point_analysis(
         const CharacteristicPoint& interior_parent);
 
-    // The first point is a special case, as it lies on the axis 
-    // but is assigned a nonzero theta. This is because the calculations 
-    // are started on the characteristic line along which theta is known.
-    // This leads to a small physical inconsistency, but it is necessary to 
-    // bootstrap the downstream marching.
+    /** The first point is a special case, as it lies on the axis but is assigned a 
+     * nonzero theta. This is because the calculations are started on the characteristic line 
+     * along which theta is known.
+     * 
+     * This leads to a small physical inconsistency, but it is necessary to bootstrap the downstream marching.
+     */
     CharacteristicPoint solve_initial_axis_point(
         const CharacteristicPoint& expansion_point);
 
@@ -102,6 +105,11 @@ protected:
     std::pair<double, double> intersect_characteristic_with_wall(
         const CharacteristicPoint& interior_parent,
         const NozzleProfile& wall);
+    
+    /**
+     * Returns the geometric length of the nozzle measured from the throat.
+     */
+    double maximum_nozzle_length() const;
     
     double gamma_s_from_mach(double mach) const;
     double gamma_s_from_nu(double nu) const;
@@ -180,6 +188,7 @@ protected:
     }
     void log_info(const std::string& msg);
 
+    bool m_is_solved;
     std::optional<Gas> m_gas;
     std::vector<double> m_theta_schedule;
     std::vector<std::string> m_messages;
