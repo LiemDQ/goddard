@@ -66,7 +66,19 @@ size_t CharacteristicNet::add_initialization_point(
     return idx;
 }
 
-void CharacteristicNet::add_initial_data_line(const std::vector<CharacteristicPoint>& init_pts) {
+void CharacteristicNet::add_initial_data_line(
+    const std::vector<CharacteristicPoint>& init_pts,
+    std::optional<Family> on_characteristic)
+{
+    // A data line collinear along a single characteristic (e.g. a centered expansion fan)
+    // has a fundamentally different chain topology: there is only one characteristic of the
+    // given family, not one per point. Treating it as a generic data line would pair adjacent
+    // collinear points as opposing-family parents and produce degenerate intersections.
+    if (on_characteristic.has_value()) {
+        add_initial_characteristic(init_pts, *on_characteristic);
+        return;
+    }
+
     // The data line is ordered from the axis (i == 0) up to the wall (i == num_pts).
     // The kernel pairs each C+ leading point with the nearest C- leading point above it
     // (i.e. the lower point contributes the C+, the upper point the C-). Therefore the

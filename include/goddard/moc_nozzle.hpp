@@ -191,6 +191,15 @@ protected:
     bool m_is_solved;
     std::optional<Gas> m_gas;
     std::vector<double> m_theta_schedule;
+
+    // Characteristic family the initial data line lies along, if any. A centered
+    // expansion fan is collinear along one characteristic (the canonical C+ case); a
+    // transonic start line crosses many and leaves this empty. Set by the initial-data-line
+    // generators (which know the strategy they used) and consumed by solve() when seeding
+    // the net. This cannot be recovered by inspecting the points: a Riemann invariant is
+    // only constant along a characteristic for planar flow, not axisymmetric.
+    std::optional<ChainMetadata::Family> m_initial_line_family;
+
     std::vector<std::string> m_messages;
 
     PrandtlMeyerTable pm_table;
