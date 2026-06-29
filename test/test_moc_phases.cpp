@@ -37,10 +37,12 @@ TEST(MocPhase2, WallPointsStored) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
     auto result = solver.solve();
 
-    // Wall points should be stored with full flow properties
+    // Wall points should be stored with full flow properties.
+    // (net.points now holds the entire flow field, not just wall points, so the old
+    //  points.size() == wall_x.size()-1 equality no longer applies. The wall coordinate
+    //  list carries one entry per terminated wall point plus the seeded throat lip at (0,1).)
     EXPECT_GT(result.net.points.size(), 0u);
-    EXPECT_EQ(result.net.points.size(), result.net.wall_x.size() - 1);
-    // wall_x/wall_y has an extra entry for the throat point at (0,1)
+    EXPECT_EQ(result.net.wall_x.size(), result.net.wall_points().size() + 1);
 
     const auto wall_pts = result.net.wall_points();
     for (const auto& wp : wall_pts) {

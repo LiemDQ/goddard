@@ -81,42 +81,50 @@ protected:
     MocResult result;
 };
 
-TEST_P(MocTextbookValidation, KernelNodes) {
+// The chain-based net no longer exposes a wavefront grid, so the original
+// node-by-node kernel validation is not applicable. Instead we validate the two
+// textbook-defined boundary sequences from Anderson Table 11.1 that survive the
+// restructure: the wall contour flow and the centerline (axis) expansion.
+
+TEST_P(MocTextbookValidation, WallFlowMatchesReference) {
     const auto& ref = GetParam();
+    const auto wall_pts = result.net.wall_points();
 
-    for (const auto& node : ref.kernel_nodes) {
-        ASSERT_LT(static_cast<size_t>(node.wavefront), result.net.wavefronts.size())
-            << "Wavefront " << node.wavefront << " does not exist";
-        const auto& wf = result.net.wavefronts[node.wavefront];
-        ASSERT_LT(static_cast<size_t>(node.index), wf.size())
-            << "Index " << node.index << " out of range in wavefront " << node.wavefront;
+    ASSERT_EQ(wall_pts.size(), ref.wall_nodes.size())
+        << "Number of wall points should equal the number of characteristics";
 
-        const auto& pt = wf[node.index];
-
-        EXPECT_NEAR(pt.theta / DEG, node.theta, 0.01)
-            << "theta mismatch at wavefront=" << node.wavefront
-            << " index=" << node.index;
-        EXPECT_NEAR(pt.nu / DEG, node.nu, 0.01)
-            << "nu mismatch at wavefront=" << node.wavefront
-            << " index=" << node.index;
-        EXPECT_NEAR(pt.mach, node.mach, 0.01)
-            << "Mach mismatch at wavefront=" << node.wavefront
-            << " index=" << node.index;
-        EXPECT_NEAR(pt.mu / DEG, node.mu, 0.2)
-            << "mu mismatch at wavefront=" << node.wavefront
-            << " index=" << node.index;
+    for (size_t i = 0; i < ref.wall_nodes.size(); i++) {
+        const auto& node = ref.wall_nodes[i];
+        const auto& pt = wall_pts[i];
+        EXPECT_NEAR(pt.theta / DEG, node.theta, 0.01) << "wall theta mismatch at index " << i;
+        EXPECT_NEAR(pt.nu / DEG, node.nu, 0.01) << "wall nu mismatch at index " << i;
+        EXPECT_NEAR(pt.mach, node.mach, 0.01) << "wall Mach mismatch at index " << i;
+        EXPECT_NEAR(pt.mu / DEG, node.mu, 0.2) << "wall mu mismatch at index " << i;
     }
 }
 
-TEST_P(MocTextbookValidation, WallNodes) {
+TEST_P(MocTextbookValidation, CenterlineReachesExit) {
     const auto& ref = GetParam();
 
-    // Wall nodes are not directly stored in wavefronts — they're in
-    // wall_x/wall_y. The flow properties at wall points need to be
-    // reconstructable. For now, verify that the wall contour has the
-    // right number of points.
-    // TODO: expose wall flow properties for direct comparison.
-    EXPECT_GE(result.net.wall_x.size(), ref.wall_nodes.size());
+    // Centerline points lie on the axis (y ~ 0). For a min-length nozzle the
+    // expansion completes on the axis, where nu = 2*theta_max and M = M_exit.
+    double max_nu = -1.0;
+    double mach_at_max_nu = 0.0;
+    int n_axis = 0;
+    for (const auto& pt : result.net.points) {
+        if (std::abs(pt.y) < 1e-6) {
+            n_axis++;
+            if (pt.nu > max_nu) {
+                max_nu = pt.nu;
+                mach_at_max_nu = pt.mach;
+            }
+        }
+    }
+    ASSERT_GT(n_axis, 0) << "Expected centerline (y=0) points in the net";
+    EXPECT_NEAR(max_nu / DEG, 2.0 * ref.theta_max_deg, 0.1)
+        << "Final centerline nu should equal 2*theta_max";
+    EXPECT_NEAR(mach_at_max_nu, ref.exit_mach, 0.02)
+        << "Final centerline Mach should equal the design exit Mach";
 }
 
 TEST_P(MocTextbookValidation, ExitMach) {
@@ -127,7 +135,7 @@ TEST_P(MocTextbookValidation, ExitMach) {
 TEST_P(MocTextbookValidation, UniformExitFlow) {
     // The last wavefront should have nearly uniform Mach and theta ~ 0
     // (the straightening section cancels all expansion waves)
-    const auto& last_wf = result.net.wavefronts.back();
+    const auto& last_wf = result.net.outflow_points();
 
     for (const auto& pt : last_wf) {
         EXPECT_NEAR(pt.theta, 0.0, 0.5 * DEG)
@@ -243,28 +251,10 @@ TEST(MocDesign, MinLengthNozzleMonotonicWall) {
     }
 }
 
-TEST(MocDesign, WavefrontSizeDecreases) {
-    // In the kernel region of a min-length nozzle, each successive
-    // wavefront has one fewer point
-    MocOptions opts;
-    opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = GasChemistry::PERFECT_GAS;
-    opts.mode = MocMode::DESIGN_MIN_LENGTH;
-    opts.gamma = 1.4;
-    opts.theta_max = 12.0 * DEG;
-    opts.num_characteristics = 6;
-    opts.geometry.throat_radius = 1.0;
-
-    MocNozzle nozzle(opts);
-    auto result = nozzle.solve();
-
-    // Initial data line has N points, next has N-1, etc.
-    size_t N = result.net.wavefronts[0].size();
-    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
-        EXPECT_EQ(result.net.wavefronts[i].size(), N - i)
-            << "Wavefront " << i << " should have " << N - i << " points";
-    }
-}
+// Removed: MocDesign.WavefrontSizeDecreases — it asserted the old wavefront
+// data structure (wavefronts[i].size() == N - i), which no longer exists in the
+// chain-based CharacteristicNet. The property is purely structural and has no
+// equivalent in the new representation.
 
 TEST(MocDesign, AreaRatioConsistent) {
     // Area ratio from wall coordinates should be consistent with

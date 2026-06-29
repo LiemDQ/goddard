@@ -23,6 +23,7 @@ add_library(
   characteristics.cpp
   characteristic_net.cpp
   moc.cpp
+  moc_initialization.cpp
   moc_nozzle.cpp
   shocks.cpp
   profile.cpp

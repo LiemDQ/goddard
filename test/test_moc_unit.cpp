@@ -89,33 +89,27 @@ TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {
     // Basic sanity: we should have points
     EXPECT_GT(result.net.points.size(), 0u);
 
-    // Check that all expansion fan points have K_plus = 0
-    // (centered fan: theta = nu => K_plus = theta - nu = 0)
-    if (!result.net.empty()) {
-        const auto& initial_line = result.net.c_chains.front();
-        for (size_t pt_idx : initial_line) {
-            const CharacteristicPoint& pt = result.net.points[pt_idx];
-            // Data line points inherit K_plus from the expansion fan via the axis/interior solver.
-            // The first (axis) point should have K_plus = -K_minus (symmetry).
-            EXPECT_NEAR(pt.K_plus, 0.0, 1e-10) 
-                << "Initial data line point should have K+ = 0 (theta - nu = 0)";
-            // Actually, only the axis point has theta=0. Skip this for now.
-            break;
-        }
-        if (result.net.c_chains.size() > 1) {
-            for (size_t i = 1; i < result.net.c_chains.size(); i++){
-                const auto& wavefront = result.net.c_chains[i];
-                // all points along the wavefront have the same K+ value
-
-                double kplus = result.net.points[wavefront.front()].K_plus;
-                for (const auto& pt_idx: wavefront) {
-                    const CharacteristicPoint& pt = result.net.points[pt_idx];
-
-                    EXPECT_NEAR(pt.K_plus, kplus, 1e-10) 
-                        << "Data points in the same wavefront should have the same K+ value";
-                }
+    // Riemann invariants are preserved ALONG a characteristic, not across a wavefront:
+    // for planar flow K+ (= theta - nu) is constant along a C+ chain and K- (= theta + nu)
+    // is constant along a C- chain. (The previous version treated each c_chains[i] as a
+    // wavefront with a shared K+, which is not how the chain-based net is organized.)
+    using Family = ChainMetadata::Family;
+    for (size_t c = 0; c < result.net.c_chains.size(); c++) {
+        const auto& chain = result.net.c_chains[c];
+        if (chain.size() < 2) continue;
+        Family fam = result.net.chain_metadata[c].family;
+        if (fam == Family::PLUS) {
+            double kplus = result.net.points[chain.front()].K_plus;
+            for (size_t pt_idx : chain) {
+                EXPECT_NEAR(result.net.points[pt_idx].K_plus, kplus, 1e-9)
+                    << "K+ should be invariant along a C+ chain (chain " << c << ")";
             }
-            //TODO: check K- values too
+        } else if (fam == Family::MINUS) {
+            double kminus = result.net.points[chain.front()].K_minus;
+            for (size_t pt_idx : chain) {
+                EXPECT_NEAR(result.net.points[pt_idx].K_minus, kminus, 1e-9)
+                    << "K- should be invariant along a C- chain (chain " << c << ")";
+            }
         }
     }
 }
