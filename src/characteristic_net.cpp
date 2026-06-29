@@ -24,14 +24,7 @@ const CharacteristicPoint& CharacteristicNet::leading_wall_point() const {
     return points[wall_point_indices.back()];
 }
 
-std::pair<double, double> CharacteristicNet::get_predicted_chain_intersection(size_t plus_idx, size_t minus_idx) const {
-    const CharacteristicPoint& plus_pt = leading_point(plus_idx);
-    const CharacteristicPoint& minus_pt = leading_point(minus_idx);
-    
-    return characteristic_intersection(minus_pt, plus_pt);
-}
-
-size_t CharacteristicNet::add_point(CharacteristicPoint pt, PointMembership m) 
+size_t CharacteristicNet::add_point(CharacteristicPoint pt, PointMembership m)
 {
     points.push_back(std::move(pt));
     size_t idx = points.size() - 1;
@@ -66,18 +59,21 @@ size_t CharacteristicNet::add_initialization_point(
 }
 
 void CharacteristicNet::add_initial_data_line(const std::vector<CharacteristicPoint>& init_pts) {
-    bool cminus = false;
-    bool cplus = false;
+    // The data line is ordered from the axis (i == 0) up to the wall (i == num_pts).
+    // The kernel pairs each C+ leading point with the nearest C- leading point above it
+    // (i.e. the lower point contributes the C+, the upper point the C-). Therefore the
+    // bottommost (axis) point owns only a C+ chain and the topmost (wall) point owns only
+    // a C- chain; all interior points own both.
     size_t num_pts = init_pts.size() - 1;
     for (size_t i = 0; i <= num_pts; i++) {
-        cplus = i != 0;
-        cminus = i != num_pts;
+        bool cplus = i != num_pts;
+        bool cminus = i != 0;
         size_t idx = add_initialization_point(init_pts[i], cminus, cplus);
         if (i == 0) {
-            wall_point_indices.push_back(idx);
+            axis_point_indices.push_back(idx);
         }
         if (i == num_pts) {
-            axis_point_indices.push_back(idx);
+            wall_point_indices.push_back(idx);
         }
     }
 }
@@ -92,8 +88,12 @@ void CharacteristicNet::add_initial_characteristic(const std::vector<Characteris
     };
     size_t init_chain_index = push_chain({}, init_metadata);
 
-    for (const auto& pt : init_pts) {
-        size_t idx = add_initialization_point(pt, cminus, cplus);
+    for (size_t i = 0; i < init_pts.size(); i++) {
+        // The first point lies on the axis (the bootstrap reflection of the first ray).
+        // It must not start a minor-family chain, or it would immediately re-reflect off
+        // the axis as a degenerate point. It belongs only to the shared initial chain.
+        bool make_minor = (i != 0);
+        size_t idx = add_initialization_point(init_pts[i], cminus && make_minor, cplus && make_minor);
         c_chains[init_chain_index].push_back(idx);
         chain_metadata[init_chain_index].latest_point_idx = idx;
         PointMembership& mem = membership[idx];
@@ -107,52 +107,69 @@ void CharacteristicNet::add_initial_characteristic(const std::vector<Characteris
 }
 
 std::pair<size_t,size_t> CharacteristicNet::reflect_c_plus_off_wall(
-    size_t c_plus_chain_idx, const CharacteristicPoint& pt) 
+    size_t c_plus_chain_idx, const CharacteristicPoint& pt)
 {
-    const size_t new_c_minus_chain_idx = c_chains.size();
-    size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = new_c_minus_chain_idx});
+    // Append the wall point to the incoming C+ chain only. The reflected C- chain
+    // is created afterward, once it has a valid index, then recorded in membership.
+    size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = std::nullopt});
 
-    // cap off the chain and create a new one
-    c_chains[c_plus_chain_idx].push_back(idx);
+    // cap off the incoming C+ chain at the wall
     update_and_terminate_chain(c_plus_chain_idx, idx, TerminationType::WALL);
 
+    // start a new reflected C- chain originating at the wall point
     ChainMetadata minus_metadata;
     minus_metadata.family = Family::MINUS;
     minus_metadata.origin_point_idx = idx;
     minus_metadata.latest_point_idx = idx;
     size_t minus_chain_idx = push_chain({idx}, minus_metadata);
+    membership[idx].c_minus_chain_idx = minus_chain_idx;
 
     wall_point_indices.push_back(idx);
-    
+
     return {idx, minus_chain_idx};
 }
 
 std::pair<size_t,size_t> CharacteristicNet::reflect_c_minus_off_axis(size_t c_minus_chain_idx, const CharacteristicPoint& pt) {
-    const size_t new_c_plus_chain_idx = c_chains.size();
-    size_t idx = add_point(pt, {.c_plus_chain_idx = new_c_plus_chain_idx, .c_minus_chain_idx = c_minus_chain_idx});
+    // Append the axis point to the incoming C- chain only. The reflected C+ chain
+    // is created afterward, once it has a valid index, then recorded in membership.
+    size_t idx = add_point(pt, {.c_plus_chain_idx = std::nullopt, .c_minus_chain_idx = c_minus_chain_idx});
 
-    // cap off the chain and create a new one
-    
-    c_chains[c_minus_chain_idx].push_back(idx);
-    update_and_terminate_chain(c_minus_chain_idx, idx,TerminationType::AXIS);
+    // cap off the incoming C- chain at the axis
+    update_and_terminate_chain(c_minus_chain_idx, idx, TerminationType::AXIS);
 
+    // start a new reflected C+ chain originating at the axis point
     ChainMetadata plus_metadata;
     plus_metadata.family = Family::PLUS;
     plus_metadata.origin_point_idx = idx;
     plus_metadata.latest_point_idx = idx;
-
     size_t plus_chain_idx = push_chain({idx}, plus_metadata);
+    membership[idx].c_plus_chain_idx = plus_chain_idx;
 
     axis_point_indices.push_back(idx);
-    
+
     return {idx, plus_chain_idx};
 }
 
 size_t CharacteristicNet::terminate_c_plus_at_wall(size_t c_plus_chain_idx, const CharacteristicPoint& pt) {
+    // add_point already appends idx to the C+ chain and updates its leading edge.
     size_t idx = add_point(pt, {.c_plus_chain_idx = c_plus_chain_idx, .c_minus_chain_idx = std::nullopt});
 
-    c_chains[c_plus_chain_idx].push_back(idx);
     update_and_terminate_chain(c_plus_chain_idx, idx, ChainMetadata::TerminationType::WALL);
+    // advance the leading wall point so the next wall solve uses this point as its predecessor
+    wall_point_indices.push_back(idx);
+    return idx;
+}
+
+size_t CharacteristicNet::seed_wall_point(const CharacteristicPoint& pt) {
+    // Seed an initial wall point (e.g. the throat lip) that bootstraps the wall march.
+    // It owns no characteristic chain; it only anchors leading_wall_point() and the
+    // wall coordinate lists.
+    points.push_back(pt);
+    size_t idx = points.size() - 1;
+    membership.push_back(PointMembership{});
+    wall_point_indices.push_back(idx);
+    wall_x.push_back(pt.x);
+    wall_y.push_back(pt.y);
     return idx;
 }
 

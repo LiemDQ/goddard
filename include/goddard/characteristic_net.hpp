@@ -64,14 +64,7 @@ class CharacteristicNet {
     const CharacteristicPoint& leading_wall_point() const;
     
 
-    /**
-     * Get the predicted x-coordinate of the intersection between a C+ characteristic
-     * and a C- characteristic.
-     * @return (x,y) coordinates of intersection point
-     */
-    std::pair<double, double> get_predicted_chain_intersection(size_t plus_idx, size_t minus_idx) const;
-
-    /** Add a point and its membership to list of points, and 
+    /** Add a point and its membership to list of points, and
      * appends it to its member characteristic chains. 
      * @return index of the added point
      */
@@ -117,9 +110,16 @@ class CharacteristicNet {
     std::pair<size_t,size_t> reflect_c_minus_off_axis(size_t chain_idx, const CharacteristicPoint& pt);
 
     /** Add a point where the C+ characteristic hits the wall without emitting a reflected C- characteristic.
-     * This is used when designing minimum length nozzles. 
+     * This is used when designing minimum length nozzles.
      */
     size_t terminate_c_plus_at_wall(size_t chain_idx, const CharacteristicPoint& pt);
+
+    /** Seed an initial wall point (e.g. the throat lip) that anchors the wall march.
+     * The point owns no characteristic chain; it only bootstraps leading_wall_point()
+     * and the wall coordinate lists.
+     * @return index of the seeded point
+     */
+    size_t seed_wall_point(const CharacteristicPoint& pt);
 
     // Mark a chain as inactive.
     void terminate_chain(size_t chain_idx, TerminationType termtype);

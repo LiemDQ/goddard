@@ -66,19 +66,7 @@ void characteristic_isentropic_PT_from_parent(
     CharacteristicPoint& point, const CharacteristicPoint& parent);
 
 /**
- * Get the coordinates of a downstream characteristic, 
- * based on the intersection of the characteristics of two upstream parent points
- * 
- * @param p1 Point along C- characteristic
- * @param p2 Point along C+ characteristic
- */
-std::pair<double, double> characteristic_intersection(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2
-);
-
-/**
- * Get the coordinates of a downstream characteristic, 
+ * Get the coordinates of a downstream characteristic,
  * based on the intersection of the characteristics of two upstream parent points
  * and specified characteristic angles.
  * 

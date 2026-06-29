@@ -70,6 +70,15 @@ MocResult MocNozzle::solve() {
     }
     
     if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+        // Seed the throat-lip wall point at (0, 1). It is the origin of the centered
+        // expansion fan and the start of the wall contour; the first computed wall point
+        // is built relative to it. Without it leading_wall_point() has nothing to anchor.
+        CharacteristicPoint throat_lip{};
+        throat_lip.x = 0.0;
+        throat_lip.y = 1.0;
+        throat_lip.theta = m_options.theta_max;
+        net.seed_wall_point(throat_lip);
+
         net.add_initial_characteristic(data_line);
     }
     else {
@@ -307,13 +316,18 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     paired_cminus.reserve(net.c_chains.size());
 
 
-    const int maxiter = 1e5;
+    // A correctly converging 2D MoC kernel needs O(N) marching passes. This cap is a
+    // safety bound so a non-converging/runaway net terminates promptly instead of
+    // spinning indefinitely; reaching it indicates a kernel that has not converged.
+    const int maxiter = 2000;
     int iters = 0;
-    
+
     while (net.has_active_chains() && iters < maxiter) {
         intersections.clear();
         paired_cminus.clear();
-        std::fill(cminus_is_intersected.begin(), cminus_is_intersected.end(), false);
+        // Sized to the *current* minus-edge view: reflections add chains over time, so a
+        // one-shot allocation sized to the initial chain count would be indexed out of range.
+        cminus_is_intersected.assign(minus_edges.chain_indices.size(), false);
         
         /* We use a simple geometric approach to determine which points are intersecting.
         This requires no assumptions about net topology or precomputed traversal maps and is
@@ -392,7 +406,7 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
 
         // find C- characteristic reflecting off axis.
         double min_cminus_y = std::numeric_limits<double>::max();
-        size_t min_y_cminus_idx = 0;
+        std::optional<size_t> min_y_cminus_idx = std::nullopt;
         for (size_t i = 0; i < minus_edges.chain_indices.size(); i++) {
             if (minus_edges.y_values[i] < min_cminus_y) {
                 min_cminus_y = minus_edges.y_values[i];
@@ -400,14 +414,15 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             }
         }
         // if the lowest C- characteristic is unpaired, reflect it off the axis
-        if (std::none_of(
+        if (min_y_cminus_idx.has_value() &&
+            std::none_of(
                 paired_cminus.cbegin(), 
                 paired_cminus.cend(), 
-                [min_y_cminus_idx](size_t x) {return x == min_y_cminus_idx;})
+                [min_y_cminus_idx](size_t x) {return x == *min_y_cminus_idx;})
             )
         {
             intersections.push_back({
-                solve_axis_point(net.leading_point(min_y_cminus_idx)),
+                solve_axis_point(net.leading_point(*min_y_cminus_idx)),
                 PointMembership {
                     .c_plus_chain_idx = std::nullopt,
                     .c_minus_chain_idx = min_y_cminus_idx
@@ -418,9 +433,15 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
         for (auto&& [pt, mem] : intersections) {
             if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) { //min length nozzle is a special case
                 if (!mem.c_minus_chain_idx.has_value()) {
+                    // C+ reaches the wall: absorb it (no reflected wave). Cancelling the
+                    // reflection here is exactly what produces a minimum-length contour.
                     net.terminate_c_plus_at_wall(*mem.c_plus_chain_idx, pt);
                     net.wall_x.push_back(pt.x);
                     net.wall_y.push_back(pt.y);
+                }
+                else if (!mem.c_plus_chain_idx.has_value()) {
+                    // C- reaches the axis: reflect it into a new upward-marching C+.
+                    net.reflect_c_minus_off_axis(*mem.c_minus_chain_idx, pt);
                 }
                 else {
                     net.add_point(pt, mem);
@@ -452,6 +473,7 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
 
         iters++;
     }
+    
 }
 
 CharacteristicPoint MocNozzle::solve_wall_point(
@@ -461,9 +483,17 @@ CharacteristicPoint MocNozzle::solve_wall_point(
 {
     switch (m_options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
-            // for minimum length design: theta is determined by theta schedule
-            double theta_wall = m_options.theta_max - m_theta_schedule[wall_point_index];
-            
+            // for minimum length design: theta is determined by theta schedule.
+            // Guard against an empty schedule (the Cantera min-length path does not
+            // populate m_theta_schedule) and against indices beyond it (the kernel
+            // currently produces more wall hits than scheduled characteristics).
+            double theta_wall = m_options.theta_max;
+            if (!m_theta_schedule.empty()) {
+                size_t k = std::min(static_cast<size_t>(wall_point_index),
+                                    m_theta_schedule.size() - 1);
+                theta_wall = m_options.theta_max - m_theta_schedule[k];
+            }
+
             return solve_wall_point_design(interior_parent, previous_wall_point, theta_wall);
         }
         case MocMode::DESIGN_RAO: 
@@ -1089,6 +1119,9 @@ void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
         }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
+            // Guard against points without a stored Cantera state (e.g. the bare
+            // throat-lip seed); restoring an empty state vector aborts inside Cantera.
+            if (point.cantera_state.empty()) break;
             m_gas->thermo()->restoreState(point.cantera_state);
             point.temperature = m_gas->thermo()->temperature() / m_T_ref;
             point.pressure = m_gas->thermo()->pressure() / m_P_ref;
@@ -1264,7 +1297,7 @@ double MocNozzle::cminus_source_term(
 MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net, ChainMetadata::Family fam) const {
     LeadingEdgeView view;
     view.family = fam;
-    for (int i = 0; i < net.chain_metadata.size(); i++) {
+    for (size_t i = 0; i < net.chain_metadata.size(); i++) {
         const ChainMetadata& meta = net.chain_metadata[i];
         if (meta.active && meta.family == fam) {
             view.y_values.push_back(net.points[meta.latest_point_idx].y);
@@ -1279,7 +1312,7 @@ void MocNozzle::update_leading_edges(LeadingEdgeView& view, const Characteristic
     view.y_values.clear();
     view.chain_indices.clear();
     view.leading_pt_indices.clear();
-    for (int i = 0; i < net.chain_metadata.size(); i++) {
+    for (size_t i = 0; i < net.chain_metadata.size(); i++) {
         const ChainMetadata& meta = net.chain_metadata[i];
         if (meta.active && meta.family == view.family) {
             view.y_values.push_back(net.points[meta.latest_point_idx].y);

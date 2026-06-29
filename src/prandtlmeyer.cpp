@@ -180,15 +180,22 @@ PrandtlMeyerTable::IdxWeight PrandtlMeyerTable::find_V_index_and_weight(double V
     return index_and_weight(V, velocities);
 }
 
-double PrandtlMeyerTable::interpolate_at_index(size_t idx, 
-        double weight, 
-        const std::vector<double>& vals) const 
+double PrandtlMeyerTable::interpolate_at_index(size_t idx,
+        double weight,
+        const std::vector<double>& vals) const
 {
+    // Defensive clamp: idx must reference a valid [idx-1, idx] interval. Out-of-range
+    // queries are normally rejected by find_closest_nMv_index, but callers may pass an
+    // index directly; guard against an idx-1 underflow / overrun.
+    if (idx == 0) idx = 1;
+    if (idx >= vals.size()) idx = vals.size() - 1;
     const size_t l = idx - 1;
     return vals[l] + (vals[idx] - vals[l]) * weight;
 }
 
 std::vector<double> PrandtlMeyerTable::interpolate_state_at_index(size_t idx, double weight) const {
+    if (idx == 0) idx = 1;
+    if (idx >= states.size()) idx = states.size() - 1;
     const std::vector<double>& state_r = states[idx];
     const std::vector<double>& state_l = states[idx-1];
     
