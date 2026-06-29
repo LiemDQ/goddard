@@ -64,7 +64,7 @@ protected:
         const CharacteristicPoint& p1,
         const CharacteristicPoint& p2);
 
-    CharacteristicPoint solve_wall_point(
+    std::optional<CharacteristicPoint> solve_wall_point(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         int wall_point_index);
@@ -80,7 +80,7 @@ protected:
         double theta_wall);
     
     // Compute flow at known wall position.
-    CharacteristicPoint solve_wall_point_analysis(
+    std::optional<CharacteristicPoint> solve_wall_point_analysis(
         const CharacteristicPoint& interior_parent);
 
     /** The first point is a special case, as it lies on the axis but is assigned a 

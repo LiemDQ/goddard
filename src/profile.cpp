@@ -2,6 +2,7 @@
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <format>
 #include <sstream>
 #include "goddard/profile.hpp"
 #include "goddard/error.hpp"
@@ -100,7 +101,7 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     double mid_e_intercept = r_exit - slope_e * length;
     double mid_x = (mid_e_intercept- mid_n_intercept)/(slope_n-slope_e);
     double mid_y = (slope_n*mid_e_intercept - slope_e*mid_n_intercept)/(slope_n - slope_e);
-    size_t i = 0;
+    // size_t i = 0;
     //Generate expansion curve
     for (size_t i = 0; i < n_points; i++) {
         double frac = static_cast<double>(i) / (n_points - 1);
@@ -256,14 +257,22 @@ void NozzleProfile::save_profile_csv(const std::string& filename) {
 }
 
 size_t NozzleProfile::find_index(double x_query) const {
+    if (x.size() < 2) {
+        throw std::runtime_error("NozzleProfile::find_index requires at least two points.");
+    }
     // linear scan acceptable for small grids
     size_t i = 0;
     while (i < x.size()){
-        if (x[i] > x_query) return i;
+        // Return the upper index of the bracketing segment [i-1, i]. Callers index
+        // x[i-1], so for a query at or below the first point clamp to the first segment
+        // (i == 1) rather than returning 0 and underflowing.
+        if (x[i] > x_query) return std::max<size_t>(i, 1);
         i++;
     }
-    if (i == x.size()) 
-        throw std::runtime_error("Queried x: "+ std::to_string(x_query) + " larger than nozzle profile.");
+    if (i == x.size())
+        throw std::runtime_error(
+            std::format("Queried x: {} larger than nozzle profile (xmax = {})", x_query,  x_max())
+        );
     // query beyond profile: return last segment
     return x.size() - 1;
 }

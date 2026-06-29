@@ -62,7 +62,12 @@ class CharacteristicNet {
      */
     CharacteristicPoint& leading_wall_point();
     const CharacteristicPoint& leading_wall_point() const;
-    
+
+    /**
+     * Get the leading axis point.
+     */
+    CharacteristicPoint& leading_axis_point();
+    const CharacteristicPoint& leading_axis_point() const;
 
     /** Add a point and its membership to list of points, and
      * appends it to its member characteristic chains. 

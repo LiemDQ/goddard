@@ -139,17 +139,17 @@ MocResult MocNozzle::solve() {
     // last point was absorbed into wall calculations.
     if (!net.points.empty()) {
         const auto& outflows = net.outflow_points();
-        for (const auto& pt : outflows) {
-            result.exit_plane.y.push_back(pt.y);
-            result.exit_plane.mach.push_back(pt.mach);
-            result.exit_plane.theta.push_back(pt.theta);
-            result.exit_plane.pressure.push_back(pt.pressure);
-            result.exit_plane.temperature.push_back(pt.temperature);
-            result.exit_plane.gamma_s.push_back(pt.gamma_s);
-            result.exit_plane.velocity.push_back(pt.V);
-        }
-        // Add the last wall point for min length nozzle
+        // Add the last characteristic for min length nozzle
         if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+            const auto& last_axis_pt = net.leading_axis_point();
+            result.exit_plane.y.push_back(last_axis_pt.y);
+            result.exit_plane.mach.push_back(last_axis_pt.mach);
+            result.exit_plane.theta.push_back(last_axis_pt.theta);
+            result.exit_plane.pressure.push_back(last_axis_pt.pressure);
+            result.exit_plane.temperature.push_back(last_axis_pt.temperature);
+            result.exit_plane.gamma_s.push_back(last_axis_pt.gamma_s);
+            result.exit_plane.velocity.push_back(last_axis_pt.V);
+
             const auto& last_wall_pt = net.leading_wall_point();
             result.exit_plane.y.push_back(last_wall_pt.y);
             result.exit_plane.mach.push_back(last_wall_pt.mach);
@@ -158,6 +158,17 @@ MocResult MocNozzle::solve() {
             result.exit_plane.temperature.push_back(last_wall_pt.temperature);
             result.exit_plane.gamma_s.push_back(last_wall_pt.gamma_s);
             result.exit_plane.velocity.push_back(last_wall_pt.V);
+        }
+        else {
+            for (const auto& pt : outflows) {
+                result.exit_plane.y.push_back(pt.y);
+                result.exit_plane.mach.push_back(pt.mach);
+                result.exit_plane.theta.push_back(pt.theta);
+                result.exit_plane.pressure.push_back(pt.pressure);
+                result.exit_plane.temperature.push_back(pt.temperature);
+                result.exit_plane.gamma_s.push_back(pt.gamma_s);
+                result.exit_plane.velocity.push_back(pt.V);
+            }
         }
     }
     m_is_solved = true;
@@ -390,17 +401,29 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                 cminus_is_intersected[best_partner_edgevec_idx] = true;
             }
             else [[unlikely]] { // C+ intersects with wall
-                intersections.push_back({
-                    solve_wall_point(
-                        net.points[plus_edges.leading_pt_indices[i]],
-                        net.leading_wall_point(),
-                        net.wall_point_indices.size() - 1
-                    ),
-                    PointMembership {
-                        .c_plus_chain_idx = plus_edges.chain_indices[i],
-                        .c_minus_chain_idx = std::nullopt
-                    }
-                });
+
+                std::optional<CharacteristicPoint> maybe_pt = solve_wall_point(
+                    net.points[plus_edges.leading_pt_indices[i]],
+                    net.leading_wall_point(),
+                    net.wall_point_indices.size() - 1
+                );
+
+                if (maybe_pt.has_value()) {
+                    intersections.push_back({
+                        *maybe_pt,
+                        PointMembership {
+                            .c_plus_chain_idx = plus_edges.chain_indices[i],
+                            .c_minus_chain_idx = std::nullopt
+                        }
+                    });
+                }
+                else {
+                    // if no intersection found, this point intersects beyond the profile boundary
+                    net.terminate_chain(
+                        plus_edges.chain_indices[i], 
+                        ChainMetadata::TerminationType::OUTFLOW
+                    );
+                }
             }
         }
 
@@ -476,7 +499,7 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     
 }
 
-CharacteristicPoint MocNozzle::solve_wall_point(
+std::optional<CharacteristicPoint> MocNozzle::solve_wall_point(
     const CharacteristicPoint& interior_parent,
     const CharacteristicPoint& previous_wall_point,
     int wall_point_index)
@@ -930,13 +953,17 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
     return wall_point;
 }
 
-CharacteristicPoint MocNozzle::solve_wall_point_analysis(
+std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
         const CharacteristicPoint& interior_parent)
 {
     const NozzleProfile& wall = m_options.nozzle_profile;
     auto [x_wall, y_wall] = intersect_characteristic_with_wall(
                 interior_parent, wall);
-            
+    
+    // no wall hit found
+    if (x_wall < 0.0 && y_wall < 0.0) {
+        return std::nullopt;
+    }
 
     double wall_theta = wall.theta_at(x_wall);
     double char_angle = interior_parent.theta + interior_parent.mu;
@@ -1233,6 +1260,12 @@ std::pair<double,double> MocNozzle::find_wall_hit(
     double x,y;
     bool found = false;
 
+    // A wall hit needs at least one segment; a degenerate profile would underflow the
+    // loop bound and the extrapolation indices below.
+    if (wall.x.size() < 2) {
+        throw std::runtime_error("find_wall_hit: nozzle profile has fewer than two points.");
+    }
+
     for (size_t k = 0; k < wall.x.size() - 1; k++) {
         double wall_slope = (wall.y[k+1] - wall.y[k])
             / (wall.x[k+1] - wall.x[k]);
@@ -1251,13 +1284,14 @@ std::pair<double,double> MocNozzle::find_wall_hit(
     }
     if (!found) { 
         // if the intersection cannot be found within the nozzle profile, 
-        // extrapolate from the furthest point. 
-        size_t last = wall.x.size() - 1;
-        double wall_slope = (wall.y[last] - wall.y[last-1])/(wall.x[last] - wall.x[last - 1]);
-        double wall_intercept = wall.y[last] - wall_slope * wall.x[last];
-        double char_intercept = p.y - c_plus_slope * p.x;
-        x = (wall_intercept - char_intercept) / (c_plus_slope - wall_slope);
-        y = p.y + c_plus_slope * (x - p.x);
+        // trun negative values
+        return {-1.0, -1.0};
+        // size_t last = wall.x.size() - 1;
+        // double wall_slope = (wall.y[last] - wall.y[last-1])/(wall.x[last] - wall.x[last - 1]);
+        // double wall_intercept = wall.y[last] - wall_slope * wall.x[last];
+        // double char_intercept = p.y - c_plus_slope * p.x;
+        // x = (wall_intercept - char_intercept) / (c_plus_slope - wall_slope);
+        // y = p.y + c_plus_slope * (x - p.x);
         // log_warning("Extrapolating wall intercept to x = {}, y = {}", x, y);
     }
     return {x,y};

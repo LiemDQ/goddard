@@ -24,6 +24,14 @@ const CharacteristicPoint& CharacteristicNet::leading_wall_point() const {
     return points[wall_point_indices.back()];
 }
 
+CharacteristicPoint& CharacteristicNet::leading_axis_point() {
+    return points[axis_point_indices.back()];
+}
+
+const CharacteristicPoint& CharacteristicNet::leading_axis_point() const {
+    return points[axis_point_indices.back()];
+}
+
 size_t CharacteristicNet::add_point(CharacteristicPoint pt, PointMembership m)
 {
     points.push_back(std::move(pt));
