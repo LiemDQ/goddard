@@ -13,9 +13,30 @@ namespace Goddard {
 class MocInitialization {
     public:
     MocInitialization(ThroatGeometry geom, ThermodynamicContext& thermo, const MocOptions& options);
-
+    
+    /**
+     * Create an initial dataline using the Sauer method. The data points form a parabola shape
+     * near and downstream of the nozzle throat. 
+     * 
+     * @note This method is not recommended due to poor accuracy and numerical stability when the throat curvature is 
+     * large relative to the throat radius. It is mostly used for testing against other methods
+     * as the implementation is relatively simple.
+     */
     std::vector<CharacteristicPoint> initialize_sauer(const ThroatCondition& throat);
+    /**
+     * Create an initial dataline using the Kliegel-Levine expansion method. 
+     * This is the recommended method for most MoC solver modes except in the 
+     * case of prescribed centerline conditions.
+     */
     std::vector<CharacteristicPoint> initialize_kliegel_levine(const ThroatCondition& throat);
+    /**
+     * Create an initial dataline based on a centered expansion at the nozzle throat.
+     * Used in minimum length nozzle design mode.
+     * 
+     * @warning Unlike most initialization methods, the points provided by this 
+     * method all lie on the same C+ characteristic. Special handling is needed 
+     * in the characteristic net construction. 
+     */
     std::vector<CharacteristicPoint> initialize_centered_expansion(const ThroatCondition& throat);
 
     ThroatGeometry geometry;

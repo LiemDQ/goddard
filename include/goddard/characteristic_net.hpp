@@ -80,12 +80,22 @@ class CharacteristicNet {
      */
     size_t add_initialization_point(CharacteristicPoint pt, bool cminus, bool cplus);
     
-    /** Add points from an initial data line, where the points are not 
-     * coincident along a single characteristic.
+    /** Seed the net from an initial data line.
+     *
+     * Handles both data-line topologies. When `on_characteristic` is empty the points are
+     * assumed to lie on distinct characteristics (a transonic start line): each interior
+     * point owns both a C+ and a C- chain. When `on_characteristic` is set the points are
+     * collinear along a single characteristic of that family (e.g. a centered expansion
+     * fan), and are seeded as one shared chain via add_initial_characteristic.
+     *
+     * The caller must supply the topology; it cannot be inferred from the points, since a
+     * Riemann invariant is constant along a characteristic only for planar flow.
      */
-    void add_initial_data_line(const std::vector<CharacteristicPoint>& points);
+    void add_initial_data_line(
+        const std::vector<CharacteristicPoint>& points,
+        std::optional<Family> on_characteristic = std::nullopt);
 
-    /** Add points from an initial data line that happens to be along a characteristic. 
+    /** Add points from an initial data line that happens to be along a characteristic.
      * This is primarily used when the initial data line originates from a centered expansion.
     */
     void add_initial_characteristic(const std::vector<CharacteristicPoint>& points, Family family = Family::PLUS);
