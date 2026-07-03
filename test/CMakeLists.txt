@@ -22,6 +22,8 @@ add_executable(
     test_moc_unit.cpp
     test_moc_design.cpp
     test_moc_phases.cpp
+    test_moc_convergence.cpp
+    test_moc_initialization.cpp
     test_kinetic_nozzle.cpp
     test_shocks.cpp
     test_gas.cpp

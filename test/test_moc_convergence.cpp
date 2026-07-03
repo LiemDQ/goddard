@@ -1,0 +1,213 @@
+#include "goddard/moc.hpp"
+#include "goddard/moc_nozzle.hpp"
+#include "goddard/gas_dynamics.hpp"
+#include <cmath>
+#include "gtest/gtest.h"
+
+using namespace Goddard;
+
+static constexpr double DEG = M_PI / 180.0;
+
+// ============================================================
+// Grid-convergence tests: the MoC solution must converge as the
+// number of characteristics N increases. These tests protect the
+// axisymmetric source terms and the analysis marching, whose errors
+// are invisible at a single fixed N.
+// ============================================================
+
+static MocOptions make_options(MocFlowKind kind, double gamma, double theta_max, int n) {
+    MocOptions opts;
+    opts.flow_type = kind;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.gamma = gamma;
+    opts.theta_max = theta_max;
+    opts.num_characteristics = n;
+    opts.geometry.throat_radius = 1.0;
+    return opts;
+}
+
+static MocResult solve_design(MocFlowKind kind, double gamma, double theta_max, int n) {
+    MocNozzle solver(make_options(kind, gamma, theta_max, n));
+    return solver.solve();
+}
+
+// Analyze a designed contour with centered-fan initialization (the design
+// contour has a sharp throat corner, so the fan is the consistent start line).
+static MocResult solve_analysis_of(const MocResult& design_result,
+                                   MocFlowKind kind, double gamma, int n) {
+    MocOptions opts = make_options(kind, gamma, 0.0, n);
+    opts.mode = MocMode::ANALYSIS;
+    opts.geometry.downstream_wall_curvature_radius = -1.0; // centered-fan init
+    opts.nozzle_profile = design_result.profile;
+    MocNozzle solver(opts);
+    return solver.solve();
+}
+
+// Isentropic 1D area-Mach relation A/A* (quasi-1D mass conservation).
+static double area_ratio_1d(double mach, double gamma) {
+    double t = (2.0 / (gamma + 1.0)) * (1.0 + 0.5 * (gamma - 1.0) * mach * mach);
+    return std::pow(t, (gamma + 1.0) / (2.0 * (gamma - 1.0))) / mach;
+}
+
+// Supersonic Mach from A/A* (bisection; relation is monotone for M > 1).
+static double mach_from_area_ratio_1d(double area_ratio, double gamma) {
+    double lo = 1.0 + 1e-9, hi = 50.0;
+    for (int i = 0; i < 200; i++) {
+        double mid = 0.5 * (lo + hi);
+        if (area_ratio_1d(mid, gamma) > area_ratio) hi = mid;
+        else lo = mid;
+    }
+    return 0.5 * (lo + hi);
+}
+
+// ------------------------------------------------------------
+// Planar design: the Riemann invariants are exact, so the exit Mach
+// follows algebraically from nu_exit = 2*theta_max at ANY resolution.
+// Tolerance: the kernel's root solves (nu <-> M) converge to abstol=1e-10;
+// 1e-6 leaves margin for accumulation over the march.
+// ------------------------------------------------------------
+TEST(MocConvergence, PlanarDesignExitMachExactAtAllN) {
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+    double expected = mach_from_prandtl_meyer(2.0 * theta_max, gamma);
+
+    for (int n : {8, 16, 32, 64}) {
+        auto result = solve_design(MocFlowKind::PLANAR, gamma, theta_max, n);
+        ASSERT_TRUE(result.converged) << "N=" << n;
+        EXPECT_NEAR(result.exit_mach, expected, 1e-6)
+            << "Planar exit Mach must equal PM^-1(2*theta_max) at N=" << n;
+    }
+}
+
+// ------------------------------------------------------------
+// Planar design: uniform sonic throat + uniform exit flow means mass
+// conservation forces the computed area ratio toward the 1D isentropic
+// area-Mach relation as N grows. Measured baselines (this codebase):
+// |AR - AR_1D| = 5.3e-3 at N=8, ~6e-4 at N=64 (first-order decay).
+// ------------------------------------------------------------
+TEST(MocConvergence, PlanarDesignAreaRatioConvergesTo1D) {
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    auto coarse = solve_design(MocFlowKind::PLANAR, gamma, theta_max, 8);
+    auto fine = solve_design(MocFlowKind::PLANAR, gamma, theta_max, 64);
+    ASSERT_TRUE(coarse.converged);
+    ASSERT_TRUE(fine.converged);
+
+    double err_coarse = std::abs(coarse.area_ratio - area_ratio_1d(coarse.exit_mach, gamma));
+    double err_fine = std::abs(fine.area_ratio - area_ratio_1d(fine.exit_mach, gamma));
+
+    EXPECT_LT(err_fine, err_coarse / 3.0)
+        << "Area-ratio error vs the 1D relation must shrink with N";
+    EXPECT_LT(err_fine, 2e-3)
+        << "At N=64 the area ratio should satisfy 1D mass conservation closely";
+}
+
+// ------------------------------------------------------------
+// Planar design->analysis round trip: analyzing the designed contour must
+// reproduce the design exit Mach, with the discrepancy vanishing as N grows.
+// Measured baselines: |dM| = 1.3e-2 at N=8, 2.8e-3 at N=32 (~halving per
+// doubling of N).
+// ------------------------------------------------------------
+TEST(MocConvergence, PlanarRoundTripErrorShrinksWithN) {
+    double gamma = 1.4;
+    double theta_max = 15.0 * DEG;
+
+    double err[2];
+    int levels[2] = {8, 32};
+    for (int i = 0; i < 2; i++) {
+        auto design = solve_design(MocFlowKind::PLANAR, gamma, theta_max, levels[i]);
+        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        auto analysis = solve_analysis_of(design, MocFlowKind::PLANAR, gamma, levels[i]);
+        ASSERT_TRUE(analysis.converged) << "analysis N=" << levels[i];
+        err[i] = std::abs(analysis.exit_mach - design.exit_mach);
+    }
+
+    EXPECT_LT(err[1], err[0] / 3.0)
+        << "Round-trip exit-Mach error must shrink with N (coarse " << err[0]
+        << ", fine " << err[1] << ")";
+    EXPECT_LT(err[1], 5e-3);
+}
+
+// ------------------------------------------------------------
+// Axisymmetric design: no closed-form exit Mach exists, but the scheme must
+// be self-convergent: successive grid refinements must produce shrinking
+// increments (first-order marching gives ~halving per doubling of N).
+// Measured baselines: |M16-M8| = 2.4e-2, |M32-M16| = 1.2e-2, |M64-M32| = 5.7e-3.
+// A broken source term shows up here as stalled or erratic increments.
+// ------------------------------------------------------------
+TEST(MocConvergence, AxiDesignExitMachCauchyConvergence) {
+    double gamma = 1.4;
+    double theta_max = 12.0 * DEG;
+
+    double mach[4];
+    int levels[4] = {8, 16, 32, 64};
+    for (int i = 0; i < 4; i++) {
+        auto result = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, levels[i]);
+        ASSERT_TRUE(result.converged) << "N=" << levels[i];
+        mach[i] = result.exit_mach;
+    }
+
+    double d1 = std::abs(mach[1] - mach[0]);
+    double d2 = std::abs(mach[2] - mach[1]);
+    double d3 = std::abs(mach[3] - mach[2]);
+
+    EXPECT_LT(d2, 0.75 * d1) << "Refinement increments must shrink (got "
+                             << d1 << " -> " << d2 << ")";
+    EXPECT_LT(d3, 0.75 * d2) << "Refinement increments must shrink (got "
+                             << d2 << " -> " << d3 << ")";
+    EXPECT_LT(d3, 1e-2) << "Exit Mach should be nearly grid-independent by N=64";
+}
+
+// ------------------------------------------------------------
+// Axisymmetric design vs 1D mass conservation: as for the planar case, the
+// uniform exit flow must satisfy the 1D area-Mach relation in the converged
+// limit.
+// TODO: the solution currently carries a known ~+0.08 Mach bias vs the 1D
+// relation that saturates with N (suspected N-independent error in the
+// centered-fan initial-line construction: O(1) marching steps along the fan
+// rays and the dropped source term on the first ray). Tighten this bound to
+// ~1e-2 once that is fixed. The bound below still catches gross breakage
+// (sign/scaling errors in the source terms shift it by >0.05).
+// ------------------------------------------------------------
+TEST(MocConvergence, AxiDesign1DConsistencyBounded) {
+    double gamma = 1.4;
+    double theta_max = 12.0 * DEG;
+
+    auto result = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, 64);
+    ASSERT_TRUE(result.converged);
+
+    double mach_1d = mach_from_area_ratio_1d(result.area_ratio, gamma);
+    EXPECT_NEAR(result.exit_mach, mach_1d, 0.12)
+        << "Axi design exit Mach vs 1D area-Mach relation (known bias ~+0.08)";
+}
+
+// ------------------------------------------------------------
+// Axisymmetric design->analysis round trip: the centerline exit Mach from
+// analyzing the designed contour must approach the design value as N grows.
+// Measured baselines: |dM| = 7.5e-2 at N=8, 2.8e-2 at N=16.
+// TODO: extend to N >= 32 once the analysis march survives it. Today the
+// re-reflected waves off the faceted contour coalesce near the exit lip at
+// N >= 32 (characteristics fold; solver reports non-downstream intersections
+// and converged=false).
+// ------------------------------------------------------------
+TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
+    double gamma = 1.4;
+    double theta_max = 12.0 * DEG;
+
+    double err[2];
+    int levels[2] = {8, 16};
+    for (int i = 0; i < 2; i++) {
+        auto design = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, levels[i]);
+        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        auto analysis = solve_analysis_of(design, MocFlowKind::AXISYMMETRIC, gamma, levels[i]);
+        ASSERT_TRUE(analysis.converged) << "analysis N=" << levels[i];
+        err[i] = std::abs(analysis.exit_mach - design.exit_mach);
+    }
+
+    EXPECT_LT(err[1], err[0])
+        << "Axi round-trip error must not grow with N (coarse " << err[0]
+        << ", fine " << err[1] << ")";
+    EXPECT_LT(err[1], 5e-2);
+}
