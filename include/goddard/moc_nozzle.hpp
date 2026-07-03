@@ -29,16 +29,12 @@ public:
 
 protected:
    
-    // generate initial data line (Cantera-backed path)
+    // generate initial data line (both the perfect-gas and Cantera-backed paths;
+    // for perfect gas the throat is populated with dummy values)
     std::vector<CharacteristicPoint> generate_initial_data_line(
         const ThroatCondition& throat,
         const ThroatGeometry& geometry,
         size_t num_points);
-
-    // generate initial data line for perfect gas (no Cantera dependency)
-    std::vector<CharacteristicPoint> generate_initial_data_line_perfect_gas(
-        size_t num_points);
-
 
     // propagate kernel region (C+/C- intersections)
     void solve_characteristic_kernel(CharacteristicNet& net);
@@ -89,7 +85,7 @@ protected:
      * 
      * This leads to a small physical inconsistency, but it is necessary to bootstrap the downstream marching.
      */
-    CharacteristicPoint solve_initial_axis_point(
+    CharacteristicPoint solve_initial_axis_point_centered_exp(
         const CharacteristicPoint& expansion_point);
 
     /**

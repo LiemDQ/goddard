@@ -627,7 +627,9 @@ TEST(MocAnalysis, AxiRoundTrip) {
     opts.gamma = gamma;
     opts.num_characteristics = 8;
     opts.geometry.throat_radius = 1.0;
+    opts.geometry.downstream_wall_curvature_radius = -1.0;
     opts.nozzle_profile = design_result.profile;
+    opts.theta_max = theta_max;
 
     MocNozzle analysis_solver(opts);
     auto result = analysis_solver.solve();

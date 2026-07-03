@@ -35,7 +35,7 @@ enum class MocMode {
 struct ThroatGeometry {
     double throat_radius;
     double upstream_wall_curvature_radius = 1.5;
-    double downstream_wall_curvature_radius = 0.382;
+    double downstream_wall_curvature_radius = 0.382; // set to negative value for centered-fan initialization
 };
 
 

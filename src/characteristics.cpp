@@ -9,7 +9,15 @@ namespace Goddard {
 void CharacteristicPoint::update_thermodynamic_state_from_nu(ThermodynamicContext& ctxt, double nu_input, double mach_guess) {
     nu = nu_input;
     const auto& table = ctxt.table;
-    switch (ctxt.gas->chemistry) {
+    GasChemistry chemistry;
+    if (ctxt.gas.has_value()) {
+        chemistry = ctxt.gas->chemistry;
+    }
+    else {
+        chemistry = GasChemistry::PERFECT_GAS;
+    }
+
+    switch (chemistry) {
         case GasChemistry::PERFECT_GAS: {
             gamma_s = ctxt.gamma_s;
             mach = mach_from_prandtl_meyer(nu, gamma_s, mach_guess);
@@ -36,8 +44,15 @@ void CharacteristicPoint::update_thermodynamic_state_from_nu(ThermodynamicContex
 void CharacteristicPoint::update_thermodynamic_state_from_mach(ThermodynamicContext& ctxt, double M) {
     mach = M;
     const auto& table = ctxt.table;
+    GasChemistry chemistry;
+    if (ctxt.gas.has_value()) {
+        chemistry = ctxt.gas->chemistry;
+    }
+    else {
+        chemistry = GasChemistry::PERFECT_GAS;
+    }
 
-    switch (ctxt.gas->chemistry) {
+    switch (chemistry) {
         case GasChemistry::PERFECT_GAS: {
             gamma_s = ctxt.gamma_s;
             nu = prandtl_meyer(mach, gamma_s);
@@ -64,7 +79,15 @@ void CharacteristicPoint::update_thermodynamic_state_from_V(ThermodynamicContext
     V = velocity;
     const auto& table = ctxt.table;
 
-    switch (ctxt.gas->chemistry) {
+    GasChemistry chemistry;
+    if (ctxt.gas.has_value()) {
+        chemistry = ctxt.gas->chemistry;
+    }
+    else {
+        chemistry = GasChemistry::PERFECT_GAS;
+    }
+
+    switch (chemistry) {
         case GasChemistry::PERFECT_GAS: {
             gamma_s = ctxt.gamma_s;
             mach = V; // for a perfect gas, the velocity is kept dimensionless
@@ -88,7 +111,15 @@ void CharacteristicPoint::update_thermodynamic_state_from_V(ThermodynamicContext
 }
 
 void CharacteristicPoint::update_thermodynamic_state(ThermodynamicContext& ctxt) {
-    switch (ctxt.gas->chemistry) {
+    GasChemistry chemistry;
+    if (ctxt.gas.has_value()) {
+        chemistry = ctxt.gas->chemistry;
+    }
+    else {
+        chemistry = GasChemistry::PERFECT_GAS;
+    }
+
+    switch (chemistry) {
         case GasChemistry::PERFECT_GAS: {
             // the choice of upstream point can be arbitrary due to Crocco's theorem
             // stagnation factor at throat is = 1 by definition

@@ -42,8 +42,20 @@ MocResult MocNozzle::solve() {
         m_P_ref = 1.0; // dimensionless stagnation pressure
         m_T_ref = 1.0; // dimensionless stagnation temperature
 
-        data_line = generate_initial_data_line_perfect_gas(
-            m_options.num_characteristics);
+        // throat populated with dummy values; they are not used in the perfect gas case.
+        ThroatCondition throat{
+            .converged = true,
+            .speed_of_sound = 1.0,
+            .H_stagnation = 1.0,
+            .P_inlet = m_P_ref,
+            .S_inlet = 1.0,
+            .gamma_s = m_options.gamma,
+            .dlV_dlP_T = -1.0,
+            .dlV_dlT_P = 1.0,
+            .state = {}
+        };
+
+        data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
     } 
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
@@ -89,9 +101,7 @@ MocResult MocNozzle::solve() {
     }
     net.add_initial_data_line(data_line, m_initial_line_family);
 
-    //TODO: needs to be reworked. In the general case, we cannot separately solve the wall and internal regions.
-    //this only applies to the special case of minimum length nozzles, where reflected characteristics are
-    //cancelled at the wall.
+    
     solve_characteristic_kernel(net);
     
 
@@ -123,11 +133,18 @@ MocResult MocNozzle::solve() {
         }
     }
 
-    // Exit Mach: from the last wavefront's last point (outermost at exit plane)
-    // For a min-length nozzle, the last wavefront has one point and the exit
-    // plane Mach should be uniform.
+    // Exit Mach:
+    // For a min-length nozzle the exit flow is uniform, so the last computed point
+    // (on the final characteristic) is representative.
+    // In analysis mode the outflow boundary is a ragged staircase of terminated
+    // chains and the last computed point is arbitrary; report the centerline exit
+    // Mach (most downstream axis point) instead.
     if (!net.points.empty()) {
-        result.exit_mach = net.points.back().mach;
+        if (m_options.mode != MocMode::DESIGN_MIN_LENGTH && !net.axis_point_indices.empty()) {
+            result.exit_mach = net.leading_axis_point().mach;
+        } else {
+            result.exit_mach = net.points.back().mach;
+        }
     }
 
     // Build wall profile from computed wall coordinates
@@ -135,7 +152,6 @@ MocResult MocNozzle::solve() {
     result.profile.y = net.wall_y;
 
 
-    // TODO: this needs to be updated to be generalized to all nozzles, not just min length ones.
 
     // Exit plane extraction:
     // For a min-length nozzle, the exit plane is the last wavefront + last wall point.
@@ -185,15 +201,50 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     const ThroatGeometry& geometry,
     size_t num_points)
 {
-    auto thermo = m_gas->thermo();
-    thermo->restoreState(throat.state);
-
     std::vector<CharacteristicPoint> data_line;
     data_line.reserve(num_points);
+    if (!m_options.theta_schedule.empty()) {
+        m_theta_schedule = m_options.theta_schedule;
+    }
     
+    if (m_gas.has_value()) {
+        m_gas->thermo()->restoreState(throat.state);
+    }
+
     ThermodynamicContext context = build_thermo_context();
-    MocInitialization initializer{geometry, context, m_options};
-    
+
+    // The Kliegel-Levine series implemented here is the axisymmetric transonic
+    // solution; it is selected by a positive downstream wall curvature radius but
+    // is not valid for planar flow, which falls back to a centered fan.
+    bool use_centered_fan =
+        m_options.geometry.downstream_wall_curvature_radius <= 0.0 ||
+        m_options.flow_type == MocFlowKind::PLANAR;
+    if (use_centered_fan &&
+        m_options.flow_type == MocFlowKind::PLANAR &&
+        m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
+        m_options.mode != MocMode::DESIGN_MIN_LENGTH)
+    {
+        log_info("Kliegel-Levine initialization is only valid for axisymmetric flow; "
+                 "using centered-fan initialization for planar flow.");
+    }
+
+    // In analysis mode the expansion is set by the wall contour, not by a design
+    // theta_max (which is meaningless there and typically left unset). When the
+    // centered-fan initializer will be used, derive theta_max from the profile.
+    MocOptions init_options = m_options;
+    if (m_options.mode == MocMode::ANALYSIS && use_centered_fan)
+    {
+        const NozzleProfile& wall = m_options.nozzle_profile;
+        if (wall.size() < 2) {
+            throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
+        }
+        init_options.theta_max = wall.max_theta();
+        if (init_options.theta_max <= 0.0) {
+            throw std::runtime_error("Wall profile must have a positive expansion angle for analysis mode.");
+        }
+    }
+    MocInitialization initializer{geometry, context, init_options};
+
     switch (m_options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
             // The minimum length nozzle is a special case as the sonic line is straight, and
@@ -204,6 +255,13 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             m_initial_line_family = ChainMetadata::Family::PLUS;
 
             auto expansion_line = initializer.initialize_centered_expansion(throat);
+            // Mirror the fan angles (user-supplied or auto-generated inside the
+            // initializer) into m_theta_schedule: the min-length wall solve reads
+            // theta_wall = theta_max - m_theta_schedule[k] for each wall point.
+            m_theta_schedule.resize(expansion_line.size());
+            for (size_t i = 0; i < expansion_line.size(); i++) {
+                m_theta_schedule[i] = expansion_line[i].theta;
+            }
             CharacteristicPoint upstream_point;
             //for a minimum length nozzle, the sonic line is straight.
             //the initial data line is generated through a single Prandtl-Meyer expansion at the throat.
@@ -211,13 +269,12 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 const auto& expansion_point = expansion_line[i];
                 // special case: the first point is on the centerline
                 if (i == 0) {
-                    upstream_point = solve_axis_point(expansion_point);
-                    data_line.push_back(upstream_point);
+                    upstream_point = solve_initial_axis_point_centered_exp(expansion_point);
                 } 
                 else {
                     upstream_point = solve_interior_point(expansion_point, upstream_point);
-                    data_line.push_back(upstream_point);
                 }
+                data_line.push_back(upstream_point);
             }
             break;
         }
@@ -227,21 +284,36 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // seeded as a generic data line (m_initial_line_family stays empty).
              // the first theta should be small to minimize approximation error.
             CharacteristicPoint upstream_point;
-            auto expansion_line = initializer.initialize_kliegel_levine(throat);
-            
-            //for a minimum length nozzle, the sonic line is straight.
-            //the initial data line is generated through a single Prandtl-Meyer expansion at the throat.
-            for (size_t i = 0; i < expansion_line.size(); i++){
-                const auto& expansion_point = expansion_line[i];
-                // special case: the first point is on the centerline
-                if (i == 0) {
-                    upstream_point = solve_axis_point(expansion_point);
-                    data_line.push_back(upstream_point);
-                } 
-                else {
-                    upstream_point = solve_interior_point(expansion_point, upstream_point);
-                    data_line.push_back(upstream_point);
+            if (use_centered_fan) {
+
+                m_initial_line_family = ChainMetadata::Family::PLUS;
+                auto expansion_line = initializer.initialize_centered_expansion(throat);
+                m_theta_schedule.resize(expansion_line.size());
+                for (size_t i = 0; i < expansion_line.size(); i++) {
+                    m_theta_schedule[i] = expansion_line[i].theta;
                 }
+                //for a minimum length nozzle, the sonic line is straight.
+                //the initial data line is generated through a single Prandtl-Meyer expansion at the throat.
+                for (size_t i = 0; i < expansion_line.size(); i++){
+                    const auto& expansion_point = expansion_line[i];
+                    // special case: the first point is on the centerline
+                    if (i == 0) {
+                        upstream_point = solve_initial_axis_point_centered_exp(expansion_point);
+                        data_line.push_back(upstream_point);
+                    } 
+                    else {
+                        upstream_point = solve_interior_point(expansion_point, upstream_point);
+                        data_line.push_back(upstream_point);
+                    }
+                }
+            }
+            else {
+                // The Kliegel-Levine transonic line already spans axis-to-wall with full
+                // thermodynamic state and K+/K- set: it IS the initial data line. Unlike
+                // the centered fan (whose rays all emanate from the throat lip and must be
+                // marched into the flow field), re-marching these points pairwise would
+                // intersect characteristics *behind* their parents.
+                data_line = initializer.initialize_kliegel_levine(throat);
             }
             break;
         }
@@ -249,82 +321,6 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             throw NotImplementedError("Centerline nozzle initialization not implemented.");
         }
     }
-    return data_line;
-}
-
-std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line_perfect_gas(
-    size_t num_points)
-{
-    // The perfect-gas path builds a centered expansion fan, whose rays are collinear along a
-    // single C+ characteristic. Declare that topology so the net is seeded as one shared
-    // chain rather than a transonic data line.
-    m_initial_line_family = ChainMetadata::Family::PLUS;
-
-    double gamma = m_options.gamma;
-
-    // For analysis mode, derive theta_max from wall contour
-    double theta_max = m_options.theta_max;
-    if (m_options.mode == MocMode::ANALYSIS) {
-        const auto& wall = m_options.nozzle_profile;
-        if (wall.size() < 2) {
-            throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
-        }
-        theta_max = wall.max_theta();
-        if (theta_max <= 0.0) {
-            throw std::runtime_error("Wall profile must have a positive expansion angle for analysis mode.");
-        }
-    }
-
-    // Build or use theta schedule
-    if (!m_options.theta_schedule.empty()) {
-        m_theta_schedule = m_options.theta_schedule;
-        num_points = m_theta_schedule.size();
-    } else {
-        // Auto-generate: small first step, then uniform spacing
-        double dtheta_initial = theta_max / (num_points * 10);
-        double dtheta = (theta_max - dtheta_initial) / (num_points - 1);
-        m_theta_schedule.resize(num_points);
-        for (size_t i = 0; i < num_points; i++) {
-            m_theta_schedule[i] = dtheta_initial + i * dtheta;
-        }
-    }
-
-    // Sonic point at throat (dimensionless)
-    CharacteristicPoint sonic_point{};
-    sonic_point.mach = 1.0;
-    sonic_point.theta = 0.0;
-    sonic_point.nu = 0.0;
-    sonic_point.x = 0.0;
-    sonic_point.y = 1.0;
-    sonic_point.K_minus = 0.0;
-    sonic_point.K_plus = 0.0;
-    sonic_point.gamma_s = gamma;
-    sonic_point.temperature = 1.0 / stagnation_factor(1.0, gamma); // T/T0 at M=1
-    sonic_point.pressure = std::pow(sonic_point.temperature, gamma / (gamma - 1.0)); // p/p0 at M=1
-
-    std::vector<CharacteristicPoint> data_line;
-    data_line.reserve(num_points);
-
-    CharacteristicPoint upstream_point;
-
-    for (size_t i = 0; i < num_points; i++) {
-        // Each C- characteristic from the centered expansion fan
-        CharacteristicPoint expansion_point{};
-        expansion_point.x = sonic_point.x;
-        expansion_point.y = sonic_point.y;
-        expansion_point.theta = m_theta_schedule[i];
-        update_thermodynamic_state_from_nu(expansion_point, expansion_point.theta, 1.0); // centered fan: nu = theta
-        expansion_point.K_plus = 0.0; // theta - nu = 0 for all fan rays
-        expansion_point.K_minus = expansion_point.theta + expansion_point.nu; // theta + nu
-
-        if (i == 0) {
-            upstream_point = solve_initial_axis_point(expansion_point);
-        } else {
-            upstream_point = solve_interior_point(expansion_point, upstream_point);
-        }
-        data_line.push_back(upstream_point);
-    }
-
     return data_line;
 }
 
@@ -548,7 +544,7 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point(
     // unreachable
 }
 
-CharacteristicPoint MocNozzle::solve_initial_axis_point(const CharacteristicPoint& expansion_point) {
+CharacteristicPoint MocNozzle::solve_initial_axis_point_centered_exp(const CharacteristicPoint& expansion_point) {
     CharacteristicPoint point;
     point.y = 0.0; //point always lies on axis
     switch (m_options.flow_type) {
@@ -609,17 +605,26 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
             break;
         }
         case MocFlowKind::AXISYMMETRIC: {
-            // The source term sin(theta)/y is 0/0 at y=0.
-            // By L'Hopital's rule: lim_{y->0} sin(theta)/y = dtheta/dy,
-            // estimated from the off-axis parent point.
-            double dtheta_dy = off_axis_parent.theta / off_axis_parent.y;
 
-            // Predictor: planar solution as initial guess
+            const double theta = off_axis_parent.theta;
+            const double mu = off_axis_parent.mu;
+            // Predictor method recommended by Zucrow & Hoffman, ch. 17
+            // Use parent point as initial guess for source term.
+            // The C- compatibility per dy is d(theta+nu) = [sin(theta)/(M sin(theta-mu))] (dy/y).
+            // The descent from the parent to the axis has dy = -y_parent (signed), which makes
+            // the source contribution positive (sin(theta-mu) < 0).
             axis_point.K_minus = off_axis_parent.K_minus;
-            double nu_pred = axis_point.K_minus; // theta=0 => nu = K_minus
+
+            const double dy = -off_axis_parent.y; // y_axis - y_parent
+            double source_pred = sin(theta) / (off_axis_parent.mach * sin(theta - mu))
+                * dy / off_axis_parent.y;
+
+            // dtheta + dnu = S => nu_2 - nu_1 = S + theta_1 = S + K_minus_1
+            double nu_pred = axis_point.K_minus + source_pred;
+            
             update_thermodynamic_state_from_nu(
                 axis_point, 
-                nu_pred - axis_point.theta, 
+                nu_pred, 
                 off_axis_parent.mach);
 
             axis_point.K_plus = axis_point.theta - axis_point.nu;
@@ -627,18 +632,17 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
             double c_minus_angle = average_cminus_angle(off_axis_parent, axis_point);
             axis_point.x = off_axis_parent.x - off_axis_parent.y / tan(c_minus_angle);
 
-            // Corrector: apply limiting source term
-            // The C- compatibility equation at the axis becomes:
-            // dtheta + dnu = S_cminus * dy
-            // where S_cminus_limit = dtheta_dy / (M * sin(mu))
-            double dy = off_axis_parent.y;
+            // Corrector: apply the averaged source term with the same signed dy:
+            // dy/y_avg = (0 - y_parent)/(y_parent/2) = -2, and theta_avg = theta_parent/2,
+            // which together reproduce the finite sin(theta)/y limit at the axis.
+            double dy_over_y_avg = -2.0;
             double theta_avg = 0.5 * off_axis_parent.theta;
             double mu_avg = 0.5 * (off_axis_parent.mu + axis_point.mu);
             double M_avg = 0.5 * (off_axis_parent.mach + axis_point.mach);
-            double source_limit = dtheta_dy / (M_avg * sin(theta_avg - mu_avg)) * dy;
+            double source_corrected = sin(theta_avg)/ (M_avg * sin(theta_avg - mu_avg)) * dy_over_y_avg; 
 
-            // Corrected nu: K_minus from parent, minus source contribution
-            double nu_corrected = off_axis_parent.K_minus + source_limit;
+            // Corrected nu: K_minus from parent, + source contribution
+            double nu_corrected = off_axis_parent.K_minus + source_corrected;
             update_thermodynamic_state_from_nu(axis_point, nu_corrected, axis_point.mach);
             axis_point.K_minus = axis_point.nu; // theta=0
             axis_point.K_plus = -axis_point.nu;
@@ -1373,7 +1377,7 @@ void MocNozzle::update_leading_edges(LeadingEdgeView& view, const Characteristic
     view.leading_pt_indices.clear();
     for (size_t i = 0; i < net.chain_metadata.size(); i++) {
         const ChainMetadata& meta = net.chain_metadata[i];
-        if (meta.active && meta.family == view.family) {
+        if (meta.active && meta.family == family) {
             view.y_values.push_back(net.points[meta.latest_point_idx].y);
             view.chain_indices.push_back(i);
             view.leading_pt_indices.push_back(meta.latest_point_idx);
