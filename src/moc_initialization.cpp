@@ -59,7 +59,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
         
         // Solve for x using root solving method
         pt.x = KL_solve_transonic_x(pt.y, gamma, R, x_guess);
-        double machx = KL_xMach(pt.y, pt.x, gamma, R);
+        // KL_xMach takes the transformed axial coordinate z, not the physical x.
+        double machx = KL_xMach(pt.y, KL_z_coordinate(pt.x, gamma), gamma, R);
         pt.update_thermodynamic_state_from_mach(m_thermo, machx);
         pt.update_Ks();
     }
@@ -71,7 +72,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
 
 std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansion(const ThroatCondition& throat) {
     size_t num_points = static_cast<size_t>(m_options.num_characteristics);
-    std::vector<CharacteristicPoint> points(num_points);
+    std::vector<CharacteristicPoint> points;
+    points.reserve(num_points);
 
     CharacteristicPoint sonic_point;
     sonic_point.temperature = 1.0; // should be 1.0 by definition
@@ -85,31 +87,42 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
     sonic_point.K_minus = 0.0;
     sonic_point.K_plus = 0.0;
 
-    double dtheta_initial = m_options.theta_max/(num_points*10);
-    double dtheta = (m_options.theta_max - dtheta_initial)/(num_points - 1);
+    std::vector<double> theta_schedule;
 
-    for (size_t i = 0; i < num_points; i++) {
-        CharacteristicPoint& pt = points[i];
+    if (!m_options.theta_schedule.empty()) {
+        theta_schedule = m_options.theta_schedule;
+    }
+    else {
+        double dtheta_initial = m_options.theta_max/(num_points*10);
+        double dtheta = (m_options.theta_max - dtheta_initial)/(num_points - 1);
+        theta_schedule.resize(num_points);
+        for (size_t i = 0; i < num_points; i++) {
+            theta_schedule[i] = dtheta_initial + i * dtheta;
+        }
+    }
+
+    for (size_t i = 0; i < theta_schedule.size(); i++) {
+        CharacteristicPoint pt;
         pt.x = sonic_point.x;
         pt.y = sonic_point.y; // dimensionless throat radius
-        pt.theta = dtheta_initial + i*dtheta;
+        pt.theta = theta_schedule[i];
         
         pt.update_thermodynamic_state_from_nu(m_thermo, pt.theta, 1.0);
         pt.update_Ks();
+        points.push_back(pt);
     }
     return points;
 }
 
 double MocInitialization::KL_z_coordinate(double x, double gamma) const {
-    double r = geometry.throat_radius;
+    // x is dimensionless (in throat radii), as are all net coordinates.
     double R = KL_R();
-    return std::sqrt(2*R/(gamma+1))*x/r;
+    return std::sqrt(2*R/(gamma+1))*x;
 }
 
-double MocInitialization::KL_dzdx(double x, double gamma) const {
-    double r = geometry.throat_radius;
-    double R = geometry.downstream_wall_curvature_radius/r;
-    return std::sqrt(2*R/(gamma+1))/r;
+double MocInitialization::KL_dzdx(double, double gamma) const {
+    double R = KL_R();
+    return std::sqrt(2*R/(gamma+1));
 }
 
 double MocInitialization::KL_R() const {
@@ -195,7 +208,7 @@ double MocInitialization::KL_axisymmetric_coeff(double gamma, double R) const {
 }
 
 double MocInitialization::KL_yMach(double x, double y, double gamma, double R) const {
-    double r = y/geometry.throat_radius;
+    double r = y; // dimensionless (throat radii)
     double z = KL_z_coordinate(x, gamma);
     double denom = 1.0/(R+1);
     double v1 = KL_v1(r, z);
@@ -203,12 +216,14 @@ double MocInitialization::KL_yMach(double x, double y, double gamma, double R) c
     double v3 = KL_v3(r, z, gamma);
     //TODO: this may only be valid for axisymmetric geometries. Verify.
     double factor = std::sqrt((gamma+1)/(2*(R+1)));
-    
-    return factor*(1 + denom*v1 + denom*denom * (1.5*v1 + v2) + denom*denom*denom*(15.0/8*v1 + 5.0/2*v2 + v3));
+
+    // The radial-velocity series has no constant term: every v_i vanishes on the
+    // axis (v_i ~ r), so v must too.
+    return factor*(denom*v1 + denom*denom * (1.5*v1 + v2) + denom*denom*denom*(15.0/8*v1 + 5.0/2*v2 + v3));
 }
 
 double MocInitialization::KL_dyMachdx(double x, double y, double gamma, double R) const {
-    double r = y/geometry.throat_radius;
+    double r = y; // dimensionless (throat radii)
     double dzdx = KL_dzdx(x, gamma);
     double z = KL_z_coordinate(x, gamma);
     double factor = std::sqrt((gamma+1)/(2*(R+1)));
@@ -217,25 +232,29 @@ double MocInitialization::KL_dyMachdx(double x, double y, double gamma, double R
     double dv2dx = KL_dv2dz(r, z, gamma)*dzdx;
     double dv3dx = KL_dv3dz(r, z, gamma)*dzdx;
 
-    return factor*(1 + denom*dv1dx 
-        + denom*denom * (1.5*dv1dx + dv2dx) 
+    return factor*(denom*dv1dx
+        + denom*denom * (1.5*dv1dx + dv2dx)
         + denom*denom*denom*(15.0/8*dv1dx + 5.0/2*dv2dx + dv3dx));
 }
 
 double MocInitialization::KL_solve_transonic_x(double y, double gamma, double R, double x_guess) const {
-    // solve for x where KL_yMach = 0 using Newton's method
+    // Solve for x where the radial velocity KL_yMach = 0 using Newton's method.
+    // The radial velocity series is exactly proportional to r (every v_i ~ r), so
+    // the residual is normalized by r to make the tolerance r-independent, and
+    // on-axis stations (y = 0) are evaluated at a small finite r, where the
+    // normalized residual converges to the r->0 limit of the v = 0 locus.
+    double r = std::max(y, 1e-4);
     double residual = 1.0;
     double tol = 1e-6;
     double x = x_guess;
     int max_iters = 30;
     for (int i = 0; i <= max_iters; i++) {
-        
-        double yMach = KL_yMach(x, y, gamma, R);
-        residual = yMach;
-        if (std::abs(residual) < tol) 
+
+        residual = KL_yMach(x, r, gamma, R) / r;
+        if (std::abs(residual) < tol)
             return x;
 
-        x = x - yMach/KL_dyMachdx(x, y, gamma, R);
+        x = x - residual/(KL_dyMachdx(x, r, gamma, R) / r);
     }
 
     throw ConvergenceError("Newton's method for transonic line x-coordinate failed to converge.", max_iters, tol);

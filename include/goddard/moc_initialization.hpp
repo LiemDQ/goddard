@@ -48,7 +48,8 @@ class MocInitialization {
     }
 
     inline double sauer_alpha(double gamma) const {
-        return std::sqrt((1 + delta())/((gamma+1)*geometry.downstream_wall_curvature_radius * geometry.throat_radius));
+        // Dimensionless (throat-radius units): uses the curvature ratio R = R_c / r_t.
+        return std::sqrt((1 + delta())/((gamma+1)*KL_R()));
     }
 
     // Kliegel-Levine utility functions
