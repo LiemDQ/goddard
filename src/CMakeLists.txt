@@ -28,6 +28,7 @@ add_library(
   shocks.cpp
   profile.cpp
   kinetic_nozzle.cpp
+  interpolation.cpp
 )
 
 target_include_directories(goddard_lib

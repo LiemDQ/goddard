@@ -2,6 +2,8 @@
 #include <vector>
 #include <utility>
 #include <string>
+#include <array>
+#include <Eigen/Dense>
 
 namespace Goddard {
     /** 
@@ -74,7 +76,7 @@ public:
      * @param length_frac Fraction of length of comparable 15-degree conical nozzle. 
      * @param n_points Number of points in the profile. 
      */
-    static NozzleProfile generate_TOP_nozzle(
+    static NozzleProfile generate_Rao_TOP_nozzle(
         double area_ratio, double r_throat = 1.0,
         double length_frac = 0.8, size_t n_points = 50);
     /**
