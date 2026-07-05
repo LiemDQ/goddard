@@ -28,12 +28,14 @@ public:
     
 
 protected:
+
+    auto setup_nozzle_profile(const NozzleGeometry& geometry) -> NozzleProfile;
    
     // generate initial data line (both the perfect-gas and Cantera-backed paths;
     // for perfect gas the throat is populated with dummy values)
     std::vector<CharacteristicPoint> generate_initial_data_line(
         const ThroatCondition& throat,
-        const ThroatGeometry& geometry,
+        const NozzleGeometry& geometry,
         size_t num_points);
 
     // propagate kernel region (C+/C- intersections)

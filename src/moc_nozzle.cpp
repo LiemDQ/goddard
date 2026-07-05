@@ -35,6 +35,7 @@ MocResult MocNozzle::solve() {
 
     CharacteristicNet net;
     std::vector<CharacteristicPoint> data_line;
+    m_options.nozzle_profile = setup_nozzle_profile(m_options.geometry);
 
     if (m_options.chemistry == GasChemistry::PERFECT_GAS) {
         // Pure algebraic path: no Cantera dependency
@@ -196,9 +197,32 @@ MocResult MocNozzle::solve() {
     return result;
 }
 
+
+auto MocNozzle::setup_nozzle_profile(const NozzleGeometry& geometry) -> NozzleProfile {
+    switch (m_options.mode) {
+        case MocMode::DESIGN_MIN_LENGTH: {
+            return m_options.nozzle_profile;
+        }
+        case MocMode::DESIGN_RAO: {
+            return NozzleProfile::generate_Rao_TOP_nozzle(geometry.expansion_ratio, 1.0, geometry.length_fraction);
+        }
+        case MocMode::ANALYSIS: {
+            return m_options.nozzle_profile;
+        }
+        case MocMode::DESIGN_CENTERLINE: {
+            throw NotImplementedError("DESIGN_CENTERLINE is not implemented.");
+        }
+        default: {
+            //unreachable
+            throw std::runtime_error("Invalid value for MocMode specified.");
+        }
+    }
+}
+
+
 std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     const ThroatCondition& throat,
-    const ThroatGeometry& geometry,
+    const NozzleGeometry& geometry,
     size_t num_points)
 {
     std::vector<CharacteristicPoint> data_line;

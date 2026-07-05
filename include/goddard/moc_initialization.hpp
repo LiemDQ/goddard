@@ -12,7 +12,7 @@ namespace Goddard {
 
 class MocInitialization {
     public:
-    MocInitialization(ThroatGeometry geom, ThermodynamicContext& thermo, const MocOptions& options);
+    MocInitialization(NozzleGeometry geom, ThermodynamicContext& thermo, const MocOptions& options);
     
     /**
      * Create an initial dataline using the Sauer method. The data points form a parabola shape
@@ -39,7 +39,7 @@ class MocInitialization {
      */
     std::vector<CharacteristicPoint> initialize_centered_expansion(const ThroatCondition& throat);
 
-    ThroatGeometry geometry;
+    NozzleGeometry geometry;
 
     protected:
     inline double delta() const {

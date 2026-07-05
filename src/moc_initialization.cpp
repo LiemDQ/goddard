@@ -8,7 +8,7 @@ double gquad(double gamma, double a, double b, double c, double d) {
 }
 
 MocInitialization::MocInitialization(
-    ThroatGeometry geom, 
+    NozzleGeometry geom, 
     ThermodynamicContext& thermo, 
     const MocOptions& options) 
     : geometry(geom), m_thermo(thermo), m_options(options)

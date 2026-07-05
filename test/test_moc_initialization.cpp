@@ -100,7 +100,7 @@ TEST(KliegelLevineClosedForm, AxisAndWallVelocityMatchPublishedEquations) {
         {1.2, 0.625}, {1.667, 2.0}, {1.25, 0.3},
     };
 
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = 1.0;
     ThermodynamicContext thermo = make_perfect_gas_context(1.4);
@@ -124,7 +124,7 @@ TEST(KliegelLevineClosedForm, MatchesTable1ExperimentalCase) {
     double gamma = 1.4;
     double R = 0.625;
 
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);
@@ -145,7 +145,7 @@ TEST(KliegelLevineClosedForm, WallLeadsAxisThroughTransonicRegion) {
     // z=0, u_wall > 1 > u_axis. Holds for both small and large R since the
     // leading-order term (+-1/(4(R+1))) dominates in both limits.
     double gamma = 1.4;
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = 1.0;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);
@@ -171,7 +171,7 @@ TEST(KliegelLevineTransonicLine, SolvedLineHasZeroRadialVelocity) {
     // both the Newton iteration and the KL_v1/v2/v3 polynomials.
     double gamma = 1.4;
     double R = 0.8;
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);
@@ -207,7 +207,7 @@ TEST(KliegelLevineVsSauer, ConvergesToSauerAsCurvatureRadiusGrows) {
     ThroatCondition throat = make_perfect_gas_throat(gamma);
 
     auto max_x_diff = [&](double R) {
-        ThroatGeometry geom;
+        NozzleGeometry geom;
         geom.throat_radius = 1.0;
         geom.downstream_wall_curvature_radius = R;
         MocInitialization init(geom, thermo, opts);
@@ -242,7 +242,7 @@ TEST(SauerInitialization, TransonicLineMatchesClosedForm) {
             for (MocFlowKind flow : {MocFlowKind::PLANAR, MocFlowKind::AXISYMMETRIC}) {
                 double delta = (flow == MocFlowKind::AXISYMMETRIC) ? 1.0 : 0.0;
 
-                ThroatGeometry geom;
+                NozzleGeometry geom;
                 geom.throat_radius = 1.0;
                 geom.downstream_wall_curvature_radius = R;
                 ThermodynamicContext thermo = make_perfect_gas_context(gamma);
@@ -272,7 +272,7 @@ TEST(SauerInitialization, MachAtAxisAndWallMatchesClosedForm) {
     double R = 1.5;
     double delta = 1.0; // axisymmetric
 
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);
@@ -307,7 +307,7 @@ TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY)
     double R = 1.0;
     int n = 11;
 
-    ThroatGeometry geom;
+    NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);

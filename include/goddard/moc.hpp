@@ -32,10 +32,12 @@ enum class MocMode {
     ANALYSIS    // wall contour is input
 };
 
-struct ThroatGeometry {
+struct NozzleGeometry {
     double throat_radius;
     double upstream_wall_curvature_radius = 1.5;
     double downstream_wall_curvature_radius = 0.382; // set to negative value for centered-fan initialization
+    double length_fraction = 0.8;
+    double expansion_ratio = 5.0;
 };
 
 
@@ -50,7 +52,7 @@ struct MocOptions {
     int num_characteristics;    // number of C+ lines from initial expansion fan
     double gamma;               // used only for PERFECT_GAS
     SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
-    ThroatGeometry geometry;     // throat geometry
+    NozzleGeometry geometry;     // throat geometry
 
     double theta_max;           // max wall angle (radians) for minimum length nozzle design mode
     double exit_mach;           // exit mach number -- for design mode
