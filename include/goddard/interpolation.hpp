@@ -26,17 +26,21 @@ struct BoundsOptions {
  * @warning Assumes grid points are evenly spaced. 
  */
 class BicubicInterpolator {
+public:
+    const double x_min, x_step;
+    const double y_min, y_step;
+    const size_t x_size, y_size;
+
 private:
+    // Declared after x_size/y_size: members initialize in declaration order
+    // (not initializer-list order), and x_size/y_size are computed from the
+    // `values` constructor parameter before it is moved into m_values below.
     Eigen::MatrixXd m_values;
     BoundsOptions m_bound_opts;
 
     auto handle_boundary(double val, double low, double high, BoundsHandling option) const -> double;
 
 public:
-    const double x_min, x_step;
-    const double y_min, y_step;
-    const size_t x_size, y_size;
-    
     BicubicInterpolator(double x_start, double x_spacing,
                         double y_start, double y_spacing,
                         Eigen::MatrixXd values,

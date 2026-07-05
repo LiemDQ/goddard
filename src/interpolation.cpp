@@ -31,7 +31,7 @@ auto BicubicInterpolator::interpolate(double x, double y) const -> double {
         y = handle_boundary(y, y_min, y_max(), m_bound_opts.y_high);
     }
     else if (y < y_min) {
-        y = handle_boundary(y, y_min, y_max(), m_bound_opts.y_high);
+        y = handle_boundary(y, y_min, y_max(), m_bound_opts.y_low);
     }
 
     double x_grid = (x - x_min) / x_step;
@@ -71,12 +71,12 @@ auto BicubicInterpolator::interpolate(double x, double y) const -> double {
 }
 
 auto BicubicInterpolator::x_max() const -> double {
-    return x_min + x_step * x_size;
+    return x_min + x_step * (x_size - 1);
 }
 
 
 auto BicubicInterpolator::y_max() const -> double {
-    return y_min + y_step * y_size;
+    return y_min + y_step * (y_size - 1);
 }
 
 } // namespace Goddard

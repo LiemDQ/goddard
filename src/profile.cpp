@@ -72,43 +72,46 @@ NozzleProfile NozzleProfile::generate_Rao_TOP_nozzle(
     double length_frac, 
     size_t n_points)
 {
-    if (length_frac <= 0.0 || length_frac >= 1.0 ) {
-        throw std::invalid_argument("Specified length fraction must be between 0 and 1.");
+    if (length_frac < RAO_PARABOLIC_MIN_LENGTH_RATIO || length_frac > 1.0 ) {
+        throw std::invalid_argument("Specified length fraction must be between 0.6 and 1.");
     }
-    if (area_ratio <= 1.0) {
-        throw std::invalid_argument("Area ratio must be greater than 1.");
+    if (area_ratio < pow(10,RAO_PARABOLIC_MIN_EXP_RATIO_LOG10)) {
+        throw std::invalid_argument(std::format("Area ratio must be greater than {}.", pow(10,RAO_PARABOLIC_MIN_EXP_RATIO_LOG10)));
     }
     if (r_throat <= 0.0) {
         throw std::invalid_argument("Throat radius must be positive.");
     }
 
+    // Data is stored in 5x26 matrices: rows are length_frac
+    // (5 values, 60%-100%), columns are log10(area_ratio) (26 values). BicubicInterpolator
+    // binds its first coordinate to matrix rows and its second to columns.
     BoundsOptions bound_opts{
         .x_low = BoundsHandling::ERROR,
-        .x_high = BoundsHandling::CLAMP,
+        .x_high = BoundsHandling::ERROR,
         .y_low = BoundsHandling::ERROR,
-        .y_high = BoundsHandling::ERROR,
+        .y_high = BoundsHandling::CLAMP,
     };
 
     BicubicInterpolator theta_n_intp{
-        RAO_PARABOLIC_MIN_EXP_RATIO_LOG10,
-        RAO_PARABOLIC_EXP_RATIO_LOG10_STEP,
         RAO_PARABOLIC_MIN_LENGTH_RATIO,
         RAO_PARABOLIC_LENGTH_RATIO_STEP,
+        RAO_PARABOLIC_MIN_EXP_RATIO_LOG10,
+        RAO_PARABOLIC_EXP_RATIO_LOG10_STEP,
         RAO_PARABOLIC_NOZZLE_THETA_N,
         bound_opts
     };
 
     BicubicInterpolator theta_e_intp{
-        RAO_PARABOLIC_MIN_EXP_RATIO_LOG10,
-        RAO_PARABOLIC_EXP_RATIO_LOG10_STEP,
         RAO_PARABOLIC_MIN_LENGTH_RATIO,
         RAO_PARABOLIC_LENGTH_RATIO_STEP,
+        RAO_PARABOLIC_MIN_EXP_RATIO_LOG10,
+        RAO_PARABOLIC_EXP_RATIO_LOG10_STEP,
         RAO_PARABOLIC_NOZZLE_THETA_E,
         bound_opts
     };
 
-    double theta_n = theta_n_intp.interpolate(log10(area_ratio), length_frac);
-    double theta_e = theta_e_intp.interpolate(log10(area_ratio), length_frac);
+    double theta_n = theta_n_intp.interpolate(length_frac, log10(area_ratio));
+    double theta_e = theta_e_intp.interpolate(length_frac, log10(area_ratio));
    
     return NozzleProfile::generate_bezier_nozzle(
         area_ratio, theta_n, theta_e, 0.382, r_throat, length_frac, n_points);
@@ -133,7 +136,7 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     }
 
     double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
-    double length = length_frac*(r_exit-r_throat) / tan(15);
+    double length = length_frac*(r_exit-r_throat) / tan(to_radians(15.0));
     double theta_exp_rad = to_radians(theta_n - 90.0);
     double n_x = r_expansion_curve*r_throat*cos(theta_exp_rad);
     double n_y = r_expansion_curve*r_throat*sin(theta_exp_rad) + r_expansion_curve*r_throat + r_throat;
@@ -156,7 +159,10 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
         double r = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
         profile.push_back({x,r});
     }
-    for (size_t i = 0; i < n_points; i++) {
+    // Start at i = 1: frac = 0 (i = 0) reproduces (n_x, n_y) exactly, which the
+    // throat-arc loop above already pushed as its last point. Including it again
+    // would create a zero-length segment at the junction (NaN slopes in slope_at_idx).
+    for (size_t i = 1; i < n_points; i++) {
         double frac = static_cast<double>(i) / (n_points - 1);
         double a = (1.0 - frac)*(1.0 - frac);
         double x = a * n_x + 2 * (1.0 - frac) * frac * mid_x + frac*frac*length;
@@ -315,11 +321,13 @@ size_t NozzleProfile::find_index(double x_query) const {
         if (x[i] > x_query) return std::max<size_t>(i, 1);
         i++;
     }
-    if (i == x.size())
+    // No element strictly greater than x_query was found, i.e. x_query >= x.back().
+    // A query exactly at the last grid point (e.g. the nozzle exit plane) is valid
+    // and should use the last segment; only a query strictly beyond it is an error.
+    if (x_query > x.back())
         throw std::runtime_error(
             std::format("Queried x: {} larger than nozzle profile (xmax = {})", x_query,  x_max())
         );
-    // query beyond profile: return last segment
     return x.size() - 1;
 }
 

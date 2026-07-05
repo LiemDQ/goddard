@@ -6,12 +6,10 @@
 #include <Eigen/Dense>
 
 namespace Goddard {
-    /** 
+/** 
  * Geometric representation of a nozzle wall profile. 
  * Used as both input (analysis) or output (design). 
  * 
- * The first coordinate pair (at index 0) should be the coordinates of the throat,
- * which should have an x-coordinate of 0.0 by convention.
  * 
  * */
 class NozzleProfile {
@@ -28,13 +26,15 @@ public:
     // Interpolate wall angle at a given x-position.
     double theta_at(double x_query) const;
     
-    // 
+    // Interpolate profile height at a given x-position.
     double radius_at(double x_query) const;
     
+    /** Calculate the cross-sectional area of nozzle at x-position assuming the nozzle is axisymmetric.
+     * */
     double area_at(double x_query) const;
-    // Get slope at a provided index.
+    // Get slope at a given index.
     double slope_at_idx(size_t idx) const;
-
+    // Get wall angle at a given index.
     double theta_at_idx(size_t idx) const;
 
     double x_max() const;
@@ -67,9 +67,19 @@ public:
     static NozzleProfile generate_conical_nozzle(
         double area_ratio, double r_throat = 1.0,  
         double angle = 15.0, size_t n_points = 50);
+
     /**
-     * Generate a thrust-optimized parabolic nozzle based on the approximations 
+     * Generate a thrust-optimized parabolic (TOP) nozzle based on the approximations 
      * by Rao.
+     * 
+     * @note The Rao approximation generates parameters for a Bézier curve construction. For more
+     * control over the geometry, use `generate_bezier_nozzle` instead.
+     * 
+     * ## References
+     * 
+     * 1. G. V. R. Rao, “Exhaust Nozzle Contour for Optimum Thrust,” Journal of Jet Propulsion, vol. 28, no. 6, pp. 377–382, Jun. 1958, doi: 10.2514/8.7324.
+     * 
+     * 2. G. V. R. Rao, “Approximation of optimum thrust nozzle contour,” Ars Journal, vol. 30, no. 6, p. 561, 1960.
      * 
      * @param area_ratio Ratio of the exit area to the throat area. 
      * @param r_throat Throat radius. 
