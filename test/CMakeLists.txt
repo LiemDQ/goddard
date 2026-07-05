@@ -16,6 +16,8 @@ add_executable(
     cea_loader.cpp
     cea_comparer.cpp
     test_speciate.cpp
+    test_interpolation.cpp
+    test_profile.cpp
     test_nozzle.cpp
     test_prandtl_meyer.cpp
     test_prandtl_meyer_table.cpp
