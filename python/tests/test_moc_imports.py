@@ -3,7 +3,7 @@ import pytest
 
 
 def test_import_moc_enums():
-    from goddard import MocFlowKind, GasChemistry, MocMode, MocInitialization
+    from goddard import MocFlowKind, GasChemistry, MocMode
 
     assert MocFlowKind.PLANAR is not None
     assert MocFlowKind.AXISYMMETRIC is not None
@@ -15,8 +15,6 @@ def test_import_moc_enums():
     assert MocMode.DESIGN_MIN_LENGTH is not None
     assert MocMode.DESIGN_RAO is not None
     assert MocMode.ANALYSIS is not None
-
-    assert MocInitialization.STRAIGHT_SONIC_LINE is not None
 
 
 def test_import_moc_structs():
@@ -76,13 +74,12 @@ def test_nozzle_profile_push_back():
 
 
 def test_moc_options_defaults():
-    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocInitialization
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode
 
     opts = MocOptions()
     assert opts.flow_type == MocFlowKind.PLANAR
     assert opts.chemistry == GasChemistry.PERFECT_GAS
     assert opts.mode == MocMode.DESIGN_MIN_LENGTH
-    assert opts.initialization == MocInitialization.STRAIGHT_SONIC_LINE
     assert opts.num_characteristics == 10
     assert opts.gamma == pytest.approx(1.4)
     assert opts.solver_options.reltol == pytest.approx(1e-5)
@@ -93,7 +90,7 @@ def test_moc_options_defaults():
 
 
 def test_moc_options_kwargs():
-    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocInitialization
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode
 
     opts = MocOptions(
         flow_type=MocFlowKind.AXISYMMETRIC,

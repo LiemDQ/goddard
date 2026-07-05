@@ -7,7 +7,6 @@ from goddard._core import (
     # MoC enums
     MocFlowKind,
     MocMode,
-    MocInitialization,
     SolverOptions,
     # Structs
     CombustorOptions,

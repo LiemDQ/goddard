@@ -5,6 +5,7 @@
 #include <nanobind/stl/pair.h>
 
 #include "goddard/moc.hpp"
+#include "goddard/moc_nozzle.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/gas.hpp"
 
@@ -23,27 +24,24 @@ void bind_moc(nb::module_& m) {
         .value("DESIGN_RAO", Goddard::MocMode::DESIGN_RAO)
         .value("ANALYSIS", Goddard::MocMode::ANALYSIS);
 
-    nb::enum_<Goddard::MocInitialization>(m, "MocInitialization")
-        .value("STRAIGHT_SONIC_LINE", Goddard::MocInitialization::STRAIGHT_SONIC_LINE);
-
     // ---- ThroatGeometry ----
 
-    nb::class_<Goddard::ThroatGeometry>(m, "ThroatGeometry")
+    nb::class_<Goddard::NozzleGeometry>(m, "ThroatGeometry")
         .def(nb::init<>())
-        .def("__init__", [](Goddard::ThroatGeometry* self,
+        .def("__init__", [](Goddard::NozzleGeometry* self,
                             double throat_radius,
                             double upstream_wall_curvature_radius,
                             double downstream_wall_curvature_radius) {
-            new (self) Goddard::ThroatGeometry();
+            new (self) Goddard::NozzleGeometry();
             self->throat_radius = throat_radius;
             self->upstream_wall_curvature_radius = upstream_wall_curvature_radius;
             self->downstream_wall_curvature_radius = downstream_wall_curvature_radius;
         },  "throat_radius"_a = 1.0,
             "upstream_wall_curvature_radius"_a = 1.5,
             "downstream_wall_curvature_radius"_a = 0.382)
-        .def_rw("throat_radius", &Goddard::ThroatGeometry::throat_radius)
-        .def_rw("upstream_wall_curvature_radius", &Goddard::ThroatGeometry::upstream_wall_curvature_radius)
-        .def_rw("downstream_wall_curvature_radius", &Goddard::ThroatGeometry::downstream_wall_curvature_radius);
+        .def_rw("throat_radius", &Goddard::NozzleGeometry::throat_radius)
+        .def_rw("upstream_wall_curvature_radius", &Goddard::NozzleGeometry::upstream_wall_curvature_radius)
+        .def_rw("downstream_wall_curvature_radius", &Goddard::NozzleGeometry::downstream_wall_curvature_radius);
 
     // ---- NozzleProfile ----
 
@@ -69,11 +67,10 @@ void bind_moc(nb::module_& m) {
                             Goddard::MocFlowKind flow_type,
                             Goddard::GasChemistry chemistry,
                             Goddard::MocMode mode,
-                            Goddard::MocInitialization initialization,
                             int num_characteristics,
                             double gamma,
                             Goddard::SolverOptions solver_options,
-                            Goddard::ThroatGeometry geometry,
+                            Goddard::NozzleGeometry geometry,
                             double theta_max,
                             double exit_mach,
                             std::vector<double> theta_schedule,
@@ -82,7 +79,6 @@ void bind_moc(nb::module_& m) {
             self->flow_type = flow_type;
             self->chemistry = chemistry;
             self->mode = mode;
-            self->initialization = initialization;
             self->num_characteristics = num_characteristics;
             self->gamma = gamma;
             self->solver_options = solver_options;
@@ -94,11 +90,10 @@ void bind_moc(nb::module_& m) {
         },  "flow_type"_a = Goddard::MocFlowKind::PLANAR,
             "chemistry"_a = Goddard::GasChemistry::PERFECT_GAS,
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
-            "initialization"_a = Goddard::MocInitialization::STRAIGHT_SONIC_LINE,
             "num_characteristics"_a = 10,
             "gamma"_a = 1.4,
             "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10, .reltol = 1e-5},
-            "geometry"_a = Goddard::ThroatGeometry{1.0, 1.5, 0.382},
+            "geometry"_a = Goddard::NozzleGeometry{1.0, 1.5, 0.382},
             "theta_max"_a = 0.0,
             "exit_mach"_a = 0.0,
             "theta_schedule"_a = std::vector<double>(),
@@ -106,7 +101,6 @@ void bind_moc(nb::module_& m) {
         .def_rw("flow_type", &Goddard::MocOptions::flow_type)
         .def_rw("chemistry", &Goddard::MocOptions::chemistry)
         .def_rw("mode", &Goddard::MocOptions::mode)
-        .def_rw("initialization", &Goddard::MocOptions::initialization)
         .def_rw("num_characteristics", &Goddard::MocOptions::num_characteristics)
         .def_rw("gamma", &Goddard::MocOptions::gamma)
         .def_rw("solver_options", &Goddard::MocOptions::solver_options)
@@ -138,12 +132,9 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::CharacteristicNet>(m, "CharacteristicNet")
         .def(nb::init<>())
-        .def_ro("num_c_plus", &Goddard::CharacteristicNet::num_c_plus)
-        .def_ro("num_c_minus", &Goddard::CharacteristicNet::num_c_minus)
-        .def_ro("wavefronts", &Goddard::CharacteristicNet::wavefronts)
         .def_ro("wall_x", &Goddard::CharacteristicNet::wall_x)
         .def_ro("wall_y", &Goddard::CharacteristicNet::wall_y)
-        .def_ro("wall_points", &Goddard::CharacteristicNet::wall_points);
+        .def_ro("points", &Goddard::CharacteristicNet::points);
 
     // ---- ExitPlane ----
 
