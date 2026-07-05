@@ -48,7 +48,16 @@ TEST(ConicalNozzleValidationTest, InvalidThroatRadiusThrows) {
 
 TEST(BezierNozzleValidationTest, InvalidLengthFracThrows) {
     EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.0, 50), std::invalid_argument);
-    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 1.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 1.01, 50), std::invalid_argument);
+}
+
+TEST(BezierNozzleValidationTest, LengthFracOfExactlyOneIsValid) {
+    // length_frac == 1.0 (a "100% bell") is a normal point on Rao's chart and must
+    // not throw -- regression for a boundary mismatch with generate_Rao_TOP_nozzle,
+    // which itself allows length_frac up to and including 1.0.
+    NozzleProfile profile;
+    EXPECT_NO_THROW(profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 1.0, 50));
+    EXPECT_GT(profile.size(), 0u);
 }
 
 TEST(BezierNozzleValidationTest, InvalidAreaRatioThrows) {

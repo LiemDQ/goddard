@@ -79,23 +79,36 @@ void CharacteristicNet::add_initial_data_line(
         return;
     }
 
-    // The data line is ordered from the axis (i == 0) up to the wall (i == num_pts).
-    // The kernel pairs each C+ leading point with the nearest C- leading point above it
-    // (i.e. the lower point contributes the C+, the upper point the C-). Therefore the
-    // bottommost (axis) point owns only a C+ chain and the topmost (wall) point owns only
-    // a C- chain; all interior points own both.
-    size_t num_pts = init_pts.size() - 1;
-    for (size_t i = 0; i <= num_pts; i++) {
-        bool cplus = i != num_pts;
-        bool cminus = i != 0;
-        size_t idx = add_initialization_point(init_pts[i], cminus, cplus);
+    // A non-collinear transonic start line (e.g. Kliegel-Levine) crosses many characteristics
+    // but is not spacelike with respect to them: near sonic conditions mu -> 90 deg, so
+    // adjacent points' C+/C- rays run almost perpendicular to the line and can cross behind
+    // both parents rather than downstream. So points are never paired with their neighbor on
+    // this line. Every point but the last seeds only its own C+ chain (it will eventually hit
+    // the wall on its own); the last point IS the wall point and immediately reflects into the
+    // first C- chain, exactly like a wall reflection encountered during marching. The kernel
+    // then sweeps this single C- down through the individual C+ chains one at a time.
+    size_t last = init_pts.size() - 1;
+    for (size_t i = 0; i < last; i++) {
+        size_t idx = add_initialization_point(init_pts[i], /*cminus=*/false, /*cplus=*/true);
         if (i == 0) {
             axis_point_indices.push_back(idx);
         }
-        if (i == num_pts) {
-            wall_point_indices.push_back(idx);
-        }
     }
+
+    const CharacteristicPoint& wall_pt = init_pts[last];
+    points.push_back(wall_pt);
+    size_t wall_idx = points.size() - 1;
+    membership.push_back(PointMembership{});
+    wall_point_indices.push_back(wall_idx);
+    wall_x.push_back(wall_pt.x);
+    wall_y.push_back(wall_pt.y);
+
+    ChainMetadata minus_metadata;
+    minus_metadata.family = Family::MINUS;
+    minus_metadata.origin_point_idx = wall_idx;
+    minus_metadata.latest_point_idx = wall_idx;
+    size_t minus_chain_idx = push_chain({wall_idx}, minus_metadata);
+    membership[wall_idx].c_minus_chain_idx = minus_chain_idx;
 }
 
 void CharacteristicNet::add_initial_characteristic(const std::vector<CharacteristicPoint>& init_pts, Family fam) {

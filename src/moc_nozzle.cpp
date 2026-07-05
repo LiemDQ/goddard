@@ -1,5 +1,6 @@
 #include <cmath>
 #include <algorithm>
+#include <numeric>
 #include <optional>
 #include <limits>
 #include <format>
@@ -336,7 +337,9 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 // thermodynamic state and K+/K- set: it IS the initial data line. Unlike
                 // the centered fan (whose rays all emanate from the throat lip and must be
                 // marched into the flow field), re-marching these points pairwise would
-                // intersect characteristics *behind* their parents.
+                // intersect characteristics *behind* their parents. See
+                // CharacteristicNet::add_initial_data_line's nullopt branch for how this
+                // non-collinear line is actually seeded into the net without that re-marching.
                 data_line = initializer.initialize_kliegel_levine(throat);
             }
             break;
@@ -351,6 +354,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
 void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     using Family = ChainMetadata::Family;
     LeadingEdgeView plus_edges = leading_edges(net, Family::PLUS);
+    sort_plus_edges_by_proximity(plus_edges);
     LeadingEdgeView minus_edges = leading_edges(net, Family::MINUS);
     
     std::vector<std::pair<CharacteristicPoint, PointMembership>> intersections;
@@ -393,11 +397,13 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             std::optional<size_t> best_partner = std::nullopt;
             size_t best_partner_pt_idx = 0;
             size_t best_partner_edgevec_idx = 0;
+            bool any_cminus_above = false;
 
-            // Find the closest C- above 
+            // Find the closest C- above
             for (size_t j = 0; j < minus_edges.chain_indices.size(); j++) {
+                if (minus_edges.y_values[j] - plus_y > 0) any_cminus_above = true;
                 if (cminus_is_intersected[j]) continue; //skip if already paired
-                
+
                 double dy = minus_edges.y_values[j] - plus_y;
                 if (dy > 0 && dy < best_dy) {
                     best_dy = dy;
@@ -427,12 +433,19 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                         net.points[plus_edges.leading_pt_indices[i]]
                     ),
                     PointMembership {
-                        .c_plus_chain_idx = plus_edges.chain_indices[i], 
+                        .c_plus_chain_idx = plus_edges.chain_indices[i],
                         .c_minus_chain_idx = *best_partner
                     }
                 });
                 paired_cminus.push_back(*best_partner);
                 cminus_is_intersected[best_partner_edgevec_idx] = true;
+            }
+            else if (any_cminus_above) {
+                // A C- does exist above this C+, but a closer competitor already claimed it
+                // this pass (e.g. many individual C+ chains from a Kliegel-Levine transonic
+                // line, competing for a single C- freshly born from a wall reflection). Leave
+                // this chain active and retry once that C- has advanced on the next pass,
+                // rather than wrongly treating it as a wall hit.
             }
             else [[unlikely]] { // C+ intersects with wall
 
@@ -526,6 +539,7 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             }
         }
         update_leading_edges(plus_edges, net, Family::PLUS);
+        sort_plus_edges_by_proximity(plus_edges);
         update_leading_edges(minus_edges, net, Family::MINUS);
 
         iters++;
@@ -1407,6 +1421,26 @@ void MocNozzle::update_leading_edges(LeadingEdgeView& view, const Characteristic
             view.leading_pt_indices.push_back(meta.latest_point_idx);
         }
     }
+}
+
+void MocNozzle::sort_plus_edges_by_proximity(LeadingEdgeView& view) const {
+    std::vector<size_t> order(view.chain_indices.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return view.y_values[a] > view.y_values[b];
+    });
+
+    std::vector<double> y_sorted(order.size());
+    std::vector<size_t> chain_sorted(order.size());
+    std::vector<size_t> pt_sorted(order.size());
+    for (size_t k = 0; k < order.size(); k++) {
+        y_sorted[k] = view.y_values[order[k]];
+        chain_sorted[k] = view.chain_indices[order[k]];
+        pt_sorted[k] = view.leading_pt_indices[order[k]];
+    }
+    view.y_values = std::move(y_sorted);
+    view.chain_indices = std::move(chain_sorted);
+    view.leading_pt_indices = std::move(pt_sorted);
 }
 
 

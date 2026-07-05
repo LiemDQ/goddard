@@ -83,10 +83,15 @@ class CharacteristicNet {
     /** Seed the net from an initial data line.
      *
      * Handles both data-line topologies. When `on_characteristic` is empty the points are
-     * assumed to lie on distinct characteristics (a transonic start line): each interior
-     * point owns both a C+ and a C- chain. When `on_characteristic` is set the points are
-     * collinear along a single characteristic of that family (e.g. a centered expansion
-     * fan), and are seeded as one shared chain via add_initial_characteristic.
+     * assumed to lie on distinct characteristics (a non-collinear transonic start line, e.g.
+     * Kliegel-Levine): every point but the last seeds only its own C+ chain, and the last
+     * point (already at the wall) immediately reflects into the first C- chain, exactly as a
+     * wall reflection would during marching. Adjacent points on such a line are NOT paired
+     * with each other -- near-sonic characteristics (mu -> 90 deg) run almost perpendicular
+     * to the line itself, so intersecting neighbors directly can land behind both parents.
+     * When `on_characteristic` is set the points are collinear along a single characteristic
+     * of that family (e.g. a centered expansion fan), and are seeded as one shared chain via
+     * add_initial_characteristic.
      *
      * The caller must supply the topology; it cannot be inferred from the points, since a
      * Riemann invariant is constant along a characteristic only for planar flow.

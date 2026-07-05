@@ -173,6 +173,18 @@ protected:
 
     void update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const;
 
+    /**
+     * Reorder a C+ leading-edge view by descending y (closest to the wall first).
+     *
+     * When several individual C+ chains compete for the same partner in a single kernel
+     * pass (e.g. many chains seeded from a Kliegel-Levine transonic line, all wanting the
+     * one C- freshly born from a wall reflection), the per-pass search must resolve the
+     * geometrically closest competitor first. Iterating in chain-creation order instead
+     * lets a far-away C+ (e.g. the transonic line's axis point) claim a partner meant for
+     * a much closer chain, producing a physically invalid, oversized jump.
+     */
+    void sort_plus_edges_by_proximity(LeadingEdgeView& view) const;
+
     // Logging helpers
     template <typename... Args>
     void log_warning(std::string_view fmt, Args&&... args) {

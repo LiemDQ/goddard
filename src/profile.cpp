@@ -125,7 +125,7 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     size_t n_points)
 {
     NozzleProfile profile;
-    if (length_frac <= 0.0 || length_frac >= 1.0 ) {
+    if (length_frac <= 0.0 || length_frac > 1.0 ) {
         throw std::invalid_argument("Specified length fraction must be between 0 and 1.");
     }
     if (area_ratio <= 1.0) {
