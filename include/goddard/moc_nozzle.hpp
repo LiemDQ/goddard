@@ -198,6 +198,20 @@ protected:
     }
     void log_info(const std::string& msg);
 
+    // Verbose kernel/initialization trace, only active when m_options.log_level ==
+    // MocLogLevel::DEBUG. Collected in m_messages like log_warning/log_info (so it
+    // surfaces via MocResult::messages and the Python binding with no extra
+    // plumbing), and additionally echoed live to stderr immediately as each call
+    // happens -- useful for a hang or a solve that never returns (maxiter reached),
+    // where messages collected only in the returned MocResult would never be seen.
+    template <typename... Args>
+    void log_debug(std::string_view fmt, Args&&... args) {
+        if (m_options.log_level == MocLogLevel::DEBUG) {
+            log_debug(std::vformat(fmt, std::make_format_args(args...)));
+        }
+    }
+    void log_debug(const std::string& msg);
+
     bool m_is_solved;
     std::optional<Gas> m_gas;
     std::vector<double> m_theta_schedule;

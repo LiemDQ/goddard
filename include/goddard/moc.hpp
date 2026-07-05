@@ -28,8 +28,16 @@ enum class MocFlowKind {
 enum class MocMode {
     DESIGN_MIN_LENGTH,  // Minimum length nozzle with uniform exit flow
     DESIGN_RAO, // Rao-type length-optimized thrust nozzle
-    DESIGN_CENTERLINE, // Designs an optimal nozzle based on prescribed centerline values. @warning Currently unimplemented! 
+    DESIGN_CENTERLINE, // Designs an optimal nozzle based on prescribed centerline values. @warning Currently unimplemented!
     ANALYSIS    // wall contour is input
+};
+
+enum class MocLogLevel {
+    NORMAL, // default: only log_warning()/log_info() messages collected
+    DEBUG   // also collect (and echo live to stderr) a verbose kernel trace --
+            // initial-data-line construction, every interior-point pairing, wall
+            // hits/outflow terminations, and axis reflections. Verbose; meant for
+            // diagnosing a non-converging or misbehaving solve, not routine use.
 };
 
 struct NozzleGeometry {
@@ -53,6 +61,7 @@ struct MocOptions {
     double gamma;               // used only for PERFECT_GAS
     SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
     NozzleGeometry geometry;     // throat geometry
+    MocLogLevel log_level = MocLogLevel::NORMAL; // set to DEBUG for verbose kernel tracing
 
     double theta_max;           // max wall angle (radians) for minimum length nozzle design mode
     double exit_mach;           // exit mach number -- for design mode

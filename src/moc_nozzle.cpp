@@ -4,6 +4,7 @@
 #include <optional>
 #include <limits>
 #include <format>
+#include <iostream>
 #include "goddard/equilibrium.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
@@ -21,6 +22,13 @@ void MocNozzle::log_warning(const std::string& msg) {
 
 void MocNozzle::log_info(const std::string& msg) {
     m_messages.push_back("Info: " + msg);
+}
+
+void MocNozzle::log_debug(const std::string& msg) {
+    if (m_options.log_level != MocLogLevel::DEBUG) return;
+    std::string full = "Debug: " + msg;
+    m_messages.push_back(full);
+    std::cerr << full << std::endl;
 }
 
 bool MocNozzle::is_solved() const {
@@ -348,6 +356,12 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             throw NotImplementedError("Centerline nozzle initialization not implemented.");
         }
     }
+
+    for (size_t i = 0; i < data_line.size(); i++) {
+        const auto& pt = data_line[i];
+        log_debug("INIT[{}] x={:.6f} y={:.6f} theta={:.6f} nu={:.6f} mach={:.6f} mu={:.6f}",
+            i, pt.x, pt.y, pt.theta, pt.nu, pt.mach, pt.mu);
+    }
     return data_line;
 }
 
@@ -372,6 +386,8 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     int iters = 0;
 
     while (net.has_active_chains() && iters < maxiter) {
+        log_debug("--- kernel pass {}: {} active C+, {} active C- ---",
+            iters, plus_edges.chain_indices.size(), minus_edges.chain_indices.size());
         intersections.clear();
         paired_cminus.clear();
         // Sized to the *current* minus-edge view: reflections add chains over time, so a
@@ -427,11 +443,16 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             }
             // intersect C+ with closest C- above it.
             if (best_partner.has_value()) [[likely]] {
+                const CharacteristicPoint& minus_pt = net.points[best_partner_pt_idx];
+                const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
+                CharacteristicPoint result = solve_interior_point(minus_pt, plus_pt);
+                log_debug("PAIR minus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) "
+                    "plus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) -> (x={:.6f},y={:.6f},mach={:.6f})",
+                    minus_pt.x, minus_pt.y, minus_pt.theta, minus_pt.mu,
+                    plus_pt.x, plus_pt.y, plus_pt.theta, plus_pt.mu,
+                    result.x, result.y, result.mach);
                 intersections.push_back({
-                    solve_interior_point(
-                        net.points[best_partner_pt_idx],
-                        net.points[plus_edges.leading_pt_indices[i]]
-                    ),
+                    result,
                     PointMembership {
                         .c_plus_chain_idx = plus_edges.chain_indices[i],
                         .c_minus_chain_idx = *best_partner
@@ -446,16 +467,22 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                 // line, competing for a single C- freshly born from a wall reflection). Leave
                 // this chain active and retry once that C- has advanced on the next pass,
                 // rather than wrongly treating it as a wall hit.
+                const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
+                log_debug("SKIP plus(x={:.6f},y={:.6f}) waiting for scarce C- partner "
+                    "(already claimed this pass)", plus_pt.x, plus_pt.y);
             }
             else [[unlikely]] { // C+ intersects with wall
 
+                const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
                 std::optional<CharacteristicPoint> maybe_pt = solve_wall_point(
-                    net.points[plus_edges.leading_pt_indices[i]],
+                    plus_pt,
                     net.leading_wall_point(),
                     net.wall_point_indices.size() - 1
                 );
 
                 if (maybe_pt.has_value()) {
+                    log_debug("WALL plus(x={:.6f},y={:.6f}) -> wall hit at (x={:.6f},y={:.6f})",
+                        plus_pt.x, plus_pt.y, maybe_pt->x, maybe_pt->y);
                     intersections.push_back({
                         *maybe_pt,
                         PointMembership {
@@ -466,8 +493,10 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                 }
                 else {
                     // if no intersection found, this point intersects beyond the profile boundary
+                    log_debug("OUTFLOW plus(x={:.6f},y={:.6f}) terminates: "
+                        "no wall hit found within profile bounds", plus_pt.x, plus_pt.y);
                     net.terminate_chain(
-                        plus_edges.chain_indices[i], 
+                        plus_edges.chain_indices[i],
                         ChainMetadata::TerminationType::OUTFLOW
                     );
                 }
@@ -491,8 +520,10 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                 [min_y_cminus_idx](size_t x) {return x == *min_y_cminus_idx;})
             )
         {
+            const CharacteristicPoint& minus_pt = net.leading_point(*min_y_cminus_idx);
+            log_debug("AXIS minus(x={:.6f},y={:.6f}) reflects off axis", minus_pt.x, minus_pt.y);
             intersections.push_back({
-                solve_axis_point(net.leading_point(*min_y_cminus_idx)),
+                solve_axis_point(minus_pt),
                 PointMembership {
                     .c_plus_chain_idx = std::nullopt,
                     .c_minus_chain_idx = min_y_cminus_idx

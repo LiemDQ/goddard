@@ -24,6 +24,10 @@ void bind_moc(nb::module_& m) {
         .value("DESIGN_RAO", Goddard::MocMode::DESIGN_RAO)
         .value("ANALYSIS", Goddard::MocMode::ANALYSIS);
 
+    nb::enum_<Goddard::MocLogLevel>(m, "MocLogLevel")
+        .value("NORMAL", Goddard::MocLogLevel::NORMAL)
+        .value("DEBUG", Goddard::MocLogLevel::DEBUG);
+
     // ---- ThroatGeometry ----
 
     nb::class_<Goddard::NozzleGeometry>(m, "ThroatGeometry")
@@ -74,7 +78,8 @@ void bind_moc(nb::module_& m) {
                             double theta_max,
                             double exit_mach,
                             std::vector<double> theta_schedule,
-                            Goddard::NozzleProfile nozzle_profile) {
+                            Goddard::NozzleProfile nozzle_profile,
+                            Goddard::MocLogLevel log_level) {
             new (self) Goddard::MocOptions();
             self->flow_type = flow_type;
             self->chemistry = chemistry;
@@ -87,6 +92,7 @@ void bind_moc(nb::module_& m) {
             self->exit_mach = exit_mach;
             self->theta_schedule = std::move(theta_schedule);
             self->nozzle_profile = std::move(nozzle_profile);
+            self->log_level = log_level;
         },  "flow_type"_a = Goddard::MocFlowKind::PLANAR,
             "chemistry"_a = Goddard::GasChemistry::PERFECT_GAS,
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
@@ -97,7 +103,8 @@ void bind_moc(nb::module_& m) {
             "theta_max"_a = 0.0,
             "exit_mach"_a = 0.0,
             "theta_schedule"_a = std::vector<double>(),
-            "nozzle_profile"_a = Goddard::NozzleProfile())
+            "nozzle_profile"_a = Goddard::NozzleProfile(),
+            "log_level"_a = Goddard::MocLogLevel::NORMAL)
         .def_rw("flow_type", &Goddard::MocOptions::flow_type)
         .def_rw("chemistry", &Goddard::MocOptions::chemistry)
         .def_rw("mode", &Goddard::MocOptions::mode)
@@ -108,7 +115,8 @@ void bind_moc(nb::module_& m) {
         .def_rw("theta_max", &Goddard::MocOptions::theta_max)
         .def_rw("exit_mach", &Goddard::MocOptions::exit_mach)
         .def_rw("theta_schedule", &Goddard::MocOptions::theta_schedule)
-        .def_rw("nozzle_profile", &Goddard::MocOptions::nozzle_profile);
+        .def_rw("nozzle_profile", &Goddard::MocOptions::nozzle_profile)
+        .def_rw("log_level", &Goddard::MocOptions::log_level);
 
     // ---- CharacteristicPoint ----
 
