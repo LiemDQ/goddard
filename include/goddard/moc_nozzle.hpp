@@ -38,65 +38,71 @@ protected:
         const NozzleGeometry& geometry,
         size_t num_points);
 
-    // propagate kernel region (C+/C- intersections)
-    void solve_characteristic_kernel(CharacteristicNet& net);
+    // propagate kernel region (C+/C- intersections). Returns the failure that
+    // aborted the march (a unit-process error, or the iteration safety cap being
+    // reached), or std::nullopt if every chain terminated cleanly.
+    std::optional<MocFailure> solve_characteristic_kernel(CharacteristicNet& net);
 
     // unit processes
 
-    CharacteristicPoint solve_interior_point(
+    PointResult solve_interior_point(
         const CharacteristicPoint& c_minus_parent,
         const CharacteristicPoint& c_plus_parent);
-    
+
     // Planar algebraic special case
-    CharacteristicPoint solve_interior_point_planar(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2);
-    
-    // Axisymmetric flow
-    CharacteristicPoint solve_interior_point_axisymmetric(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2);
-    
-    // iterative path (generalized compatibility equation with arbitrary source term)
-    CharacteristicPoint solve_interior_point_iterative(
+    PointResult solve_interior_point_planar(
         const CharacteristicPoint& p1,
         const CharacteristicPoint& p2);
 
-    std::optional<CharacteristicPoint> solve_wall_point(
+    // Axisymmetric flow
+    PointResult solve_interior_point_axisymmetric(
+        const CharacteristicPoint& p1,
+        const CharacteristicPoint& p2);
+
+    // iterative path (generalized compatibility equation with arbitrary source term)
+    PointResult solve_interior_point_iterative(
+        const CharacteristicPoint& p1,
+        const CharacteristicPoint& p2);
+
+    // nullopt: no wall hit within the profile bounds (legitimate outflow).
+    // Populated with a nonzero PointResult::error: a numerical failure occurred.
+    std::optional<PointResult> solve_wall_point(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         int wall_point_index);
 
-    CharacteristicPoint solve_wall_flow(
+    PointResult solve_wall_flow(
         const CharacteristicPoint& interior_parent,
         double theta_wall);
-    
+
     // compute flow + position from previous wall point
-    CharacteristicPoint solve_wall_point_design(
+    PointResult solve_wall_point_design(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         double theta_wall);
-    
-    // Compute flow at known wall position.
-    std::optional<CharacteristicPoint> solve_wall_point_analysis(
+
+    // Compute flow at known wall position. nullopt: no wall hit within the
+    // profile bounds (legitimate outflow), as opposed to a populated PointResult
+    // with a nonzero error, which is a numerical failure.
+    std::optional<PointResult> solve_wall_point_analysis(
         const CharacteristicPoint& interior_parent);
 
-    /** The first point is a special case, as it lies on the axis but is assigned a 
-     * nonzero theta. This is because the calculations are started on the characteristic line 
+    /** The first point is a special case, as it lies on the axis but is assigned a
+     * nonzero theta. This is because the calculations are started on the characteristic line
      * along which theta is known.
-     * 
+     *
      * This leads to a small physical inconsistency, but it is necessary to bootstrap the downstream marching.
      */
-    CharacteristicPoint solve_initial_axis_point_centered_exp(
+    PointResult solve_initial_axis_point_centered_exp(
         const CharacteristicPoint& expansion_point);
 
     /**
      * Compute flow properties at centerline for axisymmetric flow.
-     *  
-     * A special method is needed because the axisymmetric compatibility 
+     *
+     * A special method is needed because the axisymmetric compatibility
      * equations have a singularity on the axis of rotation.
-     * */ 
-    CharacteristicPoint solve_axis_point(
+     * */
+    PointResult solve_axis_point(
         const CharacteristicPoint& off_axis_parent);
 
     // Determine where parent characteristic intersects with arbitrary wall profile.
@@ -137,9 +143,16 @@ protected:
     ThermodynamicContext build_thermo_context();
 
     void update_thermodynamic_state(CharacteristicPoint& point);
-    void update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
-    void update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
-    void update_thermodynamic_state_from_V(CharacteristicPoint& point, double V);
+
+    // These three are the critical chokepoint for the perfect-gas Prandtl-Meyer
+    // inversion and the Cantera/table lookups: a failure (PM inversion
+    // non-convergence, or an out-of-range table query) is reported via the
+    // returned MocErrorCode instead of being laundered into point.mach as a
+    // sentinel value. Callers MUST check the return value before using point's
+    // newly-set fields.
+    MocErrorCode update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
+    MocErrorCode update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
+    MocErrorCode update_thermodynamic_state_from_V(CharacteristicPoint& point, double V);
 
     /**
      * Source term for axisymmetric flow along C+ characteristic.

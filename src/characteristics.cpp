@@ -142,7 +142,35 @@ void CharacteristicPoint::update_thermodynamic_state(ThermodynamicContext& ctxt)
 
 void CharacteristicPoint::update_Ks() {
     K_plus = theta - nu;
-    K_minus = theta + nu; 
+    K_minus = theta + nu;
+}
+
+std::string_view to_string(MocErrorCode code) {
+    switch (code) {
+        case MocErrorCode::NONE: return "NONE";
+        case MocErrorCode::NEGATIVE_NU: return "NEGATIVE_NU";
+        case MocErrorCode::NEGATIVE_THETA: return "NEGATIVE_THETA";
+        case MocErrorCode::SUBSONIC_MACH: return "SUBSONIC_MACH";
+        case MocErrorCode::NONFINITE_VALUE: return "NONFINITE_VALUE";
+        case MocErrorCode::PM_INVERSION_FAILED: return "PM_INVERSION_FAILED";
+        case MocErrorCode::TABLE_RANGE_EXCEEDED: return "TABLE_RANGE_EXCEEDED";
+        case MocErrorCode::NON_DOWNSTREAM_POINT: return "NON_DOWNSTREAM_POINT";
+        case MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS: return "WALL_QUERY_OUT_OF_BOUNDS";
+        case MocErrorCode::INITIALIZATION_FAILED: return "INITIALIZATION_FAILED";
+        case MocErrorCode::MAX_ITERATIONS_REACHED: return "MAX_ITERATIONS_REACHED";
+        default: return "UNKNOWN";
+    }
+}
+
+MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol) {
+    if (pt.nu < -tol) return MocErrorCode::NEGATIVE_NU;
+    if (pt.theta < -tol) return MocErrorCode::NEGATIVE_THETA;
+    if (pt.mach < 1.0) return MocErrorCode::SUBSONIC_MACH;
+    if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.theta) ||
+        !std::isfinite(pt.nu) || !std::isfinite(pt.mach) || !std::isfinite(pt.mu)) {
+        return MocErrorCode::NONFINITE_VALUE;
+    }
+    return MocErrorCode::NONE;
 }
 
 void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const CharacteristicPoint& parent){

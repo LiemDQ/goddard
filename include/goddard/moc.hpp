@@ -86,12 +86,26 @@ struct ExitPlane {
     std::vector<double> velocity;  // dimensional V (m/s) for frozen/equil, =Mach for perfect gas
 };
 
+/**
+ * Describes a numerical or physical failure encountered while solving a MocNozzle
+ * problem. When MocResult::converged is false, this identifies what went wrong and
+ * where, instead of the failure being silently swallowed or thrown as an exception.
+ */
+struct MocFailure {
+    MocErrorCode code = MocErrorCode::NONE; ///< Failure classification; NONE if no failure occurred.
+    std::string message;                    ///< Human-readable description of the failure.
+    double x = 0.0;                         ///< x-coordinate of the failing point (or a parent's, if the point itself could not be computed).
+    double y = 0.0;                         ///< y-coordinate of the failing point (or a parent's, if the point itself could not be computed).
+    int kernel_pass = -1;                   ///< Kernel marching pass on which the failure occurred; -1 for pre-kernel (initialization) failures.
+};
+
 struct MocResult {
-    bool converged;
+    bool converged; ///< True iff failure.code == MocErrorCode::NONE and the kernel completed without hitting the iteration cap.
     CharacteristicNet net;
     NozzleProfile profile; //computed in design mode, echoed in analysis
 
     std::vector<std::string> messages; // warnings and error information
+    MocFailure failure; ///< Populated when converged is false; MocErrorCode::NONE otherwise.
 
     double exit_mach;
     double nozzle_length;   // throat to exit plane

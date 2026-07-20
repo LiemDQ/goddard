@@ -46,7 +46,6 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     double gamma = throat.gamma_s;
     size_t num_points = static_cast<size_t>(m_options.num_characteristics);
     double dy = 1.0/(num_points-1);
-    double delt = delta();
     double R = KL_R();
     double alpha = sauer_alpha(gamma);
 

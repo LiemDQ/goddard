@@ -15,6 +15,22 @@
 
 namespace Goddard {
 
+namespace {
+// Unwraps a PointResult produced while constructing the initial data line. Unlike
+// the kernel (which communicates a unit-process failure back to solve() via a
+// returned MocFailure), the initial data line runs before the kernel and
+// communicates failure through solve()'s exception boundary: throwing here is
+// caught by MocNozzle::solve() and converted to MocFailure{INITIALIZATION_FAILED}.
+CharacteristicPoint unwrap_or_throw(const PointResult& result, std::string_view context) {
+    if (result.error != MocErrorCode::NONE) {
+        throw ConvergenceError(std::format(
+            "{}: unit process failed at ({}, {}) with error {}.",
+            context, result.point.x, result.point.y, to_string(result.error)));
+    }
+    return result.point;
+}
+} // namespace
+
 // -- Logging helpers --
 void MocNozzle::log_warning(const std::string& msg) {
     m_messages.push_back("Warning: " + msg);
@@ -46,6 +62,8 @@ MocResult MocNozzle::solve() {
     std::vector<CharacteristicPoint> data_line;
     m_options.nozzle_profile = setup_nozzle_profile(m_options.geometry);
 
+    ThroatCondition throat{};
+
     if (m_options.chemistry == GasChemistry::PERFECT_GAS) {
         // Pure algebraic path: no Cantera dependency
         m_L_ref = m_options.geometry.throat_radius;
@@ -53,7 +71,7 @@ MocResult MocNozzle::solve() {
         m_T_ref = 1.0; // dimensionless stagnation temperature
 
         // throat populated with dummy values; they are not used in the perfect gas case.
-        ThroatCondition throat{
+        throat = ThroatCondition{
             .converged = true,
             .speed_of_sound = 1.0,
             .H_stagnation = 1.0,
@@ -64,15 +82,13 @@ MocResult MocNozzle::solve() {
             .dlV_dlT_P = 1.0,
             .state = {}
         };
-
-        data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
-    } 
+    }
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
         NozzleOptions nozzle_opts;
         nozzle_opts.chemistry = m_options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);
-        auto throat = nozzle.solve_throat_conditions();
+        throat = nozzle.solve_throat_conditions();
         m_gas->restore_state(throat.state);
 
         m_L_ref = m_options.geometry.throat_radius;
@@ -81,54 +97,80 @@ MocResult MocNozzle::solve() {
         m_S_ref = throat.S_inlet;
 
         double a_throat = m_gas->speed_of_sound();
-        
+
         pm_table.build_table(
             *m_gas->thermo(),
             m_options.chemistry == GasChemistry::EQUILIBRIUM,
             throat.S_inlet,
             throat.H_stagnation,
             a_throat);
-                
-        data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
-    }
-    
-    // The initial-data-line generators declared whether the line lies along a single
-    // characteristic (m_initial_line_family). A centered expansion fan does, and needs a
-    // wall anchor at the throat lip (0, 1): it seeds leading_wall_point() for the first wall
-    // solve and gives the area ratio its throat reference. A transonic start line spans
-    // axis-to-wall and already carries its own wall point, so no separate anchor is seeded.
-    if (m_initial_line_family.has_value()) {
-        CharacteristicPoint throat_lip{};
-        throat_lip.x = 0.0;
-        throat_lip.y = 1.0;
-        // The lip angle anchors the first wall solve in DESIGN_MIN_LENGTH, where it equals
-        // theta_max. In analysis the wall angles come from the profile and the lip is purely
-        // an anchor, so the topmost fan angle is a harmless stand-in.
-        throat_lip.theta = m_options.mode == MocMode::DESIGN_MIN_LENGTH
-            ? m_options.theta_max
-            : (data_line.empty() ? 0.0 : data_line.back().theta);
-        net.seed_wall_point(throat_lip);
-    }
-    net.add_initial_data_line(data_line, m_initial_line_family);
-
-    
-    solve_characteristic_kernel(net);
-    
-
-    // Check for invalid points (details already logged by individual solvers)
-    bool all_valid = true;
-    for (const auto& pt : net.points) {
-        if (pt.mach < 0.0) {
-            all_valid = false;
-            break;
-        }
-        if (!all_valid) break;
     }
 
     MocResult result;
+
+    // The initial data line (a Newton solve for the Kliegel-Levine transonic line, a
+    // centered-fan Prandtl-Meyer inversion, or a PrandtlMeyerTable lookup) can fail
+    // numerically before the kernel ever starts marching. Converting those failures
+    // here, rather than letting them propagate as exceptions, is what makes solve()
+    // never throw for a numerical/convergence failure.
+    try {
+        data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
+
+        // The initial-data-line generators declared whether the line lies along a single
+        // characteristic (m_initial_line_family). A centered expansion fan does, and needs a
+        // wall anchor at the throat lip (0, 1): it seeds leading_wall_point() for the first wall
+        // solve and gives the area ratio its throat reference. A transonic start line spans
+        // axis-to-wall and already carries its own wall point, so no separate anchor is seeded.
+        if (m_initial_line_family.has_value()) {
+            CharacteristicPoint throat_lip{};
+            throat_lip.x = 0.0;
+            throat_lip.y = 1.0;
+            // The lip angle anchors the first wall solve in DESIGN_MIN_LENGTH, where it equals
+            // theta_max. In analysis the wall angles come from the profile and the lip is purely
+            // an anchor, so the topmost fan angle is a harmless stand-in.
+            throat_lip.theta = m_options.mode == MocMode::DESIGN_MIN_LENGTH
+                ? m_options.theta_max
+                : (data_line.empty() ? 0.0 : data_line.back().theta);
+            net.seed_wall_point(throat_lip);
+        }
+        net.add_initial_data_line(data_line, m_initial_line_family);
+    }
+    catch (const NotImplementedError&) {
+        // Programmer error (unimplemented mode): not a numerical failure, keep throwing.
+        throw;
+    }
+    catch (const std::out_of_range& e) {
+        result.failure = MocFailure{
+            MocErrorCode::TABLE_RANGE_EXCEEDED,
+            std::string("Initial data line construction failed: ") + e.what(),
+            0.0, 0.0, -1
+        };
+    }
+    catch (const std::exception& e) {
+        result.failure = MocFailure{
+            MocErrorCode::INITIALIZATION_FAILED,
+            std::string("Initial data line construction failed: ") + e.what(),
+            0.0, 0.0, -1
+        };
+    }
+
+    if (result.failure.code != MocErrorCode::NONE) {
+        result.converged = false;
+        result.messages = m_messages;
+        m_is_solved = true;
+        return result;
+    }
+
+    std::optional<MocFailure> kernel_failure = solve_characteristic_kernel(net);
+
     result.net = net;
     result.messages = m_messages;
-    result.converged = all_valid;
+    if (kernel_failure.has_value()) {
+        result.failure = *kernel_failure;
+        result.converged = false;
+    } else {
+        result.converged = true;
+    }
 
     // Populate performance fields
     if (!net.wall_x.empty()) {
@@ -169,25 +211,32 @@ MocResult MocNozzle::solve() {
     // last point was absorbed into wall calculations.
     if (!net.points.empty()) {
         const auto& outflows = net.outflow_points();
-        // Add the last characteristic for min length nozzle
+        // Add the last characteristic for min length nozzle. Guarded by
+        // emptiness: a kernel that now fails fast can abort before any axis/wall
+        // point has been recorded, where leading_axis_point()/leading_wall_point()
+        // would otherwise index an empty vector.
         if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
-            const auto& last_axis_pt = net.leading_axis_point();
-            result.exit_plane.y.push_back(last_axis_pt.y);
-            result.exit_plane.mach.push_back(last_axis_pt.mach);
-            result.exit_plane.theta.push_back(last_axis_pt.theta);
-            result.exit_plane.pressure.push_back(last_axis_pt.pressure);
-            result.exit_plane.temperature.push_back(last_axis_pt.temperature);
-            result.exit_plane.gamma_s.push_back(last_axis_pt.gamma_s);
-            result.exit_plane.velocity.push_back(last_axis_pt.V);
+            if (!net.axis_point_indices.empty()) {
+                const auto& last_axis_pt = net.leading_axis_point();
+                result.exit_plane.y.push_back(last_axis_pt.y);
+                result.exit_plane.mach.push_back(last_axis_pt.mach);
+                result.exit_plane.theta.push_back(last_axis_pt.theta);
+                result.exit_plane.pressure.push_back(last_axis_pt.pressure);
+                result.exit_plane.temperature.push_back(last_axis_pt.temperature);
+                result.exit_plane.gamma_s.push_back(last_axis_pt.gamma_s);
+                result.exit_plane.velocity.push_back(last_axis_pt.V);
+            }
 
-            const auto& last_wall_pt = net.leading_wall_point();
-            result.exit_plane.y.push_back(last_wall_pt.y);
-            result.exit_plane.mach.push_back(last_wall_pt.mach);
-            result.exit_plane.theta.push_back(last_wall_pt.theta);
-            result.exit_plane.pressure.push_back(last_wall_pt.pressure);
-            result.exit_plane.temperature.push_back(last_wall_pt.temperature);
-            result.exit_plane.gamma_s.push_back(last_wall_pt.gamma_s);
-            result.exit_plane.velocity.push_back(last_wall_pt.V);
+            if (!net.wall_point_indices.empty()) {
+                const auto& last_wall_pt = net.leading_wall_point();
+                result.exit_plane.y.push_back(last_wall_pt.y);
+                result.exit_plane.mach.push_back(last_wall_pt.mach);
+                result.exit_plane.theta.push_back(last_wall_pt.theta);
+                result.exit_plane.pressure.push_back(last_wall_pt.pressure);
+                result.exit_plane.temperature.push_back(last_wall_pt.temperature);
+                result.exit_plane.gamma_s.push_back(last_wall_pt.gamma_s);
+                result.exit_plane.velocity.push_back(last_wall_pt.V);
+            }
         }
         else {
             for (const auto& pt : outflows) {
@@ -302,10 +351,14 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 const auto& expansion_point = expansion_line[i];
                 // special case: the first point is on the centerline
                 if (i == 0) {
-                    upstream_point = solve_initial_axis_point_centered_exp(expansion_point);
-                } 
+                    upstream_point = unwrap_or_throw(
+                        solve_initial_axis_point_centered_exp(expansion_point),
+                        "Initial data line (min-length axis point)");
+                }
                 else {
-                    upstream_point = solve_interior_point(expansion_point, upstream_point);
+                    upstream_point = unwrap_or_throw(
+                        solve_interior_point(expansion_point, upstream_point),
+                        "Initial data line (min-length interior point)");
                 }
                 data_line.push_back(upstream_point);
             }
@@ -331,11 +384,15 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                     const auto& expansion_point = expansion_line[i];
                     // special case: the first point is on the centerline
                     if (i == 0) {
-                        upstream_point = solve_initial_axis_point_centered_exp(expansion_point);
+                        upstream_point = unwrap_or_throw(
+                            solve_initial_axis_point_centered_exp(expansion_point),
+                            "Initial data line (centered-fan axis point)");
                         data_line.push_back(upstream_point);
-                    } 
+                    }
                     else {
-                        upstream_point = solve_interior_point(expansion_point, upstream_point);
+                        upstream_point = unwrap_or_throw(
+                            solve_interior_point(expansion_point, upstream_point),
+                            "Initial data line (centered-fan interior point)");
                         data_line.push_back(upstream_point);
                     }
                 }
@@ -361,16 +418,28 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
         const auto& pt = data_line[i];
         log_debug("INIT[{}] x={:.6f} y={:.6f} theta={:.6f} nu={:.6f} mach={:.6f} mu={:.6f}",
             i, pt.x, pt.y, pt.theta, pt.nu, pt.mach, pt.mu);
+        // The Kliegel-Levine and Sauer transonic-line initializers compute Mach
+        // directly (not via Prandtl-Meyer inversion) and are not funneled through a
+        // unit process that would otherwise validate them; check them here so a
+        // breakdown of the small-perturbation series (e.g. a subsonic or non-finite
+        // result near the wall) is reported as MocFailure::INITIALIZATION_FAILED
+        // instead of an invalid point silently entering the net.
+        MocErrorCode validity = check_point_validity(pt, m_options.solver_options.abstol);
+        if (validity != MocErrorCode::NONE) {
+            throw ConvergenceError(std::format(
+                "Initial data line point {} at (x={}, y={}) failed validity check: {}.",
+                i, pt.x, pt.y, to_string(validity)));
+        }
     }
     return data_line;
 }
 
-void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
+std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     using Family = ChainMetadata::Family;
     LeadingEdgeView plus_edges = leading_edges(net, Family::PLUS);
     sort_plus_edges_by_proximity(plus_edges);
     LeadingEdgeView minus_edges = leading_edges(net, Family::MINUS);
-    
+
     std::vector<std::pair<CharacteristicPoint, PointMembership>> intersections;
     std::vector<size_t> paired_cminus;
     std::vector<bool> cminus_is_intersected(net.c_chains.size(), false);
@@ -385,7 +454,12 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     const int maxiter = 2000;
     int iters = 0;
 
-    while (net.has_active_chains() && iters < maxiter) {
+    // Populated the instant any unit process reports a numerical failure; the march
+    // aborts immediately rather than continuing to build on top of an invalid point
+    // (which is what let corrupted points silently propagate through the net before).
+    std::optional<MocFailure> failure;
+
+    while (net.has_active_chains() && iters < maxiter && !failure.has_value()) {
         log_debug("--- kernel pass {}: {} active C+, {} active C- ---",
             iters, plus_edges.chain_indices.size(), minus_edges.chain_indices.size());
         intersections.clear();
@@ -393,12 +467,12 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
         // Sized to the *current* minus-edge view: reflections add chains over time, so a
         // one-shot allocation sized to the initial chain count would be indexed out of range.
         cminus_is_intersected.assign(minus_edges.chain_indices.size(), false);
-        
+
         /* We use a simple geometric approach to determine which points are intersecting.
         This requires no assumptions about net topology or precomputed traversal maps and is
         fairly efficient except for very large N (100,000+) which are unrealistic for 2D MoC methods.
-        
-        1. For each C+ leading point we find the corresponding C- leading point with the 
+
+        1. For each C+ leading point we find the corresponding C- leading point with the
         smallest y (height) that is larger than the C+ y and pair them. These points will intersect
         on the next pass.
         2. After all C+'s are paired, the bottommost unpaired C- pairs with the axis if it exists
@@ -407,7 +481,7 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
 
         Invariant: each C- index should appear at most only once per set of intersections
         */
-        for (size_t i = 0; i < plus_edges.chain_indices.size(); i++) {
+        for (size_t i = 0; i < plus_edges.chain_indices.size() && !failure.has_value(); i++) {
             double plus_y = plus_edges.y_values[i];
             double best_dy = std::numeric_limits<double>::max();
             std::optional<size_t> best_partner = std::nullopt;
@@ -445,14 +519,25 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             if (best_partner.has_value()) [[likely]] {
                 const CharacteristicPoint& minus_pt = net.points[best_partner_pt_idx];
                 const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
-                CharacteristicPoint result = solve_interior_point(minus_pt, plus_pt);
+                PointResult result = solve_interior_point(minus_pt, plus_pt);
+                if (result.error != MocErrorCode::NONE) {
+                    failure = MocFailure{
+                        result.error,
+                        std::format("Interior point solve failed ({}) pairing "
+                            "minus(x={:.6f},y={:.6f}) with plus(x={:.6f},y={:.6f}).",
+                            to_string(result.error), minus_pt.x, minus_pt.y, plus_pt.x, plus_pt.y),
+                        result.point.x, result.point.y,
+                        iters
+                    };
+                    break;
+                }
                 log_debug("PAIR minus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) "
                     "plus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) -> (x={:.6f},y={:.6f},mach={:.6f})",
                     minus_pt.x, minus_pt.y, minus_pt.theta, minus_pt.mu,
                     plus_pt.x, plus_pt.y, plus_pt.theta, plus_pt.mu,
-                    result.x, result.y, result.mach);
+                    result.point.x, result.point.y, result.point.mach);
                 intersections.push_back({
-                    result,
+                    result.point,
                     PointMembership {
                         .c_plus_chain_idx = plus_edges.chain_indices[i],
                         .c_minus_chain_idx = *best_partner
@@ -474,17 +559,27 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             else [[unlikely]] { // C+ intersects with wall
 
                 const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
-                std::optional<CharacteristicPoint> maybe_pt = solve_wall_point(
+                std::optional<PointResult> maybe_result = solve_wall_point(
                     plus_pt,
                     net.leading_wall_point(),
-                    net.wall_point_indices.size() - 1
+                    static_cast<int>(net.wall_point_indices.size()) - 1
                 );
 
-                if (maybe_pt.has_value()) {
+                if (maybe_result.has_value()) {
+                    if (maybe_result->error != MocErrorCode::NONE) {
+                        failure = MocFailure{
+                            maybe_result->error,
+                            std::format("Wall point solve failed ({}) for plus(x={:.6f},y={:.6f}).",
+                                to_string(maybe_result->error), plus_pt.x, plus_pt.y),
+                            maybe_result->point.x, maybe_result->point.y,
+                            iters
+                        };
+                        break;
+                    }
                     log_debug("WALL plus(x={:.6f},y={:.6f}) -> wall hit at (x={:.6f},y={:.6f})",
-                        plus_pt.x, plus_pt.y, maybe_pt->x, maybe_pt->y);
+                        plus_pt.x, plus_pt.y, maybe_result->point.x, maybe_result->point.y);
                     intersections.push_back({
-                        *maybe_pt,
+                        maybe_result->point,
                         PointMembership {
                             .c_plus_chain_idx = plus_edges.chain_indices[i],
                             .c_minus_chain_idx = std::nullopt
@@ -503,6 +598,8 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
             }
         }
 
+        if (failure.has_value()) break;
+
         // find C- characteristic reflecting off axis.
         double min_cminus_y = std::numeric_limits<double>::max();
         std::optional<size_t> min_y_cminus_idx = std::nullopt;
@@ -515,15 +612,26 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
         // if the lowest C- characteristic is unpaired, reflect it off the axis
         if (min_y_cminus_idx.has_value() &&
             std::none_of(
-                paired_cminus.cbegin(), 
-                paired_cminus.cend(), 
+                paired_cminus.cbegin(),
+                paired_cminus.cend(),
                 [min_y_cminus_idx](size_t x) {return x == *min_y_cminus_idx;})
             )
         {
             const CharacteristicPoint& minus_pt = net.leading_point(*min_y_cminus_idx);
+            PointResult axis_result = solve_axis_point(minus_pt);
+            if (axis_result.error != MocErrorCode::NONE) {
+                failure = MocFailure{
+                    axis_result.error,
+                    std::format("Axis point solve failed ({}) for minus(x={:.6f},y={:.6f}).",
+                        to_string(axis_result.error), minus_pt.x, minus_pt.y),
+                    axis_result.point.x, axis_result.point.y,
+                    iters
+                };
+                break;
+            }
             log_debug("AXIS minus(x={:.6f},y={:.6f}) reflects off axis", minus_pt.x, minus_pt.y);
             intersections.push_back({
-                solve_axis_point(minus_pt),
+                axis_result.point,
                 PointMembership {
                     .c_plus_chain_idx = std::nullopt,
                     .c_minus_chain_idx = min_y_cminus_idx
@@ -563,6 +671,8 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
                 }
             }
             else { // intersection falls outside of nozzle bounds
+                log_debug("OUTFLOW pt(x={:.6f},y={:.6f}) terminates: beyond "
+                    "maximum_nozzle_length() ({:.6f})", pt.x, pt.y, maximum_nozzle_length());
                 if (mem.c_minus_chain_idx.has_value())
                     net.terminate_chain(*mem.c_minus_chain_idx, ChainMetadata::TerminationType::OUTFLOW);
                 if (mem.c_plus_chain_idx.has_value())
@@ -575,10 +685,24 @@ void MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
 
         iters++;
     }
-    
+
+    if (failure.has_value()) {
+        return failure;
+    }
+
+    if (iters >= maxiter) {
+        return MocFailure{
+            MocErrorCode::MAX_ITERATIONS_REACHED,
+            std::format("Kernel reached the iteration safety cap ({}) without all "
+                "characteristics terminating.", maxiter),
+            0.0, 0.0, iters
+        };
+    }
+
+    return std::nullopt;
 }
 
-std::optional<CharacteristicPoint> MocNozzle::solve_wall_point(
+std::optional<PointResult> MocNozzle::solve_wall_point(
     const CharacteristicPoint& interior_parent,
     const CharacteristicPoint& previous_wall_point,
     int wall_point_index)
@@ -598,9 +722,9 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point(
 
             return solve_wall_point_design(interior_parent, previous_wall_point, theta_wall);
         }
-        case MocMode::DESIGN_RAO: 
+        case MocMode::DESIGN_RAO:
         case MocMode::ANALYSIS: {
-            
+
             return solve_wall_point_analysis(interior_parent);
         }
         case MocMode::DESIGN_CENTERLINE: {
@@ -613,17 +737,22 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point(
     // unreachable
 }
 
-CharacteristicPoint MocNozzle::solve_initial_axis_point_centered_exp(const CharacteristicPoint& expansion_point) {
-    CharacteristicPoint point;
+PointResult MocNozzle::solve_initial_axis_point_centered_exp(const CharacteristicPoint& expansion_point) {
+    CharacteristicPoint point{};
     point.y = 0.0; //point always lies on axis
     switch (m_options.flow_type) {
         case MocFlowKind::PLANAR: {
             point.theta = expansion_point.theta;
             // nu = expansion point nu follows from geometric analysis
-            update_thermodynamic_state_from_nu(point, expansion_point.nu, expansion_point.mach);
+            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+                point, expansion_point.nu, expansion_point.mach);
+            if (thermo_error != MocErrorCode::NONE) {
+                point.x = expansion_point.x;
+                return {point, thermo_error};
+            }
             point.K_plus = point.theta - point.nu;
-            point.K_minus = expansion_point.K_minus; 
-            
+            point.K_minus = expansion_point.K_minus;
+
             double c_minus_angle = average_cminus_angle(expansion_point, point);
             point.x = expansion_point.x - expansion_point.y / tan(c_minus_angle);
             break;
@@ -636,7 +765,12 @@ CharacteristicPoint MocNozzle::solve_initial_axis_point_centered_exp(const Chara
             // and the first axis point is a direct consequence of this geometric
             // construction. Source terms enter in subsequent solve_axis_point calls.
             point.theta = expansion_point.theta;
-            update_thermodynamic_state_from_nu(point, expansion_point.nu, expansion_point.mach);
+            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+                point, expansion_point.nu, expansion_point.mach);
+            if (thermo_error != MocErrorCode::NONE) {
+                point.x = expansion_point.x;
+                return {point, thermo_error};
+            }
             point.K_plus = point.theta - point.nu;
             point.K_minus = expansion_point.K_minus;
 
@@ -648,11 +782,15 @@ CharacteristicPoint MocNozzle::solve_initial_axis_point_centered_exp(const Chara
             throw std::runtime_error("Invalid flow type specified.");
     }
 
-    return point;
+    MocErrorCode validity = check_point_validity(point, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        return {point, validity};
+    }
+    return {point, MocErrorCode::NONE};
 }
 
-CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_parent) {
-    CharacteristicPoint axis_point;
+PointResult MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_parent) {
+    CharacteristicPoint axis_point{};
     axis_point.y = 0.0;
     axis_point.theta = 0.0; // symmetry condition
 
@@ -660,16 +798,20 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
         case MocFlowKind::PLANAR: {
 
             axis_point.K_minus = off_axis_parent.K_minus;
-            update_thermodynamic_state_from_nu(
-                axis_point, 
+            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+                axis_point,
                 axis_point.K_minus - axis_point.theta,
                 off_axis_parent.mach);
+            if (thermo_error != MocErrorCode::NONE) {
+                axis_point.x = off_axis_parent.x;
+                return {axis_point, thermo_error};
+            }
 
             axis_point.K_plus = axis_point.theta - axis_point.nu;
 
-            double c_minus_angle = 0.5 * (off_axis_parent.theta + axis_point.theta) 
+            double c_minus_angle = 0.5 * (off_axis_parent.theta + axis_point.theta)
                 - 0.5 * (off_axis_parent.mu + axis_point.mu);
-            
+
             axis_point.x = off_axis_parent.x - off_axis_parent.y/tan(c_minus_angle);
             break;
         }
@@ -690,11 +832,15 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
 
             // dtheta + dnu = S => nu_2 - nu_1 = S + theta_1 = S + K_minus_1
             double nu_pred = axis_point.K_minus + source_pred;
-            
-            update_thermodynamic_state_from_nu(
-                axis_point, 
-                nu_pred, 
+
+            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+                axis_point,
+                nu_pred,
                 off_axis_parent.mach);
+            if (thermo_error != MocErrorCode::NONE) {
+                axis_point.x = off_axis_parent.x;
+                return {axis_point, thermo_error};
+            }
 
             axis_point.K_plus = axis_point.theta - axis_point.nu;
 
@@ -708,11 +854,14 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
             double theta_avg = 0.5 * off_axis_parent.theta;
             double mu_avg = 0.5 * (off_axis_parent.mu + axis_point.mu);
             double M_avg = 0.5 * (off_axis_parent.mach + axis_point.mach);
-            double source_corrected = sin(theta_avg)/ (M_avg * sin(theta_avg - mu_avg)) * dy_over_y_avg; 
+            double source_corrected = sin(theta_avg)/ (M_avg * sin(theta_avg - mu_avg)) * dy_over_y_avg;
 
             // Corrected nu: K_minus from parent, + source contribution
             double nu_corrected = off_axis_parent.K_minus + source_corrected;
-            update_thermodynamic_state_from_nu(axis_point, nu_corrected, axis_point.mach);
+            thermo_error = update_thermodynamic_state_from_nu(axis_point, nu_corrected, axis_point.mach);
+            if (thermo_error != MocErrorCode::NONE) {
+                return {axis_point, thermo_error};
+            }
             axis_point.K_minus = axis_point.nu; // theta=0
             axis_point.K_plus = -axis_point.nu;
 
@@ -725,7 +874,22 @@ CharacteristicPoint MocNozzle::solve_axis_point(const CharacteristicPoint& off_a
             throw std::runtime_error("Invalid flow type specified.");
     }
 
-    return axis_point;
+    // solve_axis_point has no non-downstream guard today (a documented gap): the
+    // resulting axis point's x must not precede its parent's.
+    if (axis_point.x < off_axis_parent.x) {
+        log_warning("Non-downstream axis intersection at ({}, {}). Parent at x={}.",
+            axis_point.x, axis_point.y, off_axis_parent.x);
+        return {axis_point, MocErrorCode::NON_DOWNSTREAM_POINT};
+    }
+
+    MocErrorCode validity = check_point_validity(axis_point, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        log_warning("Invalid axis point at ({}, {}): error code {}.",
+            axis_point.x, axis_point.y, to_string(validity));
+        return {axis_point, validity};
+    }
+
+    return {axis_point, MocErrorCode::NONE};
 }
 
 std::pair<double, double> MocNozzle::intersect_characteristic_with_wall(
@@ -741,7 +905,7 @@ std::pair<double, double> MocNozzle::intersect_characteristic_with_wall(
     return find_wall_hit(parent, wall, char_angle);
 }
 
-CharacteristicPoint MocNozzle::solve_interior_point(
+PointResult MocNozzle::solve_interior_point(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2)
 {
@@ -755,17 +919,26 @@ CharacteristicPoint MocNozzle::solve_interior_point(
         default:
             throw std::runtime_error("Invalid MoC flow type specified.");
     }
-} 
+}
 
-CharacteristicPoint MocNozzle::solve_interior_point_planar(
+PointResult MocNozzle::solve_interior_point_planar(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2)
 {
-    CharacteristicPoint p3;
+    CharacteristicPoint p3{};
     p3.theta = 0.5*(p1.K_minus + p2.K_plus);
     double mach_guess = 0.5*(p1.mach + p2.mach);
-    
-    update_thermodynamic_state_from_nu(p3, 0.5*(p1.K_minus - p2.K_plus), mach_guess);
+
+    // Position (x, y) is computed after the thermo update below, so a thermo
+    // failure here leaves p3.x/p3.y unset; fall back to a parent's coordinates so
+    // the returned point still carries a meaningful location for diagnostics.
+    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+        p3, 0.5*(p1.K_minus - p2.K_plus), mach_guess);
+    if (thermo_error != MocErrorCode::NONE) {
+        p3.x = p1.x;
+        p3.y = p1.y;
+        return {p3, thermo_error};
+    }
     p3.K_minus = p3.theta + p3.nu;
     p3.K_plus = p3.theta - p3.nu;
 
@@ -782,20 +955,23 @@ CharacteristicPoint MocNozzle::solve_interior_point_planar(
     if (p3.x < p1.x || p3.x < p2.x) {
         log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
             p3.x, p3.y, p1.x, p2.x);
-        p3.mach = -1.0; // invalid point
-    }
-    if (p3.mach < 1.0 && p3.mach > 0.0) {
-        log_warning("Subsonic Mach {} at ({}, {}). Possible shock formation.", p3.mach, p3.x, p3.y);
-        p3.mach = -1.0; // subsonic point -- characteristics undefined
+        return {p3, MocErrorCode::NON_DOWNSTREAM_POINT};
     }
 
-    return p3;
+    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        log_warning("Invalid interior point at ({}, {}): error code {}.",
+            p3.x, p3.y, to_string(validity));
+        return {p3, validity};
+    }
+
+    return {p3, MocErrorCode::NONE};
 }
-CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
+PointResult MocNozzle::solve_interior_point_axisymmetric(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2)
 {
-    CharacteristicPoint p3;
+    CharacteristicPoint p3{};
 
     // Axisymmetric interior point in the (theta, nu) formulation, consistent with the planar,
     // wall, and axis solvers. The Riemann invariants K+ = theta - nu (constant along C+) and
@@ -822,7 +998,11 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
     double K_plus = (p2.theta - p2.nu) - L*(p3.x - p2.x);
     double K_minus = (p1.theta + p1.nu) + M*(p3.x - p1.x);
     p3.theta = 0.5*(K_minus + K_plus);
-    update_thermodynamic_state_from_nu(p3, 0.5*(K_minus - K_plus), 0.5*(p1.mach + p2.mach));
+    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+        p3, 0.5*(K_minus - K_plus), 0.5*(p1.mach + p2.mach));
+    if (thermo_error != MocErrorCode::NONE) {
+        return {p3, thermo_error};
+    }
 
     // Corrector: average the characteristic angles and source terms across the step.
     double c_minus_angle_corrected = average_cminus_angle(p1, p3);
@@ -843,7 +1023,10 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
     K_plus = (p2.theta - p2.nu) - L_avg*(p3.x - p2.x);
     K_minus = (p1.theta + p1.nu) + M_avg*(p3.x - p1.x);
     p3.theta = 0.5*(K_minus + K_plus);
-    update_thermodynamic_state_from_nu(p3, 0.5*(K_minus - K_plus), p3.mach);
+    thermo_error = update_thermodynamic_state_from_nu(p3, 0.5*(K_minus - K_plus), p3.mach);
+    if (thermo_error != MocErrorCode::NONE) {
+        return {p3, thermo_error};
+    }
     p3.K_minus = p3.theta + p3.nu;
     p3.K_plus = p3.theta - p3.nu;
 
@@ -851,16 +1034,20 @@ CharacteristicPoint MocNozzle::solve_interior_point_axisymmetric(
     if (p3.x < p1.x || p3.x < p2.x) {
         log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
             p3.x, p3.y, p1.x, p2.x);
-        p3.mach = -1.0; // invalid point
-    } else if (p3.mach < 1.0) {
-        log_warning("Subsonic Mach {} at ({}, {}). Possible shock formation.", p3.mach, p3.x, p3.y);
-        p3.mach = -1.0; // subsonic point -- characteristics undefined
+        return {p3, MocErrorCode::NON_DOWNSTREAM_POINT};
     }
 
-    return p3;
+    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        log_warning("Invalid interior point at ({}, {}): error code {}.",
+            p3.x, p3.y, to_string(validity));
+        return {p3, validity};
+    }
+
+    return {p3, MocErrorCode::NONE};
 }
 
-CharacteristicPoint MocNozzle::solve_interior_point_iterative(
+PointResult MocNozzle::solve_interior_point_iterative(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2)
 {
@@ -873,9 +1060,9 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     // 6. Get theta from either compatibility equation 
     // 7. Correct characteristic slope by averaging with endpoint 
     // 8. Correct V by averaging with endpoint 
-    // 9. Recompute theta and source terms at corrected location 
-    // 10. [optional] One additional pass if source term changed significantly 
-    CharacteristicPoint p3;
+    // 9. Recompute theta and source terms at corrected location
+    // 10. [optional] One additional pass if source term changed significantly
+    CharacteristicPoint p3{};
     double c_minus_angle = p1.theta - p1.mu;
     double c_plus_angle = p2.theta + p2.mu;
 
@@ -885,7 +1072,14 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
     double S1 = cminus_source_term(p1, y);
     double S2 = cplus_source_term(p2, y);
 
-    update_thermodynamic_state_from_mach(p3, find_node_mach(p1, p2, S1 - S2, 0.5 * (p1.mach + p2.mach)));
+    double mach = find_node_mach(p1, p2, S1 - S2, 0.5 * (p1.mach + p2.mach));
+    if (mach < 1.0) {
+        return {p3, MocErrorCode::PM_INVERSION_FAILED};
+    }
+    MocErrorCode thermo_error = update_thermodynamic_state_from_mach(p3, mach);
+    if (thermo_error != MocErrorCode::NONE) {
+        return {p3, thermo_error};
+    }
 
     // from compatibility equation.
     p3.theta = S1 + p1.theta - (p3.nu - p1.nu);
@@ -903,7 +1097,14 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
         p3.y = new_y;
         double S1_new = cminus_source_term(p1, new_y);
         double S2_new = cplus_source_term(p2, new_y);
-        update_thermodynamic_state_from_mach(p3, find_node_mach(p1, p2, S1_new - S2_new, p3.mach));
+        double mach_new = find_node_mach(p1, p2, S1_new - S2_new, p3.mach);
+        if (mach_new < 1.0) {
+            return {p3, MocErrorCode::PM_INVERSION_FAILED};
+        }
+        thermo_error = update_thermodynamic_state_from_mach(p3, mach_new);
+        if (thermo_error != MocErrorCode::NONE) {
+            return {p3, thermo_error};
+        }
 
         p3.theta = S1_new + p1.theta - (p3.nu - p1.nu);
         p3.K_plus = p3.theta - p3.nu;
@@ -918,15 +1119,19 @@ CharacteristicPoint MocNozzle::solve_interior_point_iterative(
                 "Residual={} after {} iterations at ({}, {}).", residual, max_iters, p3.x, p3.y);
         }
     }
-    return p3;
+
+    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        return {p3, validity};
+    }
+    return {p3, MocErrorCode::NONE};
 }
 
-CharacteristicPoint MocNozzle::solve_wall_flow(
+PointResult MocNozzle::solve_wall_flow(
     const CharacteristicPoint& interior_parent,
     double theta_wall)
 {
-    
-    CharacteristicPoint wall_point;
+    CharacteristicPoint wall_point{};
     // geometric constraint: the flow at the wall must follow the wall curvature
     wall_point.theta = theta_wall;
     // Predictor: planar K+ preservation
@@ -943,35 +1148,44 @@ CharacteristicPoint MocNozzle::solve_wall_flow(
     // For now, this gives a first-order approximation.
 
     wall_point.K_plus = interior_parent.K_plus;
-    update_thermodynamic_state_from_nu(
-        wall_point, 
-        wall_point.theta - wall_point.K_plus, 
+    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+        wall_point,
+        wall_point.theta - wall_point.K_plus,
         interior_parent.mach);
+    if (thermo_error != MocErrorCode::NONE) {
+        return {wall_point, thermo_error};
+    }
     wall_point.K_minus = wall_point.theta + wall_point.nu;
 
-    return wall_point;
+    return {wall_point, MocErrorCode::NONE};
 }
 
-CharacteristicPoint MocNozzle::solve_wall_point_design(
+PointResult MocNozzle::solve_wall_point_design(
     const CharacteristicPoint& interior_parent,
     const CharacteristicPoint& previous_wall_point,
     double theta_wall)
 {
-    CharacteristicPoint wall_point = solve_wall_flow(interior_parent, theta_wall);
+    PointResult flow_result = solve_wall_flow(interior_parent, theta_wall);
+    if (flow_result.error != MocErrorCode::NONE) {
+        flow_result.point.x = interior_parent.x;
+        flow_result.point.y = interior_parent.y;
+        return flow_result;
+    }
+    CharacteristicPoint wall_point = flow_result.point;
 
-    // the angle between the interior point and the wall point 
+    // the angle between the interior point and the wall point
     // is given by the C+ characteristic.
-    double c_plus_angle = average_cplus_angle(interior_parent, wall_point); 
+    double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
 
     // the angle between the previous wall point and the current wall point
-    // is given by wall_theta. 
+    // is given by wall_theta.
     double prev_wall_angle = 0.5*(previous_wall_point.theta + wall_point.theta);
 
     auto [x,y] = characteristic_intersection_with_angle(
-        interior_parent, previous_wall_point, 
+        interior_parent, previous_wall_point,
         c_plus_angle, prev_wall_angle);
 
-    wall_point.x = x; 
+    wall_point.x = x;
     wall_point.y = y;
 
     switch (m_options.flow_type) {
@@ -989,7 +1203,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
             // 2. Calculate nu from axisymmetric compatibility equation.
             // 3. Obtain thermodynamic values for given value of nu.
             // 4. Recompute new position based on new C+ angle
-            // 5. Repeat until source residual is satisfactory. 
+            // 5. Repeat until source residual is satisfactory.
             // In practice only 1-2 iterations should be needed.
             double old_S = 0.0;
             double residual = 0.0;
@@ -1004,10 +1218,13 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
                 // C+ compatibility nu_P = theta_P - theta_B + nu_B + S, matching the interior
                 // solver's K+ = theta - nu decreasing by the source along C+ (d(theta-nu) = -S).
                 // The source enters with a +S sign here, NOT -S.
-                update_thermodynamic_state_from_nu(
+                MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
                     wall_point,
                     wall_point.theta-interior_parent.theta + S + interior_parent.nu,
                     interior_parent.mach);
+                if (thermo_error != MocErrorCode::NONE) {
+                    return {wall_point, thermo_error};
+                }
 
                 wall_point.K_plus = wall_point.theta - wall_point.nu;
                 wall_point.K_minus = wall_point.theta + wall_point.nu;
@@ -1022,7 +1239,7 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
                 wall_point.y = new_y;
 
                 if (i == max_iter - 1 && residual >= m_options.solver_options.abstol) {
-                    log_warning("Wall design source term iteration did not converge." 
+                    log_warning("Wall design source term iteration did not converge."
                         "Residual={} at ({}, {}).", residual, wall_point.x, wall_point.y);
                 }
             }
@@ -1032,25 +1249,54 @@ CharacteristicPoint MocNozzle::solve_wall_point_design(
             throw std::runtime_error("Invalid flow type specified.");
     }
 
-    return wall_point;
+    MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        log_warning("Invalid wall point at ({}, {}): error code {}.",
+            wall_point.x, wall_point.y, to_string(validity));
+        return {wall_point, validity};
+    }
+
+    return {wall_point, MocErrorCode::NONE};
 }
 
-std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
+std::optional<PointResult> MocNozzle::solve_wall_point_analysis(
         const CharacteristicPoint& interior_parent)
 {
     const NozzleProfile& wall = m_options.nozzle_profile;
     auto [x_wall, y_wall] = intersect_characteristic_with_wall(
                 interior_parent, wall);
-    
+
     // no wall hit found
     if (x_wall < 0.0 && y_wall < 0.0) {
         return std::nullopt;
     }
 
-    double wall_theta = wall.theta_at(x_wall);
+    // theta_at() throws (std::runtime_error, "Queried x ... larger than nozzle
+    // profile") when the predicted C+ hits beyond the last profile station -- a
+    // known consequence of the analysis-outflow gap (characteristics leaving the
+    // contour are not yet terminated as OUTFLOW before the wall solve runs; see
+    // instructions/moc_algorithm.md Sec. 9.1, a Phase 2 fix). Converting that here
+    // instead of letting it escape is exactly what keeps solve() from throwing.
+    double wall_theta;
+    try {
+        wall_theta = wall.theta_at(x_wall);
+    } catch (const std::exception& e) {
+        log_warning("Wall profile query out of bounds at x={}: {}", x_wall, e.what());
+        CharacteristicPoint failed_point{};
+        failed_point.x = interior_parent.x;
+        failed_point.y = interior_parent.y;
+        return PointResult{failed_point, MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS};
+    }
+
     double char_angle = interior_parent.theta + interior_parent.mu;
-    CharacteristicPoint wall_point = solve_wall_flow(interior_parent, wall_theta);
-    
+    PointResult flow_result = solve_wall_flow(interior_parent, wall_theta);
+    if (flow_result.error != MocErrorCode::NONE) {
+        flow_result.point.x = interior_parent.x;
+        flow_result.point.y = interior_parent.y;
+        return flow_result;
+    }
+    CharacteristicPoint wall_point = flow_result.point;
+
     wall_point.x = x_wall;
     wall_point.y = y_wall;
     // Corrector (for curved characteristics):
@@ -1067,10 +1313,23 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
             double average_char_angle = 0.5*(wall_char_angle + char_angle);
 
             auto [x_corrected, y_corrected] = find_wall_hit(interior_parent, wall, average_char_angle);
-            wall_theta = wall.theta_at(x_corrected);
+            try {
+                wall_theta = wall.theta_at(x_corrected);
+            } catch (const std::exception& e) {
+                log_warning("Wall profile query out of bounds at x={}: {}", x_corrected, e.what());
+                wall_point.x = interior_parent.x;
+                wall_point.y = interior_parent.y;
+                return PointResult{wall_point, MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS};
+            }
             // Recompute the flow at the corrected wall angle, then restore the position:
             // solve_wall_flow returns flow properties only and leaves x,y at their defaults.
-            wall_point = solve_wall_flow(interior_parent, wall_theta);
+            flow_result = solve_wall_flow(interior_parent, wall_theta);
+            if (flow_result.error != MocErrorCode::NONE) {
+                flow_result.point.x = interior_parent.x;
+                flow_result.point.y = interior_parent.y;
+                return flow_result;
+            }
+            wall_point = flow_result.point;
             wall_point.x = x_corrected;
             wall_point.y = y_corrected;
             break;
@@ -1095,7 +1354,12 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
                 // prescribed as in design mode. Update it to the wall angle at the corrected
                 // position before applying the C+ compatibility relation; otherwise the
                 // reflected wave is computed from a stale predictor angle.
-                wall_theta = wall.theta_at(wall_point.x);
+                try {
+                    wall_theta = wall.theta_at(wall_point.x);
+                } catch (const std::exception& e) {
+                    log_warning("Wall profile query out of bounds at x={}: {}", wall_point.x, e.what());
+                    return PointResult{wall_point, MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS};
+                }
                 wall_point.theta = wall_theta;
 
                 double S = cplus_source_term(interior_parent, wall_point);
@@ -1104,10 +1368,13 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
                 old_S = S;
 
                 // C+ compatibility nu_P = theta_P - theta_B + nu_B + S (see solve_wall_point_design).
-                update_thermodynamic_state_from_nu(
+                MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
                     wall_point,
                     wall_point.theta-interior_parent.theta + S + interior_parent.nu,
                     interior_parent.mach);
+                if (thermo_error != MocErrorCode::NONE) {
+                    return PointResult{wall_point, thermo_error};
+                }
 
                 if (i == max_iter - 1 && residual >= m_options.solver_options.abstol) {
                     log_warning("Wall analysis source term iteration did not converge."
@@ -1121,7 +1388,15 @@ std::optional<CharacteristicPoint> MocNozzle::solve_wall_point_analysis(
         default:
             throw std::runtime_error("Invalid flow type specified.");
     }
-    return wall_point;
+
+    MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) {
+        log_warning("Invalid analysis wall point at ({}, {}): error code {}.",
+            wall_point.x, wall_point.y, to_string(validity));
+        return PointResult{wall_point, validity};
+    }
+
+    return PointResult{wall_point, MocErrorCode::NONE};
 }
 
 double MocNozzle::maximum_nozzle_length() const {
@@ -1257,7 +1532,7 @@ void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
     }
 }
 
-void MocNozzle::update_thermodynamic_state_from_nu(
+MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
     CharacteristicPoint& point,
     double nu, double mach_guess)
 {
@@ -1269,16 +1544,29 @@ void MocNozzle::update_thermodynamic_state_from_nu(
         case GasChemistry::PERFECT_GAS: {
             point.gamma_s = m_options.gamma;
             point.mach = mach_from_prandtl_meyer(nu, point.gamma_s, mach_guess);
+            // mach_from_prandtl_meyer's documented failure sentinel: the Newton
+            // solve for the inverse Prandtl-Meyer function did not converge. Report
+            // it as data instead of letting -1.0 flow into mach_to_mu() and
+            // corrector-step Mach averages downstream.
+            if (point.mach < 0.0) {
+                log_warning("Prandtl-Meyer inversion failed to converge for nu = {}.", nu);
+                return MocErrorCode::PM_INVERSION_FAILED;
+            }
             point.V = point.mach;
-            break;            
+            break;
         }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
-            auto [idx, weight] = pm_table.find_nu_index_and_weight(nu);
-            point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
-            point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-            point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
-            point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            try {
+                auto [idx, weight] = pm_table.find_nu_index_and_weight(nu);
+                point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
+                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
+                point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
+                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            } catch (const std::out_of_range& e) {
+                log_warning("Prandtl-Meyer table lookup by nu = {} out of range: {}", nu, e.what());
+                return MocErrorCode::TABLE_RANGE_EXCEEDED;
+            }
             break;
         }
         default: //unreachable
@@ -1286,9 +1574,10 @@ void MocNozzle::update_thermodynamic_state_from_nu(
     }
     update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
-} 
+    return MocErrorCode::NONE;
+}
 
-void MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach) {
+MocErrorCode MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach) {
     point.mach = mach;
 
     switch (m_options.chemistry) {
@@ -1300,11 +1589,16 @@ void MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point,
         }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
-            auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
-            point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
-            point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-            point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
-            point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            try {
+                auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
+                point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
+                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
+                point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
+                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            } catch (const std::out_of_range& e) {
+                log_warning("Prandtl-Meyer table lookup by mach = {} out of range: {}", mach, e.what());
+                return MocErrorCode::TABLE_RANGE_EXCEEDED;
+            }
             break;
         }
         default: //unreachable
@@ -1312,9 +1606,10 @@ void MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point,
     }
     update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
+    return MocErrorCode::NONE;
 }
 
-void MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, double V) {
+MocErrorCode MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, double V) {
     point.V = V;
 
     switch (m_options.chemistry) {
@@ -1326,11 +1621,16 @@ void MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, do
         }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
-            auto [idx, weight] = pm_table.find_V_index_and_weight(V);
-            point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
-            point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-            point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
-            point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            try {
+                auto [idx, weight] = pm_table.find_V_index_and_weight(V);
+                point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
+                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
+                point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
+                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+            } catch (const std::out_of_range& e) {
+                log_warning("Prandtl-Meyer table lookup by V = {} out of range: {}", V, e.what());
+                return MocErrorCode::TABLE_RANGE_EXCEEDED;
+            }
             break;
         }
         default: //unreachable
@@ -1338,6 +1638,7 @@ void MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, do
     }
     update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
+    return MocErrorCode::NONE;
 }
 
 ThermodynamicContext MocNozzle::build_thermo_context() {
