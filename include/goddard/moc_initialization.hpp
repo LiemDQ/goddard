@@ -24,9 +24,15 @@ class MocInitialization {
      */
     std::vector<CharacteristicPoint> initialize_sauer(const ThroatCondition& throat);
     /**
-     * Create an initial dataline using the Kliegel-Levine expansion method. 
-     * This is the recommended method for most MoC solver modes except in the 
+     * Create an initial dataline using the Kliegel-Levine expansion method.
+     * This is the recommended method for most MoC solver modes except in the
      * case of prescribed centerline conditions.
+     *
+     * The line is not evaluated on the raw sonic (zero-radial-velocity) locus: every
+     * station is shifted downstream by `MocOptions::initial_line_axial_shift` (throat
+     * radii) first. This keeps the Mach angle away from 90 deg near the axis, which is
+     * required for the caller to seed the line with both characteristic families
+     * (see CharacteristicNet::add_initial_data_line).
      */
     std::vector<CharacteristicPoint> initialize_kliegel_levine(const ThroatCondition& throat);
     /**

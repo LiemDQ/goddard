@@ -437,7 +437,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
 std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
     using Family = ChainMetadata::Family;
     LeadingEdgeView plus_edges = leading_edges(net, Family::PLUS);
-    sort_plus_edges_by_proximity(plus_edges);
+    sort_plus_edges_by_proximity(plus_edges, net);
     LeadingEdgeView minus_edges = leading_edges(net, Family::MINUS);
 
     std::vector<std::pair<CharacteristicPoint, PointMembership>> intersections;
@@ -489,13 +489,26 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
             size_t best_partner_edgevec_idx = 0;
             bool any_cminus_above = false;
 
+            // Nearest C- above regardless of claim status this pass -- tracked separately
+            // from best_partner (nearest *unclaimed* C- above) so a C+ whose true nearest
+            // partner was already claimed by a closer competitor this pass can be told to
+            // wait, instead of silently settling for a farther unclaimed C-.
+            double nearest_dy = std::numeric_limits<double>::max();
+            bool nearest_is_claimed = false;
+
             // Find the closest C- above
             for (size_t j = 0; j < minus_edges.chain_indices.size(); j++) {
-                if (minus_edges.y_values[j] - plus_y > 0) any_cminus_above = true;
+                double dy = minus_edges.y_values[j] - plus_y;
+                if (dy <= 0) continue;
+                any_cminus_above = true;
+
+                if (dy < nearest_dy) {
+                    nearest_dy = dy;
+                    nearest_is_claimed = cminus_is_intersected[j];
+                }
                 if (cminus_is_intersected[j]) continue; //skip if already paired
 
-                double dy = minus_edges.y_values[j] - plus_y;
-                if (dy > 0 && dy < best_dy) {
+                if (dy < best_dy) {
                     best_dy = dy;
                     best_partner = minus_edges.chain_indices[j];
                     best_partner_pt_idx = minus_edges.leading_pt_indices[j];
@@ -515,6 +528,15 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                     }
                 }
             }
+
+            // The truly-nearest C- above was already claimed this pass by a closer
+            // competitor: wait for it to advance (SKIP below) rather than pairing with a
+            // farther unclaimed C-, which would violate lattice adjacency. A claim implies
+            // someone else progressed this pass, so this cannot deadlock.
+            if (nearest_is_claimed) {
+                best_partner = std::nullopt;
+            }
+
             // intersect C+ with closest C- above it.
             if (best_partner.has_value()) [[likely]] {
                 const CharacteristicPoint& minus_pt = net.points[best_partner_pt_idx];
@@ -680,7 +702,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
             }
         }
         update_leading_edges(plus_edges, net, Family::PLUS);
-        sort_plus_edges_by_proximity(plus_edges);
+        sort_plus_edges_by_proximity(plus_edges, net);
         update_leading_edges(minus_edges, net, Family::MINUS);
 
         iters++;
@@ -1755,11 +1777,12 @@ void MocNozzle::update_leading_edges(LeadingEdgeView& view, const Characteristic
     }
 }
 
-void MocNozzle::sort_plus_edges_by_proximity(LeadingEdgeView& view) const {
+void MocNozzle::sort_plus_edges_by_proximity(LeadingEdgeView& view, const CharacteristicNet& net) const {
     std::vector<size_t> order(view.chain_indices.size());
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-        return view.y_values[a] > view.y_values[b];
+        if (view.y_values[a] != view.y_values[b]) return view.y_values[a] > view.y_values[b];
+        return net.points[view.leading_pt_indices[a]].x < net.points[view.leading_pt_indices[b]].x;
     });
 
     std::vector<double> y_sorted(order.size());

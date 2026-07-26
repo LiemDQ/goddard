@@ -73,6 +73,23 @@ struct MocOptions {
     // Must be monotonically increasing, with the last entry equal to theta_max.
     std::vector<double> theta_schedule;
 
+    /**
+     * Downstream shift (dimensionless, in throat radii) applied to every station of the
+     * Kliegel-Levine transonic start line, used only for axisymmetric ANALYSIS/DESIGN_RAO
+     * (the KL-init path; see NozzleGeometry::downstream_wall_curvature_radius). The raw
+     * sonic (zero-radial-velocity) locus that Kliegel-Levine solves for is not usable as a
+     * dual-family (C+ and C-) seeding line: near the axis its Mach angle mu approaches
+     * 90 deg, and rigidly translating every station downstream by this amount raises the
+     * Mach number (lowering mu) everywhere while preserving the locus's own near-axis
+     * curvature -- which a per-station constant-Mach lift does not (it was tried and
+     * empirically produces invalid, behind-parent seeding; see
+     * instructions/moc_convergence_roadmap.md Sec 2 Step 0). Default 0.1 throat radii is a
+     * moderate lift validated against the default geometry; a larger shift trades
+     * numerical margin for accuracy, since it extrapolates the KL series further from the
+     * throat plane it is expanded about.
+     */
+    double initial_line_axial_shift = 0.1;
+
     NozzleProfile nozzle_profile; // wall geometry -- for analysis mode
 };
 

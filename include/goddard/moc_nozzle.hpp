@@ -187,7 +187,8 @@ protected:
     void update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const;
 
     /**
-     * Reorder a C+ leading-edge view by descending y (closest to the wall first).
+     * Reorder a C+ leading-edge view by descending y (closest to the wall first), tie-broken
+     * by ascending x.
      *
      * When several individual C+ chains compete for the same partner in a single kernel
      * pass (e.g. many chains seeded from a Kliegel-Levine transonic line, all wanting the
@@ -195,8 +196,15 @@ protected:
      * geometrically closest competitor first. Iterating in chain-creation order instead
      * lets a far-away C+ (e.g. the transonic line's axis point) claim a partner meant for
      * a much closer chain, producing a physically invalid, oversized jump.
+     *
+     * Multiple C+ chains can also sit at exactly y=0 simultaneously (e.g. several axis
+     * reflections in flight at once, which dual-family KL-init seeding makes common): the
+     * y-only comparator leaves their relative order unspecified under `std::sort`
+     * (unstable). Ties are broken by ascending x -- the chain whose leading point is
+     * further upstream reaches its next partner first, so it must claim before a chain
+     * that is already further downstream.
      */
-    void sort_plus_edges_by_proximity(LeadingEdgeView& view) const;
+    void sort_plus_edges_by_proximity(LeadingEdgeView& view, const CharacteristicNet& net) const;
 
     // Logging helpers
     template <typename... Args>

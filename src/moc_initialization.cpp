@@ -49,17 +49,26 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     double R = KL_R();
     double alpha = sauer_alpha(gamma);
 
+    // Lift the sonic (zero-radial-velocity) locus off itself by a rigid downstream shift so
+    // it can be seeded with both characteristic families (see MocOptions::initial_line_axial_shift
+    // and CharacteristicNet::add_initial_data_line's nullopt branch).
+    const double x_shift = m_options.initial_line_axial_shift;
+
     std::vector<CharacteristicPoint> points(num_points);
     for (size_t i = 0; i < num_points; i++) {
         CharacteristicPoint& pt = points[i];
-        pt.theta = 0.0; // by definition
         pt.y = dy * i;
         double x_guess = (gamma + 1)*alpha/(2*(3+delta()))*(1.0 - pt.y*pt.y); //Sauer transonic x-coordinate
-        
-        // Solve for x using root solving method
-        pt.x = KL_solve_transonic_x(pt.y, gamma, R, x_guess);
-        // KL_xMach takes the transformed axial coordinate z, not the physical x.
+
+        double x_sonic = KL_solve_transonic_x(pt.y, gamma, R, x_guess);
+        pt.x = x_sonic + x_shift;
         double machx = KL_xMach(pt.y, KL_z_coordinate(pt.x, gamma), gamma, R);
+        // Off the sonic locus, the radial velocity component (KL_yMach) is
+        // generally nonzero, so theta can no longer be pinned to 0. Both machx and
+        // the KL_yMach series are normalized velocity-like quantities (by a*), so
+        // their ratio gives the flow angle to the same order as the series itself.
+        double v = KL_yMach(pt.x, pt.y, gamma, R);
+        pt.theta = std::atan2(v, machx);
         pt.update_thermodynamic_state_from_mach(m_thermo, machx);
         pt.update_Ks();
     }

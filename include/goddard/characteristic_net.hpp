@@ -84,14 +84,17 @@ class CharacteristicNet {
      *
      * Handles both data-line topologies. When `on_characteristic` is empty the points are
      * assumed to lie on distinct characteristics (a non-collinear transonic start line, e.g.
-     * Kliegel-Levine): every point but the last seeds only its own C+ chain, and the last
-     * point (already at the wall) immediately reflects into the first C- chain, exactly as a
-     * wall reflection would during marching. Adjacent points on such a line are NOT paired
-     * with each other -- near-sonic characteristics (mu -> 90 deg) run almost perpendicular
-     * to the line itself, so intersecting neighbors directly can land behind both parents.
-     * When `on_characteristic` is set the points are collinear along a single characteristic
-     * of that family (e.g. a centered expansion fan), and are seeded as one shared chain via
-     * add_initial_characteristic.
+     * Kliegel-Levine): every interior point seeds both a C+ and a C- chain, mirroring the
+     * fan-init topology, and the last point (already at the wall) immediately reflects into
+     * the first C- chain, exactly as a wall reflection would during marching. This requires
+     * the line to be lifted off the raw sonic (v=0) locus first (see
+     * MocInitialization::initialize_kliegel_levine and
+     * MocOptions::initial_line_axial_shift) -- pairing two points still on the raw sonic
+     * locus directly can land behind both parents, since mu -> 90 deg there near the axis.
+     * The first point (the axis bootstrap) seeds only a C+: giving it a C- would immediately
+     * re-reflect it off the axis as a degenerate point. When `on_characteristic` is set the
+     * points are collinear along a single characteristic of that family (e.g. a centered
+     * expansion fan), and are seeded as one shared chain via add_initial_characteristic.
      *
      * The caller must supply the topology; it cannot be inferred from the points, since a
      * Riemann invariant is constant along a characteristic only for planar flow.

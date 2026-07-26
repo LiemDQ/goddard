@@ -79,17 +79,22 @@ void CharacteristicNet::add_initial_data_line(
         return;
     }
 
-    // A non-collinear transonic start line (e.g. Kliegel-Levine) crosses many characteristics
-    // but is not spacelike with respect to them: near sonic conditions mu -> 90 deg, so
-    // adjacent points' C+/C- rays run almost perpendicular to the line and can cross behind
-    // both parents rather than downstream. So points are never paired with their neighbor on
-    // this line. Every point but the last seeds only its own C+ chain (it will eventually hit
-    // the wall on its own); the last point IS the wall point and immediately reflects into the
-    // first C- chain, exactly like a wall reflection encountered during marching. The kernel
-    // then sweeps this single C- down through the individual C+ chains one at a time.
+    // A non-collinear transonic start line (e.g. Kliegel-Levine) crosses many
+    // characteristics. Historically it was seeded with only a C+ per point, because pairing
+    // adjacent points directly on the raw sonic (v=0) locus crossed behind both parents: mu
+    // approaches 90 deg near the axis there. With the start line rigidly shifted downstream
+    // (see MocInitialization::initialize_kliegel_levine and
+    // MocOptions::initial_line_axial_shift), every interior point can seed both families,
+    // exactly like a fan-init data line -- this fills the near-axis void that a C+-only line
+    // leaves (see instructions/moc_convergence_roadmap.md Sec 1). The axis bootstrap point
+    // (i=0) still seeds only a C+, mirroring add_initial_characteristic's own axis special
+    // case: giving it a C- would immediately re-reflect it off the axis as a degenerate
+    // point. The last point IS the wall point and immediately reflects into the first C-
+    // chain, exactly like a wall reflection encountered during marching.
     size_t last = init_pts.size() - 1;
     for (size_t i = 0; i < last; i++) {
-        size_t idx = add_initialization_point(init_pts[i], /*cminus=*/false, /*cplus=*/true);
+        bool cminus = (i != 0);
+        size_t idx = add_initialization_point(init_pts[i], /*cminus=*/cminus, /*cplus=*/true);
         if (i == 0) {
             axis_point_indices.push_back(idx);
         }
