@@ -200,9 +200,14 @@ TEST(KliegelLevineVsSauer, ConvergesToSauerAsCurvatureRadiusGrows) {
     // (1/(R+1)) term of the KL series (KL_v1(r,z)=0 gives z=0.25*(1-r^2),
     // which is the Sauer x-coordinate after the z<->x change of variables).
     // So initialize_kliegel_levine's transonic line must converge to
-    // initialize_sauer's as R grows.
+    // initialize_sauer's as R grows -- once the constant downstream shift
+    // (MocOptions::initial_line_axial_shift, applied so the line is usable for
+    // dual-family seeding; see instructions/moc_convergence_roadmap.md Sec 2
+    // Step 0) is disabled, since that shift is an intentional, R-independent
+    // offset that this asymptotic identity was never about.
     double gamma = 1.4;
     MocOptions opts = make_options(gamma, 9, MocFlowKind::AXISYMMETRIC);
+    opts.initial_line_axial_shift = 0.0;
     ThermodynamicContext thermo = make_perfect_gas_context(gamma);
     ThroatCondition throat = make_perfect_gas_throat(gamma);
 
@@ -303,6 +308,11 @@ TEST(SauerInitialization, MachAtAxisAndWallMatchesClosedForm) {
 // ============================================================
 
 TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY) {
+    // The line is rigidly shifted downstream of the raw sonic (v=0) locus (default
+    // MocOptions::initial_line_axial_shift), so theta is pinned to exactly 0 only at
+    // the axis (r=0, where the radial-velocity series vanishes identically) -- it is
+    // strictly positive everywhere else, and increases monotonically off-axis for a
+    // downstream-shifted diverging locus.
     double gamma = 1.4;
     double R = 1.0;
     int n = 11;
@@ -317,9 +327,13 @@ TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY)
 
     auto points = init.initialize_kliegel_levine(throat);
     ASSERT_EQ(points.size(), static_cast<size_t>(n));
+    EXPECT_NEAR(points[0].theta, 0.0, 1e-15) << "axis theta should be pinned to 0";
     for (size_t i = 0; i < points.size(); i++) {
-        EXPECT_NEAR(points[i].theta, 0.0, 1e-15) << "index " << i;
         EXPECT_NEAR(points[i].y, static_cast<double>(i) / (n - 1), 1e-12) << "index " << i;
         EXPECT_GT(points[i].mach, 0.0) << "index " << i;
+        if (i > 0) {
+            EXPECT_GT(points[i].theta, 0.0) << "index " << i;
+            EXPECT_GE(points[i].theta, points[i - 1].theta) << "theta should increase monotonically off-axis, index " << i;
+        }
     }
 }

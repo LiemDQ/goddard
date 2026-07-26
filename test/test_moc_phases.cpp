@@ -562,7 +562,9 @@ TEST(MocAnalysis, PlanarRoundTrip) {
     // Step 1: Design mode
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto design_result = design_solver.solve();
-    ASSERT_TRUE(design_result.converged);
+    ASSERT_TRUE(design_result.converged) << "Design did not converge: "
+        << to_string(design_result.failure.code) << " -- "
+        << design_result.failure.message;
 
     // Step 2: Analysis mode with design contour
     MocOptions opts;
@@ -587,12 +589,15 @@ TEST(MocAnalysis, PlanarRoundTrip) {
     // net that was not actually fully valid. Skip (rather than silently pass or
     // hard-fail) when that known limitation is hit; run the full round-trip
     // check otherwise.
-    if (!analysis_result.converged) {
-        GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
-                        "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
-                     << to_string(analysis_result.failure.code)
-                     << " -- " << analysis_result.failure.message;
-    }
+    EXPECT_TRUE(analysis_result.converged) << "Analysis did not converge: "
+        << to_string(analysis_result.failure.code)
+        << " -- " << analysis_result.failure.message;
+    // if (!analysis_result.converged) {
+    //     GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
+    //                     "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
+    //                  << to_string(analysis_result.failure.code)
+    //                  << " -- " << analysis_result.failure.message;
+    // }
 
     EXPECT_GT(analysis_result.exit_mach, 1.0);
 
@@ -653,12 +658,15 @@ TEST(MocAnalysis, AxiRoundTrip) {
     // See the comment in MocAnalysis.PlanarRoundTrip: a faceted-wall reflection
     // accuracy limitation in the analysis kernel (Phase 2 scope, not fixed here)
     // can leave converged == false. Skip rather than mask it.
-    if (!result.converged) {
-        GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
-                        "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
-                     << to_string(result.failure.code)
-                     << " -- " << result.failure.message;
-    }
+    EXPECT_TRUE(result.converged) << "Analysis did not converge: "
+        << to_string(result.failure.code)
+        << " -- " << result.failure.message;
+    // if (!result.converged) {
+    //     GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
+    //                     "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
+    //                  << to_string(result.failure.code)
+    //                  << " -- " << result.failure.message;
+    // }
 
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_NEAR(result.exit_mach, design_result.exit_mach, 0.1)
