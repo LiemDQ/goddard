@@ -40,12 +40,13 @@ double to_radians(double deg) {
 
 NozzleProfile NozzleProfile::generate_conical_nozzle(
     double area_ratio, 
+    double r_expansion_curve,
     double r_throat, 
-    double angle, 
+    double theta_n, 
     size_t n_points)
 {
     NozzleProfile profile;
-    if (angle <= 0.0 || angle >= 90.0 ) {
+    if (theta_n <= 0.0 || theta_n >= 90.0 ) {
         throw std::invalid_argument("Specified angle must be between 0 and 90 degrees.");
     }
     if (area_ratio <= 1.0) {
@@ -54,9 +55,10 @@ NozzleProfile NozzleProfile::generate_conical_nozzle(
     if (r_throat <= 0.0) {
         throw std::invalid_argument("Throat radius must be positive.");
     }
-    double rad = to_radians(angle);
+    double rad = to_radians(theta_n);
     double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
     double length = (r_exit-r_throat) / tan(rad);
+    profile.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_points);
     for (size_t i = 0; i < n_points; i++) {
         double frac = static_cast<double>(i) / (n_points - 1);
         double x = length * frac;
@@ -152,13 +154,8 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     double mid_y = (slope_n*mid_e_intercept - slope_e*mid_n_intercept)/(slope_n - slope_e);
     // size_t i = 0;
     //Generate expansion curve
-    for (size_t i = 0; i < n_points; i++) {
-        double frac = static_cast<double>(i) / (n_points - 1);
-        double theta = frac*(theta_exp_rad - to_radians(-90.0)) + to_radians(-90.0);
-        double x = r_expansion_curve*r_throat*cos(theta);
-        double r = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
-        profile.push_back({x,r});
-    }
+    profile.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_points/2);
+
     // Start at i = 1: frac = 0 (i = 0) reproduces (n_x, n_y) exactly, which the
     // throat-arc loop above already pushed as its last point. Including it again
     // would create a zero-length segment at the junction (NaN slopes in slope_at_idx).
@@ -170,6 +167,15 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
         profile.push_back({x,r});
     }
     return profile;
+}
+
+NozzleProfile NozzleProfile::generate_throat_expansion_curve(
+        double theta_n, double r_expansion_curve, 
+        double r_throat, size_t n_points = 50)
+{
+    NozzleProfile nozzle;
+    nozzle.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_points);
+    return nozzle;
 }
 
 
@@ -329,6 +335,22 @@ size_t NozzleProfile::find_index(double x_query) const {
             std::format("Queried x: {} larger than nozzle profile (xmax = {})", x_query,  x_max())
         );
     return x.size() - 1;
+}
+
+void NozzleProfile::populate_throat_expansion_curve(
+    double theta_n, double r_expansion_curve, 
+    double r_throat, size_t n_points) {
+
+    double theta_exp_rad = to_radians(theta_n - 90.0);
+    //Generate expansion curve
+    for (size_t i = 0; i < n_points; i++) {
+        double frac = static_cast<double>(i) / (n_points - 1);
+        
+        double theta = frac*(theta_exp_rad - to_radians(-90.0)) + to_radians(-90.0);
+        double x = r_expansion_curve*r_throat*cos(theta);
+        double r = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
+        push_back({x,r});
+    }
 }
 
 } // namespace Goddard

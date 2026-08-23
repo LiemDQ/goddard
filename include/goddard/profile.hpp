@@ -65,8 +65,9 @@ public:
      * @param n_points Number of points in the profile. 
      */
     static NozzleProfile generate_conical_nozzle(
-        double area_ratio, double r_throat = 1.0,  
-        double angle = 15.0, size_t n_points = 50);
+        double area_ratio, double r_expansion_curve,
+        double r_throat = 1.0, double angle = 15.0, 
+        size_t n_points = 50);
 
     /**
      * Generate a thrust-optimized parabolic (TOP) nozzle based on the approximations 
@@ -108,10 +109,25 @@ public:
         double r_throat = 1.0, double length_frac = 0.8,
         size_t n_points = 50);
 
+    static NozzleProfile generate_throat_expansion_curve(
+        double theta_n, double r_expansion_curve, 
+        double r_throat, size_t n_points = 50);
+        
+
     void save_profile_csv(const std::string& filename);
 
 private: 
     size_t find_index(double x_query) const;
+    
+    /**
+     * Populate profile with expansion curve from the throat, taking into account
+     * curvature radius at the throat.
+     * 
+     * @warning Appends to the existing profile!
+     */
+    void populate_throat_expansion_curve(
+        double theta_n, double r_expansion_curve, 
+        double r_throat, size_t n_points = 50);
 };
 
 } // namespace Goddard
