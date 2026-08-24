@@ -55,15 +55,39 @@ NozzleProfile NozzleProfile::generate_conical_nozzle(
     if (r_throat <= 0.0) {
         throw std::invalid_argument("Throat radius must be positive.");
     }
-    double rad = to_radians(theta_n);
-    double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
-    double length = (r_exit-r_throat) / tan(rad);
-    profile.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_points);
-    for (size_t i = 0; i < n_points; i++) {
-        double frac = static_cast<double>(i) / (n_points - 1);
-        double x = length * frac;
-        double r = r_throat + (r_exit - r_throat) * frac;
-        profile.push_back({x,r});
+    if (r_expansion_curve < 0.0) {
+        throw std::invalid_argument(
+            "Throat expansion curve radius must be non-negative (0 for a sharp throat corner).");
+    }
+    if (n_points < 2) {
+        throw std::invalid_argument("Profile must have at least two points.");
+    }
+
+    const double rad = to_radians(theta_n);
+    const double r_exit = std::sqrt(area_ratio)*r_throat;
+
+    // Generate the throat expansion arc. The conic line extends from it 
+    // tangential to the curve.
+    const size_t n_arc = (r_expansion_curve > 0.0) ? n_points/2 : 0;
+    if (n_arc >= 2) {
+        profile.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_arc);
+    }
+
+    const bool has_arc = profile.size() >= 2;
+    const double x_n = has_arc ? profile.x.back() : 0.0;
+    const double r_n = has_arc ? profile.y.back() : r_throat;
+    if (r_n >= r_exit) {
+        throw std::invalid_argument(
+            "Throat expansion curve radius is too large: the arc alone exceeds the exit radius.");
+    }
+
+    const size_t n_cone = n_points - profile.size();
+    const double cone_length = (r_exit - r_n) / tan(rad);
+    // Skip frac = 0 when an arc precedes: it reproduces the arc's last point exactly, and a
+    // zero-length segment gives NaN slopes in slope_at_idx.
+    for (size_t i = has_arc ? 1 : 0; i <= n_cone; i++) {
+        const double frac = static_cast<double>(i) / static_cast<double>(n_cone);
+        profile.push_back({x_n + cone_length * frac, r_n + (r_exit - r_n) * frac});
     }
     return profile;
 }
@@ -171,7 +195,7 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
 
 NozzleProfile NozzleProfile::generate_throat_expansion_curve(
         double theta_n, double r_expansion_curve, 
-        double r_throat, size_t n_points = 50)
+        double r_throat, size_t n_points)
 {
     NozzleProfile nozzle;
     nozzle.populate_throat_expansion_curve(theta_n, r_expansion_curve, r_throat, n_points);

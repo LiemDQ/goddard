@@ -34,16 +34,22 @@ bool all_finite_over_profile(const NozzleProfile& profile, int n_samples) {
 // ============================================================
 
 TEST(ConicalNozzleValidationTest, InvalidAngleThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 1.0, 0.0, 50), std::invalid_argument);
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 1.0, 90.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 0.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 90.0, 50), std::invalid_argument);
 }
 
 TEST(ConicalNozzleValidationTest, InvalidAreaRatioThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(1.0, 1.0, 15.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(1.0, 0.0, 1.0, 15.0, 50), std::invalid_argument);
 }
 
 TEST(ConicalNozzleValidationTest, InvalidThroatRadiusThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 15.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 0.0, 15.0, 50), std::invalid_argument);
+}
+
+TEST(ConicalNozzleValidationTest, InvalidExpansionCurveRadiusThrows) {
+    // r_expansion_curve is a radius (in throat radii) and must be non-negative;
+    // 0 is the valid sharp-corner case, so only negative values should throw.
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, -1.0, 1.0, 15.0, 50), std::invalid_argument);
 }
 
 TEST(BezierNozzleValidationTest, InvalidLengthFracThrows) {
@@ -87,14 +93,14 @@ TEST(RaoTopNozzleValidationTest, InvalidThroatRadiusThrows) {
 // ============================================================
 
 TEST(ConicalNozzleTest, XCoordinatesMonotonicIncreasing) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GT(profile.at(i).first, profile.at(i - 1).first) << "at index " << i;
     }
 }
 
 TEST(ConicalNozzleTest, RadiusNonDecreasing) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GE(profile.at(i).second, profile.at(i - 1).second) << "at index " << i;
     }
@@ -104,13 +110,46 @@ TEST(ConicalNozzleTest, AreaRatioMatchesRequested) {
     // Regression for Bug 6: NozzleProfile::find_index used to always throw for a
     // query at or beyond the last point, breaking radius_at(x_max()) exactly.
     double area_ratio = 20.0;
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(area_ratio, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.0, 1.0, 15.0, 50);
     EXPECT_NEAR(recovered_area_ratio(profile, 1.0), area_ratio, max_fp_error(area_ratio, 1e-9, 1e-9));
 }
 
 TEST(ConicalNozzleTest, HalfAngleMatchesSpecifiedAngle) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
     EXPECT_NEAR(profile.max_theta(), 15.0 * DEG, 1e-9);
+}
+
+// ============================================================
+// Conical nozzle throat-arc geometry (r_expansion_curve > 0)
+// ============================================================
+
+TEST(ConicalNozzleTest, ThroatArcLeavesTangentToConicalSection) {
+    // area_ratio=4.0, r_expansion_curve=0.382 (the Kliegel-Levine default
+    // curvature radius), r_throat=1.0, angle=15deg, n_points=10.
+    // Geometry independently verified by hand and by debug_probes/profile_check.cpp:
+    // the arc's last point (index n_points/2 - 1 = 4) is (0.098869, 1.013016),
+    // and the exit (index 9) is (3.782342, 2.000000).
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0, 10);
+
+    ASSERT_EQ(profile.size(), 10u);
+
+    for (size_t i = 1; i < profile.size(); i++) {
+        EXPECT_GT(profile.at(i).first, profile.at(i - 1).first) << "at index " << i;
+    }
+
+    double y_exit = profile.at(profile.size() - 1).second;
+    EXPECT_NEAR(y_exit, std::sqrt(4.0) * 1.0, 1e-9);
+
+    // n_arc = n_points/2 = 5 points (indices 0..4) form the throat arc; the cone
+    // proper starts at index 5. The cone section is parametrized as a straight
+    // line anchored at the arc's endpoint, so this departure segment's slope must
+    // equal tan(angle) exactly -- a mismatch would mean the cone continues at the
+    // wrong angle (e.g. a degrees/radians mixup) rather than tangentially from
+    // where the arc left off.
+    auto [x_arc_end, y_arc_end] = profile.at(4);
+    auto [x_cone_next, y_cone_next] = profile.at(5);
+    double departure_slope = (y_cone_next - y_arc_end) / (x_cone_next - x_arc_end);
+    EXPECT_NEAR(departure_slope, std::tan(15.0 * DEG), 1e-9);
 }
 
 // ============================================================
