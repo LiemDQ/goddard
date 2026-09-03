@@ -249,6 +249,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
             const double theta_series_wall = wall_point.theta;
             const double theta_wall = wall_profile.theta_at(wall_point.x);
             const double miss = std::abs(theta_series_wall - theta_wall);
+            last_wall_bc_residual =
+                (theta_wall != 0.0) ? (1.0 - theta_series_wall / theta_wall) : 0.0;
 
             if (miss > m_options.kl_max_wall_angle_error) {
                 if (m_options.start_line == MocStartLine::AUTO) {
@@ -476,12 +478,6 @@ double MocInitialization::KL_solve_transonic_x(double y, double gamma, double R,
     }
 
     throw ConvergenceError("Newton's method for transonic line x-coordinate failed to converge.", max_iters, tol);
-}
-
-double MocInitialization::kl_series_theta(double x, double y, double gamma, double R) const {
-    const double u_star = KL_xMach(y, KL_z_coordinate(x, gamma), gamma, R);
-    const double v_star = KL_yMach(x, y, gamma, R);
-    return std::atan2(v_star, u_star);
 }
 
 } // namespace Goddard

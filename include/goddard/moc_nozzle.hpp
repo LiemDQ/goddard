@@ -431,6 +431,9 @@ protected:
     // Set once per march when a front segment is found already non-spacelike, so the
     // warning that mesh control engaged too late is reported but not repeated per pass.
     bool m_warned_non_spacelike = false;
+    // Raw wall-boundary-condition residual of the Kliegel-Levine start line, copied from
+    // the initializer for MocInitDiagnostics::wall_bc_residual. Reset by solve().
+    double m_init_wall_bc_residual = 0.0;
     std::optional<Gas> m_gas;
     std::vector<double> m_theta_schedule;
 

@@ -67,6 +67,7 @@ MocResult MocNozzle::solve() {
     m_reference_spacing = 0.0;
     m_throat_radius = 1.0;
     m_warned_non_spacelike = false;
+    m_init_wall_bc_residual = 0.0;
 
     CharacteristicNet net;
     std::vector<CharacteristicPoint> data_line;
@@ -483,6 +484,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                     // non-collinear line is actually seeded into the net without that
                     // re-marching.
                     data_line = initializer->initialize_kliegel_levine(throat);
+                    m_init_wall_bc_residual = initializer->last_wall_bc_residual;
                 }
                 catch (const KlWallAngleFallback& e) {
                     // MocOptions::start_line was AUTO (a forced KLIEGEL_LEVINE throws
@@ -2304,36 +2306,11 @@ MocInitDiagnostics MocNozzle::record_init_diagnostics(
         diag.wall_gap_over_spacing = diag.wall_gap / spacing;
         diag.wall_theta_mismatch = std::abs(wall_pt.theta - wall.theta_at(wall_pt.x));
 
-        // How far the raw (pre-correction) series missed this wall angle, recomputed from
-        // the finished line's own (x, y): initialize_kliegel_levine's wall-consistency
-        // correction already overwrote wall_pt.theta above with a value matching
-        // wall.theta_at(wall_pt.x) closely (that is what wall_theta_mismatch just measured
-        // as ~0), so the pre-correction value cannot be read off data_line and is
-        // re-evaluated from the series instead. Perfect-gas only: the series needs a
-        // scalar gamma, and only that chemistry carries one (m_options.gamma)
-        // independently of the throat solve this function has no access to.
-        if (diag.start_line_used == MocStartLine::KLIEGEL_LEVINE &&
-            m_options.chemistry == GasChemistry::PERFECT_GAS &&
-            m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
-            m_options.geometry.throat_radius > 0.0)
-        {
-            const double R = m_options.geometry.downstream_wall_curvature_radius
-                           / m_options.geometry.throat_radius;
-            PrandtlMeyerTable dummy_table; // unused: PERFECT_GAS never touches it
-            ThermodynamicContext probe_thermo{
-                .gas = std::nullopt,
-                .table = dummy_table,
-                .T_ref = m_T_ref,
-                .P_ref = m_P_ref,
-                .gamma_s = m_options.gamma,
-            };
-            MocInitialization probe(m_options.geometry, probe_thermo, m_options);
-            const double theta_series_wall =
-                probe.kl_series_theta(wall_pt.x, wall_pt.y, m_options.gamma, R);
-            const double theta_wall_contour = wall.theta_at(wall_pt.x);
-            diag.wall_bc_residual = (theta_wall_contour != 0.0)
-                ? (1.0 - theta_series_wall / theta_wall_contour)
-                : 0.0;
+        // How far the raw (pre-correction) series missed this wall angle. The correction
+        // has already overwritten wall_pt.theta (which is why wall_theta_mismatch above is
+        // ~0), so the value comes from the initializer, which measured it before correcting.
+        if (diag.start_line_used == MocStartLine::KLIEGEL_LEVINE) {
+            diag.wall_bc_residual = m_init_wall_bc_residual;
         }
 
         // Distance to the sharpest slope break on the contour. A conical profile's arc runs

@@ -294,7 +294,7 @@ static MocResult solve_conical_kl_analysis(
     // (see KliegelLevineInitialization.ForcedSeriesFailsHonestlyBelowThreshold for that
     // failure mode with a threshold tight enough to trigger it).
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
-    opts.kl_max_wall_angle_error = 0.2;
+    opts.kl_max_wall_angle_error = 0.2; // below the 0.25 default; kept explicit so the helper is independent of it
     if (disable_mesh_control) {
         opts.max_front_spacing_factor = 1e9;
         opts.min_front_spacing_factor = 1e-9;

@@ -62,22 +62,15 @@ class MocInitialization {
      */
     std::vector<CharacteristicPoint> initialize_centered_expansion(const ThroatCondition& throat);
 
-    /**
-     * The raw (uncorrected) Kliegel-Levine series flow angle theta = atan2(v*, u*) at a
-     * station (x, y), before initialize_kliegel_levine()'s wall-consistency correction.
-     *
-     * Public -- unlike the KL_* kernel functions -- because MocNozzle::record_init_diagnostics
-     * needs to recompute this from the finished data line's own (x, y): the correction
-     * overwrites theta on the line itself, so the pre-correction value cannot be read back
-     * from the returned points, only re-evaluated from the series.
-     *
-     * @param x, y Station coordinates, in throat radii.
-     * @param gamma Ratio of specific heats.
-     * @param R Downstream curvature ratio (curvature radius / throat radius).
-     */
-    double kl_series_theta(double x, double y, double gamma, double R) const;
-
     NozzleGeometry geometry;
+
+    /**
+     * 1 - theta_series/theta_wall at the wall end of the last initialize_kliegel_levine()
+     * call, measured on the raw series before the wall-consistency correction. Zero when
+     * no contour was available to measure against. Read by MocNozzle for
+     * MocInitDiagnostics::wall_bc_residual.
+     */
+    double last_wall_bc_residual = 0.0;
 
     protected:
     inline double delta() const {

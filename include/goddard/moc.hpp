@@ -152,9 +152,19 @@ struct MocOptions {
     /** Which initial data line to build; see MocStartLine. */
     MocStartLine start_line = MocStartLine::AUTO;
 
-    /** Largest |theta_series - theta_wall| (rad) at the KL line's wall end before the
-     *  series is judged untrustworthy there. Default 0.035 (2 deg). */
-    double kl_max_wall_angle_error = 0.035;
+    /**
+     * Largest |theta_series - theta_wall| (rad) at the Kliegel-Levine line's wall end for
+     * which the line is still corrected to the contour (a multiplicative rescaling of the
+     * flow angle, see MocInitialization::initialize_kliegel_levine). Above it AUTO falls
+     * back to the centered fan and a forced KLIEGEL_LEVINE fails with INITIALIZATION_FAILED.
+     *
+     * Default 0.25 rad (14 deg). The default throat (r_arc = 0.382) misses by 0.145 rad, and
+     * the corrected line is measurably better there than the fan: monotone wall Mach, 1%
+     * start-line mass-flow error against the fan's 46%, and higher coverage on the Rao
+     * contour. The threshold exists to catch a series that is not describing the throat at
+     * all, not to reject the correction where it works.
+     */
+    double kl_max_wall_angle_error = 0.25;
 
     /**
      * Upper bound on marching-front point spacing, as a multiple of the local target
@@ -420,9 +430,7 @@ struct MocInitDiagnostics {
      * How far the raw (uncorrected) Kliegel-Levine series missed its own wall boundary
      * condition at the data line's wall end: 1 - theta_series/theta_wall, measured before
      * initialize_kliegel_levine's wall-consistency correction is applied. Zero for the
-     * centered fan (no series to miss) and when the chemistry is not PERFECT_GAS (the
-     * series needs a scalar gamma that only the perfect-gas path carries independently
-     * of the throat solve).
+     * centered fan (no series to miss).
      */
     double wall_bc_residual = 0.0;
 
