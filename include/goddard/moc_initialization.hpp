@@ -53,6 +53,24 @@ class MocInitialization {
         else return 0.0;
     }
 
+    /**
+     * Set a start-line point's thermodynamic state from a critical velocity ratio.
+     *
+     * Every transonic series solution used here (Sauer, Hall, Kliegel-Levine) is posed in
+     * M* = V/a*, the velocity normalized by the *critical* speed of sound, not in the Mach
+     * number. The two coincide only at M = 1, so the conversion is not optional: at
+     * M* = 1.42 the Mach number is 1.59, and the resulting Mach angle differs by nearly six
+     * degrees. Because the discrepancy grows with speed, and a transonic line is near-sonic
+     * at the axis and fastest at the wall, skipping it biases the wall end far more than
+     * the axis end -- a start-line error that no amount of grid refinement reduces.
+     *
+     * @param pt Point to update in place; its state is filled from the speed.
+     * @param m_star Critical velocity ratio V/a* at the point.
+     * @param throat Throat conditions, for the real-gas speed of sound.
+     */
+    void set_state_from_critical_velocity_ratio(
+        CharacteristicPoint& pt, double m_star, const ThroatCondition& throat);
+
     inline double sauer_alpha(double gamma) const {
         // Dimensionless (throat-radius units): uses the curvature ratio R = R_c / r_t.
         return std::sqrt((1 + delta())/((gamma+1)*KL_R()));

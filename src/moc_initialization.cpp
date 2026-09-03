@@ -1,3 +1,5 @@
+#include <algorithm>
+#include "goddard/gas_dynamics.hpp"
 #include "goddard/moc_initialization.hpp"
 
 namespace Goddard {
@@ -16,6 +18,27 @@ MocInitialization::MocInitialization(
 
 }
 
+void MocInitialization::set_state_from_critical_velocity_ratio(
+    CharacteristicPoint& pt, double m_star, const ThroatCondition& throat)
+{
+    GasChemistry chemistry = m_thermo.gas.has_value()
+        ? m_thermo.gas->chemistry
+        : GasChemistry::PERFECT_GAS;
+
+    if (chemistry == GasChemistry::PERFECT_GAS) {
+        // The perfect-gas path keeps velocity dimensionless and equal to the Mach number,
+        // so the conversion has to happen here rather than being folded into a velocity.
+        pt.update_thermodynamic_state_from_mach(
+            m_thermo, mach_from_critical_velocity_ratio(m_star, throat.gamma_s));
+        return;
+    }
+
+    // For a real gas the M*<->M algebra is not available in closed form, but its defining
+    // relation is: a* is the throat speed of sound, so V follows directly and the
+    // PrandtlMeyerTable can be looked up by velocity.
+    pt.update_thermodynamic_state_from_V(m_thermo, m_star * throat.speed_of_sound);
+}
+
 std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const ThroatCondition& throat) {
     
     // predictor step: assume gamma is constant throughout
@@ -32,8 +55,12 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const Throa
         pt.y = dy * i;
         pt.x = (gamma + 1)*alpha/(2*(3+delta()))*(1.0 - pt.y*pt.y);
         pt.theta = 0.0; // by definition
-        double machx = 1+alpha*pt.x + (gamma+1)*alpha*alpha*pt.y*pt.y/(2*(1+delt));
-        pt.update_thermodynamic_state_from_mach(m_thermo, machx);
+        // Sauer's series, like Hall's and Kliegel-Levine's, gives the axial velocity
+        // normalized by the critical speed of sound: this is u/a* = M*, not the Mach
+        // number. On the transonic line the radial component vanishes by construction,
+        // so the magnitude is the axial component alone.
+        double u_star = 1+alpha*pt.x + (gamma+1)*alpha*alpha*pt.y*pt.y/(2*(1+delt));
+        set_state_from_critical_velocity_ratio(pt, u_star, throat);
         pt.update_Ks();
     }
 
@@ -45,7 +72,6 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const Throa
 std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(const ThroatCondition& throat) {
     double gamma = throat.gamma_s;
     size_t num_points = static_cast<size_t>(m_options.num_characteristics);
-    double dy = 1.0/(num_points-1);
     double R = KL_R();
     double alpha = sauer_alpha(gamma);
 
@@ -54,29 +80,153 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     // and CharacteristicNet::add_initial_data_line's nullopt branch).
     const double x_shift = m_options.initial_line_axial_shift;
 
-    std::vector<CharacteristicPoint> points(num_points);
-    for (size_t i = 0; i < num_points; i++) {
-        CharacteristicPoint& pt = points[i];
-        pt.y = dy * i;
-        double x_guess = (gamma + 1)*alpha/(2*(3+delta()))*(1.0 - pt.y*pt.y); //Sauer transonic x-coordinate
+    auto station_x = [&](double y) {
+        double x_guess = (gamma + 1)*alpha/(2*(3+delta()))*(1.0 - y*y); //Sauer transonic x-coordinate
+        return KL_solve_transonic_x(y, gamma, R, x_guess) + x_shift;
+    };
 
-        double x_sonic = KL_solve_transonic_x(pt.y, gamma, R, x_guess);
-        pt.x = x_sonic + x_shift;
-        double machx = KL_xMach(pt.y, KL_z_coordinate(pt.x, gamma), gamma, R);
-        // Off the sonic locus, the radial velocity component (KL_yMach) is
-        // generally nonzero, so theta can no longer be pinned to 0. Both machx and
-        // the KL_yMach series are normalized velocity-like quantities (by a*), so
-        // their ratio gives the flow angle to the same order as the series itself.
-        double v = KL_yMach(pt.x, pt.y, gamma, R);
-        pt.theta = std::atan2(v, machx);
-        pt.update_thermodynamic_state_from_mach(m_thermo, machx);
-        pt.update_Ks();
+    // Where the start line meets the prescribed wall.
+    //
+    // The line is the sonic locus translated rigidly downstream, so its top station sits at
+    // some x > 0 -- where the wall has already expanded past the throat radius. Pinning that
+    // station at y = throat_radius therefore places it *inside* the flow, yet
+    // CharacteristicNet::add_initial_data_line registers it as the wall point regardless, so
+    // the wall march begins off the wall with an uninitialized sliver above the line. The
+    // gap is geometric and fixed, so refining the grid shrinks the cells around an error
+    // that does not shrink with them.
+    //
+    // Solve y = wall_radius(station_x(y)) instead. The fixed point converges quickly because
+    // station_x varies weakly with y near the wall and the contour's slope is bounded. The
+    // KL series is evaluated at r slightly greater than 1 in the process, which is correct
+    // rather than an extrapolation: the throat arc's own wall lies at r > 1 for x > 0.
+    const NozzleProfile& wall_profile = m_options.nozzle_profile;
+    double y_wall = 1.0;
+    if (wall_profile.size() >= 2) {
+        for (int iteration = 0; iteration < 10; iteration++) {
+            const double x_station = station_x(y_wall);
+            if (!(x_station >= wall_profile.x_min() && x_station <= wall_profile.x_max())) break;
+            const double y_next = wall_profile.radius_at(x_station);
+            if (!(y_next > 0.0) || !std::isfinite(y_next)) break;
+            const double delta_y = std::abs(y_next - y_wall);
+            y_wall = y_next;
+            if (delta_y < 1e-12) break;
+        }
     }
+
+    auto evaluate = [&](double y) {
+        CharacteristicPoint pt{};
+        pt.y = y;
+        pt.x = station_x(y);
+        // Both series are velocity components normalized by the *critical* speed of sound
+        // a*, i.e. they are the components of M* = V/a*, not of the Mach number. See
+        // Kliegel & Levine Eqs. (10) and (12), which these reduce to at the throat plane
+        // and which the paper states for u/a*.
+        const double u_star = KL_xMach(y, KL_z_coordinate(pt.x, gamma), gamma, R);
+        // Off the sonic locus, the radial velocity component (KL_yMach) is
+        // generally nonzero, so theta can no longer be pinned to 0. Both series are
+        // normalized by the same a*, so their ratio gives the flow angle directly.
+        const double v_star = KL_yMach(pt.x, y, gamma, R);
+        pt.theta = std::atan2(v_star, u_star);
+        set_state_from_critical_velocity_ratio(pt, std::hypot(u_star, v_star), throat);
+        pt.update_Ks();
+        return pt;
+    };
+
+    // Axial station at which the C- leaving height y reaches the axis, on a straight-ray
+    // estimate. This -- not y -- is the coordinate the start line must be uniform in.
+    //
+    // Spacing points uniformly in y spaces their characteristics ~7x non-uniformly here,
+    // because the near-axis region is a double zero: y -> 0 and cot(mu) -> 0 together (the
+    // start line is near-sonic on the axis, so mu -> 90 deg). The C- from the lower third of
+    // the line therefore all arrive within a few percent of a throat radius of each other,
+    // the axis consumes them almost at once, and thereafter is resupplied only by wall
+    // reflections -- so its point spacing jumps by an order of magnitude and the marching
+    // front shears until pairing breaks down. The ratio is set by the flow, not the mesh, so
+    // it is *independent of num_characteristics*: refining the grid halves every gap and
+    // leaves the grading (measured 6.2 to 7.2 for N = 8 to 61) intact. That is why grid
+    // refinement never cured the axisymmetric breakdown.
+    auto axis_arrival = [&](double y) {
+        const double x = station_x(y);
+        const double u_star = KL_xMach(y, KL_z_coordinate(x, gamma), gamma, R);
+        const double v_star = KL_yMach(x, y, gamma, R);
+        const double mach = mach_from_critical_velocity_ratio(std::hypot(u_star, v_star), gamma);
+        if (!(mach > 1.0)) return x;   // still sonic: the C- is vertical, it arrives at x
+        const double theta = std::atan2(v_star, u_star);
+        const double slope = std::tan(theta - mach_to_mu(mach));
+        if (std::abs(slope) < 1e-12) return x;
+        return x + y / std::abs(slope);
+    };
+
+    // Tabulate the arrival map once, then invert it by interpolation: far cheaper than a
+    // root solve per point, and it makes the monotonicity check free.
+    constexpr size_t table_size = 201;
+    std::vector<double> y_table(table_size), arrival_table(table_size);
+    bool monotone = true;
+    for (size_t k = 0; k < table_size; k++) {
+        y_table[k] = static_cast<double>(k) / static_cast<double>(table_size - 1);
+        arrival_table[k] = axis_arrival(y_table[k]);
+        if (k > 0 && !(arrival_table[k] > arrival_table[k - 1])) monotone = false;
+    }
+
+    std::vector<CharacteristicPoint> points(num_points);
+    const double last = static_cast<double>(num_points - 1);
+
+    for (size_t i = 0; i < num_points; i++) {
+        double y;
+        // Interior branches produce a normalized station in [0,1]; the two anchors are
+        // written in normalized terms too so the single scaling below covers every case.
+        if (i == 0) {
+            y = 0.0;                       // anchor the axis point exactly
+        }
+        else if (i == num_points - 1) {
+            y = 1.0;                       // anchor the wall point on the contour
+        }
+        else if (!monotone) {
+            // The arrival map should be monotone for any physical throat; if the series is
+            // being evaluated somewhere it is not, fall back to a uniform line rather than
+            // producing a scrambled start line.
+            y = static_cast<double>(i) / last;
+        }
+        else {
+            const double target = arrival_table.front()
+                + (arrival_table.back() - arrival_table.front()) * static_cast<double>(i) / last;
+            const size_t k = static_cast<size_t>(
+                std::lower_bound(arrival_table.begin(), arrival_table.end(), target)
+                - arrival_table.begin());
+            const size_t hi = std::clamp<size_t>(k, 1, table_size - 1);
+            const double a0 = arrival_table[hi - 1], a1 = arrival_table[hi];
+            const double w = (a1 > a0) ? (target - a0) / (a1 - a0) : 0.0;
+            const double y_arrival = y_table[hi - 1] + w * (y_table[hi] - y_table[hi - 1]);
+            const double y_uniform = static_cast<double>(i) / last;
+            const double c = m_options.initial_line_clustering;
+            // c < 0 pushes points toward the axis (y_arrival > y_uniform everywhere), c > 0
+            // toward the wall. Clamped so the line stays inside the throat and ordered.
+            y = std::clamp((1.0 - c) * y_uniform + c * y_arrival, 1e-6, 1.0 - 1e-6);
+        }
+        // The interior stations are laid out on the unit interval; stretch them onto the
+        // line's actual span so they stay evenly distributed when the wall end moves.
+        points[i] = evaluate(y * y_wall);
+    }
+
+    // The wall point keeps the flow angle the series gives it, and is deliberately *not*
+    // overwritten with the contour's own angle. Forcing tangency there was tried and
+    // measured: it leaves AR >= 4 unchanged and regresses AR = 2 from full coverage to a
+    // PM inversion failure at N = 31. The reason is that a large shift on a sharply curved
+    // throat puts the line's wall end downstream of the throat arc -- with the default
+    // r_arc = 0.382 and a 15 degree cone the arc ends at x = 0.0989 and the default shift
+    // is 0.1 -- so the contour there is the straight cone at 15 degrees while the transonic
+    // solution is still turning through about 5.5. Overwriting the angle imposes that 9.5
+    // degree jump on one end of the start line; keeping the series' own value leaves the
+    // line self-consistent and lets the wall solve turn the flow over its first few steps.
+    //
+    // MocInitDiagnostics::wall_theta_mismatch reports the disagreement, which is the signal
+    // that the start line has been placed outside the region the series describes.
 
     //TODO: corrector step with updated gamma
 
     return points;
 }
+
 
 std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansion(const ThroatCondition& throat) {
     size_t num_points = static_cast<size_t>(m_options.num_characteristics);
