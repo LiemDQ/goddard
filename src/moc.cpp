@@ -151,6 +151,25 @@ void validate_moc_options(const MocOptions& options) {
         throw std::invalid_argument(std::format(
             "solver_options.abstol must be positive; got {}.", options.solver_options.abstol));
     }
+    if (options.march_scheme == MocMarchScheme::INVERSE &&
+        options.mode == MocMode::DESIGN_MIN_LENGTH) {
+        throw std::invalid_argument(
+            "MocMarchScheme::INVERSE cannot be used with MocMode::DESIGN_MIN_LENGTH: a "
+            "minimum-length contour is defined by the characteristics the DIRECT kernel "
+            "absorbs at the wall, which INVERSE's prescribed fronts cannot reproduce.");
+    }
+    if (!(options.inverse_cfl > 0.0 && options.inverse_cfl <= 1.0)) {
+        throw std::invalid_argument(std::format(
+            "inverse_cfl must lie in (0, 1]; got {}.", options.inverse_cfl));
+    }
+    if (!(options.front_tilt_decay >= 0.0 && options.front_tilt_decay <= 1.0)) {
+        throw std::invalid_argument(std::format(
+            "front_tilt_decay must lie in [0, 1]; got {}.", options.front_tilt_decay));
+    }
+    if (!(options.max_wall_turn_per_step > 0.0)) {
+        throw std::invalid_argument(std::format(
+            "max_wall_turn_per_step must be positive; got {}.", options.max_wall_turn_per_step));
+    }
 }
 
 ThrustCoefficient compute_thrust_coefficient(

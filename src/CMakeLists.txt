@@ -25,6 +25,7 @@ add_library(
   moc.cpp
   moc_initialization.cpp
   moc_nozzle.cpp
+  moc_inverse_march.cpp
   shocks.cpp
   profile.cpp
   kinetic_nozzle.cpp

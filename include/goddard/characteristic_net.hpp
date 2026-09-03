@@ -86,6 +86,14 @@ class CharacteristicNet {
     /** Radial coordinates of the wall points, in length units. */
     std::vector<double> wall_y;
 
+    /**
+     * Inverse march only (MocMarchScheme::INVERSE): point indices of every marching front,
+     * axis to wall, in order. `fronts.front()` is the initial front F_0 and `fronts.back()`
+     * is the exit plane once the march has completed. Empty for the DIRECT kernel, which
+     * has no synchronized front -- its topology lives entirely in `c_chains`.
+     */
+    std::vector<std::vector<size_t>> fronts;
+
     /** True when the net holds no points at all. */
     bool empty() const;
 

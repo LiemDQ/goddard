@@ -47,6 +47,38 @@ enum class MocLogLevel {
 };
 
 /**
+ * Which marching kernel solve() uses to advance the characteristic net.
+ *
+ * DIRECT is the original chain-pairing kernel (MocNozzle::solve_characteristic_kernel):
+ * it advances a front of chain leading edges by pairing neighbours, and its two
+ * characteristic families keep the densities they were seeded with. INVERSE
+ * (MocNozzle::solve_inverse_characteristic_kernel) instead prescribes every point of
+ * every marching front and traces its two characteristics back to the previous front,
+ * so both families are represented at the same density everywhere and the wall is
+ * sampled at every step -- see instructions/moc_fix/B.md for the full algorithm.
+ */
+enum class MocMarchScheme {
+    AUTO,   ///< Selects INVERSE for axisymmetric ANALYSIS and DESIGN_RAO, DIRECT otherwise.
+            ///< MocMode::DESIGN_MIN_LENGTH always resolves to DIRECT regardless of this
+            ///< option's value, since its contour is defined by the characteristics DIRECT
+            ///< absorbs at the wall.
+    DIRECT, ///< Force the chain-pairing kernel.
+    INVERSE ///< Force the reference-plane marching kernel. Invalid with DESIGN_MIN_LENGTH.
+};
+
+/** What limited the length of the last inverse-march step (MocPassDiagnostics::step_limiter). */
+enum class MocStepLimiter {
+    NONE,      ///< No step has been taken yet.
+    CFL,       ///< Bounded by the domain-of-dependence CFL condition (MocOptions::inverse_cfl).
+    WALL_FOOT, ///< Bounded so the top interior point's C- foot stays below the previous wall point.
+    WALL_TURN, ///< Bounded by MocOptions::max_wall_turn_per_step on a curving contour.
+    EXIT       ///< Bounded by the distance remaining to the exit plane; the front this step builds is the last one.
+};
+
+/** Human-readable name for a MocStepLimiter, for log/diagnostic messages. */
+std::string_view to_string(MocStepLimiter limiter);
+
+/**
  * Throat and contour geometry the solver is anchored to.
  *
  * Lengths are expressed in whatever unit `throat_radius` is given in; the two curvature radii
@@ -209,6 +241,36 @@ struct MocOptions {
     size_t max_front_points = 0; ///< 0 selects the default, 4 * num_characteristics.
 
     NozzleProfile nozzle_profile; // wall geometry -- for analysis mode
+
+    /** Which marching kernel to use; see MocMarchScheme. */
+    MocMarchScheme march_scheme = MocMarchScheme::AUTO;
+
+    /**
+     * Inverse march only: fraction of the domain-of-dependence step taken each pass, in
+     * (0, 1]. The full domain-of-dependence step (cfl = 1) is the largest step for which
+     * every new front point's characteristics still trace back to a point strictly inside
+     * the previous front; a fraction below 1 leaves margin against the linearization error
+     * in that estimate.
+     */
+    double inverse_cfl = 0.8;
+
+    /**
+     * Inverse march only: largest change of wall angle tolerated per step, in radians.
+     * Caps the step length on a curving contour (e.g. a throat expansion arc) so the wall
+     * point sampling stays fine enough to resolve the turn.
+     */
+    double max_wall_turn_per_step = 0.0175;
+
+    /**
+     * Inverse march only: per-pass factor by which the marching front's axial tilt (the
+     * offset between its axis end and its wall end) relaxes toward a plane, in [0, 1].
+     *
+     * The initial front built from a Kliegel-Levine or centered-fan start line has its
+     * axis end downstream of its wall end; each subsequent front's tilt is this factor
+     * times the previous front's, so the shape relaxes toward a vertical (planar) front
+     * as the march proceeds away from the throat.
+     */
+    double front_tilt_decay = 0.9;
 };
 
 /**
@@ -294,6 +356,11 @@ struct MocPassDiagnostics {
     double front_wall_x = 0.0;          ///< x of the front's highest (nearest-wall) point.
     double front_axis_spacing = 0.0;    ///< Arc length of the bottom-most front segment.
     double front_wall_spacing = 0.0;    ///< Arc length of the top-most front segment.
+
+    /// Inverse march only: axial step length taken this pass. 0 for the DIRECT kernel.
+    double step_dx = 0.0;
+    /// Inverse march only: which limiter bound step_dx this pass; NONE for the DIRECT kernel.
+    MocStepLimiter step_limiter = MocStepLimiter::NONE;
 };
 
 /**
@@ -455,6 +522,9 @@ struct MocResult {
      */
     double exit_coverage = 0.0;
     /// Same-family characteristic crossings in the finished net; nonzero means coalescence.
+    /// Always zero for MocMarchScheme::INVERSE, which prescribes every front directly and
+    /// builds no characteristic chains (CharacteristicNet::c_chains) for this scan to see;
+    /// see CharacteristicNet::fronts for INVERSE's own mesh record.
     MocCrossings crossings;
 
     /// True when exit_coverage is within the (deliberately loose) staircase allowance.
