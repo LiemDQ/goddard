@@ -7,19 +7,46 @@
 
 namespace Goddard {
 
+/**
+ * Bookkeeping for one characteristic chain in a CharacteristicNet.
+ *
+ * A chain is a single characteristic line, stored as an ordered list of point indices. It is
+ * born at the initial data line or at a wall/axis reflection, and stops when it terminates.
+ */
 struct ChainMetadata {
+    /// False once the chain has terminated; only active chains are still marched.
     bool active = true;
+    /// How a chain stopped being marched.
     enum class TerminationType {
-        NOT_TERMINATED, WALL, AXIS, OUTFLOW, CORNER_FAN_ORIGIN
+        NOT_TERMINATED, WALL, AXIS, OUTFLOW, CORNER_FAN_ORIGIN,
+        // Retired by mesh control because the front crowded around it (see
+        // MocNozzle::control_front_spacing). Deliberately distinct from OUTFLOW: only
+        // OUTFLOW-terminated chains contribute to outflow_points(), so a merged chain
+        // must not be mistaken for one that reached the exit plane.
+        MERGED
     } termination = TerminationType::NOT_TERMINATED;
+    /// Which characteristic family the chain belongs to.
     enum class Family {
         UNSPECIFIED, PLUS, MINUS
     } family;
+    /// Index into CharacteristicNet::points of the chain's first point.
     size_t origin_point_idx;
-    size_t latest_point_idx; //indicates leading edge
+    /// Index into CharacteristicNet::points of the chain's leading (most downstream) point.
+    size_t latest_point_idx;
 };
 
-struct PointMembership {std::optional<size_t> c_plus_chain_idx; std::optional<size_t> c_minus_chain_idx; };
+/**
+ * The chains one point belongs to.
+ *
+ * An interior point lies on exactly one characteristic of each family, so it leads both. A wall,
+ * axis, or initial-line point may belong to only one.
+ */
+struct PointMembership {
+    /// Index into CharacteristicNet::c_chains of the C+ chain through this point, if any.
+    std::optional<size_t> c_plus_chain_idx;
+    /// Index into CharacteristicNet::c_chains of the C- chain through this point, if any.
+    std::optional<size_t> c_minus_chain_idx;
+};
 
 class CharacteristicNet {
 
@@ -27,28 +54,39 @@ class CharacteristicNet {
     using Family = ChainMetadata::Family;
     using TerminationType = ChainMetadata::TerminationType;
     
-    // Index is opaque; access via family chains
+    /**
+     * Every point in the net, in creation order. The index is opaque; the flow-field topology
+     * lives in `c_chains`, and the boundaries in `wall_point_indices`/`axis_point_indices`.
+     */
     std::vector<CharacteristicPoint> points;
 
     
-    // Each entry is the chain of point indices along one characteristic
-    // Note that wall and axis points terminate a chain, and also start the next chain
+    /**
+     * Each entry is the chain of point indices along one characteristic.
+     * Note that wall and axis points terminate a chain, and also start the next chain.
+     */
     std::vector<std::vector<size_t>> c_chains;
 
-    // Given a point index, which chains does it belong to?
-    // membership at index i describes point i
+    /**
+     * Given a point index, which chains does it belong to?
+     * `membership[i]` describes `points[i]`.
+     */
     std::vector<PointMembership> membership;
 
+    /** Metadata for each chain in `c_chains`, in the same order. */
     std::vector<ChainMetadata> chain_metadata;
     
-    // Wall and axis lists for boundary tracking
+    /** Indices into `points` of the points lying on the nozzle wall, in march order. */
     std::vector<size_t> wall_point_indices;
+    /** Indices into `points` of the points lying on the centerline, in march order. */
     std::vector<size_t> axis_point_indices;
 
-    // wall coordinates
+    /** Axial coordinates of the wall points, in length units. */
     std::vector<double> wall_x;
+    /** Radial coordinates of the wall points, in length units. */
     std::vector<double> wall_y;
 
+    /** True when the net holds no points at all. */
     bool empty() const;
 
     /**
@@ -137,6 +175,34 @@ class CharacteristicNet {
      */
     size_t terminate_c_plus_at_wall(size_t chain_idx, const CharacteristicPoint& pt);
 
+    /** Point index and the two chain indices created by insert_rung. */
+    struct InsertedRung { size_t point_idx; size_t c_plus_chain_idx; size_t c_minus_chain_idx; };
+
+    /** Insert a new mesh point into the marching front, owning a fresh chain of each family.
+     *
+     * Every interior point of the net is simultaneously the leading edge of one C+ chain and
+     * one C- chain, and it is that pairing the kernel marches. Refining the front therefore
+     * means adding a point that owns both, so the oversized step it splits becomes two
+     * ordinary unit processes on the next pass. See MocNozzle::refine_front for when and why
+     * the front needs refining.
+     *
+     * @return index of the new point and of the C+ and C- chains it originates
+     */
+    InsertedRung insert_rung(const CharacteristicPoint& pt);
+
+    /** Terminate the C+ and C- chains led by `point_idx`, removing it from the marching front.
+     *
+     * The inverse of insert_rung: where insert_rung splits an over-stretched front segment,
+     * this retires a rung the front has crowded around, so a compression region cannot drive
+     * adjacent front points together without bound. The point itself stays in `points` --
+     * every index in the net is permanent, and the retired point remains a valid interior
+     * node of the chains that already passed through it. Only its two *leading* chains stop.
+     *
+     * @return the retired C+ and C- chain indices, or nullopt when `point_idx` does not
+     *         currently lead an active chain of each family (in which case nothing changes).
+     */
+    std::optional<std::pair<size_t, size_t>> retire_rung(size_t point_idx);
+
     /** Seed an initial wall point (e.g. the throat lip) that anchors the wall march.
      * The point owns no characteristic chain; it only bootstraps leading_wall_point()
      * and the wall coordinate lists.
@@ -150,10 +216,20 @@ class CharacteristicNet {
     // Mark a chain as inactive while updating the last point. 
     void update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype);
 
+    /** True while at least one chain is still being marched. */
     bool has_active_chains() const;
 
+    /**
+     * The leading points of every chain that terminated by flowing out of the domain.
+     *
+     * Only OUTFLOW-terminated chains contribute, so chains retired by mesh control
+     * (ChainMetadata::TerminationType::MERGED) are excluded -- they never reached the exit
+     * plane and must not be mistaken for points that did.
+     */
     std::vector<CharacteristicPoint> outflow_points() const;
+    /** Every point lying on the centerline, in march order. */
     std::vector<CharacteristicPoint> axis_points() const;
+    /** Every point lying on the nozzle wall, in march order. */
     std::vector<CharacteristicPoint> wall_points() const;
 
     // Generate view of metadata of active chains that belong to a given family.

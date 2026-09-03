@@ -198,6 +198,40 @@ size_t CharacteristicNet::terminate_c_plus_at_wall(size_t c_plus_chain_idx, cons
     return idx;
 }
 
+CharacteristicNet::InsertedRung CharacteristicNet::insert_rung(const CharacteristicPoint& pt) {
+    // Seeded with empty membership because both chains need the point's index to exist
+    // before they can be created; membership is patched afterward. Same ordering
+    // constraint as reflect_c_minus_off_axis has for its reflected C+ chain.
+    size_t idx = add_point(pt, {.c_plus_chain_idx = std::nullopt, .c_minus_chain_idx = std::nullopt});
+
+    size_t plus_chain_idx = create_chain(idx, Family::PLUS);
+    size_t minus_chain_idx = create_chain(idx, Family::MINUS);
+    membership[idx].c_plus_chain_idx = plus_chain_idx;
+    membership[idx].c_minus_chain_idx = minus_chain_idx;
+
+    return {idx, plus_chain_idx, minus_chain_idx};
+}
+
+std::optional<std::pair<size_t, size_t>> CharacteristicNet::retire_rung(size_t point_idx) {
+    const PointMembership& mem = membership[point_idx];
+    if (!mem.c_plus_chain_idx.has_value() || !mem.c_minus_chain_idx.has_value()) return std::nullopt;
+
+    const size_t plus_chain_idx = *mem.c_plus_chain_idx;
+    const size_t minus_chain_idx = *mem.c_minus_chain_idx;
+
+    // Only retire a point that actually *leads* both chains. A point in the interior of a
+    // chain is history, not front, and terminating its chains there would strand every
+    // downstream point already marched past it.
+    const ChainMetadata& plus_meta = chain_metadata[plus_chain_idx];
+    const ChainMetadata& minus_meta = chain_metadata[minus_chain_idx];
+    if (!plus_meta.active || plus_meta.latest_point_idx != point_idx) return std::nullopt;
+    if (!minus_meta.active || minus_meta.latest_point_idx != point_idx) return std::nullopt;
+
+    terminate_chain(plus_chain_idx, TerminationType::MERGED);
+    terminate_chain(minus_chain_idx, TerminationType::MERGED);
+    return std::make_pair(plus_chain_idx, minus_chain_idx);
+}
+
 size_t CharacteristicNet::seed_wall_point(const CharacteristicPoint& pt) {
     // Seed an initial wall point (e.g. the throat lip) that bootstraps the wall march.
     // It owns no characteristic chain; it only anchors leading_wall_point() and the
