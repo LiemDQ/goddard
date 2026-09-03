@@ -158,6 +158,7 @@ std::string_view to_string(MocErrorCode code) {
         case MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS: return "WALL_QUERY_OUT_OF_BOUNDS";
         case MocErrorCode::INITIALIZATION_FAILED: return "INITIALIZATION_FAILED";
         case MocErrorCode::MAX_ITERATIONS_REACHED: return "MAX_ITERATIONS_REACHED";
+        case MocErrorCode::INCOMPLETE_MARCH: return "INCOMPLETE_MARCH";
         default: return "UNKNOWN";
     }
 }

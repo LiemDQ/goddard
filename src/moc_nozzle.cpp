@@ -53,10 +53,20 @@ bool MocNozzle::is_solved() const {
 
 // -- MocNozzle --
 MocResult MocNozzle::solve() {
+    // Re-checked here, not just in the constructor: m_options is public and callers do
+    // adjust it between construction and solve().
+    validate_moc_options(m_options);
+
     m_messages.clear();
     m_theta_schedule.clear();
     m_initial_line_family.reset();
     m_is_solved = false;
+    m_inserted_characteristics = 0;
+    m_retired_characteristics = 0;
+    m_pass_diagnostics.clear();
+    m_reference_spacing = 0.0;
+    m_throat_radius = 1.0;
+    m_warned_non_spacelike = false;
 
     CharacteristicNet net;
     std::vector<CharacteristicPoint> data_line;
@@ -134,6 +144,18 @@ MocResult MocNozzle::solve() {
             net.seed_wall_point(throat_lip);
         }
         net.add_initial_data_line(data_line, m_initial_line_family);
+
+        // Anchor mesh control to the geometry, once, from the line actually seeded. Both
+        // init paths put a wall point at the throat lip first, so wall_y.front() is the
+        // throat radius in whatever units the net is carrying; taking it from the net rather
+        // than from geometry.throat_radius keeps the two consistent even when the initial
+        // line is built in normalized coordinates.
+        if (!net.wall_y.empty() && net.wall_y.front() > 0.0 &&
+            m_options.num_characteristics > 1) {
+            m_throat_radius = net.wall_y.front();
+            m_reference_spacing =
+                m_throat_radius / static_cast<double>(m_options.num_characteristics - 1);
+        }
     }
     catch (const NotImplementedError&) {
         // Programmer error (unimplemented mode): not a numerical failure, keep throwing.
@@ -161,6 +183,10 @@ MocResult MocNozzle::solve() {
         return result;
     }
 
+    // Measured before the march so it is available even when the kernel fails partway --
+    // an initialization defect is exactly the case where the march does not finish.
+    result.init_diagnostics = record_init_diagnostics(data_line);
+
     std::optional<MocFailure> kernel_failure = solve_characteristic_kernel(net);
 
     result.net = net;
@@ -173,6 +199,51 @@ MocResult MocNozzle::solve() {
     }
 
     // Populate performance fields
+    result.crossings = find_like_characteristic_crossings(net);
+    result.inserted_characteristics = m_inserted_characteristics;
+    result.retired_characteristics = m_retired_characteristics;
+    result.pass_diagnostics = m_pass_diagnostics;
+
+    // How much of the requested exit radius the outflow boundary actually reached. The
+    // boundary is a ragged staircase of independently terminated chains, so even a healthy
+    // march ends up to about one characteristic spacing short; the allowance below is two
+    // spacings. This is reported, not folded into `converged`: measured coverage does not
+    // separate a coarse-but-healthy solve from a truncated one (planar N=8 and the
+    // axisymmetric AR=4 N=8 truncation both sit at 0.92), so the meaningful test is whether
+    // the shortfall shrinks under refinement, which only a grid sweep can see.
+    if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+        result.exit_coverage = 1.0;
+        result.reached_exit_plane = true;
+    }
+    else if (!m_options.nozzle_profile.y.empty() && m_options.nozzle_profile.y.back() > 0.0
+             && !net.wall_y.empty()) {
+        result.exit_coverage = net.wall_y.back() / m_options.nozzle_profile.y.back();
+        // Allow two characteristic spacings of staircase shortfall. The allowance is
+        // O(1/num_characteristics), so it tightens as the grid refines -- which is the
+        // discriminating property: a healthy solve's shortfall shrinks with N, a truncated
+        // one's does not. A fixed percentage cannot separate the two (a coarse healthy
+        // planar solve and a genuinely truncated axisymmetric one both sit near 0.92).
+        const double staircase_allowance =
+            2.0 * m_reference_spacing / std::max(m_throat_radius, 1e-30);
+        result.reached_exit_plane = result.exit_coverage >= 1.0 - staircase_allowance;
+
+        // A march whose chains all terminated without covering the nozzle has not solved the
+        // problem that was posed, however clean each individual unit process was. Reporting
+        // that as converged is what let a requested area ratio of 4 be silently answered
+        // with 2.4.
+        if (!result.reached_exit_plane && result.failure.code == MocErrorCode::NONE) {
+            result.failure = MocFailure{
+                MocErrorCode::INCOMPLETE_MARCH,
+                std::format("Every characteristic terminated but the net reached only {:.1f}% "
+                    "of the requested exit radius (wall y={:.6f} of {:.6f}).",
+                    100.0 * result.exit_coverage, net.wall_y.back(),
+                    m_options.nozzle_profile.y.back()),
+                net.wall_x.empty() ? 0.0 : net.wall_x.back(), net.wall_y.back(),
+                -1
+            };
+            result.converged = false;
+        }
+    }
     if (!net.wall_x.empty()) {
         result.nozzle_length = net.wall_x.back();
     }
@@ -460,8 +531,19 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
     std::optional<MocFailure> failure;
 
     while (net.has_active_chains() && iters < maxiter && !failure.has_value()) {
-        log_debug("--- kernel pass {}: {} active C+, {} active C- ---",
-            iters, plus_edges.chain_indices.size(), minus_edges.chain_indices.size());
+        // Control spacing before pairing, never during: the pairing loop iterates the
+        // leading-edge views below, and inserting or retiring rungs rebuilds them.
+        MocPassDiagnostics diag;
+        diag.pass = iters;
+        control_front_spacing(net, plus_edges, minus_edges, diag);
+        m_pass_diagnostics.push_back(diag);
+        log_debug("--- kernel pass {}: {} active C+, {} active C- (front {} pts, "
+            "spacing {:.6f}/{:.6f}/{:.6f} min/mean/max, target {:.6f}, aspect {:.3f}, "
+            "margin {:.3f}, +{} -{}) ---",
+            iters, plus_edges.chain_indices.size(), minus_edges.chain_indices.size(),
+            diag.front_points, diag.min_spacing, diag.mean_spacing, diag.max_spacing,
+            diag.target_spacing, diag.max_cell_aspect, diag.min_spacelike_margin,
+            diag.inserted, diag.retired);
         intersections.clear();
         paired_cminus.clear();
         // Sized to the *current* minus-edge view: reflections add chains over time, so a
@@ -482,65 +564,14 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
         Invariant: each C- index should appear at most only once per set of intersections
         */
         for (size_t i = 0; i < plus_edges.chain_indices.size() && !failure.has_value(); i++) {
-            double plus_y = plus_edges.y_values[i];
-            double best_dy = std::numeric_limits<double>::max();
-            std::optional<size_t> best_partner = std::nullopt;
-            size_t best_partner_pt_idx = 0;
-            size_t best_partner_edgevec_idx = 0;
-            bool any_cminus_above = false;
-
-            // Nearest C- above regardless of claim status this pass -- tracked separately
-            // from best_partner (nearest *unclaimed* C- above) so a C+ whose true nearest
-            // partner was already claimed by a closer competitor this pass can be told to
-            // wait, instead of silently settling for a farther unclaimed C-.
-            double nearest_dy = std::numeric_limits<double>::max();
-            bool nearest_is_claimed = false;
-
-            // Find the closest C- above
-            for (size_t j = 0; j < minus_edges.chain_indices.size(); j++) {
-                double dy = minus_edges.y_values[j] - plus_y;
-                if (dy <= 0) continue;
-                any_cminus_above = true;
-
-                if (dy < nearest_dy) {
-                    nearest_dy = dy;
-                    nearest_is_claimed = cminus_is_intersected[j];
-                }
-                if (cminus_is_intersected[j]) continue; //skip if already paired
-
-                if (dy < best_dy) {
-                    best_dy = dy;
-                    best_partner = minus_edges.chain_indices[j];
-                    best_partner_pt_idx = minus_edges.leading_pt_indices[j];
-                    best_partner_edgevec_idx = j;
-                }
-                // edge case: multiple points at literally the same y due to an expansion fan
-                // the tiebreaker is determined by the characteristic angle theta-mu
-                if (best_partner.has_value() && best_dy == dy) [[unlikely]] {
-                    const CharacteristicPoint& old_pt = net.points[best_partner_pt_idx];
-                    const CharacteristicPoint& new_pt = net.points[minus_edges.leading_pt_indices[j]];
-                    double old_angle = old_pt.theta - old_pt.mu;
-                    double new_angle = new_pt.theta - new_pt.mu;
-                    if (new_angle < old_angle) {
-                        best_partner = minus_edges.chain_indices[j];
-                        best_partner_pt_idx = minus_edges.leading_pt_indices[j];
-                        best_partner_edgevec_idx = j;
-                    }
-                }
-            }
-
-            // The truly-nearest C- above was already claimed this pass by a closer
-            // competitor: wait for it to advance (SKIP below) rather than pairing with a
-            // farther unclaimed C-, which would violate lattice adjacency. A claim implies
-            // someone else progressed this pass, so this cannot deadlock.
-            if (nearest_is_claimed) {
-                best_partner = std::nullopt;
-            }
+            PairSearch match = find_pair_partner(
+                plus_edges.y_values[i], minus_edges, cminus_is_intersected, net);
 
             // intersect C+ with closest C- above it.
-            if (best_partner.has_value()) [[likely]] {
-                const CharacteristicPoint& minus_pt = net.points[best_partner_pt_idx];
+            if (match.chain_idx.has_value()) [[likely]] {
+                const CharacteristicPoint& minus_pt = net.points[match.pt_idx];
                 const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
+
                 PointResult result = solve_interior_point(minus_pt, plus_pt);
                 if (result.error != MocErrorCode::NONE) {
                     failure = MocFailure{
@@ -562,13 +593,13 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                     result.point,
                     PointMembership {
                         .c_plus_chain_idx = plus_edges.chain_indices[i],
-                        .c_minus_chain_idx = *best_partner
+                        .c_minus_chain_idx = *match.chain_idx
                     }
                 });
-                paired_cminus.push_back(*best_partner);
-                cminus_is_intersected[best_partner_edgevec_idx] = true;
+                paired_cminus.push_back(*match.chain_idx);
+                cminus_is_intersected[match.edgevec_idx] = true;
             }
-            else if (any_cminus_above) {
+            else if (match.any_cminus_above) {
                 // A C- does exist above this C+, but a closer competitor already claimed it
                 // this pass (e.g. many individual C+ chains from a Kliegel-Levine transonic
                 // line, competing for a single C- freshly born from a wall reflection). Leave
@@ -1798,5 +1829,704 @@ void MocNozzle::sort_plus_edges_by_proximity(LeadingEdgeView& view, const Charac
     view.leading_pt_indices = std::move(pt_sorted);
 }
 
+MocNozzle::PairSearch MocNozzle::find_pair_partner(
+    double plus_y,
+    const LeadingEdgeView& minus_edges,
+    const std::vector<bool>& claimed,
+    const CharacteristicNet& net) const
+{
+    PairSearch search;
+    double best_dy = std::numeric_limits<double>::max();
+
+    // Nearest C- above regardless of claim status -- tracked separately from the best
+    // *available* partner so a C+ whose true nearest partner was already claimed by a
+    // closer competitor is told to wait rather than settling for a farther one.
+    double nearest_dy = std::numeric_limits<double>::max();
+    bool nearest_is_claimed = false;
+
+    for (size_t j = 0; j < minus_edges.chain_indices.size(); j++) {
+        double dy = minus_edges.y_values[j] - plus_y;
+        if (dy <= 0) continue;
+        search.any_cminus_above = true;
+
+        if (dy < nearest_dy) {
+            nearest_dy = dy;
+            nearest_is_claimed = claimed[j];
+        }
+        if (claimed[j]) continue; //skip if already paired
+
+        if (dy < best_dy) {
+            best_dy = dy;
+            search.chain_idx = minus_edges.chain_indices[j];
+            search.pt_idx = minus_edges.leading_pt_indices[j];
+            search.edgevec_idx = j;
+        }
+        // edge case: multiple points at literally the same y due to an expansion fan
+        // the tiebreaker is determined by the characteristic angle theta-mu
+        if (search.chain_idx.has_value() && best_dy == dy) [[unlikely]] {
+            const CharacteristicPoint& old_pt = net.points[search.pt_idx];
+            const CharacteristicPoint& new_pt = net.points[minus_edges.leading_pt_indices[j]];
+            if (new_pt.theta - new_pt.mu < old_pt.theta - old_pt.mu) {
+                search.chain_idx = minus_edges.chain_indices[j];
+                search.pt_idx = minus_edges.leading_pt_indices[j];
+                search.edgevec_idx = j;
+            }
+        }
+    }
+
+    if (nearest_is_claimed) search.chain_idx = std::nullopt;
+    search.dy = best_dy;
+    return search;
+}
+
+std::vector<MocNozzle::FrontSegment> MocNozzle::build_front(
+    const CharacteristicNet& net,
+    const LeadingEdgeView& plus_edges,
+    const LeadingEdgeView& minus_edges) const
+{
+    std::vector<FrontSegment> front;
+    front.reserve(plus_edges.chain_indices.size());
+    std::vector<bool> claimed(minus_edges.chain_indices.size(), false);
+
+    for (size_t i = 0; i < plus_edges.chain_indices.size(); i++) {
+        PairSearch match = find_pair_partner(plus_edges.y_values[i], minus_edges, claimed, net);
+        // No available partner: this C+ is either wall-bound or waiting. Neither is a
+        // front segment, and neither is something mesh control can act on.
+        if (!match.chain_idx.has_value()) continue;
+        claimed[match.edgevec_idx] = true;
+
+        const CharacteristicPoint& below = net.points[plus_edges.leading_pt_indices[i]];
+        const CharacteristicPoint& above = net.points[match.pt_idx];
+        front.push_back(FrontSegment{
+            plus_edges.leading_pt_indices[i],
+            match.pt_idx,
+            plus_edges.chain_indices[i],
+            *match.chain_idx,
+            std::hypot(above.x - below.x, above.y - below.y)
+        });
+    }
+    return front;
+}
+
+std::optional<std::pair<double, double>> MocNozzle::cell_sides(
+    const CharacteristicNet& net, const FrontSegment& segment) const
+{
+    const CharacteristicPoint& below = net.points[segment.lower_pt_idx];
+    const CharacteristicPoint& above = net.points[segment.upper_pt_idx];
+    const double dx = above.x - below.x;
+    const double dy = above.y - below.y;
+
+    const double plus_angle = below.theta + below.mu;
+    const double minus_angle = above.theta - above.mu;
+    const double ux_p = std::cos(plus_angle), uy_p = std::sin(plus_angle);
+    const double ux_m = std::cos(minus_angle), uy_m = std::sin(minus_angle);
+
+    const double det = ux_m * uy_p - ux_p * uy_m;
+    if (std::abs(det) < 1e-14) return std::nullopt;
+
+    const double side_plus = (ux_m * dy - uy_m * dx) / det;
+    const double side_minus = (ux_p * dy - uy_p * dx) / det;
+    if (!(side_plus > 0.0) || !(side_minus > 0.0)) return std::nullopt;
+    return std::make_pair(side_plus, side_minus);
+}
+
+std::vector<size_t> MocNozzle::previous_front_points(
+    const CharacteristicNet& net, const FrontSegment& segment) const
+{
+    std::vector<size_t> found;
+
+    // The predecessor of a point within a chain it currently leads. Anything else (a chain
+    // the point does not lead, or one with no history) contributes nothing.
+    auto predecessor = [&net, &found](std::optional<size_t> chain_idx, size_t pt_idx) {
+        if (!chain_idx.has_value()) return;
+        const std::vector<size_t>& chain = net.c_chains[*chain_idx];
+        if (chain.size() < 2 || chain.back() != pt_idx) return;
+        found.push_back(chain[chain.size() - 2]);
+    };
+
+    predecessor(segment.lower_plus_chain, segment.lower_pt_idx);
+    predecessor(net.membership[segment.lower_pt_idx].c_minus_chain_idx, segment.lower_pt_idx);
+    predecessor(net.membership[segment.upper_pt_idx].c_plus_chain_idx, segment.upper_pt_idx);
+    predecessor(segment.upper_minus_chain, segment.upper_pt_idx);
+
+    std::sort(found.begin(), found.end());
+    found.erase(std::unique(found.begin(), found.end()), found.end());
+    std::sort(found.begin(), found.end(), [&net](size_t a, size_t b) {
+        return net.points[a].y < net.points[b].y;
+    });
+    return found;
+}
+
+namespace {
+
+/**
+ * Walk upstream from (x, y) along a characteristic of the given angle until the polyline is
+ * met. Returns the segment index and the parameter along it, or nothing when the ray misses.
+ */
+std::optional<std::pair<size_t, double>> trace_back_to_front(
+    double x, double y, double angle,
+    const CharacteristicNet& net, const std::vector<size_t>& front)
+{
+    const double dir_x = -std::cos(angle);
+    const double dir_y = -std::sin(angle);
+
+    for (size_t i = 0; i + 1 < front.size(); i++) {
+        const CharacteristicPoint& a = net.points[front[i]];
+        const CharacteristicPoint& b = net.points[front[i + 1]];
+        const double seg_x = b.x - a.x;
+        const double seg_y = b.y - a.y;
+
+        const double det = dir_x * (-seg_y) - dir_y * (-seg_x);
+        if (std::abs(det) < 1e-14) continue; // ray parallel to this segment
+
+        const double rhs_x = a.x - x;
+        const double rhs_y = a.y - y;
+        const double s = (rhs_x * (-seg_y) - rhs_y * (-seg_x)) / det;
+        const double u = (dir_x * rhs_y - dir_y * rhs_x) / det;
+
+        // s > 0 keeps the foot strictly upstream; u within [0,1] keeps it on the segment.
+        // Both are refusals rather than clamps: a clamped foot is an extrapolation dressed
+        // up as an interpolation.
+        if (s > 0.0 && u >= 0.0 && u <= 1.0) return std::make_pair(i, u);
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+PointResult MocNozzle::solve_inverse_interior_point(
+    double x_new, double y_new,
+    const CharacteristicNet& net,
+    const std::vector<size_t>& previous_front,
+    const CharacteristicPoint& seed)
+{
+    CharacteristicPoint p4{};
+    p4.x = x_new;
+    p4.y = y_new;
+    p4.theta = seed.theta;
+    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(p4, seed.nu, seed.mach);
+    if (thermo_error != MocErrorCode::NONE) return {p4, thermo_error};
+
+    if (previous_front.size() < 2) return {p4, MocErrorCode::INITIALIZATION_FAILED};
+
+    const bool axisymmetric = (m_options.flow_type == MocFlowKind::AXISYMMETRIC);
+
+    // Feet move as the state at p4 is refined, so iterate. Four passes matches the corrector
+    // budget the wall solvers use; in practice this settles in two.
+    constexpr int max_iters = 4;
+    for (int iter = 0; iter < max_iters; iter++) {
+        const double angle_minus = p4.theta - p4.mu;
+        const double angle_plus = p4.theta + p4.mu;
+
+        std::optional<std::pair<size_t, double>> hit_minus =
+            trace_back_to_front(p4.x, p4.y, angle_minus, net, previous_front);
+        std::optional<std::pair<size_t, double>> hit_plus =
+            trace_back_to_front(p4.x, p4.y, angle_plus, net, previous_front);
+        if (!hit_minus.has_value() || !hit_plus.has_value()) {
+            return {p4, MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS};
+        }
+
+        // Interpolate each foot along the previous front.
+        auto foot_at = [&net, &previous_front](const std::pair<size_t, double>& hit) {
+            const CharacteristicPoint& a = net.points[previous_front[hit.first]];
+            const CharacteristicPoint& b = net.points[previous_front[hit.first + 1]];
+            const double u = hit.second;
+            CharacteristicPoint f{};
+            f.x = a.x + u * (b.x - a.x);
+            f.y = a.y + u * (b.y - a.y);
+            f.theta = a.theta + u * (b.theta - a.theta);
+            f.nu = a.nu + u * (b.nu - a.nu);
+            f.mu = a.mu + u * (b.mu - a.mu);
+            f.mach = a.mach + u * (b.mach - a.mach);
+            return f;
+        };
+        const CharacteristicPoint foot_minus = foot_at(*hit_minus);
+        const CharacteristicPoint foot_plus = foot_at(*hit_plus);
+
+        // Same source terms as solve_interior_point_axisymmetric, evaluated on the averages
+        // between each foot and p4:
+        //   along C+:  d(theta - nu) = -L dx,  L = sin(mu) sin(theta) / (y cos(theta + mu))
+        //   along C-:  d(theta + nu) = +M dx,  M = sin(mu) sin(theta) / (y cos(theta - mu))
+        double source_minus = 0.0;
+        double source_plus = 0.0;
+        if (axisymmetric) {
+            const double mu_m = 0.5 * (foot_minus.mu + p4.mu);
+            const double th_m = 0.5 * (foot_minus.theta + p4.theta);
+            const double y_m = 0.5 * (foot_minus.y + p4.y);
+            const double ang_m = 0.5 * (angle_minus + (foot_minus.theta - foot_minus.mu));
+            if (std::abs(y_m) > 1e-12) source_minus = sin(mu_m) * sin(th_m) / (y_m * cos(ang_m));
+
+            const double mu_p = 0.5 * (foot_plus.mu + p4.mu);
+            const double th_p = 0.5 * (foot_plus.theta + p4.theta);
+            const double y_p = 0.5 * (foot_plus.y + p4.y);
+            const double ang_p = 0.5 * (angle_plus + (foot_plus.theta + foot_plus.mu));
+            if (std::abs(y_p) > 1e-12) source_plus = sin(mu_p) * sin(th_p) / (y_p * cos(ang_p));
+        }
+
+        const double K_minus = (foot_minus.theta + foot_minus.nu)
+                             + source_minus * (p4.x - foot_minus.x);
+        const double K_plus = (foot_plus.theta - foot_plus.nu)
+                            - source_plus * (p4.x - foot_plus.x);
+
+        const double theta_previous = p4.theta;
+        p4.theta = 0.5 * (K_minus + K_plus);
+        thermo_error = update_thermodynamic_state_from_nu(p4, 0.5 * (K_minus - K_plus), p4.mach);
+        if (thermo_error != MocErrorCode::NONE) return {p4, thermo_error};
+
+        if (std::abs(p4.theta - theta_previous) < m_options.solver_options.abstol) break;
+    }
+
+    p4.K_minus = p4.theta + p4.nu;
+    p4.K_plus = p4.theta - p4.nu;
+
+    MocErrorCode validity = check_point_validity(p4, m_options.solver_options.abstol);
+    if (validity != MocErrorCode::NONE) return {p4, validity};
+    return {p4, MocErrorCode::NONE};
+}
+
+void MocNozzle::record_front_diagnostics(
+    const CharacteristicNet& net,
+    const std::vector<FrontSegment>& front,
+    double target_spacing,
+    MocPassDiagnostics& diag) const
+{
+    diag.target_spacing = target_spacing;
+    diag.front_points = front.empty() ? 0 : front.size() + 1;
+    if (front.empty()) return;
+
+    double min_spacing = std::numeric_limits<double>::max();
+    double max_spacing = 0.0;
+    double total = 0.0;
+    double max_aspect = 0.0;
+    double min_margin = std::numeric_limits<double>::max();
+
+    // The front's two ends, found by scanning rather than by assuming an ordering:
+    // build_front inherits the C+ edge sort, which is currently descending in y, and this
+    // must not silently invert if that changes.
+    double axis_y = std::numeric_limits<double>::max();
+    double wall_y = -std::numeric_limits<double>::max();
+
+    for (const FrontSegment& seg : front) {
+        const CharacteristicPoint& below = net.points[seg.lower_pt_idx];
+        const CharacteristicPoint& above = net.points[seg.upper_pt_idx];
+        if (below.y < axis_y) {
+            axis_y = below.y;
+            diag.front_axis_x = below.x;
+            diag.front_axis_spacing = seg.arc;
+        }
+        if (above.y > wall_y) {
+            wall_y = above.y;
+            diag.front_wall_x = above.x;
+            diag.front_wall_spacing = seg.arc;
+        }
+        min_spacing = std::min(min_spacing, seg.arc);
+        max_spacing = std::max(max_spacing, seg.arc);
+        total += seg.arc;
+
+        const double dx = above.x - below.x;
+        const double dy = above.y - below.y;
+        const double plus_angle = below.theta + below.mu;
+        const double minus_angle = above.theta - above.mu;
+
+        // t/s diverges exactly as the front turns tangent to the C- family, which is the
+        // observed axisymmetric failure -- the sharpest early warning there is, and one that
+        // the segment's own length cannot give: bounding the diagonal bounds t and leaves s
+        // free to collapse.
+        if (std::optional<std::pair<double, double>> sides = cell_sides(net, seg)) {
+            if (sides->first > 1e-14) {
+                max_aspect = std::max(max_aspect, sides->second / sides->first);
+            }
+        }
+
+        // Normalized spacelike margin, matching the definition used by the diagnosis
+        // probes: how far the segment sits from being parallel to a characteristic through
+        // one of its endpoints, as a fraction of its height. Healthy fronts sit near 1;
+        // reaching 0 is the NON_DOWNSTREAM_POINT failure.
+        if (dy > 0.0) {
+            const double margin_minus = (dy - std::tan(minus_angle) * dx) / dy;
+            const double margin_plus = (dy - std::tan(plus_angle) * dx) / dy;
+            min_margin = std::min({min_margin, margin_minus, margin_plus});
+        }
+    }
+
+    diag.min_spacing = min_spacing;
+    diag.max_spacing = max_spacing;
+    diag.mean_spacing = total / static_cast<double>(front.size());
+    diag.max_cell_aspect = max_aspect;
+    diag.min_spacelike_margin =
+        (min_margin == std::numeric_limits<double>::max()) ? 0.0 : min_margin;
+
+}
+
+double MocNozzle::start_line_mass_flow_error(
+    const std::vector<CharacteristicPoint>& data_line) const
+{
+    // The integrand needs density, which for frozen/equilibrium would take the molar mass
+    // that CharacteristicPoint does not carry. Report nothing rather than something wrong.
+    if (m_options.chemistry != GasChemistry::PERFECT_GAS) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (data_line.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+
+    const double gamma = m_options.gamma;
+    if (!(gamma > 1.0)) return std::numeric_limits<double>::quiet_NaN();
+
+    // rho*V normalized by its stagnation reference rho0*a0, from the isentropic relations:
+    //   rho/rho0 = (1 + (g-1)/2 M^2)^(-1/(g-1)),  a/a0 = (1 + (g-1)/2 M^2)^(-1/2)
+    // so rho*V/(rho0*a0) = M * (1 + (g-1)/2 M^2)^(-(g+1)/(2(g-1))).
+    const double exponent = -(gamma + 1.0) / (2.0 * (gamma - 1.0));
+    auto mass_flux = [&](double mach) {
+        return mach * std::pow(1.0 + 0.5 * (gamma - 1.0) * mach * mach, exponent);
+    };
+
+    const bool axisymmetric = (m_options.flow_type == MocFlowKind::AXISYMMETRIC);
+    const double r_throat = (m_throat_radius > 0.0) ? m_throat_radius : 1.0;
+
+    double mdot = 0.0;
+    for (size_t i = 1; i < data_line.size(); i++) {
+        const CharacteristicPoint& below = data_line[i - 1];
+        const CharacteristicPoint& above = data_line[i];
+        const double dx = above.x - below.x;
+        const double dy = above.y - below.y;
+        const double theta_avg = 0.5 * (below.theta + above.theta);
+        const double y_avg = 0.5 * (below.y + above.y);
+        const double flux = 0.5 * (mass_flux(below.mach) + mass_flux(above.mach));
+
+        // V dot n over the segment, where n is the downstream normal (dy, -dx)/|ds|; the
+        // |ds| cancels against the area element, leaving the bare differences.
+        const double normal_flux = std::cos(theta_avg) * dy - std::sin(theta_avg) * dx;
+        const double area_weight = axisymmetric ? (2.0 * M_PI * y_avg) : 1.0;
+        mdot += flux * normal_flux * area_weight;
+    }
+
+    // 1-D critical mass flow through the throat, in the same normalization. The
+    // axisymmetric case is the full disc; the planar case is the half-height the solver
+    // actually meshes.
+    const double throat_area = axisymmetric ? (M_PI * r_throat * r_throat) : r_throat;
+    const double mdot_reference = mass_flux(1.0) * throat_area;
+    if (!(std::abs(mdot_reference) > 0.0)) return std::numeric_limits<double>::quiet_NaN();
+
+    return (mdot - mdot_reference) / mdot_reference;
+}
+
+MocInitDiagnostics MocNozzle::record_init_diagnostics(
+    const std::vector<CharacteristicPoint>& data_line) const
+{
+    MocInitDiagnostics diag;
+    diag.points = data_line.size();
+    if (data_line.size() < 2) return diag;
+
+    // The generators return the line ordered axis to wall (index 0 on the axis for both
+    // the Kliegel-Levine line and the marched centered fan).
+    const CharacteristicPoint& axis_pt = data_line.front();
+    const CharacteristicPoint& wall_pt = data_line.back();
+    const double spacing = (m_reference_spacing > 0.0) ? m_reference_spacing : 1.0;
+
+    diag.mach_axis = axis_pt.mach;
+    diag.mach_wall = wall_pt.mach;
+    diag.mach_ratio = (axis_pt.mach > 0.0) ? wall_pt.mach / axis_pt.mach : 0.0;
+    diag.mu_axis = axis_pt.mu;
+    diag.mu_wall = wall_pt.mu;
+    {
+        const double cot_axis = std::tan(axis_pt.mu) > 0.0 ? 1.0 / std::tan(axis_pt.mu) : 0.0;
+        const double cot_wall = std::tan(wall_pt.mu) > 0.0 ? 1.0 / std::tan(wall_pt.mu) : 0.0;
+        diag.cot_mu_ratio = (cot_wall > 0.0) ? cot_axis / cot_wall : 0.0;
+    }
+
+    // Fit to the prescribed wall. Two things gate this. A design mode has no prescribed
+    // contour to be off by. And a line that lies along one characteristic (the centered
+    // fan) does not carry its own wall point at all -- solve() seeds the throat lip
+    // separately as the wall anchor, and that lip is on the wall by construction -- so its
+    // top point is an interior point and measuring a "gap" from it would be meaningless.
+    const NozzleProfile& wall = m_options.nozzle_profile;
+    const bool line_owns_wall_point = !m_initial_line_family.has_value();
+    if (line_owns_wall_point && wall.size() >= 2 &&
+        wall_pt.x >= wall.x_min() && wall_pt.x <= wall.x_max()) {
+        diag.wall_gap = std::abs(wall_pt.y - wall.radius_at(wall_pt.x));
+        diag.wall_gap_over_spacing = diag.wall_gap / spacing;
+        diag.wall_theta_mismatch = std::abs(wall_pt.theta - wall.theta_at(wall_pt.x));
+
+        // Distance to the sharpest slope break on the contour. A conical profile's arc runs
+        // into a straight cone, and seeding the wall march exactly there means the first
+        // wall angle query is a one-sided difference across the break.
+        double worst_jump = 0.0;
+        double break_x = std::numeric_limits<double>::quiet_NaN();
+        for (size_t i = 2; i + 1 < wall.size(); i++) {
+            const double jump = std::abs(wall.slope_at_idx(i) - wall.slope_at_idx(i - 1));
+            if (jump > worst_jump) {
+                worst_jump = jump;
+                break_x = wall.x[i - 1];
+            }
+        }
+        // Below this the contour is smooth to within its own discretization and there is no
+        // break to be near; report a sentinel rather than a meaningless distance.
+        constexpr double slope_break_threshold = 1e-6;
+        diag.wall_station_to_tangency = (worst_jump > slope_break_threshold)
+            ? (wall_pt.x - break_x) / spacing
+            : std::numeric_limits<double>::max();
+    }
+    else {
+        diag.wall_station_to_tangency = std::numeric_limits<double>::max();
+    }
+
+    // The shift's natural scale. The transonic region's axial extent goes as
+    // sqrt(r_throat * R_curvature), so the same absolute shift is a different fraction of
+    // it at every throat curvature.
+    if (m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
+        m_options.geometry.throat_radius > 0.0)
+    {
+        const double R = m_options.geometry.downstream_wall_curvature_radius
+                       / m_options.geometry.throat_radius;
+        diag.shift_over_transonic_length = m_options.initial_line_axial_shift / std::sqrt(R);
+    }
+
+    // Where each point's C- reaches the axis, on a straight-ray estimate, and how unevenly
+    // graded those arrivals are. A centered fan's points share one location, so its rays
+    // still land at distinct stations and the measure stays meaningful.
+    std::vector<double> arrivals;
+    arrivals.reserve(data_line.size());
+    for (const CharacteristicPoint& pt : data_line) {
+        const double slope = std::tan(pt.theta - pt.mu);
+        arrivals.push_back((std::abs(slope) > 1e-12) ? pt.x + pt.y / std::abs(slope) : pt.x);
+    }
+    double min_gap = std::numeric_limits<double>::max();
+    double max_gap = 0.0;
+    for (size_t i = 1; i < arrivals.size(); i++) {
+        const double gap = std::abs(arrivals[i] - arrivals[i - 1]);
+        min_gap = std::min(min_gap, gap);
+        max_gap = std::max(max_gap, gap);
+    }
+    diag.axis_arrival_grading = (min_gap > 0.0 && min_gap != std::numeric_limits<double>::max())
+        ? max_gap / min_gap
+        : std::numeric_limits<double>::max();
+
+    // Spacelike margin of the line's own segments, defined exactly as in
+    // record_front_diagnostics so the two are directly comparable. A centered fan is
+    // degenerate here (all points share a location) and is skipped.
+    double min_margin = std::numeric_limits<double>::max();
+    for (size_t i = 1; i < data_line.size(); i++) {
+        const CharacteristicPoint& below = data_line[i - 1];
+        const CharacteristicPoint& above = data_line[i];
+        const double dx = above.x - below.x;
+        const double dy = above.y - below.y;
+        if (dy <= 0.0) continue;
+        const double margin_minus = (dy - std::tan(above.theta - above.mu) * dx) / dy;
+        const double margin_plus = (dy - std::tan(below.theta + below.mu) * dx) / dy;
+        min_margin = std::min({min_margin, margin_minus, margin_plus});
+    }
+    diag.min_spacelike_margin =
+        (min_margin == std::numeric_limits<double>::max()) ? 0.0 : min_margin;
+
+    diag.mass_flow_error = start_line_mass_flow_error(data_line);
+    return diag;
+}
+
+size_t MocNozzle::control_front_spacing(
+    CharacteristicNet& net,
+    LeadingEdgeView& plus_edges,
+    LeadingEdgeView& minus_edges,
+    MocPassDiagnostics& diag)
+{
+    using Family = ChainMetadata::Family;
+
+    // A minimum-length contour is *defined* by the C- characteristics it absorbs at the
+    // wall, so inserting more would change the nozzle being designed rather than the mesh
+    // resolving it. That mode also uses fan initialization and does not develop the void.
+    if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
+        record_front_diagnostics(net, build_front(net, plus_edges, minus_edges), 0.0, diag);
+        return 0;
+    }
+    if (!(m_reference_spacing > 0.0)) return 0;
+
+    std::vector<FrontSegment> front = build_front(net, plus_edges, minus_edges);
+    if (front.empty()) {
+        record_front_diagnostics(net, front, m_reference_spacing, diag);
+        return 0;
+    }
+
+    // The front's own outer radius sets how much coarsening the nozzle's expansion
+    // justifies. Measuring against a physical length rather than against the front's own
+    // median spacing is the whole point: a threshold computed from the spacings it judges
+    // is satisfied by any uniformly coarsening mesh, and so never sees a void whose width
+    // is set by the flow.
+    double front_radius = 0.0;
+    for (const FrontSegment& seg : front) {
+        front_radius = std::max(front_radius, net.points[seg.upper_pt_idx].y);
+    }
+    const double radius_ratio = std::max(1.0, front_radius / m_throat_radius);
+    const double h_target =
+        m_reference_spacing * (1.0 + m_options.front_spacing_growth * (radius_ratio - 1.0));
+    const double h_max = m_options.max_front_spacing_factor * h_target;
+    const double h_min = m_options.min_front_spacing_factor * h_target;
+
+    const size_t front_cap = m_options.max_front_points != 0
+        ? m_options.max_front_points
+        : 4 * static_cast<size_t>(m_options.num_characteristics);
+
+    // Bound on how finely one segment may be split in a single pass. A gap that has already
+    // grown large is walked down over several passes instead of all at once, which keeps
+    // each interpolation spanning a smaller range of the solution.
+    constexpr size_t max_subdivisions_per_gap = 8;
+
+    size_t front_points = front.size() + 1;
+    size_t inserted = 0;
+
+    for (const FrontSegment& seg : front) {
+        if (seg.arc <= h_max) continue;
+        if (front_points >= front_cap) {
+            log_warning("Marching front reached its size cap ({}); refinement stopped.",
+                front_cap);
+            break;
+        }
+
+        // Copied by value, not bound by reference: insert_rung appends to net.points, which
+        // reallocates and would leave a reference into the old buffer dangling.
+        const CharacteristicPoint below = net.points[seg.lower_pt_idx];
+        const CharacteristicPoint above = net.points[seg.upper_pt_idx];
+        const double dx = above.x - below.x;
+        const double dy = above.y - below.y;
+
+        // Refuse to refine a front segment that is no longer spacelike -- one whose
+        // endpoints the C+ from `below` and the C- from `above` no longer bracket. The
+        // interpolation below assumes they do; once that fails the pair is already
+        // degenerate and fabricating points on it would convert an honest
+        // NON_DOWNSTREAM_POINT failure into silent garbage. Holding the spacing bounded
+        // from the first pass should prevent a segment ever reaching this state, so if it
+        // does, mesh control has already failed and that is worth saying out loud.
+        if (dy - std::tan(below.theta + below.mu) * dx <= 0.0 ||
+            dy - std::tan(above.theta - above.mu) * dx <= 0.0) {
+            if (!m_warned_non_spacelike) {
+                m_warned_non_spacelike = true;
+                log_warning("Front segment between plus(x={:.6f},y={:.6f}) and "
+                    "minus(x={:.6f},y={:.6f}) is already non-spacelike; mesh control cannot "
+                    "refine it. The spacing bound engaged too late.",
+                    below.x, below.y, above.x, above.y);
+            }
+            continue;
+        }
+
+        // Subdivide down to the *target*, not down to the trigger. Splitting only until the
+        // segment falls under h_max leaves it permanently coarser than the rest of the
+        // front, which against an engine that re-stretches it every pass is a losing race.
+        size_t subdivisions = static_cast<size_t>(std::ceil(seg.arc / h_target));
+        subdivisions = std::min(subdivisions, max_subdivisions_per_gap);
+        subdivisions = std::min(subdivisions, front_cap - front_points + 1);
+        if (subdivisions < 2) continue;
+
+        const std::vector<size_t> previous_front = previous_front_points(net, seg);
+
+        for (size_t k = 1; k < subdivisions; k++) {
+            const double t = static_cast<double>(k) / static_cast<double>(subdivisions);
+
+            // Cross-front interpolation, used only to seed the inverse solve below. On its
+            // own it produces a point satisfying neither compatibility relation.
+            CharacteristicPoint seed{};
+            seed.theta = below.theta + t * (above.theta - below.theta);
+            seed.nu = below.nu + t * (above.nu - below.nu);
+            seed.mach = below.mach + t * (above.mach - below.mach);
+
+            const double x_new = below.x + t * dx;
+            const double y_new = below.y + t * dy;
+
+            // A rung that cannot be given a valid state is simply not inserted: the pass
+            // then takes the unrefined (oversized) step exactly as it would otherwise, so a
+            // failed solve degrades refinement rather than corrupting the net.
+            PointResult solved = solve_inverse_interior_point(
+                x_new, y_new, net, previous_front, seed);
+            if (solved.error != MocErrorCode::NONE) {
+                log_debug("INSERT skipped at (x={:.6f},y={:.6f}): inverse solve failed ({})",
+                    x_new, y_new, to_string(solved.error));
+                continue;
+            }
+            CharacteristicPoint pt = solved.point;
+            net.insert_rung(pt);
+            inserted++;
+            front_points++;
+            log_debug("INSERT rung (x={:.6f},y={:.6f},th={:.6f},mach={:.6f}) splitting arc "
+                "{:.6f} (target {:.6f}) between plus(x={:.6f},y={:.6f}) and "
+                "minus(x={:.6f},y={:.6f})",
+                pt.x, pt.y, pt.theta, pt.mach, seg.arc, h_target,
+                below.x, below.y, above.x, above.y);
+        }
+    }
+
+    if (inserted > 0) {
+        m_inserted_characteristics += inserted;
+        update_leading_edges(plus_edges, net, Family::PLUS);
+        sort_plus_edges_by_proximity(plus_edges, net);
+        update_leading_edges(minus_edges, net, Family::MINUS);
+        front = build_front(net, plus_edges, minus_edges);
+    }
+
+    // Coarsening. Without it the front's rung count only ever grows -- a wall reflection
+    // trades a C+ for a C- and the axis trades back, so nothing retires on its own -- and a
+    // compression region (a Rao contour's turn-back above all) drives adjacent rungs
+    // together until the cells are ill-conditioned.
+    size_t retired = 0;
+    if (front.size() > 2) {
+        // Never thin the front faster than it can recover, and never retire two neighbours
+        // in one pass: both endpoints of a short segment are usually short-spaced, and
+        // taking both would leave a hole rather than a merged segment.
+        const size_t retire_budget = front.size() / 3;
+        bool previous_retired = false;
+
+        for (size_t i = 0; i < front.size() && retired < retire_budget; i++) {
+            // Two independent ways for a pairing to become degenerate. Crowding along the
+            // front is the obvious one. The other is a cell whose C+ side has collapsed
+            // while its diagonal still looks healthy -- the C+ has stalled and now sits
+            // essentially on its partner's C- characteristic, so the two points are
+            // redundant as C- samples even though they are not close together.
+            const std::optional<std::pair<double, double>> sides = cell_sides(net, front[i]);
+            const bool crowded = front[i].arc < h_min;
+            const bool degenerate = sides.has_value() && sides->first > 0.0 &&
+                sides->second / sides->first > m_options.max_cell_aspect_ratio;
+            if (!crowded && !degenerate) { previous_retired = false; continue; }
+            if (previous_retired) { previous_retired = false; continue; }
+
+            // retire_rung declines any point that does not lead an active chain of each
+            // family, which is exactly how the wall and axis anchors protect themselves: a
+            // wall point's C+ and an axis point's C- are already terminated.
+            const size_t candidate = front[i].upper_pt_idx;
+            if (!net.retire_rung(candidate).has_value()) { previous_retired = false; continue; }
+
+            retired++;
+            previous_retired = true;
+            log_debug("RETIRE rung (x={:.6f},y={:.6f}) {} at arc {:.6f} (min {:.6f}, "
+                "aspect {:.3f})",
+                net.points[candidate].x, net.points[candidate].y,
+                crowded ? "crowding" : "degenerate cell", front[i].arc, h_min,
+                sides.has_value() && sides->first > 0.0 ? sides->second / sides->first : 0.0);
+        }
+    }
+
+    if (retired > 0) {
+        m_retired_characteristics += retired;
+        update_leading_edges(plus_edges, net, Family::PLUS);
+        sort_plus_edges_by_proximity(plus_edges, net);
+        update_leading_edges(minus_edges, net, Family::MINUS);
+        front = build_front(net, plus_edges, minus_edges);
+    }
+
+    // Per-point snapshot of the front the pass will actually march. Aggregate statistics
+    // cannot show a front smearing toward horizontal -- the cells stay well-formed while the
+    // front itself stops being a sensible spacelike line -- so dump the geometry itself.
+    if (m_options.log_level == MocLogLevel::DEBUG) {
+        for (size_t i = 0; i < front.size(); i++) {
+            const CharacteristicPoint& lo = net.points[front[i].lower_pt_idx];
+            const CharacteristicPoint& hi = net.points[front[i].upper_pt_idx];
+            log_debug("FRONTPT pass={} i={} lo_idx={} lo_x={:.6f} lo_y={:.6f} lo_th={:.6f} "
+                "lo_mu={:.6f} hi_idx={} hi_x={:.6f} hi_y={:.6f} hi_th={:.6f} hi_mu={:.6f} "
+                "pchain={} mchain={} arc={:.6f}",
+                diag.pass, i, front[i].lower_pt_idx, lo.x, lo.y, lo.theta, lo.mu,
+                front[i].upper_pt_idx, hi.x, hi.y, hi.theta, hi.mu,
+                front[i].lower_plus_chain, front[i].upper_minus_chain, front[i].arc);
+        }
+    }
+
+    record_front_diagnostics(net, front, h_target, diag);
+    diag.inserted = inserted;
+    diag.retired = retired;
+    return inserted;
+}
 
 } // namespace Goddard
