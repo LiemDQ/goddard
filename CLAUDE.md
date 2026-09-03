@@ -66,6 +66,10 @@ pixi shell -e default
 pixi run clean
 # configure build
 pixi run configure Debug
+# configure for python module
+pixi run configure-python Debug
+# configure without enabling warnings-as-errors
+pixi run configure-quick
 # compile project
 pixi run compile
 # test project

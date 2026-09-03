@@ -6,6 +6,7 @@
 #include "cantera/core.h"
 #include <cmath>
 #include <limits>
+#include <string>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
@@ -190,13 +191,13 @@ TEST_F(MocErrorsFrozenTest, BasicEquilibriumCaseConverges) {
     expect_all_points_valid(result, opts.solver_options.abstol);
 }
 
-TEST(MocErrorsRegression, DesignRaoBasicSolveConverges) {
-    // Mirrors MocDesignRao.BasicSolveConverges (test_moc_rao.cpp): see that test's
-    // comment for why this (area_ratio, length_fraction) combination -- previously
-    // the only one confirmed to converge -- is currently skipped rather than
-    // asserted: the Phase 2 near-axis-void fix (denser dual-family KL-line seeding)
-    // trades it for a residual mesh-density mismatch deeper in the march, tracked
-    // as follow-up work.
+TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
+    // Mirrors MocDesignRao.BasicSolveReachesRecordedCoverage (test_moc_rao.cpp), which
+    // explains why this configuration is asserted rather than skipped. The load-bearing
+    // assertion here is different from that one's: whatever the march achieves before it
+    // stops, every point it did commit to the net must be valid. A solver that fails is
+    // acceptable; a solver that leaves NaNs or subsonic points behind is not, and that
+    // check must not be skipped away just because the march did not finish.
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
     opts.chemistry = GasChemistry::PERFECT_GAS;
@@ -211,11 +212,11 @@ TEST(MocErrorsRegression, DesignRaoBasicSolveConverges) {
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    if (!result.converged) {
-        GTEST_SKIP() << "DESIGN_RAO AR=5/Lf=0.8 did not converge: " << result.failure.message;
-    }
+    RecordProperty("exit_coverage", std::to_string(result.exit_coverage));
+    RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
-    EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
+    EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
+        << "converged and failure.code disagree: " << result.failure.message;
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.area_ratio, 1.0);
 
@@ -247,7 +248,7 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     opts.geometry.throat_radius = 1.0;
     // downstream_wall_curvature_radius left at its positive default (0.382):
     // generate_initial_data_line() takes the Kliegel-Levine transonic path.
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
 
     MocNozzle nozzle(opts);
     MocResult result;

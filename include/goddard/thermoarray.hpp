@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+// NOLINTBEGIN(readability-identifier-naming)
 namespace Goddard {
 
 /**
@@ -199,9 +200,10 @@ class ThermoArray {
 	
 
 	std::shared_ptr<Cantera::Solution> m_solution; //Underlying solution that SolutionArray is derived from.
-	std::shared_ptr<Cantera::SolutionArray> m_states; 
+	std::shared_ptr<Cantera::SolutionArray> m_states;
 	std::vector<double> m_orig_solution_state;
 	bool m_shape_is_set = false;
 };
 
 }
+// NOLINTEND(readability-identifier-naming)

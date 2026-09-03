@@ -24,6 +24,16 @@ Factory functions and helpers that simplify common workflows.
 
 ::: goddard.frozen_nozzle
 
+::: goddard.conical_nozzle
+
+::: goddard.rao_nozzle
+
+::: goddard.bezier_nozzle
+
 ::: goddard.moc_design
 
+::: goddard.moc_rao_design
+
 ::: goddard.moc_analysis
+
+::: goddard.pass_diagnostics_table

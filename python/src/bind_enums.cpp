@@ -2,6 +2,7 @@
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/chemistry.hpp"
+#include "goddard/characteristics.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -28,6 +29,20 @@ void bind_enums(nb::module_& m) {
         .value("SUPERSONIC_AREA_RATIO", Goddard::ExpansionType::SUPERSONIC_AREA_RATIO)
         .value("SUBSONIC_AREA_RATIO", Goddard::ExpansionType::SUBSONIC_AREA_RATIO)
         .value("PRESSURE_RATIO", Goddard::ExpansionType::PRESSURE_RATIO);
+
+    nb::enum_<Goddard::MocErrorCode>(m, "MocErrorCode")
+        .value("NONE", Goddard::MocErrorCode::NONE)
+        .value("NEGATIVE_NU", Goddard::MocErrorCode::NEGATIVE_NU)
+        .value("NEGATIVE_THETA", Goddard::MocErrorCode::NEGATIVE_THETA)
+        .value("SUBSONIC_MACH", Goddard::MocErrorCode::SUBSONIC_MACH)
+        .value("NONFINITE_VALUE", Goddard::MocErrorCode::NONFINITE_VALUE)
+        .value("PM_INVERSION_FAILED", Goddard::MocErrorCode::PM_INVERSION_FAILED)
+        .value("TABLE_RANGE_EXCEEDED", Goddard::MocErrorCode::TABLE_RANGE_EXCEEDED)
+        .value("NON_DOWNSTREAM_POINT", Goddard::MocErrorCode::NON_DOWNSTREAM_POINT)
+        .value("WALL_QUERY_OUT_OF_BOUNDS", Goddard::MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS)
+        .value("INITIALIZATION_FAILED", Goddard::MocErrorCode::INITIALIZATION_FAILED)
+        .value("MAX_ITERATIONS_REACHED", Goddard::MocErrorCode::MAX_ITERATIONS_REACHED)
+        .value("INCOMPLETE_MARCH", Goddard::MocErrorCode::INCOMPLETE_MARCH);
 
     nb::class_<Goddard::SolverOptions>(m, "SolverOptions")
         .def("__init__", [](Goddard::SolverOptions* self,

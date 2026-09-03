@@ -1,4 +1,5 @@
 #include "goddard/moc_initialization.hpp"
+#include "goddard/gas_dynamics.hpp"
 #include <cmath>
 #include <vector>
 #include "gtest/gtest.h"
@@ -22,6 +23,12 @@ public:
     using MocInitialization::KL_solve_transonic_x;
     using MocInitialization::sauer_alpha;
     using MocInitialization::delta;
+    using MocInitialization::KL_u1;
+    using MocInitialization::KL_u2;
+    using MocInitialization::KL_u3;
+    using MocInitialization::KL_v1;
+    using MocInitialization::KL_v2;
+    using MocInitialization::KL_v3;
 };
 
 namespace {
@@ -160,6 +167,59 @@ TEST(KliegelLevineClosedForm, WallLeadsAxisThroughTransonicRegion) {
     }
 }
 
+// The two velocity series are not independent: the flow is irrotational, so
+// Hall's coefficient pairs must satisfy d(u_n)/dr == d(v_n)/dz at every order.
+// This identity survives the Kliegel-Levine re-expansion from powers of 1/R
+// into powers of eps = 1/(R+1) exactly, because eps*R = 1-eps makes the
+// sqrt(1-eps) picked up by dv/dx cancel the binomial factors that the
+// re-expansion introduces ((1-eps)^-1 -> 1,1,1 for u1; (1-eps)^(-3/2) ->
+// 1, 3/2, 15/8 for v1; and so on -- those are exactly the mixed coefficients
+// in KL_xMach/KL_yMach).
+//
+// This is the only check that couples the u and v polynomials to each other.
+// KL Eqs. (10) and (12) constrain u alone, and only at r in {0,1}, z=0. Both
+// KL_u3 and KL_v3 have been silently broken before (a stray ';' dropped their
+// cubic axial terms), so this guards the polynomials as a whole rather than
+// two points of one of them.
+TEST(KliegelLevineClosedForm, IrrotationalityHoldsAtEachOrder) {
+    NozzleGeometry geom;
+    geom.throat_radius = 1.0;
+    geom.downstream_wall_curvature_radius = 1.0;
+    ThermodynamicContext thermo = make_perfect_gas_context(1.4);
+    MocOptions opts = make_options(1.4, 5, MocFlowKind::AXISYMMETRIC);
+    MocInitializationTestAccess init(geom, thermo, opts);
+
+    // Central differences; h=1e-5 puts the truncation and roundoff error of a
+    // low-degree polynomial together near 1e-9, well inside the tolerance.
+    const double h = 1e-5;
+    for (double gamma : {1.2, 1.4, 1.667}) {
+        for (double r : {0.2, 0.5, 0.8, 1.0, 1.2}) {
+            for (double z : {-0.3, 0.0, 0.15, 0.4}) {
+                const double du1_dr =
+                    (init.KL_u1(r + h, z) - init.KL_u1(r - h, z)) / (2 * h);
+                const double dv1_dz =
+                    (init.KL_v1(r, z + h) - init.KL_v1(r, z - h)) / (2 * h);
+                EXPECT_NEAR(du1_dr, dv1_dz, 1e-7)
+                    << "order 1 irrotationality, gamma=" << gamma << " r=" << r << " z=" << z;
+
+                const double du2_dr =
+                    (init.KL_u2(r + h, z, gamma) - init.KL_u2(r - h, z, gamma)) / (2 * h);
+                const double dv2_dz =
+                    (init.KL_v2(r, z + h, gamma) - init.KL_v2(r, z - h, gamma)) / (2 * h);
+                EXPECT_NEAR(du2_dr, dv2_dz, 1e-7)
+                    << "order 2 irrotationality, gamma=" << gamma << " r=" << r << " z=" << z;
+
+                const double du3_dr =
+                    (init.KL_u3(r + h, z, gamma) - init.KL_u3(r - h, z, gamma)) / (2 * h);
+                const double dv3_dz =
+                    (init.KL_v3(r, z + h, gamma) - init.KL_v3(r, z - h, gamma)) / (2 * h);
+                EXPECT_NEAR(du3_dr, dv3_dz, 1e-7)
+                    << "order 3 irrotationality, gamma=" << gamma << " r=" << r << " z=" << z;
+            }
+        }
+    }
+}
+
 // ============================================================
 // Newton solve for the transonic (zero radial-velocity) line
 // ============================================================
@@ -269,10 +329,19 @@ TEST(SauerInitialization, TransonicLineMatchesClosedForm) {
     }
 }
 
-TEST(SauerInitialization, MachAtAxisAndWallMatchesClosedForm) {
-    // At y=1 (wall), x=0 by construction, so the Mach relation reduces to
-    // M = 1 + (gamma+1)*alpha^2/(2*(1+delta)). At y=0 (axis), the y^2 term
-    // vanishes, so M = 1 + alpha*x_axis.
+TEST(SauerInitialization, MachIsConvertedFromCriticalVelocityRatio) {
+    // Sauer's closed form gives u/a* -- the critical velocity ratio M*, not the Mach
+    // number. At y=1 (wall), x=0 by construction, so it reduces to
+    // M* = 1 + (gamma+1)*alpha^2/(2*(1+delta)); at y=0 (axis) the y^2 term vanishes and
+    // M* = 1 + alpha*x_axis.
+    //
+    // The point of this test is the conversion. M* and M agree only at M = 1 and separate
+    // above it, so a start line built by assigning the series value straight to `mach`
+    // understates the Mach number by more the faster the flow -- which on a transonic line
+    // means the wall end is biased far more than the axis end. The reference values below
+    // are therefore run through mach_from_critical_velocity_ratio, and the raw series
+    // values are asserted to be *different* from the stored Mach so that a regression to
+    // the old behaviour cannot pass.
     double gamma = 1.4;
     double R = 1.5;
     double delta = 1.0; // axisymmetric
@@ -296,11 +365,20 @@ TEST(SauerInitialization, MachAtAxisAndWallMatchesClosedForm) {
     ASSERT_NEAR(axis_pt.y, 0.0, 1e-15);
     ASSERT_NEAR(wall_pt.y, 1.0, 1e-15);
 
-    double expected_mach_axis = 1.0 + alpha * x_axis;
-    double expected_mach_wall = 1.0 + (gamma + 1.0) * alpha * alpha / (2.0 * (1.0 + delta));
+    const double m_star_axis = 1.0 + alpha * x_axis;
+    const double m_star_wall = 1.0 + (gamma + 1.0) * alpha * alpha / (2.0 * (1.0 + delta));
 
-    EXPECT_NEAR(axis_pt.mach, expected_mach_axis, 1e-9);
-    EXPECT_NEAR(wall_pt.mach, expected_mach_wall, 1e-9);
+    EXPECT_NEAR(axis_pt.mach, mach_from_critical_velocity_ratio(m_star_axis, gamma), 1e-9);
+    EXPECT_NEAR(wall_pt.mach, mach_from_critical_velocity_ratio(m_star_wall, gamma), 1e-9);
+
+    // Both stations are supersonic, so the conversion must actually have moved the value.
+    EXPECT_GT(axis_pt.mach, m_star_axis);
+    EXPECT_GT(wall_pt.mach, m_star_wall);
+
+    // ... and the round trip has to close, which pins the direction of the conversion as
+    // well as its magnitude.
+    EXPECT_NEAR(critical_velocity_ratio_from_mach(axis_pt.mach, gamma), m_star_axis, 1e-9);
+    EXPECT_NEAR(critical_velocity_ratio_from_mach(wall_pt.mach, gamma), m_star_wall, 1e-9);
 }
 
 // ============================================================

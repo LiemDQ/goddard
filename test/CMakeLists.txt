@@ -28,6 +28,7 @@ add_executable(
     test_moc_initialization.cpp
     test_moc_rao.cpp
     test_moc_errors.cpp
+    test_moc_invariance.cpp
     test_kinetic_nozzle.cpp
     test_shocks.cpp
     test_gas.cpp

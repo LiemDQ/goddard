@@ -175,3 +175,4 @@ cython_debug/
 .claude/
 instructions/
 *.mcp.json
+debug_probes/
