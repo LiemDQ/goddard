@@ -1,6 +1,9 @@
 #include "goddard/moc_initialization.hpp"
+#include "goddard/moc_nozzle.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 #include "gtest/gtest.h"
 
@@ -29,6 +32,7 @@ public:
     using MocInitialization::KL_v1;
     using MocInitialization::KL_v2;
     using MocInitialization::KL_v3;
+    using MocInitialization::KL_z_coordinate;
 };
 
 namespace {
@@ -218,6 +222,81 @@ TEST(KliegelLevineClosedForm, IrrotationalityHoldsAtEachOrder) {
             }
         }
     }
+}
+
+// The KL series is expanded assuming the wall follows a circular arc of radius R (throat
+// radii): r_w(x) = 1 + R - sqrt(R^2 - x^2). If the series satisfied the arc's own boundary
+// condition exactly, the flow angle it gives at (x, r_w(x)) -- v*/u* = tan(theta), since
+// both components share the same critical-speed normalization -- would equal the arc's own
+// slope dr_w/dx there. This checks that identity in closed form, independent of any
+// NozzleProfile or MocNozzle solve: it is the same measurement diagnosis.md Sec A2 reports
+// (theta_series/theta_wall), reproduced directly from the series and the assumed arc.
+//
+// Absolute residual is O(eps^4): a correctly truncated third-order (in eps = 1/(R+1))
+// series should miss its own boundary condition by one order beyond its last kept term.
+// The *relative* residual is one order lower, O(eps^3), because the wall angle itself is
+// O(eps) (the arc is nearly flat at x = 0.05 for large R).
+TEST(KliegelLevineClosedForm, WallBoundaryConditionResidualOrder) {
+    const double gamma = 1.4;
+    const double x = 0.05;
+
+    auto relative_residual = [&](double R) {
+        NozzleGeometry geom;
+        geom.throat_radius = 1.0;
+        geom.downstream_wall_curvature_radius = R;
+        ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+        MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
+        MocInitializationTestAccess init(geom, thermo, opts);
+
+        const double r_w = 1.0 + R - std::sqrt(R * R - x * x);
+        const double slope = x / std::sqrt(R * R - x * x); // dr_w/dx, the arc's own theta_wall (small-angle)
+
+        const double z = init.KL_z_coordinate(x, gamma);
+        const double u_star = init.KL_xMach(r_w, z, gamma, R);
+        const double v_star = init.KL_yMach(x, r_w, gamma, R);
+        const double series_slope = v_star / u_star;
+
+        return std::abs(series_slope - slope) / slope;
+    };
+
+    EXPECT_LT(relative_residual(5.0), 0.02) << "relative residual should be under 2% at R=5";
+    EXPECT_LT(relative_residual(10.0), 0.003) << "relative residual should be under 0.3% at R=10";
+
+    for (double R : {2.0, 5.0, 10.0, 20.0, 50.0}) {
+        const double eps = 1.0 / (R + 1.0);
+        const double ratio = relative_residual(R) / (eps * eps * eps);
+        EXPECT_GE(ratio, 1.5) << "residual/eps^3 should be order 1, R=" << R;
+        EXPECT_LE(ratio, 5.0) << "residual/eps^3 should be order 1, R=" << R;
+    }
+}
+
+// Pins the known limitation diagnosis.md Sec A2 documents: the truncated third-order series
+// does not converge in its z-dependent terms for R below ~1-2, and at the default throat
+// (R = 0.382) recovers under half the wall angle the assumed arc actually has. This is the
+// numeric fact that motivates initialize_kliegel_levine's wall-consistency correction and
+// MocOptions::kl_max_wall_angle_error.
+TEST(KliegelLevineClosedForm, SeriesMissesWallAngleAtSmallR) {
+    const double gamma = 1.4;
+    const double R = 0.382;
+    const double x = 0.05;
+
+    NozzleGeometry geom;
+    geom.throat_radius = 1.0;
+    geom.downstream_wall_curvature_radius = R;
+    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
+    MocInitializationTestAccess init(geom, thermo, opts);
+
+    const double r_w = 1.0 + R - std::sqrt(R * R - x * x);
+    const double theta_wall = std::atan(x / std::sqrt(R * R - x * x));
+
+    const double z = init.KL_z_coordinate(x, gamma);
+    const double u_star = init.KL_xMach(r_w, z, gamma, R);
+    const double v_star = init.KL_yMach(x, r_w, gamma, R);
+    const double theta_series = std::atan2(v_star, u_star);
+
+    EXPECT_LT(theta_series / theta_wall, 0.5)
+        << "theta_series=" << theta_series << " theta_wall=" << theta_wall;
 }
 
 // ============================================================
@@ -414,4 +493,92 @@ TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY)
             EXPECT_GE(points[i].theta, points[i - 1].theta) << "theta should increase monotonically off-axis, index " << i;
         }
     }
+}
+
+// ============================================================
+// Wall-consistency correction and MocOptions::start_line (Package A)
+// ============================================================
+
+// kl_max_wall_angle_error is left at its generous 0.2 here (rather than the library
+// default of 0.035) because the point of this test is the correction itself, not the
+// threshold gate: at r_arc = 0.382 the raw series misses the wall angle by ~0.145 rad
+// (SeriesMissesWallAngleAtSmallR), comfortably inside 0.2 but well outside the library
+// default -- AutoFallsBackToFanBelowThreshold and ForcedSeriesFailsHonestlyBelowThreshold
+// below cover the threshold-triggered paths with an explicitly tight threshold instead.
+TEST(KliegelLevineInitialization, WallEndTangentToContour) {
+    const double gamma = 1.4;
+    const double R = 0.382;
+    const int n = 31;
+    NozzleProfile wall = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+
+    NozzleGeometry geom;
+    geom.throat_radius = 1.0;
+    geom.downstream_wall_curvature_radius = R;
+    MocOptions opts = make_options(gamma, n, MocFlowKind::AXISYMMETRIC);
+    opts.start_line = MocStartLine::KLIEGEL_LEVINE;
+    opts.kl_max_wall_angle_error = 0.2;
+    opts.geometry = geom;
+    opts.nozzle_profile = wall;
+
+    // The data line itself: initialize_kliegel_levine() is public, so it is exercised the
+    // same way ProducesRequestedNumberOfPointsWithMonotonicY above does, only now with a
+    // wall profile present so the wall-consistency correction actually engages.
+    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocInitialization init(geom, thermo, opts);
+    ThroatCondition throat = make_perfect_gas_throat(gamma);
+    auto data_line = init.initialize_kliegel_levine(throat);
+    ASSERT_FALSE(data_line.empty());
+    const CharacteristicPoint& wall_pt = data_line.back();
+    EXPECT_NEAR(wall_pt.theta, wall.theta_at(wall_pt.x), 1e-9)
+        << "wall-end theta should match the contour exactly after the correction";
+
+    // wall_bc_residual and start_line_used are only computed by MocNozzle's diagnostics, so
+    // check them from a full solve with the same inputs.
+    MocNozzle solver(opts);
+    MocResult result = solver.solve();
+    EXPECT_EQ(result.init_diagnostics.start_line_used, MocStartLine::KLIEGEL_LEVINE);
+    EXPECT_GE(result.init_diagnostics.wall_bc_residual, 0.55);
+    EXPECT_LE(result.init_diagnostics.wall_bc_residual, 0.65);
+}
+
+TEST(KliegelLevineInitialization, AutoFallsBackToFanBelowThreshold) {
+    const double gamma = 1.4;
+    const double R = 0.382;
+    const int n = 31;
+
+    MocOptions opts = make_options(gamma, n, MocFlowKind::AXISYMMETRIC);
+    opts.start_line = MocStartLine::AUTO;
+    opts.kl_max_wall_angle_error = 0.01; // well under the ~0.145 rad raw miss at R=0.382
+    opts.geometry.downstream_wall_curvature_radius = R;
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+
+    MocNozzle solver(opts);
+    MocResult result;
+    ASSERT_NO_THROW({ result = solver.solve(); });
+
+    EXPECT_EQ(result.init_diagnostics.start_line_used, MocStartLine::CENTERED_FAN);
+    const bool has_fallback_message = std::any_of(
+        result.messages.begin(), result.messages.end(),
+        [](const std::string& m) { return m.find("centered-fan") != std::string::npos; });
+    EXPECT_TRUE(has_fallback_message)
+        << "expected an info message naming the centered-fan fallback";
+}
+
+TEST(KliegelLevineInitialization, ForcedSeriesFailsHonestlyBelowThreshold) {
+    const double gamma = 1.4;
+    const double R = 0.382;
+    const int n = 31;
+
+    MocOptions opts = make_options(gamma, n, MocFlowKind::AXISYMMETRIC);
+    opts.start_line = MocStartLine::KLIEGEL_LEVINE;
+    opts.kl_max_wall_angle_error = 0.01;
+    opts.geometry.downstream_wall_curvature_radius = R;
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+
+    MocNozzle solver(opts);
+    MocResult result;
+    ASSERT_NO_THROW({ result = solver.solve(); });
+
+    EXPECT_FALSE(result.converged);
+    EXPECT_EQ(result.failure.code, MocErrorCode::INITIALIZATION_FAILED);
 }

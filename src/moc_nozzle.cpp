@@ -366,37 +366,68 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
 
     ThermodynamicContext context = build_thermo_context();
 
-    // The Kliegel-Levine series implemented here is the axisymmetric transonic
-    // solution; it is selected by a positive downstream wall curvature radius but
-    // is not valid for planar flow, which falls back to a centered fan.
-    bool use_centered_fan =
-        m_options.geometry.downstream_wall_curvature_radius <= 0.0 ||
-        m_options.flow_type == MocFlowKind::PLANAR;
-    if (use_centered_fan &&
-        m_options.flow_type == MocFlowKind::PLANAR &&
-        m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
-        m_options.mode != MocMode::DESIGN_MIN_LENGTH)
-    {
-        log_info("Kliegel-Levine initialization is only valid for axisymmetric flow; "
-                 "using centered-fan initialization for planar flow.");
+    // Resolve which start line this solve actually uses, once, as a single enum-valued
+    // decision that both the fan/KL choice below and the theta_max derivation key off of
+    // (previously a bool computed the choice while a separate ad hoc condition guarded the
+    // theta_max derivation, and the two could disagree once a fallback was possible).
+    // MocStartLine::AUTO keeps today's rule: a positive downstream curvature radius and
+    // axisymmetric flow select the Kliegel-Levine series; anything else selects the fan.
+    // The series is also not valid for planar flow when forced (validate_moc_options
+    // rejects that combination outright).
+    MocStartLine resolved_start_line = m_options.start_line;
+    if (resolved_start_line == MocStartLine::AUTO) {
+        resolved_start_line =
+            (m_options.geometry.downstream_wall_curvature_radius <= 0.0 ||
+             m_options.flow_type == MocFlowKind::PLANAR)
+                ? MocStartLine::CENTERED_FAN
+                : MocStartLine::KLIEGEL_LEVINE;
+        if (resolved_start_line == MocStartLine::CENTERED_FAN &&
+            m_options.flow_type == MocFlowKind::PLANAR &&
+            m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
+            m_options.mode != MocMode::DESIGN_MIN_LENGTH)
+        {
+            log_info("Kliegel-Levine initialization is only valid for axisymmetric flow; "
+                     "using centered-fan initialization for planar flow.");
+        }
     }
 
     // In analysis mode the expansion is set by the wall contour, not by a design
     // theta_max (which is meaningless there and typically left unset). When the
-    // centered-fan initializer will be used, derive theta_max from the profile.
+    // centered-fan initializer will be used, derive theta_max from the profile. Shared
+    // between the eager fan path and the AUTO fallback below (see the KL catch clause) so
+    // the fallback gets exactly the same theta_max the eager path would have used.
+    //
+    // DESIGN_RAO is included alongside ANALYSIS: before this package DESIGN_RAO's default
+    // positive curvature radius meant it never took the fan branch at all (use_centered_fan
+    // was false whenever curvature was positive and axisymmetric), so this branch's
+    // ANALYSIS-only guard was never exercised for it. The AUTO wall-angle-miss fallback
+    // changes that -- DESIGN_RAO's default r_arc = 0.382 throat misses the threshold just
+    // as an ANALYSIS contour at the same throat does -- and DESIGN_RAO's profile is equally
+    // available here: solve() calls setup_nozzle_profile() (which generates the Rao
+    // contour) before generate_initial_data_line() runs, for every mode.
     MocOptions init_options = m_options;
-    if (m_options.mode == MocMode::ANALYSIS && use_centered_fan)
-    {
+    auto derive_fan_theta_max = [&]() {
+        if (m_options.mode != MocMode::ANALYSIS && m_options.mode != MocMode::DESIGN_RAO) return;
         const NozzleProfile& wall = m_options.nozzle_profile;
         if (wall.size() < 2) {
-            throw std::runtime_error("Analysis mode requires a wall profile with at least 2 points.");
+            throw std::runtime_error(
+                "Centered-fan initialization requires a wall profile with at least 2 points.");
         }
         init_options.theta_max = wall.max_theta();
         if (init_options.theta_max <= 0.0) {
-            throw std::runtime_error("Wall profile must have a positive expansion angle for analysis mode.");
+            throw std::runtime_error(
+                "Wall profile must have a positive expansion angle for centered-fan initialization.");
         }
+    };
+    if (resolved_start_line == MocStartLine::CENTERED_FAN) {
+        derive_fan_theta_max();
     }
-    MocInitialization initializer{geometry, context, init_options};
+    // MocInitialization holds a ThermodynamicContext by value, which carries a reference
+    // member (its PrandtlMeyerTable) -- that makes the class copy-constructible but not
+    // copy-assignable, so a rebuild after the fallback below uses emplace() (in-place
+    // construction) rather than assignment.
+    std::optional<MocInitialization> initializer;
+    initializer.emplace(geometry, context, init_options);
 
     switch (m_options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
@@ -407,7 +438,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // A centered expansion fan is collinear along a single C+ characteristic.
             m_initial_line_family = ChainMetadata::Family::PLUS;
 
-            auto expansion_line = initializer.initialize_centered_expansion(throat);
+            auto expansion_line = initializer->initialize_centered_expansion(throat);
             // Mirror the fan angles (user-supplied or auto-generated inside the
             // initializer) into m_theta_schedule: the min-length wall solve reads
             // theta_wall = theta_max - m_theta_schedule[k] for each wall point.
@@ -441,10 +472,34 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // seeded as a generic data line (m_initial_line_family stays empty).
              // the first theta should be small to minimize approximation error.
             CharacteristicPoint upstream_point;
-            if (use_centered_fan) {
-
+            if (resolved_start_line == MocStartLine::KLIEGEL_LEVINE) {
+                try {
+                    // The Kliegel-Levine transonic line already spans axis-to-wall with full
+                    // thermodynamic state and K+/K- set: it IS the initial data line. Unlike
+                    // the centered fan (whose rays all emanate from the throat lip and must
+                    // be marched into the flow field), re-marching these points pairwise
+                    // would intersect characteristics *behind* their parents. See
+                    // CharacteristicNet::add_initial_data_line's nullopt branch for how this
+                    // non-collinear line is actually seeded into the net without that
+                    // re-marching.
+                    data_line = initializer->initialize_kliegel_levine(throat);
+                }
+                catch (const KlWallAngleFallback& e) {
+                    // MocOptions::start_line was AUTO (a forced KLIEGEL_LEVINE throws
+                    // ConvergenceError instead, which is not this type and is left to
+                    // propagate to solve()'s exception boundary as INITIALIZATION_FAILED).
+                    // Rebuild as the centered fan below, with theta_max derived exactly as
+                    // the eager fan path derives it.
+                    log_info("Kliegel-Levine series misses the wall angle by {:.6f} rad at "
+                             "R = {:.6f}; using centered-fan initialization.", e.miss, e.R);
+                    resolved_start_line = MocStartLine::CENTERED_FAN;
+                    derive_fan_theta_max();
+                    initializer.emplace(geometry, context, init_options);
+                }
+            }
+            if (resolved_start_line == MocStartLine::CENTERED_FAN) {
                 m_initial_line_family = ChainMetadata::Family::PLUS;
-                auto expansion_line = initializer.initialize_centered_expansion(throat);
+                auto expansion_line = initializer->initialize_centered_expansion(throat);
                 m_theta_schedule.resize(expansion_line.size());
                 for (size_t i = 0; i < expansion_line.size(); i++) {
                     m_theta_schedule[i] = expansion_line[i].theta;
@@ -467,16 +522,6 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                         data_line.push_back(upstream_point);
                     }
                 }
-            }
-            else {
-                // The Kliegel-Levine transonic line already spans axis-to-wall with full
-                // thermodynamic state and K+/K- set: it IS the initial data line. Unlike
-                // the centered fan (whose rays all emanate from the throat lip and must be
-                // marched into the flow field), re-marching these points pairwise would
-                // intersect characteristics *behind* their parents. See
-                // CharacteristicNet::add_initial_data_line's nullopt branch for how this
-                // non-collinear line is actually seeded into the net without that re-marching.
-                data_line = initializer.initialize_kliegel_levine(throat);
             }
             break;
         }
@@ -2233,6 +2278,19 @@ MocInitDiagnostics MocNozzle::record_init_diagnostics(
         diag.cot_mu_ratio = (cot_wall > 0.0) ? cot_axis / cot_wall : 0.0;
     }
 
+    diag.start_line_used = m_initial_line_family.has_value()
+        ? MocStartLine::CENTERED_FAN : MocStartLine::KLIEGEL_LEVINE;
+
+    // K+ of the topmost *interior* point. The Kliegel-Levine line carries a separate wall
+    // point (data_line.back()), so its topmost interior point is the one just below it; the
+    // centered fan carries no such boundary point within data_line at all (solve() seeds
+    // the throat lip anchor outside it), so its own last point already is the topmost
+    // interior point.
+    diag.kplus_wall_end =
+        (diag.start_line_used == MocStartLine::KLIEGEL_LEVINE && data_line.size() >= 2)
+            ? data_line[data_line.size() - 2].K_plus
+            : wall_pt.K_plus;
+
     // Fit to the prescribed wall. Two things gate this. A design mode has no prescribed
     // contour to be off by. And a line that lies along one characteristic (the centered
     // fan) does not carry its own wall point at all -- solve() seeds the throat lip
@@ -2245,6 +2303,38 @@ MocInitDiagnostics MocNozzle::record_init_diagnostics(
         diag.wall_gap = std::abs(wall_pt.y - wall.radius_at(wall_pt.x));
         diag.wall_gap_over_spacing = diag.wall_gap / spacing;
         diag.wall_theta_mismatch = std::abs(wall_pt.theta - wall.theta_at(wall_pt.x));
+
+        // How far the raw (pre-correction) series missed this wall angle, recomputed from
+        // the finished line's own (x, y): initialize_kliegel_levine's wall-consistency
+        // correction already overwrote wall_pt.theta above with a value matching
+        // wall.theta_at(wall_pt.x) closely (that is what wall_theta_mismatch just measured
+        // as ~0), so the pre-correction value cannot be read off data_line and is
+        // re-evaluated from the series instead. Perfect-gas only: the series needs a
+        // scalar gamma, and only that chemistry carries one (m_options.gamma)
+        // independently of the throat solve this function has no access to.
+        if (diag.start_line_used == MocStartLine::KLIEGEL_LEVINE &&
+            m_options.chemistry == GasChemistry::PERFECT_GAS &&
+            m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
+            m_options.geometry.throat_radius > 0.0)
+        {
+            const double R = m_options.geometry.downstream_wall_curvature_radius
+                           / m_options.geometry.throat_radius;
+            PrandtlMeyerTable dummy_table; // unused: PERFECT_GAS never touches it
+            ThermodynamicContext probe_thermo{
+                .gas = std::nullopt,
+                .table = dummy_table,
+                .T_ref = m_T_ref,
+                .P_ref = m_P_ref,
+                .gamma_s = m_options.gamma,
+            };
+            MocInitialization probe(m_options.geometry, probe_thermo, m_options);
+            const double theta_series_wall =
+                probe.kl_series_theta(wall_pt.x, wall_pt.y, m_options.gamma, R);
+            const double theta_wall_contour = wall.theta_at(wall_pt.x);
+            diag.wall_bc_residual = (theta_wall_contour != 0.0)
+                ? (1.0 - theta_series_wall / theta_wall_contour)
+                : 0.0;
+        }
 
         // Distance to the sharpest slope break on the contour. A conical profile's arc runs
         // into a straight cone, and seeding the wall march exactly there means the first

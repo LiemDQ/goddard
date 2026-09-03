@@ -151,6 +151,20 @@ void validate_moc_options(const MocOptions& options) {
         throw std::invalid_argument(std::format(
             "solver_options.abstol must be positive; got {}.", options.solver_options.abstol));
     }
+    if (!(options.kl_max_wall_angle_error > 0.0)) {
+        throw std::invalid_argument(std::format(
+            "kl_max_wall_angle_error must be positive; got {}.",
+            options.kl_max_wall_angle_error));
+    }
+    if (options.start_line == MocStartLine::KLIEGEL_LEVINE &&
+        (options.flow_type == MocFlowKind::PLANAR ||
+         options.geometry.downstream_wall_curvature_radius <= 0.0))
+    {
+        throw std::invalid_argument(
+            "MocStartLine::KLIEGEL_LEVINE requires axisymmetric flow and a positive "
+            "NozzleGeometry::downstream_wall_curvature_radius; the Kliegel-Levine series "
+            "is axisymmetric only.");
+    }
 }
 
 ThrustCoefficient compute_thrust_coefficient(

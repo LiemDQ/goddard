@@ -70,6 +70,11 @@ struct NozzleGeometry {
     double expansion_ratio = 5.0;
 };
 
+/** Which initial data line to build. AUTO keeps today's rule (negative
+ *  NozzleGeometry::downstream_wall_curvature_radius or planar flow selects the fan) and
+ *  additionally falls back to the fan when the Kliegel-Levine series misses the wall
+ *  angle by more than kl_max_wall_angle_error. */
+enum class MocStartLine { AUTO, KLIEGEL_LEVINE, CENTERED_FAN };
 
 /**
  * Options for method of characteristics simulations.
@@ -143,6 +148,13 @@ struct MocOptions {
      * not be read as a fix. Default 0 because the benefit does not survive refinement.
      */
     double initial_line_clustering = 0.0;
+
+    /** Which initial data line to build; see MocStartLine. */
+    MocStartLine start_line = MocStartLine::AUTO;
+
+    /** Largest |theta_series - theta_wall| (rad) at the KL line's wall end before the
+     *  series is judged untrustworthy there. Default 0.035 (2 deg). */
+    double kl_max_wall_angle_error = 0.035;
 
     /**
      * Upper bound on marching-front point spacing, as a multiple of the local target
@@ -403,6 +415,27 @@ struct MocInitDiagnostics {
      * a one-sided difference across a slope jump. Large sentinel value for a smooth contour.
      */
     double wall_station_to_tangency = 0.0;
+
+    /**
+     * How far the raw (uncorrected) Kliegel-Levine series missed its own wall boundary
+     * condition at the data line's wall end: 1 - theta_series/theta_wall, measured before
+     * initialize_kliegel_levine's wall-consistency correction is applied. Zero for the
+     * centered fan (no series to miss) and when the chemistry is not PERFECT_GAS (the
+     * series needs a scalar gamma that only the perfect-gas path carries independently
+     * of the throat solve).
+     */
+    double wall_bc_residual = 0.0;
+
+    /**
+     * K+ = theta - nu of the topmost interior point (the data line point just below the
+     * wall end), after the wall-consistency correction. This is the quantity diagnosis.md
+     * Sec A1 tracks: a large negative value here over-expands the first wall solve.
+     */
+    double kplus_wall_end = 0.0;
+
+    /** Which start line the solve actually used -- meaningful when MocOptions::start_line
+     *  is AUTO and the Kliegel-Levine series was rejected in favor of the fan. */
+    MocStartLine start_line_used = MocStartLine::AUTO;
 };
 
 /**

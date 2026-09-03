@@ -1,9 +1,16 @@
 #include <algorithm>
+#include <format>
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/moc_initialization.hpp"
 
 namespace Goddard {
 
+KlWallAngleFallback::KlWallAngleFallback(double R_in, double miss_in, double threshold_in)
+    : std::runtime_error(std::format(
+          "Kliegel-Levine series misses the wall angle by {} rad at R = {} "
+          "(threshold {} rad).", miss_in, R_in, threshold_in)),
+      R(R_in), miss(miss_in), threshold(threshold_in)
+{}
 
 double gquad(double gamma, double a, double b, double c, double d) {
     return (a*gamma*gamma + b*gamma + c)/d;
@@ -208,19 +215,72 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
         points[i] = evaluate(y * y_wall);
     }
 
-    // The wall point keeps the flow angle the series gives it, and is deliberately *not*
-    // overwritten with the contour's own angle. Forcing tangency there was tried and
-    // measured: it leaves AR >= 4 unchanged and regresses AR = 2 from full coverage to a
-    // PM inversion failure at N = 31. The reason is that a large shift on a sharply curved
-    // throat puts the line's wall end downstream of the throat arc -- with the default
-    // r_arc = 0.382 and a 15 degree cone the arc ends at x = 0.0989 and the default shift
-    // is 0.1 -- so the contour there is the straight cone at 15 degrees while the transonic
-    // solution is still turning through about 5.5. Overwriting the angle imposes that 9.5
-    // degree jump on one end of the start line; keeping the series' own value leaves the
-    // line self-consistent and lets the wall solve turn the flow over its first few steps.
+    // Wall-consistent correction. The wall point's theta was left as the raw series value
+    // above (evaluate() has no notion of the contour), and that raw value is frequently
+    // wrong by a lot: at the default r_arc = 0.382 the series recovers only ~40% of the
+    // contour's own wall angle there (diagnosis.md Sec A2 -- the truncated z-dependent
+    // terms of a third-order expansion do not converge for a throat this sharply curved).
+    // Leaving that mismatch in place, as an earlier version of this function argued for,
+    // makes K+ = theta - nu on the near-wall interior points 8-10 deg too negative, which
+    // the first wall solve reads as an over-expansion and the wall Mach dips for the next
+    // several wall points before recovering (Sec A1) -- refining the grid does not cure it,
+    // since the mismatch is a property of the series, not of the mesh.
     //
-    // MocInitDiagnostics::wall_theta_mismatch reports the disagreement, which is the signal
-    // that the start line has been placed outside the region the series describes.
+    // Measure the raw mismatch first (before touching any theta), then either let the
+    // caller fall back to the centered fan (AUTO, above threshold -- the series cannot be
+    // trusted here) or spread the mismatch across the line so the wall end matches the
+    // contour exactly.
+    //
+    // The correction is multiplicative (theta_i *= theta_wall / theta_series_wall), not a
+    // uniform or linearly-graded additive offset: three variants were measured against
+    // conical AR=4, r_arc=0.382, N=15/31/61, mesh control non-binding (see the package
+    // report for the full table). An additive correction weighted by (y_i/y_wall) -- p=1 --
+    // reduces the wall-Mach dip diagnosis.md Sec A1 documents but leaves it 7 wall points
+    // deep at N=61 (peak-to-trough 0.035 in Mach) with the largest single-step regression
+    // (-0.015). Squaring the weight (p=2) or scaling multiplicatively both concentrate the
+    // correction much more sharply at the wall end, where the series is weakest and
+    // irrotationality ties every interior theta to the same u/v polynomials the wall angle
+    // was read from; either shrinks the dip to 4 points at N=61 (0.014 peak-to-trough,
+    // largest single-step -0.006) and to nothing at all at N=15. Multiplicative was kept
+    // over p=2 because it gave the smaller |mass_flow_error| at every N tested.
+    if (num_points >= 2 && wall_profile.size() >= 2) {
+        CharacteristicPoint& wall_point = points.back();
+        if (wall_point.x >= wall_profile.x_min() && wall_point.x <= wall_profile.x_max()) {
+            const double theta_series_wall = wall_point.theta;
+            const double theta_wall = wall_profile.theta_at(wall_point.x);
+            const double miss = std::abs(theta_series_wall - theta_wall);
+
+            if (miss > m_options.kl_max_wall_angle_error) {
+                if (m_options.start_line == MocStartLine::AUTO) {
+                    // Caller (MocNozzle::generate_initial_data_line) catches this specific
+                    // type and rebuilds the line as a centered fan instead.
+                    throw KlWallAngleFallback(R, miss, m_options.kl_max_wall_angle_error);
+                }
+                // Forced MocStartLine::KLIEGEL_LEVINE: fail honestly rather than silently
+                // stretching a correction over a mismatch this large.
+                throw ConvergenceError(std::format(
+                    "Kliegel-Levine series misses the wall angle by {} rad at R = {} "
+                    "(threshold kl_max_wall_angle_error = {} rad); forced "
+                    "MocStartLine::KLIEGEL_LEVINE does not fall back to the centered fan.",
+                    miss, R, m_options.kl_max_wall_angle_error));
+            }
+
+            // theta is 0 only on the axis (v* vanishes there identically), where the
+            // multiplier would be a 0/0 indeterminate; the axis point needs no correction
+            // in any case (it is already exact), so it is simply skipped.
+            if (std::abs(theta_series_wall) > 1e-12) {
+                const double multiplier = theta_wall / theta_series_wall;
+                for (CharacteristicPoint& pt : points) {
+                    if (std::abs(pt.theta) <= 1e-12) continue;
+                    pt.theta *= multiplier;
+                    pt.update_Ks();
+                }
+            }
+        }
+    }
+    // Else: no wall profile to check against (e.g. MocInitialization exercised directly,
+    // without a MocNozzle solve() around it) -- nothing to correct or measure against, so
+    // the series' own theta is returned unmodified, exactly as before this change.
 
     //TODO: corrector step with updated gamma
 
@@ -416,6 +476,12 @@ double MocInitialization::KL_solve_transonic_x(double y, double gamma, double R,
     }
 
     throw ConvergenceError("Newton's method for transonic line x-coordinate failed to converge.", max_iters, tol);
+}
+
+double MocInitialization::kl_series_theta(double x, double y, double gamma, double R) const {
+    const double u_star = KL_xMach(y, KL_z_coordinate(x, gamma), gamma, R);
+    const double v_star = KL_yMach(x, y, gamma, R);
+    return std::atan2(v_star, u_star);
 }
 
 } // namespace Goddard

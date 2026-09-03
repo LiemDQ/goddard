@@ -8,7 +8,24 @@
 
 namespace Goddard {
 
-
+/**
+ * Thrown by MocInitialization::initialize_kliegel_levine() when MocOptions::start_line is
+ * MocStartLine::AUTO and the raw series misses the wall boundary condition by more than
+ * MocOptions::kl_max_wall_angle_error.
+ *
+ * MocNozzle::generate_initial_data_line catches exactly this type and falls back to the
+ * centered fan (logging why); nothing else should catch it. A forced
+ * MocStartLine::KLIEGEL_LEVINE throws Goddard::ConvergenceError instead -- not caught here
+ * -- which surfaces as MocErrorCode::INITIALIZATION_FAILED via MocNozzle::solve()'s
+ * exception boundary.
+ */
+class KlWallAngleFallback : public std::runtime_error {
+public:
+    KlWallAngleFallback(double R, double miss, double threshold);
+    double R;         ///< Downstream curvature ratio (curvature radius / throat radius).
+    double miss;       ///< |theta_series - theta_wall| at the line's wall end, radians.
+    double threshold;  ///< The kl_max_wall_angle_error that was exceeded, radians.
+};
 
 class MocInitialization {
     public:
@@ -44,6 +61,21 @@ class MocInitialization {
      * in the characteristic net construction. 
      */
     std::vector<CharacteristicPoint> initialize_centered_expansion(const ThroatCondition& throat);
+
+    /**
+     * The raw (uncorrected) Kliegel-Levine series flow angle theta = atan2(v*, u*) at a
+     * station (x, y), before initialize_kliegel_levine()'s wall-consistency correction.
+     *
+     * Public -- unlike the KL_* kernel functions -- because MocNozzle::record_init_diagnostics
+     * needs to recompute this from the finished data line's own (x, y): the correction
+     * overwrites theta on the line itself, so the pre-correction value cannot be read back
+     * from the returned points, only re-evaluated from the series.
+     *
+     * @param x, y Station coordinates, in throat radii.
+     * @param gamma Ratio of specific heats.
+     * @param R Downstream curvature ratio (curvature radius / throat radius).
+     */
+    double kl_series_theta(double x, double y, double gamma, double R) const;
 
     NozzleGeometry geometry;
 
