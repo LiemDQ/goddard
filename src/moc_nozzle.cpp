@@ -69,6 +69,10 @@ MocResult MocNozzle::solve() {
     m_warned_non_spacelike = false;
     m_init_wall_bc_residual = 0.0;
 
+    // Resolved once here so the rest of solve() and the kernel dispatch below work with a
+    // concrete scheme; see MocMarchScheme::AUTO.
+    const MocMarchScheme scheme = resolve_march_scheme();
+
     CharacteristicNet net;
     std::vector<CharacteristicPoint> data_line;
     m_options.nozzle_profile = setup_nozzle_profile(m_options.geometry);
@@ -125,37 +129,62 @@ MocResult MocNozzle::solve() {
     // here, rather than letting them propagate as exceptions, is what makes solve()
     // never throw for a numerical/convergence failure.
     try {
-        data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
-
-        // The initial-data-line generators declared whether the line lies along a single
-        // characteristic (m_initial_line_family). A centered expansion fan does, and needs a
-        // wall anchor at the throat lip (0, 1): it seeds leading_wall_point() for the first wall
-        // solve and gives the area ratio its throat reference. A transonic start line spans
-        // axis-to-wall and already carries its own wall point, so no separate anchor is seeded.
-        if (m_initial_line_family.has_value()) {
-            CharacteristicPoint throat_lip{};
-            throat_lip.x = 0.0;
-            throat_lip.y = 1.0;
-            // The lip angle anchors the first wall solve in DESIGN_MIN_LENGTH, where it equals
-            // theta_max. In analysis the wall angles come from the profile and the lip is purely
-            // an anchor, so the topmost fan angle is a harmless stand-in.
-            throat_lip.theta = m_options.mode == MocMode::DESIGN_MIN_LENGTH
-                ? m_options.theta_max
-                : (data_line.empty() ? 0.0 : data_line.back().theta);
-            net.seed_wall_point(throat_lip);
+        if (m_inverse_front_override.has_value()) {
+            // Test-only path (see m_inverse_front_override): skip the normal throat/KL/fan
+            // construction entirely -- it need not be consistent with a hand-built front --
+            // and seed the inverse kernel directly from the override. Treated as a generic
+            // (Kliegel-Levine-like) line for build_inverse_initial_front and
+            // record_init_diagnostics: it is not collinear along a single characteristic.
+            data_line = *m_inverse_front_override;
+            m_initial_line_family.reset();
+        } else {
+            data_line = generate_initial_data_line(throat, m_options.geometry, m_options.num_characteristics);
         }
-        net.add_initial_data_line(data_line, m_initial_line_family);
 
-        // Anchor mesh control to the geometry, once, from the line actually seeded. Both
-        // init paths put a wall point at the throat lip first, so wall_y.front() is the
-        // throat radius in whatever units the net is carrying; taking it from the net rather
-        // than from geometry.throat_radius keeps the two consistent even when the initial
-        // line is built in normalized coordinates.
-        if (!net.wall_y.empty() && net.wall_y.front() > 0.0 &&
-            m_options.num_characteristics > 1) {
-            m_throat_radius = net.wall_y.front();
-            m_reference_spacing =
-                m_throat_radius / static_cast<double>(m_options.num_characteristics - 1);
+        if (scheme == MocMarchScheme::DIRECT) {
+            // The initial-data-line generators declared whether the line lies along a single
+            // characteristic (m_initial_line_family). A centered expansion fan does, and needs a
+            // wall anchor at the throat lip (0, 1): it seeds leading_wall_point() for the first wall
+            // solve and gives the area ratio its throat reference. A transonic start line spans
+            // axis-to-wall and already carries its own wall point, so no separate anchor is seeded.
+            if (m_initial_line_family.has_value()) {
+                CharacteristicPoint throat_lip{};
+                throat_lip.x = 0.0;
+                throat_lip.y = 1.0;
+                // The lip angle anchors the first wall solve in DESIGN_MIN_LENGTH, where it equals
+                // theta_max. In analysis the wall angles come from the profile and the lip is purely
+                // an anchor, so the topmost fan angle is a harmless stand-in.
+                throat_lip.theta = m_options.mode == MocMode::DESIGN_MIN_LENGTH
+                    ? m_options.theta_max
+                    : (data_line.empty() ? 0.0 : data_line.back().theta);
+                net.seed_wall_point(throat_lip);
+            }
+            net.add_initial_data_line(data_line, m_initial_line_family);
+
+            // Anchor mesh control to the geometry, once, from the line actually seeded. Both
+            // init paths put a wall point at the throat lip first, so wall_y.front() is the
+            // throat radius in whatever units the net is carrying; taking it from the net rather
+            // than from geometry.throat_radius keeps the two consistent even when the initial
+            // line is built in normalized coordinates.
+            if (!net.wall_y.empty() && net.wall_y.front() > 0.0 &&
+                m_options.num_characteristics > 1) {
+                m_throat_radius = net.wall_y.front();
+                m_reference_spacing =
+                    m_throat_radius / static_cast<double>(m_options.num_characteristics - 1);
+            }
+        }
+        else {
+            // INVERSE: no throat-lip anchor is seeded (see build_inverse_initial_front /
+            // seed_inverse_front); wall_x.front() is F_0's own wall point, not (0, 1), so the
+            // throat radius for area_ratio/mesh purposes comes from the geometry directly.
+            std::vector<CharacteristicPoint> front0 = build_inverse_initial_front(data_line);
+            if (front0.size() < 2) {
+                throw ConvergenceError(
+                    "Inverse march: initial front has fewer than two points.");
+            }
+            seed_inverse_front(net, front0);
+            m_throat_radius = (m_options.geometry.throat_radius > 0.0)
+                ? m_options.geometry.throat_radius : 1.0;
         }
     }
     catch (const NotImplementedError&) {
@@ -188,7 +217,9 @@ MocResult MocNozzle::solve() {
     // an initialization defect is exactly the case where the march does not finish.
     result.init_diagnostics = record_init_diagnostics(data_line);
 
-    std::optional<MocFailure> kernel_failure = solve_characteristic_kernel(net);
+    std::optional<MocFailure> kernel_failure = (scheme == MocMarchScheme::INVERSE)
+        ? solve_inverse_characteristic_kernel(net)
+        : solve_characteristic_kernel(net);
 
     result.net = net;
     result.messages = m_messages;
@@ -215,6 +246,21 @@ MocResult MocNozzle::solve() {
     if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) {
         result.exit_coverage = 1.0;
         result.reached_exit_plane = true;
+    }
+    else if (scheme == MocMarchScheme::INVERSE) {
+        // The inverse march always lands its last front exactly on the exit plane (see
+        // solve_inverse_characteristic_kernel's MocStepLimiter::EXIT step) -- there is no
+        // ragged outflow staircase to fall short of, unlike DIRECT. A march that failed
+        // partway did not reach it; report how far it got the same way DIRECT does.
+        if (!kernel_failure.has_value()) {
+            result.exit_coverage = 1.0;
+            result.reached_exit_plane = true;
+        }
+        else if (!m_options.nozzle_profile.y.empty() && m_options.nozzle_profile.y.back() > 0.0
+                 && !net.wall_y.empty()) {
+            result.exit_coverage = net.wall_y.back() / m_options.nozzle_profile.y.back();
+            result.reached_exit_plane = false;
+        }
     }
     else if (!m_options.nozzle_profile.y.empty() && m_options.nozzle_profile.y.back() > 0.0
              && !net.wall_y.empty()) {
@@ -248,7 +294,22 @@ MocResult MocNozzle::solve() {
     if (!net.wall_x.empty()) {
         result.nozzle_length = net.wall_x.back();
     }
-    if (!net.wall_y.empty() && net.wall_y.front() > 0.0) {
+    if (scheme == MocMarchScheme::INVERSE) {
+        // net.wall_x.front()/wall_y.front() are F_0's own wall point, not the throat lip
+        // (0, 1) DIRECT seeds -- see the INVERSE seeding branch above -- so the throat
+        // radius reference comes from the geometry directly instead.
+        const double r_throat = (m_options.geometry.throat_radius > 0.0)
+            ? m_options.geometry.throat_radius : 1.0;
+        if (!net.wall_y.empty()) {
+            if (m_options.flow_type == MocFlowKind::PLANAR) {
+                result.area_ratio = net.wall_y.back() / r_throat;
+            } else {
+                const double y_ratio = net.wall_y.back() / r_throat;
+                result.area_ratio = y_ratio * y_ratio;
+            }
+        }
+    }
+    else if (!net.wall_y.empty() && net.wall_y.front() > 0.0) {
         if (m_options.flow_type == MocFlowKind::PLANAR) {
             result.area_ratio = net.wall_y.back() / net.wall_y.front();
         } else {
@@ -282,6 +343,24 @@ MocResult MocNozzle::solve() {
     // The last wavefront contains the axis point, and each preceding wavefront's
     // last point was absorbed into wall calculations.
     if (!net.points.empty()) {
+        if (scheme == MocMarchScheme::INVERSE) {
+            // The exit plane is exactly the last front the kernel built (or, on a partial
+            // failure, whatever front it last completed) -- axis to wall, as stored.
+            if (!net.fronts.empty()) {
+                for (size_t idx : net.fronts.back()) {
+                    const CharacteristicPoint& pt = net.points[idx];
+                    result.exit_plane.y.push_back(pt.y);
+                    result.exit_plane.mach.push_back(pt.mach);
+                    result.exit_plane.theta.push_back(pt.theta);
+                    result.exit_plane.pressure.push_back(pt.pressure);
+                    result.exit_plane.temperature.push_back(pt.temperature);
+                    result.exit_plane.gamma_s.push_back(pt.gamma_s);
+                    result.exit_plane.velocity.push_back(pt.V);
+                }
+            }
+            m_is_solved = true;
+            return result;
+        }
         const auto& outflows = net.outflow_points();
         // Add the last characteristic for min length nozzle. Guarded by
         // emptiness: a kernel that now fails fast can abort before any axis/wall

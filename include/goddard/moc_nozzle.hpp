@@ -389,6 +389,126 @@ protected:
     double start_line_mass_flow_error(
         const std::vector<CharacteristicPoint>& data_line) const;
 
+    // -- Inverse (reference-plane) marching kernel (Package B) --
+    // See instructions/moc_fix/B.md for the algorithm this group of methods implements;
+    // the unit processes below are new siblings of solve_interior_point_axisymmetric /
+    // solve_axis_point / solve_wall_point_analysis for the INVERSE kernel, not
+    // replacements -- the DIRECT kernel and its unit processes above are unchanged.
+
+    /**
+     * Resolve MocOptions::march_scheme's AUTO value into a concrete scheme, once per
+     * solve(). AUTO selects INVERSE for axisymmetric ANALYSIS and DESIGN_RAO, DIRECT
+     * otherwise; MocMode::DESIGN_MIN_LENGTH always resolves to DIRECT (validate_moc_options
+     * rejects INVERSE explicitly requested together with DESIGN_MIN_LENGTH before this is
+     * reached).
+     */
+    MocMarchScheme resolve_march_scheme() const;
+
+    /**
+     * Build the inverse kernel's first marching front F_0 from the initial data line
+     * solve() already constructed (generate_initial_data_line).
+     *
+     * A Kliegel-Levine transonic line (m_initial_line_family empty) already spans axis to
+     * wall and is returned unchanged. A centered-fan line (m_initial_line_family == PLUS)
+     * stops short of the wall at its last ray's endpoint P; this extends the front from P
+     * straight up to the wall with the fan's uniform post-last-ray state, then corrects the
+     * new wall point's nu from the planar C+ compatibility relation with P (see B.md,
+     * "Initial front").
+     *
+     * Not const: extension points are given their full thermodynamic state via
+     * update_thermodynamic_state_from_nu (a non-const chokepoint), so FROZEN/EQUILIBRIUM
+     * chemistry stay consistent here exactly as everywhere else in the kernel.
+     *
+     * @throws ConvergenceError if a thermodynamic update for an extension point fails;
+     *         caught by solve()'s existing initialization exception boundary.
+     */
+    std::vector<CharacteristicPoint> build_inverse_initial_front(
+        const std::vector<CharacteristicPoint>& data_line);
+
+    /**
+     * Append a front's points to `net` (no chain bookkeeping -- the inverse kernel does not
+     * use CharacteristicNet::c_chains/membership beyond an empty placeholder) and register
+     * CharacteristicNet::fronts, wall_point_indices/wall_x/wall_y and axis_point_indices for
+     * it. Used both to seed F_0 and, every pass, to record the front the pass just built.
+     *
+     * @return the point indices of the seeded front, axis to wall.
+     */
+    std::vector<size_t> seed_inverse_front(
+        CharacteristicNet& net, const std::vector<CharacteristicPoint>& front_points) const;
+
+    /**
+     * Inverse reference-plane marching kernel (Package B): starting from the front already
+     * seeded as `net.fronts.back()`, repeatedly builds the next front by prescribing its
+     * geometry and tracing each new point's two characteristics back to the previous front,
+     * until a step lands exactly on the exit plane (MocStepLimiter::EXIT).
+     *
+     * Contrast with solve_characteristic_kernel: that kernel discovers where characteristics
+     * next intersect by pairing chain leading edges, so its two families keep whatever
+     * density they were seeded with. This kernel instead fixes the front's shape and point
+     * distribution every pass, so both families stay resolved at the same density
+     * everywhere and the wall is sampled at every step.
+     *
+     * @return the failure that aborted the march (a unit-process error, a degenerate step
+     *         length, or the pass safety cap being reached), or std::nullopt once a pass
+     *         lands on the exit plane.
+     */
+    std::optional<MocFailure> solve_inverse_characteristic_kernel(CharacteristicNet& net);
+
+    /**
+     * Inverse-march interior unit process: solve for the flow state at the prescribed
+     * point (x_new, y_new), whose two characteristics are traced back to `front` (the
+     * previous marching front) and interpolated there (Sec. 5 of B.md), then transported
+     * forward with the same axisymmetric source terms as solve_inverse_interior_point.
+     *
+     * Handles the near-axis case where the C+ foot's trace would cross the axis before
+     * meeting `front`: the foot is found by mirroring the ray (and negating its
+     * interpolated theta) about the axis, and the C+ source term's sin(theta)/y factor is
+     * evaluated at the new point itself rather than averaged with the (now negative-y)
+     * mirrored foot, whose average with the new point's small positive y would otherwise
+     * pass near zero.
+     */
+    PointResult solve_inverse_march_interior_point(
+        double x_new, double y_new,
+        const CharacteristicNet& net,
+        const std::vector<size_t>& front);
+
+    /**
+     * Inverse-march axis unit process: solve for the flow state at the prescribed axis
+     * point (x_new, 0). theta is pinned to 0; the single C- foot is traced back to `front`
+     * and the axis-limit source term is applied with the same algebra as solve_axis_point's
+     * corrector (dy/y_avg = -2 there is an algebraic identity whenever the far point sits at
+     * y=0, so it generalizes unchanged to a traced-back foot that is not an actual net
+     * parent).
+     */
+    PointResult solve_inverse_march_axis_point(
+        double x_new,
+        const CharacteristicNet& net,
+        const std::vector<size_t>& front);
+
+    /**
+     * Inverse-march wall unit process: solve for the flow state at the prescribed wall
+     * point (x_new, y_new). theta is fixed by the contour (NozzleProfile::theta_at); the
+     * single C+ foot is traced back to `front` and K+ is transported with
+     * cplus_source_term(foot, wall_point), iterated (retracing the foot each pass) until nu
+     * stops moving -- the same fixed-point structure solve_wall_point_analysis uses, but
+     * converged on nu directly rather than on the source-term residual, since here the
+     * position is prescribed and only the foot (and hence the source term) is unknown.
+     */
+    PointResult solve_inverse_march_wall_point(
+        double x_new, double y_new,
+        const CharacteristicNet& net,
+        const std::vector<size_t>& front);
+
+    /**
+     * Test-only hook (kept protected; set only by a test subclass): when present, solve()
+     * seeds the inverse kernel's first front directly from these points instead of running
+     * generate_initial_data_line, so a hand-built front with a known exact solution (e.g.
+     * uniform flow, or a manufactured source-flow field) can be marched without requiring a
+     * throat/KL/fan construction consistent with it. See InverseMarch.UniformFlowStaysUniform
+     * and InverseMarch.SourceFlowSecondOrder (test/test_moc_inverse_march.cpp).
+     */
+    std::optional<std::vector<CharacteristicPoint>> m_inverse_front_override;
+
     // Logging helpers
     template <typename... Args>
     void log_warning(std::string_view fmt, Args&&... args) {
