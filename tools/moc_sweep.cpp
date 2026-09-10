@@ -41,6 +41,27 @@ struct Config {
     double half_angle = 15.0;
 };
 
+// The scheme resolve_march_scheme() (src/moc_nozzle.cpp) actually picks for this row: every
+// Config here leaves MocOptions::march_scheme at its AUTO default (no row forces DIRECT or
+// INVERSE explicitly), so the resolved value is a pure function of mode/flow, matching
+// MocMarchScheme::AUTO's documented rule (moc.hpp): DESIGN_MIN_LENGTH always DIRECT;
+// otherwise INVERSE for axisymmetric ANALYSIS/DESIGN_RAO, DIRECT for planar ANALYSIS. The
+// "rao" mode here is always axisymmetric (default_grid() never sets flow="planar" for it).
+std::string resolved_march_scheme(const Config& c) {
+    if (c.mode == "minlength") return "direct";
+    if (c.mode == "rao") return "inverse";
+    return (c.flow == "planar") ? "direct" : "inverse";
+}
+
+std::string start_line_name(MocStartLine s) {
+    switch (s) {
+        case MocStartLine::KLIEGEL_LEVINE: return "kliegel_levine";
+        case MocStartLine::CENTERED_FAN:   return "centered_fan";
+        case MocStartLine::AUTO:           return "auto";
+    }
+    return "unknown";
+}
+
 MocOptions build_options(const Config& c) {
     MocOptions o;
     o.chemistry = GasChemistry::PERFECT_GAS;
@@ -56,6 +77,15 @@ MocOptions build_options(const Config& c) {
     o.geometry.downstream_wall_curvature_radius =
         (c.init == "fan") ? -1.0 : c.r_arc;
 
+    // max_front_spacing_factor/min_front_spacing_factor/max_cell_aspect_ratio only bound
+    // the DIRECT ladder's own refinement (control_front_spacing, src/moc_nozzle.cpp); the
+    // INVERSE kernel has no equivalent knob (its front density is fixed by construction --
+    // see MocOptions::inverse_cfl/max_wall_turn_per_step instead), so this is a no-op
+    // whenever resolved_march_scheme(c) == "inverse" (D.md item 6 / Addendum: "drop the
+    // mesh-control-off rows for INVERSE, the knobs do not apply" -- default_grid() below
+    // never varies mesh_control, i.e. every row is already "off", so there is no separate
+    // "on" INVERSE row to drop; the DIRECT planar/min-length rows, where this setting does
+    // matter, are kept unchanged as controls).
     if (!c.mesh_control) {
         // There is no disable switch; make every bound non-binding.
         o.max_front_spacing_factor = 1e9;
@@ -87,8 +117,10 @@ MocOptions build_options(const Config& c) {
 
 void write_header(std::ostream& os) {
     os << "mode,init,flow,area_ratio,n,r_arc,shift,length_frac,mesh_control,gamma,"
+          "march_scheme,start_line_used,"
           "converged,failure_code,fail_x,fail_y,kernel_pass,"
           "exit_mach,exit_coverage,reached_exit_plane,area_ratio_achieved,nozzle_length,"
+          "min_theta,min_theta_x,"
           "points,chains,inserted,retired,crossings,passes,"
           "init_points,wall_gap,wall_gap_over_spacing,wall_theta_mismatch,"
           "mach_axis,mach_wall,mach_ratio,mu_axis,mu_wall,cot_mu_ratio,"
@@ -115,11 +147,13 @@ void write_row(std::ostream& os, const Config& c, const MocResult& r) {
     os << c.mode << ',' << c.init << ',' << c.flow << ',' << num(c.area_ratio) << ','
        << c.n << ',' << num(c.r_arc) << ',' << num(c.shift) << ',' << num(c.length_frac)
        << ',' << (c.mesh_control ? 1 : 0) << ',' << num(c.gamma) << ','
+       << resolved_march_scheme(c) << ',' << start_line_name(d.start_line_used) << ','
        << (r.converged ? 1 : 0) << ',' << to_string(r.failure.code) << ','
        << num(r.failure.x) << ',' << num(r.failure.y) << ',' << r.failure.kernel_pass << ','
        << num(r.exit_mach) << ',' << num(r.exit_coverage) << ','
        << (r.reached_exit_plane ? 1 : 0) << ',' << num(r.area_ratio) << ','
        << num(r.nozzle_length) << ','
+       << num(r.min_theta) << ',' << num(r.min_theta_x) << ','
        << r.net.points.size() << ',' << r.net.c_chains.size() << ','
        << r.inserted_characteristics << ',' << r.retired_characteristics << ','
        << r.crossings.count << ',' << r.pass_diagnostics.size() << ','

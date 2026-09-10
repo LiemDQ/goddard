@@ -322,6 +322,43 @@ def test_generated_contour_is_analysable():
     assert len(result.net) > 0
 
 
+def test_conical_axisymmetric_analysis_converges():
+    """D.md item 7 (Package D validation suite): a conical AR=4 axisymmetric analysis
+    through goddard.moc_analysis converges, exit_plane.y increases strictly from the axis
+    to the exit radius, and the inverse-march front record (net.fronts) is non-empty.
+
+    flow_type=AXISYMMETRIC + mode=ANALYSIS (moc_analysis's default) resolves
+    MocMarchScheme.AUTO to INVERSE (see MocMarchScheme in moc.hpp) -- the same default
+    path MocDefaultOptionsConvergence.ConicalDefaultThroatConvergesAcrossN exercises in
+    C++ (test_moc_convergence.cpp) -- so this is a Python-side check that the same fix
+    is reachable through the bindings, not a new numerical claim.
+    """
+    from goddard import conical_nozzle, moc_analysis, MocFlowKind
+
+    profile = conical_nozzle(4.0)
+    result = moc_analysis(profile, flow_type=MocFlowKind.AXISYMMETRIC, num_characteristics=15)
+
+    assert result.converged, result.failure.message
+
+    y = np.asarray(result.exit_plane.y)
+    assert len(y) > 1
+    assert y[0] == pytest.approx(0.0, abs=1e-6)
+    assert np.all(np.diff(y) > 0), "exit_plane.y must increase strictly from the axis outward"
+    # generate_conical_nozzle sets the exit radius to sqrt(area_ratio); the inverse march's
+    # exit plane lands exactly on the requested station (exit_coverage measured at 1.0 for
+    # this configuration in the C++ sweep, tools/moc_sweep.cpp), so 1% covers roundoff.
+    assert y[-1] == pytest.approx(math.sqrt(4.0), rel=1e-2)
+
+    # TODO(Package E): CharacteristicNet.fronts is a C++ field (Package B, the inverse
+    # march's per-pass front record) not yet exposed in python/src/bind_moc.cpp as of this
+    # test. Skip cleanly, keyed on the attribute's absence, so this starts enforcing the
+    # instant the binding lands rather than silently staying green forever.
+    if not hasattr(result.net, "fronts"):
+        pytest.skip("CharacteristicNet.fronts not yet bound (Package E); "
+                     "remove this skip once bind_moc.cpp exposes net.fronts")
+    assert len(result.net.fronts) > 0
+
+
 def test_rao_design_mode_runs():
     from goddard import moc_rao_design
 

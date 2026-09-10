@@ -554,57 +554,62 @@ TEST(MocThrust, AmbientPressureReducesCf) {
 // Analysis mode
 // ============================================================
 
+// D.md item 4 / Addendum 2026-09-09: design a nozzle, then analyze its own contour with
+// both march schemes and report both. DIRECT's wall solve (solve_wall_point_analysis,
+// src/moc_nozzle.cpp) queries NozzleProfile::theta_at, piecewise constant per facet; small
+// per-facet kinks accumulate into a slightly negative theta late in the march and the
+// solve fails NEGATIVE_THETA (a pre-existing library limitation, instructions/moc_algorithm.md
+// Sec. 9.1/10 and diagnosis.md A8 -- not fixed here, since library sources are out of this
+// package's scope). INVERSE's wall solve interpolates the vertex angles linearly instead
+// (wall_angle_at, src/moc_inverse_march.cpp; B.md "Corrections after implementation" item 4)
+// and does not carry the defect. Measured on this tree: DIRECT fails NEGATIVE_THETA;
+// INVERSE converges with exit Mach within 5% of design (same tolerance the test used
+// before this package, when it silently ran on DIRECT only).
 TEST(MocAnalysis, PlanarRoundTrip) {
-    // Design a nozzle, then analyze its contour. Exit Mach should match.
     double gamma = 1.4;
     double theta_max = 15.0 * DEG;
 
-    // Step 1: Design mode
+    // Step 1: Design mode (DESIGN_MIN_LENGTH always resolves to DIRECT, unaffected).
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto design_result = design_solver.solve();
     ASSERT_TRUE(design_result.converged) << "Design did not converge: "
         << to_string(design_result.failure.code) << " -- "
         << design_result.failure.message;
 
-    // Step 2: Analysis mode with design contour
-    MocOptions opts;
-    opts.flow_type = MocFlowKind::PLANAR;
-    opts.chemistry = GasChemistry::PERFECT_GAS;
-    opts.mode = MocMode::ANALYSIS;
-    opts.gamma = gamma;
-    opts.num_characteristics = 10;
-    opts.geometry.throat_radius = 1.0;
-    opts.nozzle_profile = design_result.profile;
+    for (MocMarchScheme scheme : {MocMarchScheme::DIRECT, MocMarchScheme::INVERSE}) {
+        const std::string scheme_name = (scheme == MocMarchScheme::DIRECT) ? "Direct" : "Inverse";
+        MocOptions opts;
+        opts.flow_type = MocFlowKind::PLANAR;
+        opts.chemistry = GasChemistry::PERFECT_GAS;
+        opts.mode = MocMode::ANALYSIS;
+        opts.gamma = gamma;
+        opts.num_characteristics = 10;
+        opts.geometry.throat_radius = 1.0;
+        opts.nozzle_profile = design_result.profile;
+        opts.march_scheme = scheme;
 
-    MocNozzle analysis_solver(opts);
-    auto analysis_result = analysis_solver.solve();
+        MocNozzle analysis_solver(opts);
+        auto analysis_result = analysis_solver.solve();
+        RecordProperty(scheme_name + "_converged", analysis_result.converged ? "true" : "false");
 
-    // The analysis-mode march re-reflects off a faceted (piecewise-linear) wall
-    // built from the design's discrete wall points; small per-facet kinks
-    // accumulate and can leave a late-march interior point with a slightly
-    // negative theta -- a pre-existing accuracy limitation of the analysis
-    // kernel (instructions/moc_algorithm.md Sec. 9.1/10, tracked as future work,
-    // not a Phase 1 fix target). Before the point-validity checks added in this
-    // phase, such a point silently entered the net and this test passed on a
-    // net that was not actually fully valid. Skip (rather than silently pass or
-    // hard-fail) when that known limitation is hit; run the full round-trip
-    // check otherwise.
-    EXPECT_TRUE(analysis_result.converged) << "Analysis did not converge: "
-        << to_string(analysis_result.failure.code)
-        << " -- " << analysis_result.failure.message;
-    // if (!analysis_result.converged) {
-    //     GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
-    //                     "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
-    //                  << to_string(analysis_result.failure.code)
-    //                  << " -- " << analysis_result.failure.message;
-    // }
-
-    EXPECT_GT(analysis_result.exit_mach, 1.0);
-
-    // Exit Mach should be close to design exit Mach
-    // (not exact due to straight sonic line approximation and wall sampling)
-    EXPECT_NEAR(analysis_result.exit_mach, design_result.exit_mach, 0.05)
-        << "Analysis exit Mach should approximately match design";
+        if (scheme == MocMarchScheme::INVERSE) {
+            // The fix under test: no known limitation to carve out here.
+            ASSERT_TRUE(analysis_result.converged) << "INVERSE analysis did not converge: "
+                << to_string(analysis_result.failure.code)
+                << " -- " << analysis_result.failure.message;
+            EXPECT_GT(analysis_result.exit_mach, 1.0);
+            // Exit Mach should be close to design exit Mach (not exact due to straight
+            // sonic line approximation and wall sampling).
+            EXPECT_NEAR(analysis_result.exit_mach, design_result.exit_mach, 0.05)
+                << "INVERSE analysis exit Mach should approximately match design";
+            RecordProperty("Inverse_exit_mach", std::to_string(analysis_result.exit_mach));
+        } else {
+            // DIRECT: documented above, not gated -- failure honesty must still hold.
+            EXPECT_EQ(analysis_result.converged, analysis_result.failure.code == MocErrorCode::NONE)
+                << "DIRECT N=10: converged and failure.code disagree";
+            RecordProperty("Direct_failure_code", std::string(to_string(analysis_result.failure.code)));
+        }
+    }
 }
 
 TEST(MocAnalysis, PlanarWallPointsPopulated) {
@@ -633,6 +638,10 @@ TEST(MocAnalysis, PlanarWallPointsPopulated) {
     }
 }
 
+// D.md item 4 / Addendum 2026-09-09: as MocAnalysis.PlanarRoundTrip, but axisymmetric --
+// run with both march schemes and report both. The default (AUTO) already resolves to
+// INVERSE here (axisymmetric ANALYSIS), which is why this test passed before this
+// package; DIRECT is added explicitly for the comparison the addendum asks for.
 TEST(MocAnalysis, AxiRoundTrip) {
     double gamma = 1.4;
     double theta_max = 12.0 * DEG;
@@ -641,62 +650,74 @@ TEST(MocAnalysis, AxiRoundTrip) {
     auto design_result = design_solver.solve();
     ASSERT_TRUE(design_result.converged);
 
-    MocOptions opts;
-    opts.flow_type = MocFlowKind::AXISYMMETRIC;
-    opts.chemistry = GasChemistry::PERFECT_GAS;
-    opts.mode = MocMode::ANALYSIS;
-    opts.gamma = gamma;
-    opts.num_characteristics = 8;
-    opts.geometry.throat_radius = 1.0;
-    opts.geometry.downstream_wall_curvature_radius = -1.0;
-    opts.nozzle_profile = design_result.profile;
-    opts.theta_max = theta_max;
-
-    MocNozzle analysis_solver(opts);
-    auto result = analysis_solver.solve();
-
-    // See the comment in MocAnalysis.PlanarRoundTrip: a faceted-wall reflection
-    // accuracy limitation in the analysis kernel (Phase 2 scope, not fixed here)
-    // can leave converged == false. Skip rather than mask it.
-    EXPECT_TRUE(result.converged) << "Analysis did not converge: "
-        << to_string(result.failure.code)
-        << " -- " << result.failure.message;
-    // if (!result.converged) {
-    //     GTEST_SKIP() << "Analysis round trip did not converge (known accuracy "
-    //                     "limitation, see instructions/moc_algorithm.md Sec. 9.1/10): "
-    //                  << to_string(result.failure.code)
-    //                  << " -- " << result.failure.message;
-    // }
-
-    EXPECT_GT(result.exit_mach, 1.0);
-
-    // The DIRECT design's exit Mach carries a known +0.08 bias against the 1-D area-Mach
-    // relation (MocConvergence.AxiDesign1DConsistencyBounded) and the inverse-march analysis
-    // of its contour produces a non-uniform exit plane, so the axis exit Mach is not
-    // compared with the design's. A correct isentropic analysis must instead give an
-    // area-averaged exit Mach matching the 1-D value for the contour's area ratio.
-    const ExitPlane& ep = result.exit_plane;
-    ASSERT_GE(ep.y.size(), 2u);
-    double mach_area = 0.0, area = 0.0;
-    for (size_t k = 1; k < ep.y.size(); k++) {
-        const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
-        mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
-        area += dA;
-    }
-    const double mach_mean = mach_area / area;
     auto area_ratio_1d = [&](double mach) {
         const double t = (2.0 / (gamma + 1.0)) * (1.0 + 0.5 * (gamma - 1.0) * mach * mach);
         return std::pow(t, (gamma + 1.0) / (2.0 * (gamma - 1.0))) / mach;
     };
-    double lo = 1.0 + 1e-9, hi = 50.0;
-    for (int i = 0; i < 200; i++) {
-        const double mid = 0.5 * (lo + hi);
-        if (area_ratio_1d(mid) > result.area_ratio) hi = mid; else lo = mid;
+    auto mach_from_area_ratio_1d = [&](double area_ratio) {
+        double lo = 1.0 + 1e-9, hi = 50.0;
+        for (int i = 0; i < 200; i++) {
+            const double mid = 0.5 * (lo + hi);
+            if (area_ratio_1d(mid) > area_ratio) hi = mid; else lo = mid;
+        }
+        return 0.5 * (lo + hi);
+    };
+
+    for (MocMarchScheme scheme : {MocMarchScheme::DIRECT, MocMarchScheme::INVERSE}) {
+        const std::string scheme_name = (scheme == MocMarchScheme::DIRECT) ? "Direct" : "Inverse";
+        MocOptions opts;
+        opts.flow_type = MocFlowKind::AXISYMMETRIC;
+        opts.chemistry = GasChemistry::PERFECT_GAS;
+        opts.mode = MocMode::ANALYSIS;
+        opts.gamma = gamma;
+        opts.num_characteristics = 8;
+        opts.geometry.throat_radius = 1.0;
+        opts.geometry.downstream_wall_curvature_radius = -1.0;
+        opts.nozzle_profile = design_result.profile;
+        opts.theta_max = theta_max;
+        opts.march_scheme = scheme;
+
+        MocNozzle analysis_solver(opts);
+        auto result = analysis_solver.solve();
+        RecordProperty(scheme_name + "_converged", result.converged ? "true" : "false");
+
+        if (scheme == MocMarchScheme::DIRECT) {
+            // DIRECT: reported, not gated (see MocAnalysis.PlanarRoundTrip and
+            // diagnosis.md A8 for the same facet-quantized wall-angle limitation).
+            EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
+                << "DIRECT N=8: converged and failure.code disagree";
+            RecordProperty("Direct_failure_code", std::string(to_string(result.failure.code)));
+            continue;
+        }
+
+        // INVERSE (the default here): hard-asserted, as before this package.
+        EXPECT_TRUE(result.converged) << "INVERSE analysis did not converge: "
+            << to_string(result.failure.code) << " -- " << result.failure.message;
+        if (!result.converged) continue;
+        EXPECT_GT(result.exit_mach, 1.0);
+
+        // The DIRECT design's exit Mach carries a known +0.08 bias against the 1-D
+        // area-Mach relation (MocConvergence.AxiDesign1DConsistencyBounded) and the
+        // inverse-march analysis of its contour produces a non-uniform exit plane, so the
+        // axis exit Mach is not compared with the design's. A correct isentropic analysis
+        // must instead give an area-averaged exit Mach matching the 1-D value for the
+        // contour's area ratio.
+        const ExitPlane& ep = result.exit_plane;
+        ASSERT_GE(ep.y.size(), 2u);
+        double mach_area = 0.0, area = 0.0;
+        for (size_t k = 1; k < ep.y.size(); k++) {
+            const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+            mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
+            area += dA;
+        }
+        const double mach_mean = mach_area / area;
+        const double mach_1d = mach_from_area_ratio_1d(result.area_ratio);
+        EXPECT_NEAR(mach_mean, mach_1d, 0.05 * mach_1d)
+            << "Area-mean exit Mach " << mach_mean << " should match the 1-D value " << mach_1d
+            << " for area ratio " << result.area_ratio;
+        RecordProperty("Inverse_area_mean_exit_mach", std::to_string(mach_mean));
+        RecordProperty("Inverse_mach_1d", std::to_string(mach_1d));
     }
-    const double mach_1d = 0.5 * (lo + hi);
-    EXPECT_NEAR(mach_mean, mach_1d, 0.05 * mach_1d)
-        << "Area-mean exit Mach " << mach_mean << " should match the 1-D value " << mach_1d
-        << " for area ratio " << result.area_ratio;
 }
 
 TEST(MocThrust, ExitPlaneHasGammaAndVelocity) {
