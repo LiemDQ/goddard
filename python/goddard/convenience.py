@@ -374,7 +374,7 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
         max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
         max_front_points: Safety cap on marching-front size (0 selects the default).
         march_scheme: MocMarchScheme; defaults to MocOptions' own AUTO (INVERSE for
-            axisymmetric analysis, DIRECT for planar).
+            analysis, planar and axisymmetric).
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``, or the contour's downstream curvature

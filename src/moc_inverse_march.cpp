@@ -214,8 +214,12 @@ void throw_if_thermo_error(MocErrorCode err, std::string_view context, double x,
 MocMarchScheme MocNozzle::resolve_march_scheme() const {
     if (m_options.march_scheme != MocMarchScheme::AUTO) return m_options.march_scheme;
     if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) return MocMarchScheme::DIRECT;
-    if (m_options.flow_type == MocFlowKind::AXISYMMETRIC &&
-        (m_options.mode == MocMode::ANALYSIS || m_options.mode == MocMode::DESIGN_RAO)) {
+    // Analysis of a prescribed contour, planar or axisymmetric, and the Rao design that is
+    // an analysis of a generated contour: the inverse march. Planar was moved here on
+    // 2026-09-10 after the design-to-analysis round trips showed the DIRECT ladder failing
+    // on the contour's facet-quantized wall angle where the inverse march reproduces the
+    // exact planar answer to 1.5e-3 at N = 32.
+    if (m_options.mode == MocMode::ANALYSIS || m_options.mode == MocMode::DESIGN_RAO) {
         return MocMarchScheme::INVERSE;
     }
     return MocMarchScheme::DIRECT;

@@ -37,8 +37,7 @@ static MocResult solve_design(MocFlowKind kind, double gamma, double theta_max, 
 
 // Analyze a designed contour with centered-fan initialization (the design
 // contour has a sharp throat corner, so the fan is the consistent start line).
-// march_scheme defaults to AUTO (DIRECT for planar, INVERSE for axisymmetric
-// analysis); test_moc_inverse_march.cpp's InverseMarch.PlanarDesignRoundTrip and
+// march_scheme defaults to AUTO (INVERSE for analysis, planar and axisymmetric); test_moc_inverse_march.cpp's InverseMarch.PlanarDesignRoundTrip and
 // diagnosis.md A8/B.md's "Corrections after implementation" motivate forcing it
 // explicitly where the two schemes are being compared.
 static MocResult solve_analysis_of(const MocResult& design_result,

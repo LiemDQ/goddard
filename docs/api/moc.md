@@ -17,13 +17,14 @@ angles in degrees, and their parameters carry a `_deg` suffix to say so.
 `MocOptions.march_scheme` selects which kernel `solve()` uses to advance the
 characteristic net. **DIRECT** is the original chain-pairing kernel: it advances a
 front of chain leading edges by pairing neighbours, and is used for
-`MocMode.DESIGN_MIN_LENGTH` and (by default) planar flow, since its contour or
-mesh is defined by the characteristics it absorbs. **INVERSE** instead prescribes
+`MocMode.DESIGN_MIN_LENGTH`, whose contour is defined by the characteristics it
+absorbs at the wall. **INVERSE** instead prescribes
 every point of a reference-plane front and traces its two characteristics back to
 the previous front, so both characteristic families stay resolved at the same
-density everywhere; it is the default for axisymmetric `ANALYSIS` and
-`DESIGN_RAO`, where the DIRECT kernel's chain densities otherwise diverge near the
-axis. See `instructions/moc_fix/diagnosis.md` for the full failure analysis behind
+density everywhere; it is the default for `ANALYSIS` (planar and axisymmetric) and
+`DESIGN_RAO`. In axisymmetric flow the DIRECT kernel's chain densities diverge near
+the axis, and on a faceted contour its wall angle is quantized per facet; the inverse
+march has neither problem. See `instructions/moc_fix/diagnosis.md` for the full failure analysis behind
 that default (not published with these docs, but present in the repository).
 
 ::: goddard.MocMarchScheme

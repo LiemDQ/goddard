@@ -58,10 +58,9 @@ enum class MocLogLevel {
  * sampled at every step -- see instructions/moc_fix/B.md for the full algorithm.
  */
 enum class MocMarchScheme {
-    AUTO,   ///< Selects INVERSE for axisymmetric ANALYSIS and DESIGN_RAO, DIRECT otherwise.
-            ///< MocMode::DESIGN_MIN_LENGTH always resolves to DIRECT regardless of this
-            ///< option's value, since its contour is defined by the characteristics DIRECT
-            ///< absorbs at the wall.
+    AUTO,   ///< Selects INVERSE for ANALYSIS (planar and axisymmetric) and DESIGN_RAO,
+            ///< DIRECT for DESIGN_MIN_LENGTH, whose contour is defined by the
+            ///< characteristics DIRECT absorbs at the wall.
     DIRECT, ///< Force the chain-pairing kernel.
     INVERSE ///< Force the reference-plane marching kernel. Invalid with DESIGN_MIN_LENGTH.
 };

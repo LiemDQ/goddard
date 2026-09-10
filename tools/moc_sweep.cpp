@@ -44,13 +44,11 @@ struct Config {
 // The scheme resolve_march_scheme() (src/moc_nozzle.cpp) actually picks for this row: every
 // Config here leaves MocOptions::march_scheme at its AUTO default (no row forces DIRECT or
 // INVERSE explicitly), so the resolved value is a pure function of mode/flow, matching
-// MocMarchScheme::AUTO's documented rule (moc.hpp): DESIGN_MIN_LENGTH always DIRECT;
-// otherwise INVERSE for axisymmetric ANALYSIS/DESIGN_RAO, DIRECT for planar ANALYSIS. The
-// "rao" mode here is always axisymmetric (default_grid() never sets flow="planar" for it).
+// MocMarchScheme::AUTO's documented rule (moc.hpp): DESIGN_MIN_LENGTH always DIRECT,
+// INVERSE for ANALYSIS (planar and axisymmetric) and DESIGN_RAO.
 std::string resolved_march_scheme(const Config& c) {
     if (c.mode == "minlength") return "direct";
-    if (c.mode == "rao") return "inverse";
-    return (c.flow == "planar") ? "direct" : "inverse";
+    return "inverse";   // ANALYSIS (planar and axisymmetric) and DESIGN_RAO
 }
 
 std::string start_line_name(MocStartLine s) {
