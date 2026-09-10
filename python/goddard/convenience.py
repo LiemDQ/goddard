@@ -287,7 +287,8 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
                    geometry=None, log_level=None,
                    max_front_spacing_factor=None, min_front_spacing_factor=None,
                    front_spacing_growth=None, max_cell_aspect_ratio=None,
-                   max_front_points=None, gas=None, solution=None):
+                   max_front_points=None, march_scheme=None, start_line=None,
+                   gas=None, solution=None):
     """Design a Rao thrust-optimized nozzle using the Method of Characteristics.
 
     The solver generates the Rao contour from ``expansion_ratio`` and
@@ -309,6 +310,11 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         front_spacing_growth: How much target spacing grows with nozzle radius.
         max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
         max_front_points: Safety cap on marching-front size (0 selects the default).
+        march_scheme: MocMarchScheme; defaults to MocOptions' own AUTO (INVERSE for
+            axisymmetric Rao contours).
+        start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
+            unless the series misses the wall angle by more than
+            ``kl_max_wall_angle_error``).
         gas: A Gas for chemistry-based calculations.
         solution: A SolutionHandle, as an alternative to ``gas``.
 
@@ -334,6 +340,10 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         opts.geometry.length_fraction = length_frac
     if log_level is not None:
         opts.log_level = log_level
+    if march_scheme is not None:
+        opts.march_scheme = march_scheme
+    if start_line is not None:
+        opts.start_line = start_line
     _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
                         front_spacing_growth, max_cell_aspect_ratio, max_front_points)
 
@@ -345,7 +355,8 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
                  geometry=None, log_level=None,
                  max_front_spacing_factor=None, min_front_spacing_factor=None,
                  front_spacing_growth=None, max_cell_aspect_ratio=None,
-                 max_front_points=None, gas=None, solution=None):
+                 max_front_points=None, march_scheme=None, start_line=None,
+                 gas=None, solution=None):
     """Analyse an existing nozzle contour using the Method of Characteristics.
 
     Args:
@@ -362,6 +373,12 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
         front_spacing_growth: How much target spacing grows with nozzle radius.
         max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
         max_front_points: Safety cap on marching-front size (0 selects the default).
+        march_scheme: MocMarchScheme; defaults to MocOptions' own AUTO (INVERSE for
+            axisymmetric analysis, DIRECT for planar).
+        start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
+            unless the series misses the wall angle by more than
+            ``kl_max_wall_angle_error``, or the contour's downstream curvature
+            radius requests a centered fan).
         gas: A Gas for chemistry-based calculations.
         solution: A SolutionHandle, as an alternative to ``gas``.
 
@@ -389,6 +406,10 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     opts.nozzle_profile = profile
     if log_level is not None:
         opts.log_level = log_level
+    if march_scheme is not None:
+        opts.march_scheme = march_scheme
+    if start_line is not None:
+        opts.start_line = start_line
     _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
                         front_spacing_growth, max_cell_aspect_ratio, max_front_points)
 

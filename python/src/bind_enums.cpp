@@ -3,6 +3,8 @@
 #include "goddard/nozzle.hpp"
 #include "goddard/chemistry.hpp"
 #include "goddard/characteristics.hpp"
+#include "goddard/moc.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -43,6 +45,23 @@ void bind_enums(nb::module_& m) {
         .value("INITIALIZATION_FAILED", Goddard::MocErrorCode::INITIALIZATION_FAILED)
         .value("MAX_ITERATIONS_REACHED", Goddard::MocErrorCode::MAX_ITERATIONS_REACHED)
         .value("INCOMPLETE_MARCH", Goddard::MocErrorCode::INCOMPLETE_MARCH);
+
+    nb::enum_<Goddard::MocMarchScheme>(m, "MocMarchScheme", DOC(Goddard, MocMarchScheme))
+        .value("AUTO", Goddard::MocMarchScheme::AUTO)
+        .value("DIRECT", Goddard::MocMarchScheme::DIRECT)
+        .value("INVERSE", Goddard::MocMarchScheme::INVERSE);
+
+    nb::enum_<Goddard::MocStepLimiter>(m, "MocStepLimiter", DOC(Goddard, MocStepLimiter))
+        .value("NONE", Goddard::MocStepLimiter::NONE)
+        .value("CFL", Goddard::MocStepLimiter::CFL)
+        .value("WALL_FOOT", Goddard::MocStepLimiter::WALL_FOOT)
+        .value("WALL_TURN", Goddard::MocStepLimiter::WALL_TURN)
+        .value("EXIT", Goddard::MocStepLimiter::EXIT);
+
+    nb::enum_<Goddard::MocStartLine>(m, "MocStartLine", DOC(Goddard, MocStartLine))
+        .value("AUTO", Goddard::MocStartLine::AUTO)
+        .value("KLIEGEL_LEVINE", Goddard::MocStartLine::KLIEGEL_LEVINE)
+        .value("CENTERED_FAN", Goddard::MocStartLine::CENTERED_FAN);
 
     nb::class_<Goddard::SolverOptions>(m, "SolverOptions")
         .def("__init__", [](Goddard::SolverOptions* self,

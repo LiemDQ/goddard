@@ -42,7 +42,26 @@ public:
      * @return Wall angle atan(dy/dx), in radians.
      */
     double theta_at(double x_query) const;
-    
+
+    /**
+     * Wall angle at a given axial position, linearly interpolated between the vertex
+     * angles theta_at_idx() returns.
+     *
+     * theta_at() looks up the bracketing facet [x[idx-1], x[idx]] and returns its single
+     * finite-difference angle theta_at_idx(idx) unchanged for every query inside that
+     * facet, i.e. it is piecewise constant in x -- deliberately so, since it reports the
+     * angle of the facet a query point belongs to, which is what the DIRECT kernel's
+     * facet-quantized wall stepping and its invariance tests are built against. theta_at is
+     * therefore left unchanged here. A caller that samples the wall at stations finer than
+     * the profile's own facets (the inverse march's per-pass wall point) instead needs an
+     * angle that is continuous in x, so this interpolates linearly between the same
+     * theta_at_idx() vertex values across each facet rather than snapping to one of them.
+     *
+     * @param x_query Axial position (length units); must lie within the profile's domain.
+     * @return Wall angle atan(dy/dx), continuous in x, in radians.
+     */
+    double theta_at_interpolated(double x_query) const;
+
     /**
      * Interpolate the wall radius at a given axial position.
      *
