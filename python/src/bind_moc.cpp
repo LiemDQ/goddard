@@ -300,7 +300,13 @@ void bind_moc(nb::module_& m) {
                             double min_front_spacing_factor,
                             double front_spacing_growth,
                             double max_cell_aspect_ratio,
-                            size_t max_front_points) {
+                            size_t max_front_points,
+                            Goddard::MocStartLine start_line,
+                            double kl_max_wall_angle_error,
+                            Goddard::MocMarchScheme march_scheme,
+                            double inverse_cfl,
+                            double max_wall_turn_per_step,
+                            double front_tilt_decay) {
             new (self) Goddard::MocOptions();
             self->flow_type = flow_type;
             self->chemistry = chemistry;
@@ -320,6 +326,12 @@ void bind_moc(nb::module_& m) {
             self->front_spacing_growth = front_spacing_growth;
             self->max_cell_aspect_ratio = max_cell_aspect_ratio;
             self->max_front_points = max_front_points;
+            self->start_line = start_line;
+            self->kl_max_wall_angle_error = kl_max_wall_angle_error;
+            self->march_scheme = march_scheme;
+            self->inverse_cfl = inverse_cfl;
+            self->max_wall_turn_per_step = max_wall_turn_per_step;
+            self->front_tilt_decay = front_tilt_decay;
         },  "flow_type"_a = Goddard::MocFlowKind::PLANAR,
             "chemistry"_a = Goddard::GasChemistry::PERFECT_GAS,
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
@@ -337,7 +349,13 @@ void bind_moc(nb::module_& m) {
             "min_front_spacing_factor"_a = 0.35,
             "front_spacing_growth"_a = 1.0,
             "max_cell_aspect_ratio"_a = 6.0,
-            "max_front_points"_a = 0)
+            "max_front_points"_a = 0,
+            "start_line"_a = Goddard::MocStartLine::AUTO,
+            "kl_max_wall_angle_error"_a = 0.25,
+            "march_scheme"_a = Goddard::MocMarchScheme::AUTO,
+            "inverse_cfl"_a = 0.8,
+            "max_wall_turn_per_step"_a = 0.0175,
+            "front_tilt_decay"_a = 0.9)
         .def_rw("flow_type", &Goddard::MocOptions::flow_type)
         .def_rw("chemistry", &Goddard::MocOptions::chemistry)
         .def_rw("mode", &Goddard::MocOptions::mode)
@@ -370,6 +388,18 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, MocOptions, max_cell_aspect_ratio))
         .def_rw("max_front_points", &Goddard::MocOptions::max_front_points,
                 DOC(Goddard, MocOptions, max_front_points))
+        .def_rw("start_line", &Goddard::MocOptions::start_line,
+                DOC(Goddard, MocOptions, start_line))
+        .def_rw("kl_max_wall_angle_error", &Goddard::MocOptions::kl_max_wall_angle_error,
+                DOC(Goddard, MocOptions, kl_max_wall_angle_error))
+        .def_rw("march_scheme", &Goddard::MocOptions::march_scheme,
+                DOC(Goddard, MocOptions, march_scheme))
+        .def_rw("inverse_cfl", &Goddard::MocOptions::inverse_cfl,
+                DOC(Goddard, MocOptions, inverse_cfl))
+        .def_rw("max_wall_turn_per_step", &Goddard::MocOptions::max_wall_turn_per_step,
+                DOC(Goddard, MocOptions, max_wall_turn_per_step))
+        .def_rw("front_tilt_decay", &Goddard::MocOptions::front_tilt_decay,
+                DOC(Goddard, MocOptions, front_tilt_decay))
         .def("__repr__", [](const Goddard::MocOptions& self) {
             return std::format("<MocOptions mode={} flow={} N={}>",
                                mode_name(self.mode), flow_kind_name(self.flow_type),
@@ -463,6 +493,11 @@ void bind_moc(nb::module_& m) {
         .def_prop_ro("axis_point_indices", [](const Goddard::CharacteristicNet& self) {
             return to_index_array(self.axis_point_indices);
         }, DOC(Goddard, CharacteristicNet, axis_point_indices))
+
+        // Ragged, like c_chains above; nanobind converts std::vector<std::vector<size_t>>
+        // straight to a list of lists of Python ints.
+        .def_ro("fronts", &Goddard::CharacteristicNet::fronts,
+                DOC(Goddard, CharacteristicNet, fronts))
 
         // ---- Columnar views over every point, for plotting and post-processing ----
 
@@ -593,6 +628,10 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, MocPassDiagnostics, front_axis_spacing))
         .def_ro("front_wall_spacing", &Goddard::MocPassDiagnostics::front_wall_spacing,
                 DOC(Goddard, MocPassDiagnostics, front_wall_spacing))
+        .def_ro("step_dx", &Goddard::MocPassDiagnostics::step_dx,
+                DOC(Goddard, MocPassDiagnostics, step_dx))
+        .def_ro("step_limiter", &Goddard::MocPassDiagnostics::step_limiter,
+                DOC(Goddard, MocPassDiagnostics, step_limiter))
         .def("__repr__", [](const Goddard::MocPassDiagnostics& self) {
             return std::format(
                 "<MocPassDiagnostics pass={} front_points={} spacing=[{:.3g}, {:.3g}] "
@@ -659,6 +698,12 @@ void bind_moc(nb::module_& m) {
         .def_ro("wall_station_to_tangency",
                 &Goddard::MocInitDiagnostics::wall_station_to_tangency,
                 DOC(Goddard, MocInitDiagnostics, wall_station_to_tangency))
+        .def_ro("wall_bc_residual", &Goddard::MocInitDiagnostics::wall_bc_residual,
+                DOC(Goddard, MocInitDiagnostics, wall_bc_residual))
+        .def_ro("kplus_wall_end", &Goddard::MocInitDiagnostics::kplus_wall_end,
+                DOC(Goddard, MocInitDiagnostics, kplus_wall_end))
+        .def_ro("start_line_used", &Goddard::MocInitDiagnostics::start_line_used,
+                DOC(Goddard, MocInitDiagnostics, start_line_used))
         .def("__repr__", [](const Goddard::MocInitDiagnostics& self) {
             return std::format(
                 "<MocInitDiagnostics points={} wall_gap={:.3g} mach=[{:.4g}, {:.4g}] "
@@ -710,6 +755,11 @@ void bind_moc(nb::module_& m) {
         .def_ro("crossings", &Goddard::MocResult::crossings, DOC(Goddard, MocResult, crossings))
         .def_ro("reached_exit_plane", &Goddard::MocResult::reached_exit_plane,
                 DOC(Goddard, MocResult, reached_exit_plane))
+        .def_ro("min_theta", &Goddard::MocResult::min_theta, DOC(Goddard, MocResult, min_theta))
+        .def_ro("min_theta_x", &Goddard::MocResult::min_theta_x,
+                DOC(Goddard, MocResult, min_theta_x))
+        .def_ro("min_theta_y", &Goddard::MocResult::min_theta_y,
+                DOC(Goddard, MocResult, min_theta_y))
         .def_ro("exit_plane", &Goddard::MocResult::exit_plane, DOC(Goddard, MocResult, exit_plane))
         .def("__repr__", [](const Goddard::MocResult& self) {
             return std::format(

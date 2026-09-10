@@ -17,6 +17,7 @@ from goddard._core import CharacteristicFamily, CharacteristicNet
 __all__ = [
     "mesh_node_mask",
     "plot_characteristic_net",
+    "plot_fronts",
     "plot_field",
     "plot_profile",
     "plot_exit_plane",
@@ -48,14 +49,22 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
                             minus_color="tab:red", wall_color="k"):
     """Draw the characteristic mesh: every C+ and C- line in the net.
 
+    MocMarchScheme.INVERSE prescribes a sequence of marching fronts instead of
+    chain-paired characteristics, so CharacteristicNet.chains is empty for it; this
+    draws CharacteristicNet.fronts (one polyline each) in that case instead of
+    drawing nothing. Use :func:`plot_fronts` directly for more control over that
+    drawing (e.g. thinning a fine march with ``every``).
+
     Args:
         result_or_net: A MocResult or a CharacteristicNet.
         ax: Axes to draw on. A new figure is created when omitted.
         families: Iterable of CharacteristicFamily to draw. Defaults to both.
+            Ignored when the net has no chains (fronts carry no family).
         wall: Draw the wall contour.
         axis: Draw the centerline.
-        linewidth: Line width for the characteristics.
-        plus_color: Colour for the C+ family.
+        linewidth: Line width for the characteristics (or fronts).
+        plus_color: Colour for the C+ family (also used for the fronts, when the
+            net has no chains).
         minus_color: Colour for the C- family.
         wall_color: Colour for the wall contour.
 
@@ -67,31 +76,38 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
     if ax is None:
         _, ax = plt.subplots()
 
-    if families is None:
-        families = (CharacteristicFamily.PLUS, CharacteristicFamily.MINUS)
-    families = set(families)
-
     # Snapshot once: the columnar properties build a fresh array on every access,
-    # so re-reading them inside the chain loop would be quadratic.
+    # so re-reading them inside the chain/front loop would be quadratic.
     x = np.asarray(net.x)
     y = np.asarray(net.y)
     chains = net.chains
-    metadata = net.chain_metadata
 
-    colors = {
-        CharacteristicFamily.PLUS: plus_color,
-        CharacteristicFamily.MINUS: minus_color,
-    }
     labelled = set()
-    for chain, meta in zip(chains, metadata):
-        if meta.family not in families or len(chain) < 2:
-            continue
-        color = colors.get(meta.family, "0.5")
-        label = None
-        if meta.family not in labelled:
-            label = "C+" if meta.family == CharacteristicFamily.PLUS else "C-"
-            labelled.add(meta.family)
-        ax.plot(x[chain], y[chain], color=color, linewidth=linewidth, label=label)
+    if len(chains) == 0 and len(net.fronts) > 0:
+        for i, front in enumerate(net.fronts):
+            idx = np.asarray(front)
+            ax.plot(x[idx], y[idx], color=plus_color, linewidth=linewidth,
+                    label="front" if i == 0 else None)
+        labelled.add("front")
+    else:
+        if families is None:
+            families = (CharacteristicFamily.PLUS, CharacteristicFamily.MINUS)
+        families = set(families)
+        metadata = net.chain_metadata
+
+        colors = {
+            CharacteristicFamily.PLUS: plus_color,
+            CharacteristicFamily.MINUS: minus_color,
+        }
+        for chain, meta in zip(chains, metadata):
+            if meta.family not in families or len(chain) < 2:
+                continue
+            color = colors.get(meta.family, "0.5")
+            label = None
+            if meta.family not in labelled:
+                label = "C+" if meta.family == CharacteristicFamily.PLUS else "C-"
+                labelled.add(meta.family)
+            ax.plot(x[chain], y[chain], color=color, linewidth=linewidth, label=label)
 
     if wall and len(net.wall_x) > 0:
         ax.plot(net.wall_x, net.wall_y, color=wall_color, linewidth=1.5, label="wall")
@@ -106,15 +122,57 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
     return ax
 
 
+def plot_fronts(result_or_net, ax=None, *, every=1, **kwargs):
+    """Draw every marching front of an inverse-march net as one polyline each.
+
+    Meaningful for MocMarchScheme.INVERSE, whose mesh topology is the sequence of
+    fronts in CharacteristicNet.fronts (axis to wall, in march order) rather than
+    the chain-paired characteristics DIRECT builds. A DIRECT net carries no fronts,
+    so this draws nothing for one.
+
+    Args:
+        result_or_net: A MocResult or a CharacteristicNet.
+        ax: Axes to draw on. A new figure is created when omitted.
+        every: Draw every Nth front only, to declutter a fine march. 1 draws all.
+        **kwargs: Forwarded to ``Axes.plot`` (e.g. color, linewidth).
+
+    Returns:
+        The matplotlib Axes.
+    """
+    plt = _pyplot()
+    net = _as_net(result_or_net)
+    if ax is None:
+        _, ax = plt.subplots()
+
+    x = np.asarray(net.x)
+    y = np.asarray(net.y)
+    kwargs.setdefault("color", "tab:blue")
+    kwargs.setdefault("linewidth", 0.5)
+    for front in net.fronts[::every]:
+        idx = np.asarray(front)
+        ax.plot(x[idx], y[idx], **kwargs)
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("r")
+    ax.set_aspect("equal", adjustable="datalim")
+    return ax
+
+
 def mesh_node_mask(net):
     """Boolean mask selecting the net points that are genuine solution nodes.
 
-    A net carries a few points that were never produced by a unit process: the
-    seeded throat-lip wall point, for one, which only bootstraps the wall march
+    A DIRECT net carries a few points that were never produced by a unit process:
+    the seeded throat-lip wall point, for one, which only bootstraps the wall march
     and holds placeholder zeros for Mach, pressure and temperature. Such points
     belong to no characteristic chain, which is what this tests for. Contouring
     over them puts a spurious cold spot at the throat and drags the colour scale
     down to zero.
+
+    MocMarchScheme.INVERSE builds no chains at all (CharacteristicNet.chains is
+    empty; its topology lives in CharacteristicNet.fronts instead), so every point
+    has empty membership regardless of whether it is a genuine solution node --
+    for that scheme every point *is* one, so this treats them all as mesh nodes
+    rather than reading "no chain membership" as "bootstrap placeholder".
 
     Args:
         net: A CharacteristicNet.
@@ -123,6 +181,12 @@ def mesh_node_mask(net):
         A boolean numpy array with one entry per point in ``net.points``.
     """
     membership = net.membership
+    has_any_chain_entry = any(
+        m.c_plus_chain_idx is not None or m.c_minus_chain_idx is not None
+        for m in membership
+    )
+    if not has_any_chain_entry:
+        return np.ones(len(membership), dtype=bool)
     return np.fromiter(
         (m.c_plus_chain_idx is not None or m.c_minus_chain_idx is not None
          for m in membership),

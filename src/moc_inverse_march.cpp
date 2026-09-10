@@ -209,31 +209,6 @@ void throw_if_thermo_error(MocErrorCode err, std::string_view context, double x,
 }
 
 
-/**
- * Wall angle at x, continuous in x. NozzleProfile::theta_at is piecewise constant per facet
- * (the vertex-averaged slope of whichever facet contains x), so a march whose wall stations
- * are finer than the facets sees the wall angle as a staircase and the wall Mach dips on
- * every same-facet step. Interpolating linearly between the vertex angles removes that
- * without changing what the contour is.
- */
-double wall_angle_at(const NozzleProfile& wall, double x) {
-    const size_t n = wall.size();
-    if (n < 2) return 0.0;
-    if (x <= wall.x[0]) return wall.theta_at_idx(1);
-    for (size_t k = 1; k < n; k++) {
-        if (x <= wall.x[k]) {
-            // theta_at_idx(i) is the (facet-averaged) angle at vertex i; facet k runs from
-            // vertex k-1 to vertex k. Vertex 0 has no upstream facet, so its angle is taken
-            // as vertex 1's.
-            const double theta_start = wall.theta_at_idx(k > 1 ? k - 1 : 1);
-            const double theta_end = wall.theta_at_idx(k);
-            const double t = (wall.x[k] > wall.x[k - 1]) ? (x - wall.x[k - 1]) / (wall.x[k] - wall.x[k - 1]) : 0.0;
-            return theta_start + t * (theta_end - theta_start);
-        }
-    }
-    return wall.theta_at_idx(n - 1);
-}
-
 } // namespace
 
 MocMarchScheme MocNozzle::resolve_march_scheme() const {
@@ -339,7 +314,7 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     wall_pt = CharacteristicPoint{};
     wall_pt.x = x0;
     wall_pt.y = y_wall;
-    wall_pt.theta = wall_angle_at(wall, x0);
+    wall_pt.theta = wall.theta_at_interpolated(x0);
     throw_if_thermo_error(
         update_thermodynamic_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach),
         "Inverse march initial front (fan wall point)", wall_pt.x, wall_pt.y);
@@ -539,7 +514,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
     CharacteristicPoint wall_point{};
     wall_point.x = x_new;
     wall_point.y = y_new;
-    wall_point.theta = wall_angle_at(m_options.nozzle_profile, x_new); // fixed by the contour
+    wall_point.theta = m_options.nozzle_profile.theta_at_interpolated(x_new); // fixed by the contour
 
     const CharacteristicPoint& seed_src = net.points[front.back()];
     MocErrorCode err = update_thermodynamic_state_from_nu(wall_point, seed_src.nu, seed_src.mach);
@@ -692,11 +667,11 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
         // see either nothing or a whole facet jump).
         double dx_turn = std::numeric_limits<double>::max();
         {
-            const double theta_here = wall_angle_at(wall_profile, wall_old.x);
+            const double theta_here = wall_profile.theta_at_interpolated(wall_old.x);
             for (size_t k = 0; k < wall_profile.size(); k++) {
                 const double x_v = wall_profile.x[k];
                 if (x_v <= wall_old.x + 1e-12) continue;
-                if (std::abs(wall_angle_at(wall_profile, x_v) - theta_here) > m_options.max_wall_turn_per_step) {
+                if (std::abs(wall_profile.theta_at_interpolated(x_v) - theta_here) > m_options.max_wall_turn_per_step) {
                     dx_turn = x_v - wall_old.x;
                     break;
                 }

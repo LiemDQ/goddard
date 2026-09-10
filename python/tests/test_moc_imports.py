@@ -1,4 +1,6 @@
 """Smoke tests for MoC bindings — no solver calls, just imports and construction."""
+import inspect
+
 import numpy as np
 import pytest
 
@@ -30,6 +32,24 @@ def test_import_moc_enums():
     assert CharacteristicFamily.PLUS is not None
     assert CharacteristicFamily.MINUS is not None
     assert ChainTermination.MERGED is not None
+
+
+def test_import_moc_marching_enums():
+    from goddard import MocMarchScheme, MocStepLimiter, MocStartLine
+
+    assert MocMarchScheme.AUTO is not None
+    assert MocMarchScheme.DIRECT is not None
+    assert MocMarchScheme.INVERSE is not None
+
+    assert MocStepLimiter.NONE is not None
+    assert MocStepLimiter.CFL is not None
+    assert MocStepLimiter.WALL_FOOT is not None
+    assert MocStepLimiter.WALL_TURN is not None
+    assert MocStepLimiter.EXIT is not None
+
+    assert MocStartLine.AUTO is not None
+    assert MocStartLine.KLIEGEL_LEVINE is not None
+    assert MocStartLine.CENTERED_FAN is not None
 
 
 def test_import_moc_structs():
@@ -204,3 +224,87 @@ def test_validate_moc_options_rejects_bad_input():
 
     with pytest.raises(ValueError):
         validate_moc_options(MocOptions(num_characteristics=-3))
+
+
+def test_moc_options_marching_defaults():
+    from goddard import MocOptions, MocMarchScheme, MocStartLine
+
+    opts = MocOptions()
+    assert opts.march_scheme == MocMarchScheme.AUTO
+    assert opts.start_line == MocStartLine.AUTO
+    assert opts.inverse_cfl == pytest.approx(0.8)
+    assert opts.max_wall_turn_per_step == pytest.approx(0.0175)
+    assert opts.front_tilt_decay == pytest.approx(0.9)
+    assert opts.kl_max_wall_angle_error == pytest.approx(0.25)
+
+
+def test_moc_options_marching_kwargs():
+    from goddard import MocOptions, MocMarchScheme, MocStartLine
+
+    opts = MocOptions(
+        march_scheme=MocMarchScheme.INVERSE,
+        start_line=MocStartLine.KLIEGEL_LEVINE,
+        inverse_cfl=0.5,
+        max_wall_turn_per_step=0.01,
+        front_tilt_decay=0.7,
+        kl_max_wall_angle_error=0.1,
+    )
+    assert opts.march_scheme == MocMarchScheme.INVERSE
+    assert opts.start_line == MocStartLine.KLIEGEL_LEVINE
+    assert opts.inverse_cfl == pytest.approx(0.5)
+    assert opts.max_wall_turn_per_step == pytest.approx(0.01)
+    assert opts.front_tilt_decay == pytest.approx(0.7)
+    assert opts.kl_max_wall_angle_error == pytest.approx(0.1)
+
+    # Also settable after construction, like every other MocOptions field.
+    opts.march_scheme = MocMarchScheme.DIRECT
+    assert opts.march_scheme == MocMarchScheme.DIRECT
+
+
+def test_characteristic_net_fronts_default_empty():
+    from goddard import CharacteristicNet
+
+    net = CharacteristicNet()
+    assert net.fronts == []
+
+
+def test_moc_pass_diagnostics_step_fields_default():
+    from goddard import MocPassDiagnostics, MocStepLimiter
+
+    diag = MocPassDiagnostics()
+    assert diag.step_dx == pytest.approx(0.0)
+    assert diag.step_limiter == MocStepLimiter.NONE
+
+
+def test_moc_result_min_theta_and_init_diagnostics_defaults():
+    from goddard import MocResult, MocStartLine
+
+    result = MocResult()
+    assert result.min_theta == pytest.approx(0.0)
+    assert result.min_theta_x == pytest.approx(0.0)
+    assert result.min_theta_y == pytest.approx(0.0)
+
+    # MocInitDiagnostics is reached through MocResult.init_diagnostics rather than
+    # imported directly (it is bound, but not re-exported at package scope).
+    diagnostics = result.init_diagnostics
+    assert diagnostics.wall_bc_residual == pytest.approx(0.0)
+    assert diagnostics.kplus_wall_end == pytest.approx(0.0)
+    assert diagnostics.start_line_used == MocStartLine.AUTO
+
+
+def test_convenience_moc_functions_accept_march_scheme_and_start_line():
+    from goddard.convenience import moc_analysis, moc_rao_design
+
+    for func in (moc_analysis, moc_rao_design):
+        params = inspect.signature(func).parameters
+        assert "march_scheme" in params
+        assert params["march_scheme"].default is None
+        assert "start_line" in params
+        assert params["start_line"].default is None
+
+
+def test_import_plot_fronts():
+    from goddard import plotting
+
+    assert hasattr(plotting, "plot_fronts")
+    assert "plot_fronts" in plotting.__all__

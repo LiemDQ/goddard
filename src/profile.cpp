@@ -211,6 +211,24 @@ double NozzleProfile::theta_at(double x_query) const {
     return theta_at_idx(find_index(x_query));
 }
 
+double NozzleProfile::theta_at_interpolated(double x_query) const {
+    const size_t n = x.size();
+    if (n < 2) return 0.0;
+    if (x_query <= x[0]) return theta_at_idx(1);
+    for (size_t k = 1; k < n; k++) {
+        if (x_query <= x[k]) {
+            // theta_at_idx(i) is the vertex angle at vertex i; facet k runs from vertex
+            // k-1 to vertex k. Vertex 0 has no upstream facet, so its angle is taken as
+            // vertex 1's.
+            const double theta_start = theta_at_idx(k > 1 ? k - 1 : 1);
+            const double theta_end = theta_at_idx(k);
+            const double t = (x[k] > x[k - 1]) ? (x_query - x[k - 1]) / (x[k] - x[k - 1]) : 0.0;
+            return theta_start + t * (theta_end - theta_start);
+        }
+    }
+    return theta_at_idx(n - 1);
+}
+
 double NozzleProfile::radius_at(double x_query) const {
     size_t idx = find_index(x_query); // first index with value larger than x
     double x2 = x[idx];
