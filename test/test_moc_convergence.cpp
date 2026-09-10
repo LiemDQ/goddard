@@ -234,12 +234,30 @@ TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
                        analysis.converged ? "true" : "false");
         EXPECT_EQ(analysis.converged, analysis.failure.code == MocErrorCode::NONE)
             << "N=" << levels[i] << ": converged and failure.code disagree";
-        err[i] = std::abs(analysis.exit_mach - design.exit_mach);
+        // The DIRECT design's exit Mach carries a known +0.08 bias against the 1-D
+        // area-Mach relation (AxiDesign1DConsistencyBounded), and the inverse-march
+        // analysis of its contour gives a non-uniform exit plane, so the two exit Machs
+        // are not directly comparable. What must hold for a correct isentropic analysis is
+        // that the area-averaged exit Mach matches the 1-D value for the contour's area
+        // ratio, increasingly well with N.
+        const ExitPlane& ep = analysis.exit_plane;
+        ASSERT_GE(ep.y.size(), 2u) << "N=" << levels[i];
+        double mach_area = 0.0, area = 0.0;
+        for (size_t k = 1; k < ep.y.size(); k++) {
+            const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+            mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
+            area += dA;
+        }
+        const double mach_mean = mach_area / area;
+        const double mach_1d = mach_from_area_ratio_1d(analysis.area_ratio, gamma);
+        err[i] = std::abs(mach_mean - mach_1d);
+        RecordProperty("area_mean_exit_mach_N" + std::to_string(levels[i]), std::to_string(mach_mean));
+        RecordProperty("mach_1d_N" + std::to_string(levels[i]), std::to_string(mach_1d));
     }
 
     EXPECT_LT(err[1], err[0])
-        << "Axi round-trip error must not grow with N (coarse " << err[0]
-        << ", fine " << err[1] << ")";
+        << "Axi round-trip error (area-mean exit Mach vs 1-D) must not grow with N (coarse "
+        << err[0] << ", fine " << err[1] << ")";
     EXPECT_LT(err[1], 5e-2);
 }
 
@@ -400,22 +418,20 @@ TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
 // non-NONE error code -- not a crash, hang, or silently-invalid net -- rather
 // than skipping silently; tighten it (replace EXPECT_FALSE with a convergence +
 // accuracy check) once that residual mismatch is fixed.
-TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8DocumentResidualFailure) {
+// Flipped 2026-09-09: with the wall-consistent KL line (Package A) and the inverse march
+// (Package B) both AR=4 and AR=8 reach the exit plane at every N. The physics checks
+// (mass conservation, the axis compression) live in test_moc_inverse_march.cpp; this
+// keeps the historical configurations converging.
+TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
     for (int n : {15, 31}) {
         auto result = solve_conical_kl_analysis(4.0, n);
-        EXPECT_FALSE(result.converged)
-            << "N=" << n << " AR=4 now converges -- tighten this test per its TODO comment";
-        if (!result.converged) {
-            EXPECT_NE(result.failure.code, MocErrorCode::NONE) << "N=" << n;
-        }
+        EXPECT_TRUE(result.converged) << "N=" << n << " AR=4: " << result.failure.message;
+        EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
     }
     for (int n : {8, 15, 31}) {
         auto result = solve_conical_kl_analysis(8.0, n);
-        EXPECT_FALSE(result.converged)
-            << "N=" << n << " AR=8 now converges -- tighten this test per its TODO comment";
-        if (!result.converged) {
-            EXPECT_NE(result.failure.code, MocErrorCode::NONE) << "N=" << n;
-        }
+        EXPECT_TRUE(result.converged) << "N=" << n << " AR=8: " << result.failure.message;
+        EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
     }
 }
 
@@ -438,7 +454,10 @@ TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8DocumentResidualFailure) {
 // march order; every comparison here re-sorts by x first, which is what "wall Mach along
 // the nozzle" means physically and what diagnosis.md's own point-by-point table reports.
 static std::vector<CharacteristicPoint> wall_points_by_x(const MocResult& result) {
-    std::vector<CharacteristicPoint> pts = result.net.wall_points();
+    // wall_point_indices is filled by both kernels (the INVERSE march builds no chains, so
+    // net.wall_points(), which walks chain terminations, is empty there).
+    std::vector<CharacteristicPoint> pts;
+    for (size_t idx : result.net.wall_point_indices) pts.push_back(result.net.points[idx]);
     std::sort(pts.begin(), pts.end(),
         [](const CharacteristicPoint& a, const CharacteristicPoint& b) { return a.x < b.x; });
     return pts;

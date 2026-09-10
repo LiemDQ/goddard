@@ -96,7 +96,19 @@ struct PointResult {
  * @return MocErrorCode::NONE if the point is valid, else the first violated
  *         condition in priority order: nu, theta, mach, finiteness.
  */
-MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol);
+/**
+ * Validity of a computed point: finite fields, supersonic, non-negative Prandtl-Meyer angle,
+ * and (by default) non-negative flow angle.
+ *
+ * The flow-angle requirement is what the DIRECT kernel uses to catch a march that has gone
+ * wrong. It is optional because a negative flow angle is physically admissible in the
+ * analysis of an arbitrary contour (any locally converging wall) and because, wherever the
+ * exact angle is zero -- the uniform exit region of a minimum-length nozzle, the axis
+ * neighbourhood -- a computed angle is discretization noise of either sign, which a
+ * tolerance of the solver's abstol cannot absorb.
+ */
+MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol,
+                                  bool require_nonnegative_theta = true);
 
 constexpr double average_angle(double angle1, double angle2) {
     return 0.5*(angle1+angle2);

@@ -284,13 +284,13 @@ struct MocOptions {
     double max_wall_turn_per_step = 0.0175;
 
     /**
-     * Inverse march only: per-pass factor by which the marching front's axial tilt (the
-     * offset between its axis end and its wall end) relaxes toward a plane, in [0, 1].
-     *
-     * The initial front built from a Kliegel-Levine or centered-fan start line has its
-     * axis end downstream of its wall end; each subsequent front's tilt is this factor
-     * times the previous front's, so the shape relaxes toward a vertical (planar) front
-     * as the march proceeds away from the throat.
+     * Inverse march only: fraction of the marching front's shape retained per pass, in
+     * [0, 1]. Each new front is the previous one translated downstream, with every point's
+     * axial offset from the wall point multiplied by this factor, so a Kliegel-Levine start
+     * line (axis end downstream of its wall end) relaxes toward a vertical plane as the
+     * march proceeds. The relaxation is additionally capped so it moves no point by more
+     * than half a step, which keeps the step bounds valid; on a front with large offsets
+     * that cap, not this factor, is what limits the relaxation.
      */
     double front_tilt_decay = 0.9;
 };
@@ -570,6 +570,18 @@ struct MocResult {
 
     /// True when exit_coverage is within the (deliberately loose) staircase allowance.
     bool reached_exit_plane = false;
+
+    /**
+     * Smallest flow angle anywhere in the net (radians) and where it occurs. In a diverging
+     * nozzle a markedly negative value marks a compression converging on the axis, i.e. a
+     * forming shock, which an isentropic march can only pass through approximately; the
+     * solution downstream of it is not to be trusted to better than the size of the dip.
+     * Conical nozzles with a circular-arc throat are known to form such a shock (Darwell &
+     * Badham 1963; Migdal & Kosson 1965). Reported for every scheme.
+     */
+    double min_theta = 0.0;
+    double min_theta_x = 0.0;
+    double min_theta_y = 0.0;
 
     ExitPlane exit_plane;
 };

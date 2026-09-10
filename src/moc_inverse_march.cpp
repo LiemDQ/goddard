@@ -62,9 +62,27 @@ std::optional<std::pair<size_t, double>> trace_back_to_front(
     return std::nullopt;
 }
 
-/** theta, nu, and a Mach seed at a query y, fit from front data (B.md Sec. "Front
- * interpolation"): quadratic Lagrange through the 3 points bracketing y_query, linear at
- * either end of the front where a third point is not available. */
+/**
+ * Riemann invariants (and theta, nu, a Mach seed) at a query y, fit from front data.
+ *
+ * The invariants K- = theta + nu and K+ = theta - nu are what the march transports, so they
+ * are what is interpolated; theta and nu follow. Their profiles along a front are only
+ * piecewise smooth: at the edge of a simple-wave region (the last ray of a throat fan, the
+ * characteristic from a wall-curvature break) an invariant's slope jumps, typically from a
+ * rising ramp to a plateau. A quadratic fit through three points straddling such a kink
+ * overshoots the plateau, and in planar flow that overshoot is then carried downstream
+ * exactly, along the characteristics, so it accumulates into a ringing of a degree or more
+ * around the plateau -- enough to drive the small flow angle next to the axis negative.
+ * Measured on the planar minimum-length round trip before this guard: K- of 30.74 deg two
+ * points above the axis where the exact value is 30.00 everywhere.
+ *
+ * Two standard remedies, both applied: the three-point stencil is chosen on the side of the
+ * bracketing segment with the smaller second difference (ENO selection, so a stencil is not
+ * laid across a kink when a smooth one is available), and the result is clamped to the range
+ * of the two bracketing points (so no overshoot survives at all). Smooth regions keep the
+ * quadratic's second-order accuracy; a kink degrades locally to linear, which is the right
+ * price there.
+ */
 struct FrontFit { double theta, nu, mach; };
 
 FrontFit lagrange_front_fit(
@@ -72,42 +90,62 @@ FrontFit lagrange_front_fit(
     size_t seg_idx, double y_query)
 {
     const size_t n = front.size();
-    size_t i0 = 0, i1 = 0, i2 = 0;
-    bool quad = true;
-    if (seg_idx > 0) { i0 = seg_idx - 1; i1 = seg_idx; i2 = seg_idx + 1; }
-    else if (seg_idx + 2 < n) { i0 = seg_idx; i1 = seg_idx + 1; i2 = seg_idx + 2; }
-    else quad = false;
+    const CharacteristicPoint& a = net.points[front[seg_idx]];
+    const CharacteristicPoint& b = net.points[front[seg_idx + 1]];
 
-    if (!quad) {
-        const CharacteristicPoint& a = net.points[front[seg_idx]];
-        const CharacteristicPoint& b = net.points[front[seg_idx + 1]];
-        const double t = (b.y > a.y) ? (y_query - a.y) / (b.y - a.y) : 0.0;
-        return {a.theta + t * (b.theta - a.theta),
-                a.nu + t * (b.nu - a.nu),
-                a.mach + t * (b.mach - a.mach)};
+    const double t = (b.y > a.y) ? (y_query - a.y) / (b.y - a.y) : 0.0;
+    const double mach_seed = a.mach + t * (b.mach - a.mach);
+
+    auto quadratic = [&](size_t i0, size_t i1, size_t i2, double v0, double v1, double v2) {
+        const double y0 = net.points[front[i0]].y, y1 = net.points[front[i1]].y, y2 = net.points[front[i2]].y;
+        const double L0 = (y_query - y1) * (y_query - y2) / ((y0 - y1) * (y0 - y2));
+        const double L1 = (y_query - y0) * (y_query - y2) / ((y1 - y0) * (y1 - y2));
+        const double L2 = (y_query - y0) * (y_query - y1) / ((y2 - y0) * (y2 - y1));
+        return v0 * L0 + v1 * L1 + v2 * L2;
+    };
+    auto second_difference = [&](size_t i0, size_t i1, size_t i2, double CharacteristicPoint::* q) {
+        return std::abs(net.points[front[i2]].*q - 2.0 * net.points[front[i1]].*q + net.points[front[i0]].*q);
+    };
+
+    const bool has_left = seg_idx >= 1;
+    const bool has_right = seg_idx + 2 < n;
+    double K_minus, K_plus;
+    if (!has_left && !has_right) {
+        K_minus = a.K_minus + t * (b.K_minus - a.K_minus);
+        K_plus = a.K_plus + t * (b.K_plus - a.K_plus);
+    } else {
+        size_t i0, i1, i2;
+        if (has_left && has_right) {
+            const double left = second_difference(seg_idx - 1, seg_idx, seg_idx + 1, &CharacteristicPoint::K_minus)
+                              + second_difference(seg_idx - 1, seg_idx, seg_idx + 1, &CharacteristicPoint::K_plus);
+            const double right = second_difference(seg_idx, seg_idx + 1, seg_idx + 2, &CharacteristicPoint::K_minus)
+                               + second_difference(seg_idx, seg_idx + 1, seg_idx + 2, &CharacteristicPoint::K_plus);
+            if (left <= right) { i0 = seg_idx - 1; i1 = seg_idx; i2 = seg_idx + 1; }
+            else { i0 = seg_idx; i1 = seg_idx + 1; i2 = seg_idx + 2; }
+        } else if (has_left) { i0 = seg_idx - 1; i1 = seg_idx; i2 = seg_idx + 1; }
+        else { i0 = seg_idx; i1 = seg_idx + 1; i2 = seg_idx + 2; }
+        K_minus = quadratic(i0, i1, i2, net.points[front[i0]].K_minus, net.points[front[i1]].K_minus, net.points[front[i2]].K_minus);
+        K_plus = quadratic(i0, i1, i2, net.points[front[i0]].K_plus, net.points[front[i1]].K_plus, net.points[front[i2]].K_plus);
+        K_minus = std::clamp(K_minus, std::min(a.K_minus, b.K_minus), std::max(a.K_minus, b.K_minus));
+        K_plus = std::clamp(K_plus, std::min(a.K_plus, b.K_plus), std::max(a.K_plus, b.K_plus));
     }
-
-    const CharacteristicPoint& p0 = net.points[front[i0]];
-    const CharacteristicPoint& p1 = net.points[front[i1]];
-    const CharacteristicPoint& p2 = net.points[front[i2]];
-    const double y0 = p0.y, y1 = p1.y, y2 = p2.y;
-    const double L0 = (y_query - y1) * (y_query - y2) / ((y0 - y1) * (y0 - y2));
-    const double L1 = (y_query - y0) * (y_query - y2) / ((y1 - y0) * (y1 - y2));
-    const double L2 = (y_query - y0) * (y_query - y1) / ((y2 - y0) * (y2 - y1));
-    auto lag = [&](double v0, double v1, double v2) { return v0 * L0 + v1 * L1 + v2 * L2; };
-    return {lag(p0.theta, p1.theta, p2.theta), lag(p0.nu, p1.nu, p2.nu), lag(p0.mach, p1.mach, p2.mach)};
+    return {0.5 * (K_minus + K_plus), 0.5 * (K_minus - K_plus), mach_seed};
 }
 
 /** Segment index bracketing y_query along `front` (y increasing), or nullopt if outside. */
 std::optional<size_t> bracket_front(
     const CharacteristicNet& net, const std::vector<size_t>& front, double y_query)
 {
+    if (front.size() < 2) return std::nullopt;
     for (size_t i = 0; i + 1 < front.size(); i++) {
         const double y0 = net.points[front[i]].y;
         const double y1 = net.points[front[i + 1]].y;
         if (y_query >= y0 - 1e-12 && y_query <= y1 + 1e-12) return i;
     }
-    return std::nullopt;
+    // Outside the front's span (the new front is slightly taller than the old one at the
+    // wall): clamp to the end segment. This only seeds the iteration, so a short
+    // extrapolation is harmless.
+    return (y_query < net.points[front.front()].y) ? 0 : front.size() - 2;
 }
 
 /** Geometric position of a ray/front hit, plus whether it was found by the axis mirror. */
@@ -170,6 +208,32 @@ void throw_if_thermo_error(MocErrorCode err, std::string_view context, double x,
     }
 }
 
+
+/**
+ * Wall angle at x, continuous in x. NozzleProfile::theta_at is piecewise constant per facet
+ * (the vertex-averaged slope of whichever facet contains x), so a march whose wall stations
+ * are finer than the facets sees the wall angle as a staircase and the wall Mach dips on
+ * every same-facet step. Interpolating linearly between the vertex angles removes that
+ * without changing what the contour is.
+ */
+double wall_angle_at(const NozzleProfile& wall, double x) {
+    const size_t n = wall.size();
+    if (n < 2) return 0.0;
+    if (x <= wall.x[0]) return wall.theta_at_idx(1);
+    for (size_t k = 1; k < n; k++) {
+        if (x <= wall.x[k]) {
+            // theta_at_idx(i) is the (facet-averaged) angle at vertex i; facet k runs from
+            // vertex k-1 to vertex k. Vertex 0 has no upstream facet, so its angle is taken
+            // as vertex 1's.
+            const double theta_start = wall.theta_at_idx(k > 1 ? k - 1 : 1);
+            const double theta_end = wall.theta_at_idx(k);
+            const double t = (wall.x[k] > wall.x[k - 1]) ? (x - wall.x[k - 1]) / (wall.x[k] - wall.x[k - 1]) : 0.0;
+            return theta_start + t * (theta_end - theta_start);
+        }
+    }
+    return wall.theta_at_idx(n - 1);
+}
+
 } // namespace
 
 MocMarchScheme MocNozzle::resolve_march_scheme() const {
@@ -191,51 +255,96 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
         return data_line;
     }
 
-    // Centered-fan topology: data_line is the marched C+ through the fan rays, and its top
-    // point P sits on the last ray, short of the wall (MocInitialization::
-    // initialize_centered_expansion emits the rays; generate_initial_data_line marches them
-    // into real positions via solve_initial_axis_point_centered_exp/solve_interior_point).
-    // Extend straight up to the wall with the fan's own uniform post-last-ray state -- the
-    // region beyond the last ray of a centered fan is uniform -- then correct only the new
-    // wall point's nu from the planar C+ compatibility relation with P.
-    const CharacteristicPoint& P = data_line.back();
+    // Centered-fan topology. data_line is the marched C+ from the fan's first axis point
+    // through the rays: a characteristic, which cannot serve as an inverse-march front (a C+
+    // traced back from the next front runs parallel to it). Build F_0 instead on the plane
+    // x = x0 through that first axis point. Every plane point lies on one of the fan's rays
+    // between the throat lip and the ray's marched data-line point, so its invariants are
+    // interpolated along that ray between the lip state (K- = 2 theta_i, K+ = 0) and the
+    // marched state, blending across the two bracketing rays. In planar flow the invariants
+    // are constant along a ray and this is exact; in axisymmetric flow the C- source term
+    // accumulated over the ray -- large near the lip, where the rays are near-sonic -- enters
+    // through the marched state exactly as the DIRECT kernel's own one-step fan does. Points
+    // above the last ray take the last ray's state; the wall point takes the contour's angle
+    // with nu from the C+ compatibility relation with the point below it. The lip is (0, 1)
+    // in the normalized units initialize_centered_expansion uses.
     const NozzleProfile& wall = m_options.nozzle_profile;
-    const double y_wall = wall.radius_at(P.x);
+    const size_t n_rays = data_line.size();
+    if (n_rays < 2 || m_theta_schedule.size() < n_rays) {
+        throw ConvergenceError("Inverse march initial front (fan): data line and theta schedule are inconsistent.");
+    }
+    const double x0 = data_line.front().x;
+    if (!(x0 > 0.0) || x0 < wall.x_min() || x0 > wall.x_max()) {
+        throw ConvergenceError(std::format(
+            "Inverse march initial front (fan): the fan's first axis point x = {} is not "
+            "inside the contour's range [{}, {}].", x0, wall.x_min(), wall.x_max()));
+    }
+    const double y_wall = wall.radius_at(x0);
+    const double lip_x = 0.0;
+    const double lip_y = 1.0;
 
-    std::vector<CharacteristicPoint> front = data_line;
-    if (!(y_wall > P.y)) return front; // degenerate (profile already at/below P): nothing to extend
+    std::vector<double> ray_angle(n_rays), ray_length(n_rays);
+    for (size_t i = 0; i < n_rays; i++) {
+        ray_angle[i] = std::atan2(data_line[i].y - lip_y, data_line[i].x - lip_x);
+        ray_length[i] = std::hypot(data_line[i].x - lip_x, data_line[i].y - lip_y);
+    }
+    // Invariants on ray i at a fraction f of the way from the lip to its marched point.
+    auto ray_invariants = [&](size_t i, double f, double& K_minus, double& K_plus) {
+        const double theta_lip = m_theta_schedule[i];
+        const double K_minus_lip = 2.0 * theta_lip;   // nu = theta on a centered fan's rays
+        const double K_plus_lip = 0.0;
+        K_minus = K_minus_lip + f * (data_line[i].K_minus - K_minus_lip);
+        K_plus = K_plus_lip + f * (data_line[i].K_plus - K_plus_lip);
+    };
 
-    const double dy_ref = (data_line.size() >= 2)
-        ? (data_line.back().y - data_line[data_line.size() - 2].y)
-        : (y_wall - P.y);
-    const size_t n_extra = std::max<size_t>(1,
-        static_cast<size_t>(std::llround((y_wall - P.y) / std::max(dy_ref, 1e-12))));
-
-    for (size_t k = 1; k < n_extra; k++) {
-        const double t = static_cast<double>(k) / static_cast<double>(n_extra);
+    const size_t n_points = std::max<size_t>(static_cast<size_t>(m_options.num_characteristics), 3);
+    std::vector<CharacteristicPoint> front(n_points);
+    for (size_t j = 0; j < n_points; j++) {
+        const double y = y_wall * static_cast<double>(j) / static_cast<double>(n_points - 1);
+        const double phi = std::atan2(y - lip_y, x0 - lip_x);
+        const double dist = std::hypot(x0 - lip_x, y - lip_y);
+        double K_minus, K_plus;
+        if (phi <= ray_angle.front()) {
+            ray_invariants(0, std::clamp(dist / ray_length[0], 0.0, 1.0), K_minus, K_plus);
+        } else if (phi >= ray_angle.back()) {
+            ray_invariants(n_rays - 1, std::clamp(dist / ray_length[n_rays - 1], 0.0, 1.0), K_minus, K_plus);
+        } else {
+            size_t i = 0;
+            while (i + 1 < n_rays && ray_angle[i + 1] < phi) i++;
+            const double alpha = (phi - ray_angle[i]) / (ray_angle[i + 1] - ray_angle[i]);
+            double Km0, Kp0, Km1, Kp1;
+            ray_invariants(i, std::clamp(dist / ray_length[i], 0.0, 1.0), Km0, Kp0);
+            ray_invariants(i + 1, std::clamp(dist / ray_length[i + 1], 0.0, 1.0), Km1, Kp1);
+            K_minus = Km0 + alpha * (Km1 - Km0);
+            K_plus = Kp0 + alpha * (Kp1 - Kp0);
+        }
         CharacteristicPoint pt{};
-        pt.x = P.x;
-        pt.y = P.y + t * (y_wall - P.y);
-        pt.theta = P.theta;
+        pt.x = x0;
+        pt.y = y;
+        pt.theta = 0.5 * (K_minus + K_plus);
         throw_if_thermo_error(
-            update_thermodynamic_state_from_nu(pt, P.nu, P.mach),
-            "Inverse march initial front (fan extension)", pt.x, pt.y);
+            update_thermodynamic_state_from_nu(pt, 0.5 * (K_minus - K_plus), 1.05),
+            "Inverse march initial front (fan plane)", x0, y);
         pt.K_plus = pt.theta - pt.nu;
         pt.K_minus = pt.theta + pt.nu;
-        front.push_back(pt);
+        front[j] = pt;
     }
+    // The axis point of the plane is the data line's own axis point (it lies on the plane).
+    front.front() = data_line.front();
 
-    CharacteristicPoint wall_pt{};
-    wall_pt.x = P.x;
+    // Wall point: the contour's own angle, nu from the C+ compatibility relation with the
+    // point below (K+ carried up unchanged over the short vertical distance).
+    CharacteristicPoint& wall_pt = front.back();
+    const CharacteristicPoint below = front[n_points - 2];
+    wall_pt = CharacteristicPoint{};
+    wall_pt.x = x0;
     wall_pt.y = y_wall;
-    wall_pt.theta = wall.theta_at(P.x);
-    const double nu_w = P.nu + wall_pt.theta - P.theta;
+    wall_pt.theta = wall_angle_at(wall, x0);
     throw_if_thermo_error(
-        update_thermodynamic_state_from_nu(wall_pt, nu_w, P.mach),
+        update_thermodynamic_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach),
         "Inverse march initial front (fan wall point)", wall_pt.x, wall_pt.y);
     wall_pt.K_plus = wall_pt.theta - wall_pt.nu;
     wall_pt.K_minus = wall_pt.theta + wall_pt.nu;
-    front.push_back(wall_pt);
     return front;
 }
 
@@ -352,7 +461,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
     p4.K_minus = p4.theta + p4.nu;
     p4.K_plus = p4.theta - p4.nu;
 
-    MocErrorCode validity = check_point_validity(p4, m_options.solver_options.abstol);
+    MocErrorCode validity = check_point_validity(p4, m_options.solver_options.abstol, /*require_nonnegative_theta=*/false);
     if (validity != MocErrorCode::NONE) return {p4, validity};
     return {p4, MocErrorCode::NONE};
 }
@@ -417,7 +526,7 @@ PointResult MocNozzle::solve_inverse_march_axis_point(
     axis_point.K_minus = axis_point.nu;
     axis_point.K_plus = -axis_point.nu;
 
-    MocErrorCode validity = check_point_validity(axis_point, m_options.solver_options.abstol);
+    MocErrorCode validity = check_point_validity(axis_point, m_options.solver_options.abstol, false);
     if (validity != MocErrorCode::NONE) return {axis_point, validity};
     return {axis_point, MocErrorCode::NONE};
 }
@@ -430,7 +539,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
     CharacteristicPoint wall_point{};
     wall_point.x = x_new;
     wall_point.y = y_new;
-    wall_point.theta = m_options.nozzle_profile.theta_at(x_new); // fixed by the contour
+    wall_point.theta = wall_angle_at(m_options.nozzle_profile, x_new); // fixed by the contour
 
     const CharacteristicPoint& seed_src = net.points[front.back()];
     MocErrorCode err = update_thermodynamic_state_from_nu(wall_point, seed_src.nu, seed_src.mach);
@@ -472,7 +581,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
     wall_point.K_plus = wall_point.theta - wall_point.nu;
     wall_point.K_minus = wall_point.theta + wall_point.nu;
 
-    MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol);
+    MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol, false);
     if (validity != MocErrorCode::NONE) return {wall_point, validity};
     return {wall_point, MocErrorCode::NONE};
 }
@@ -489,8 +598,7 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
     std::vector<size_t> front = net.fronts.back();
     const size_t M = front.size();
 
-    // Normalized y-distribution of the initial front, computed once and reused for every
-    // subsequent front's interior points (B.md Sec. "New front geometry").
+    // Normalized y-distribution of the initial front, reused for every subsequent front.
     std::vector<double> s(M);
     {
         const double y_wall0 = net.points[front.back()].y;
@@ -501,41 +609,97 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
         }
     }
 
+    // The initial front must be spacelike: a segment leaning upstream (x decreasing with y)
+    // must be steeper than the C- through either endpoint, one leaning downstream steeper
+    // than the C+. Every later front is this front's shape translated downstream, stretched
+    // in y with the wall radius and relaxed toward vertical, none of which can make it less
+    // spacelike, so one check here covers the march.
+    for (size_t j = 0; j + 1 < M; j++) {
+        const CharacteristicPoint& a = net.points[front[j]];
+        const CharacteristicPoint& b = net.points[front[j + 1]];
+        const double dy = b.y - a.y;
+        if (!(dy > 0.0)) {
+            return MocFailure{MocErrorCode::INITIALIZATION_FAILED,
+                std::format("Inverse march: initial front is not increasing in y at segment {}.", j),
+                a.x, a.y, -1};
+        }
+        // The segment's direction must lie between the C+ direction (theta + mu) and the
+        // backward C- direction (theta - mu + pi) of both endpoints.
+        const double segment_angle = std::atan2(dy, b.x - a.x);
+        const double lower_bound = std::max(a.theta + a.mu, b.theta + b.mu);
+        const double upper_bound = std::min(a.theta - a.mu, b.theta - b.mu) + M_PI;
+        if (!(segment_angle > lower_bound && segment_angle < upper_bound)) {
+            return MocFailure{MocErrorCode::INITIALIZATION_FAILED,
+                std::format("Inverse march: initial front segment {} (y {:.4f} to {:.4f}) is not "
+                    "spacelike: its direction {:.2f} deg lies outside ({:.2f}, {:.2f}) deg.",
+                    j, a.y, b.y, segment_angle * 180.0 / M_PI,
+                    lower_bound * 180.0 / M_PI, upper_bound * 180.0 / M_PI),
+                a.x, a.y, -1};
+        }
+    }
+
     constexpr int max_passes = 20000;
     for (int pass = 0; pass < max_passes; pass++) {
         const CharacteristicPoint& wall_old = net.points[front.back()];
-        const CharacteristicPoint& axis_old = net.points[front.front()];
+
+        // The front's shape: every point's axial offset from the wall point.
+        std::vector<double> offset(M);
+        double max_abs_offset = 0.0;
+        for (size_t j = 0; j < M; j++) {
+            offset[j] = net.points[front[j]].x - wall_old.x;
+            max_abs_offset = std::max(max_abs_offset, std::abs(offset[j]));
+        }
 
         // --- Step 1: step length ---
+        // Domain of dependence: a point advanced by dx traces back a height of at most
+        // dx * tan(theta +/- mu), which must stay within about one spacing so the feet are
+        // interpolated locally.
         double dy_min = std::numeric_limits<double>::max();
         double slope_max = 0.0;
         for (size_t j = 0; j < M; j++) {
             const CharacteristicPoint& p = net.points[front[j]];
-            slope_max = std::max({slope_max, std::tan(p.theta + p.mu), std::tan(p.mu - p.theta)});
+            slope_max = std::max({slope_max, std::abs(std::tan(p.theta + p.mu)),
+                                  std::abs(std::tan(p.mu - p.theta))});
             if (j + 1 < M) dy_min = std::min(dy_min, net.points[front[j + 1]].y - p.y);
         }
         const double dx_cfl = (slope_max > 1e-12)
             ? m_options.inverse_cfl * dy_min / slope_max
             : std::numeric_limits<double>::max();
 
+        // Wall foot: the top interior point's C- must reach the previous front below its
+        // wall point rather than the wall between the two wall points. For a point at
+        // offset `off` behind (off < 0) or ahead of (off > 0) the old wall point, with the
+        // wall rising at tan(theta_wall):
+        //   dx * (1 + tan(theta_wall) cot(mu - theta)) <= dy_top cot(mu - theta) - (1 - lambda) off
+        // The relaxation lambda is not known yet, so the bound uses whichever value is
+        // conservative for the sign of the offset.
+        // Only binding while the C- through the top point rises going backward (mu > theta);
+        // once the flow angle exceeds the Mach angle its backward C- descends and cannot
+        // reach the wall.
         double dx_foot = std::numeric_limits<double>::max();
-        if (M >= 3) {
+        if (M >= 3 && net.points[front[M - 2]].mu - net.points[front[M - 2]].theta > 1e-9) {
             const CharacteristicPoint& top = net.points[front[M - 2]];
             const double dy_top = wall_old.y - top.y;
-            const double denom = std::tan(top.mu - top.theta) + std::tan(wall_old.theta);
-            if (denom > 1e-12) dx_foot = dy_top / denom;
+            const double cot_minus = 1.0 / std::tan(top.mu - top.theta);
+            const double keep = (offset[M - 2] < 0.0) ? m_options.front_tilt_decay : 1.0;
+            const double numerator = dy_top * cot_minus - keep * offset[M - 2];
+            const double denominator = 1.0 + std::tan(wall_old.theta) * cot_minus;
+            dx_foot = (numerator > 0.0 && denominator > 0.0) ? numerator / denominator : 0.0;
         }
 
+        // Wall turn: the contour's own angle change ahead of the wall station, read at its
+        // vertices (theta_at is piecewise constant per facet, so a one-step difference would
+        // see either nothing or a whole facet jump).
         double dx_turn = std::numeric_limits<double>::max();
         {
-            const double probe = std::isfinite(dx_cfl) ? std::max(dx_cfl, 1e-9) : 1e-6;
-            const double theta_here = wall_profile.theta_at(wall_old.x);
-            const double x_probe = std::min(wall_old.x + probe, L);
-            const double dx_probe_actual = x_probe - wall_old.x;
-            if (dx_probe_actual > 1e-12) {
-                const double theta_probe = wall_profile.theta_at(x_probe);
-                const double dtheta_dx = std::abs(theta_probe - theta_here) / dx_probe_actual;
-                dx_turn = m_options.max_wall_turn_per_step / std::max(dtheta_dx, 1e-12);
+            const double theta_here = wall_angle_at(wall_profile, wall_old.x);
+            for (size_t k = 0; k < wall_profile.size(); k++) {
+                const double x_v = wall_profile.x[k];
+                if (x_v <= wall_old.x + 1e-12) continue;
+                if (std::abs(wall_angle_at(wall_profile, x_v) - theta_here) > m_options.max_wall_turn_per_step) {
+                    dx_turn = x_v - wall_old.x;
+                    break;
+                }
             }
         }
 
@@ -549,155 +713,69 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
 
         if (!(dx > 0.0) || !std::isfinite(dx)) {
             return MocFailure{MocErrorCode::NON_DOWNSTREAM_POINT,
-                std::format("Inverse march: non-positive step length ({:.3e}) at pass {}.", dx, pass),
+                std::format("Inverse march: non-positive step length ({:.3e}, limiter {}) at pass {}.",
+                    dx, to_string(limiter), pass),
                 wall_old.x, wall_old.y, pass};
         }
 
         // --- Step 2: new front geometry ---
+        // The previous front's shape, translated by dx, stretched in y with the wall radius,
+        // and relaxed toward a vertical plane by removing a fraction lambda of every offset.
+        // lambda is capped so the relaxation moves no point by more than half a step: every
+        // point advances by between dx/2 and 3dx/2, which is what the step bounds above
+        // assume. (A fixed per-pass decay of the tilt, independent of dx, moved the axis end
+        // *upstream* whenever the near-axis step was small, which is how the first version
+        // of this kernel failed at pass 0 on a Kliegel-Levine front.)
         const double x_w = wall_old.x + dx;
         const double y_w = wall_profile.radius_at(std::min(x_w, L));
-        const double tilt_raw = m_options.front_tilt_decay * (axis_old.x - wall_old.x);
-        double tilt_spacelike = tilt_raw;
+        double lambda = 1.0 - m_options.front_tilt_decay;
+        if (max_abs_offset > 0.0) lambda = std::min(lambda, 0.5 * dx / max_abs_offset);
 
-        if (y_w > 0.0) {
-            double min_cot = std::numeric_limits<double>::max();
-            for (size_t j = 0; j < M; j++) {
-                const CharacteristicPoint& p = net.points[front[j]];
-                const double denom_c = std::tan(p.mu + std::abs(p.theta));
-                if (denom_c > 1e-12) min_cot = std::min(min_cot, 1.0 / denom_c);
-            }
-            if (min_cot < std::numeric_limits<double>::max() && std::abs(tilt_spacelike) / y_w >= min_cot) {
-                tilt_spacelike = 0.0;
-            }
+        std::vector<double> x_new(M), y_new(M);
+        for (size_t j = 0; j < M; j++) {
+            x_new[j] = x_w + (1.0 - lambda) * offset[j];
+            y_new[j] = s[j] * y_w;
         }
+        x_new[M - 1] = x_w;
+        y_new[M - 1] = y_w;
+        y_new[0] = 0.0;
 
-        // Attempt the whole front (axis, every interior point, wall) at a given tilt
-        // candidate. Returns the M solved points, or the failure of whichever point solve
-        // failed first.
-        struct FrontAttempt {
-            bool ok = false;
-            std::vector<CharacteristicPoint> points;
-            MocFailure failure;
-        };
-        auto attempt_front = [&](double tilt_try) -> FrontAttempt {
-            FrontAttempt out;
-            const double x_a_try = x_w + tilt_try;
-            std::vector<double> x_new(M), y_new(M);
-            x_new[0] = x_a_try; y_new[0] = 0.0;
-            x_new[M - 1] = x_w; y_new[M - 1] = y_w;
-            for (size_t j = 1; j + 1 < M; j++) {
-                y_new[j] = s[j] * y_w;
-                x_new[j] = x_a_try + s[j] * (x_w - x_a_try);
-            }
-
-            out.points.resize(M);
+        // --- Steps 3-6: the unit processes ---
+        std::vector<CharacteristicPoint> new_front_points(M);
+        {
             PointResult axis_result = solve_inverse_march_axis_point(x_new[0], net, front);
             if (axis_result.error != MocErrorCode::NONE) {
-                out.failure = MocFailure{axis_result.error,
+                return MocFailure{axis_result.error,
                     std::format("Inverse march axis point failed ({}) at pass {}.",
                         to_string(axis_result.error), pass),
                     axis_result.point.x, axis_result.point.y, pass};
-                return out;
             }
-            out.points[0] = axis_result.point;
-
-            for (size_t j = 1; j + 1 < M; j++) {
-                PointResult r = solve_inverse_march_interior_point(x_new[j], y_new[j], net, front);
-                if (r.error != MocErrorCode::NONE) {
-                    out.failure = MocFailure{r.error,
-                        std::format("Inverse march interior point {} failed ({}) at pass {}.",
-                            j, to_string(r.error), pass),
-                        r.point.x, r.point.y, pass};
-                    return out;
-                }
-                out.points[j] = r.point;
+            new_front_points[0] = axis_result.point;
+        }
+        for (size_t j = 1; j + 1 < M; j++) {
+            PointResult r = solve_inverse_march_interior_point(x_new[j], y_new[j], net, front);
+            if (r.error != MocErrorCode::NONE) {
+                return MocFailure{r.error,
+                    std::format("Inverse march interior point {} failed ({}) at pass {}.",
+                        j, to_string(r.error), pass),
+                    r.point.x, r.point.y, pass};
             }
-
+            new_front_points[j] = r.point;
+        }
+        {
             PointResult wall_result = solve_inverse_march_wall_point(x_new[M - 1], y_new[M - 1], net, front);
             if (wall_result.error != MocErrorCode::NONE) {
-                out.failure = MocFailure{wall_result.error,
+                return MocFailure{wall_result.error,
                     std::format("Inverse march wall point failed ({}) at pass {}.",
                         to_string(wall_result.error), pass),
                     wall_result.point.x, wall_result.point.y, pass};
-                return out;
             }
-            out.points[M - 1] = wall_result.point;
-
-            for (size_t j = 0; j < M; j++) {
-                MocErrorCode v = check_point_validity(out.points[j], m_options.solver_options.abstol);
-                if (v != MocErrorCode::NONE) {
-                    out.failure = MocFailure{v,
-                        std::format("Inverse march point {} invalid ({}) at pass {}.",
-                            j, to_string(v), pass),
-                        out.points[j].x, out.points[j].y, pass};
-                    return out;
-                }
-            }
-            out.ok = true;
-            return out;
-        };
-
-        FrontAttempt attempt = attempt_front(tilt_spacelike);
-        double tilt = tilt_spacelike;
-
-        // Fallback tilt search -- a change from the algorithm as given; see the report.
-        // B.md's plain per-pass decay of tilt is computed independently of dx and of the
-        // front's own near-axis curvature, so it does not always land in the (sometimes
-        // narrow) range of tilt values for which every point's trace back to the previous
-        // front actually lands on it, and on it correctly: every old front point near the
-        // axis rises near-vertically (mu -> 90 deg there), far steeper than a new point's
-        // own trace ray, so a tilt outside the (possibly narrow) window where the ray's
-        // shallow climb still meets the old front's steep one either misses outright
-        // (NON_DOWNSTREAM_POINT) or lands on the wrong segment, which then fails downstream
-        // as an ordinary numerical error (NEGATIVE_THETA, PM_INVERSION_FAILED, ...) rather
-        // than a geometric one. The fan-init front's axis end can also sit *upstream* of its
-        // wall end (the opposite sign from a Kliegel-Levine line), so the search covers both
-        // signs. Coarse scan across the full plausible range first, then bisect around the
-        // best bracket found; only engages when the literal formula's own attempt failed.
-        if (!attempt.ok) {
-            const double tilt_extent = std::max(std::abs(tilt_raw), dx) * 5.0 + dx;
-            constexpr int coarse_steps = 4000;
-            bool found = false;
-            for (int k = -coarse_steps; k <= coarse_steps && !found; k++) {
-                const double candidate = tilt_extent * static_cast<double>(k)
-                    / static_cast<double>(coarse_steps);
-                FrontAttempt trial = attempt_front(candidate);
-                if (trial.ok) {
-                    // Bisect inward toward the smallest-magnitude working tilt found,
-                    // refining against the previous (failing) coarse step for a tighter
-                    // bracket.
-                    double lo = tilt_extent * static_cast<double>(k - 1)
-                        / static_cast<double>(coarse_steps);
-                    double hi = candidate;
-                    if (k == -coarse_steps) lo = candidate;
-                    FrontAttempt best = trial;
-                    for (int b = 0; b < 20 && lo != hi; b++) {
-                        const double mid = 0.5 * (lo + hi);
-                        FrontAttempt mid_trial = attempt_front(mid);
-                        if (mid_trial.ok) { hi = mid; best = mid_trial; }
-                        else { lo = mid; }
-                    }
-                    attempt = best;
-                    tilt = hi;
-                    found = true;
-                }
-            }
-            if (!found) {
-                log_debug("FRONT pass={} tilt search exhausted ({} candidates over "
-                    "[{:.6f}, {:.6f}]); reporting original failure.",
-                    pass, 2 * coarse_steps + 1, -tilt_extent, tilt_extent);
-            }
+            new_front_points[M - 1] = wall_result.point;
         }
-
-        if (!attempt.ok) {
-            return attempt.failure;
-        }
-        std::vector<CharacteristicPoint>& new_front_points = attempt.points;
-        const double x_a = x_w + tilt;
 
         log_debug("STEP pass={} dx_cfl={:.6f} dx_foot={:.6f} dx_turn={:.6f} dx_exit={:.6f} "
-            "dx={:.6f} x_w={:.6f} y_w={:.6f} x_a={:.6f} tilt={:.6f}",
-            pass, dx_cfl, dx_foot, dx_turn, dx_exit, dx, x_w, y_w, x_a, tilt);
+            "dx={:.6f} lambda={:.4f} x_w={:.6f} y_w={:.6f} x_a={:.6f}",
+            pass, dx_cfl, dx_foot, dx_turn, dx_exit, dx, lambda, x_w, y_w, x_new[0]);
 
         // --- Step 7: bookkeeping ---
         std::vector<size_t> new_front = seed_inverse_front(net, new_front_points);
@@ -707,7 +785,7 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
         diag.front_points = M;
         diag.step_dx = dx;
         diag.step_limiter = limiter;
-        diag.front_axis_x = x_a;
+        diag.front_axis_x = x_new[0];
         diag.front_wall_x = x_w;
         {
             double mn = std::numeric_limits<double>::max();
@@ -723,11 +801,15 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
             diag.min_spacing = mn;
             diag.max_spacing = mx;
             diag.mean_spacing = total / static_cast<double>(M - 1);
+            diag.front_axis_spacing = std::hypot(new_front_points[1].x - new_front_points[0].x,
+                                                 new_front_points[1].y - new_front_points[0].y);
+            diag.front_wall_spacing = std::hypot(new_front_points[M - 1].x - new_front_points[M - 2].x,
+                                                 new_front_points[M - 1].y - new_front_points[M - 2].y);
         }
         m_pass_diagnostics.push_back(diag);
 
         log_debug("FRONT pass={} dx={:.6f} limiter={} x_axis={:.6f} x_wall={:.6f}",
-            pass, dx, to_string(limiter), x_a, x_w);
+            pass, dx, to_string(limiter), x_new[0], x_w);
 
         front = new_front;
 

@@ -163,9 +163,10 @@ std::string_view to_string(MocErrorCode code) {
     }
 }
 
-MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol) {
+MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol,
+                                  bool require_nonnegative_theta) {
     if (pt.nu < -tol) return MocErrorCode::NEGATIVE_NU;
-    if (pt.theta < -tol) return MocErrorCode::NEGATIVE_THETA;
+    if (require_nonnegative_theta && pt.theta < -tol) return MocErrorCode::NEGATIVE_THETA;
     if (pt.mach < 1.0) return MocErrorCode::SUBSONIC_MACH;
     if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.theta) ||
         !std::isfinite(pt.nu) || !std::isfinite(pt.mach) || !std::isfinite(pt.mu)) {

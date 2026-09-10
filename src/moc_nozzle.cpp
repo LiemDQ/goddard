@@ -221,6 +221,23 @@ MocResult MocNozzle::solve() {
         ? solve_inverse_characteristic_kernel(net)
         : solve_characteristic_kernel(net);
 
+    // Minimum flow angle and its location, for every scheme: see MocResult::min_theta.
+    if (!net.points.empty()) {
+        const CharacteristicPoint* lowest = &net.points.front();
+        for (const CharacteristicPoint& pt : net.points) {
+            if (pt.theta < lowest->theta) lowest = &pt;
+        }
+        result.min_theta = lowest->theta;
+        result.min_theta_x = lowest->x;
+        result.min_theta_y = lowest->y;
+        if (result.min_theta < -0.5 * M_PI / 180.0) {
+            log_warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f}): a compression is "
+                "converging on the axis (a forming shock); the isentropic solution downstream "
+                "of it is approximate.", result.min_theta * 180.0 / M_PI,
+                result.min_theta_x, result.min_theta_y);
+        }
+    }
+
     result.net = net;
     result.messages = m_messages;
     if (kernel_failure.has_value()) {

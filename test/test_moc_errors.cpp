@@ -236,10 +236,14 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     // AR=4/N=8 was the original known-broken configuration this test targeted; the
     // Phase 2 near-axis-void fix (dual-family KL-line seeding via a
     // downstream-shifted start line) now makes it converge. AR=8 remains a reliably
-    // non-converging configuration (a residual mesh-density mismatch deeper in the
-    // march; see instructions/moc_convergence_roadmap.md Sec 2 Step 4), so it is
-    // used here instead to keep exercising the failure-honesty machinery.
+    // non-converging configuration for the DIRECT kernel: with the wall-consistent
+    // Kliegel-Levine line it marches to the compression that converges on the axis near
+    // x = 2.7 (instructions/moc_fix/diagnosis.md A8) and stops there on the flow-angle
+    // check. The INVERSE kernel, now the default for axisymmetric analysis, passes through
+    // that compression, so the scheme is pinned to DIRECT here to keep exercising the
+    // failure-honesty machinery.
     MocOptions opts;
+    opts.march_scheme = MocMarchScheme::DIRECT;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
     opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::ANALYSIS;

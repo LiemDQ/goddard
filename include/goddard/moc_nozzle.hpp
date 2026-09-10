@@ -409,11 +409,11 @@ protected:
      * solve() already constructed (generate_initial_data_line).
      *
      * A Kliegel-Levine transonic line (m_initial_line_family empty) already spans axis to
-     * wall and is returned unchanged. A centered-fan line (m_initial_line_family == PLUS)
-     * stops short of the wall at its last ray's endpoint P; this extends the front from P
-     * straight up to the wall with the fan's uniform post-last-ray state, then corrects the
-     * new wall point's nu from the planar C+ compatibility relation with P (see B.md,
-     * "Initial front").
+     * wall and is returned unchanged. A centered-fan line (m_initial_line_family == PLUS) is
+     * a C+ characteristic and cannot be marched from directly; the front is built instead on
+     * the plane through the fan's first axis point, each point carrying the state of the
+     * simple-wave ray through it, with the uniform state beyond the last ray above and the
+     * contour's angle at the wall point.
      *
      * Not const: extension points are given their full thermodynamic state via
      * update_thermodynamic_state_from_nu (a non-const chokepoint), so FROZEN/EQUILIBRIUM
