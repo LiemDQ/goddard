@@ -22,6 +22,7 @@ void CharacteristicPoint::update_thermodynamic_state_from_nu(ThermodynamicContex
             gamma_s = ctxt.gamma_s;
             mach = mach_from_prandtl_meyer(nu, gamma_s, mach_guess);
             V = mach;
+            update_thermodynamic_state(ctxt);
             break;
         }
         case GasChemistry::FROZEN:
@@ -31,13 +32,13 @@ void CharacteristicPoint::update_thermodynamic_state_from_nu(ThermodynamicContex
             gamma_s = table.interpolate_at_index(idx, weight, table.gamma_s);
             mach = table.interpolate_at_index(idx, weight, table.machs);
             cantera_state = table.interpolate_state_at_index(idx, weight);
+            update_thermodynamic_state_from_table(ctxt, idx, weight);
             break;
         }
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
 
     }
-    update_thermodynamic_state(ctxt);
     mu = mach_to_mu(mach);
 }
 
@@ -57,6 +58,7 @@ void CharacteristicPoint::update_thermodynamic_state_from_mach(ThermodynamicCont
             gamma_s = ctxt.gamma_s;
             nu = prandtl_meyer(mach, gamma_s);
             V = mach;
+            update_thermodynamic_state(ctxt);
             break;
         }
         case GasChemistry::FROZEN:
@@ -66,12 +68,12 @@ void CharacteristicPoint::update_thermodynamic_state_from_mach(ThermodynamicCont
             gamma_s = table.interpolate_at_index(idx, weight, table.gamma_s);
             nu = table.interpolate_at_index(idx, weight, table.nus);
             cantera_state = table.interpolate_state_at_index(idx, weight);
+            update_thermodynamic_state_from_table(ctxt, idx, weight);
             break;
         }
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
-    update_thermodynamic_state(ctxt);
     mu = mach_to_mu(mach);
 }
 
@@ -92,6 +94,7 @@ void CharacteristicPoint::update_thermodynamic_state_from_V(ThermodynamicContext
             gamma_s = ctxt.gamma_s;
             mach = V; // for a perfect gas, the velocity is kept dimensionless
             nu = prandtl_meyer(mach, gamma_s);
+            update_thermodynamic_state(ctxt);
             break;
         }
         case GasChemistry::FROZEN:
@@ -101,12 +104,12 @@ void CharacteristicPoint::update_thermodynamic_state_from_V(ThermodynamicContext
             gamma_s = table.interpolate_at_index(idx, weight, table.gamma_s);
             nu = table.interpolate_at_index(idx, weight, table.nus);
             cantera_state = table.interpolate_state_at_index(idx, weight);
+            update_thermodynamic_state_from_table(ctxt, idx, weight);
             break;
         }
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
-    update_thermodynamic_state(ctxt);
     mu = mach_to_mu(mach);
 }
 
@@ -129,15 +132,17 @@ void CharacteristicPoint::update_thermodynamic_state(ThermodynamicContext& ctxt)
             break;
         }
         case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            ctxt.gas->restore_state(cantera_state);
-            temperature = ctxt.gas->temperature() / ctxt.T_ref;
-            pressure = ctxt.gas->pressure() / ctxt.P_ref;
-            break;
-        }
-        default: //unreachable
+        case GasChemistry::EQUILIBRIUM:
+        default: //unreachable: FROZEN/EQUILIBRIUM points are updated via
+                 // update_thermodynamic_state_from_table instead.
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
+}
+
+void CharacteristicPoint::update_thermodynamic_state_from_table(ThermodynamicContext& ctxt, size_t idx, double weight) {
+    const auto& table = ctxt.table;
+    temperature = table.interpolate_at_index(idx, weight, table.temperatures) / ctxt.T_ref;
+    pressure = table.interpolate_at_index(idx, weight, table.pressures) / ctxt.P_ref;
 }
 
 void CharacteristicPoint::update_Ks() {

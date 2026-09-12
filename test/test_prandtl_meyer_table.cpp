@@ -101,6 +101,40 @@ TEST_F(PrandtlMeyerTableTest, VelocityEnergyConservation) {
     }
 }
 
+TEST_F(PrandtlMeyerTableTest, TemperatureAndPressureColumns) {
+    // temperatures/pressures are populated alongside every other column and are
+    // read from the same saved state (table.states[i]) that build_table() stores
+    // for each step, so they must agree with restoring that state directly.
+    ASSERT_EQ(table.temperatures.size(), table.machs.size());
+    ASSERT_EQ(table.pressures.size(), table.machs.size());
+
+    for (size_t i = 0; i < table.temperatures.size(); i++) {
+        EXPECT_GT(table.temperatures[i], 0.0)
+            << "Non-positive temperature at index " << i;
+        EXPECT_GT(table.pressures[i], 0.0)
+            << "Non-positive pressure at index " << i;
+    }
+
+    // Pressure must decrease monotonically along the expansion.
+    for (size_t i = 1; i < table.pressures.size(); i++) {
+        EXPECT_LT(table.pressures[i], table.pressures[i - 1])
+            << "Pressure not monotonically decreasing at index " << i;
+    }
+
+    // Spot-check a few indices against the Cantera state saved for that step.
+    auto thermo = gas->thermo();
+    const size_t last = table.temperatures.size() - 1;
+    for (size_t i : {size_t(0), last / 2, last}) {
+        thermo->restoreState(table.states[i]);
+        double T_expected = thermo->temperature();
+        double P_expected = thermo->pressure();
+        EXPECT_NEAR(table.temperatures[i], T_expected, T_expected * 1e-9)
+            << "Temperature column mismatch at index " << i;
+        EXPECT_NEAR(table.pressures[i], P_expected, P_expected * 1e-9)
+            << "Pressure column mismatch at index " << i;
+    }
+}
+
 // ============================================================
 // Interpolation accuracy (compare to closed-form PM function)
 // ============================================================

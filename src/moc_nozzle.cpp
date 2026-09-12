@@ -1714,18 +1714,16 @@ void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
             break;
         }
         case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            // Guard against points without a stored Cantera state (e.g. the bare
-            // throat-lip seed); restoring an empty state vector aborts inside Cantera.
-            if (point.cantera_state.empty()) break;
-            m_gas->thermo()->restoreState(point.cantera_state);
-            point.temperature = m_gas->thermo()->temperature() / m_T_ref;
-            point.pressure = m_gas->thermo()->pressure() / m_P_ref;
-            break;
-        }
-        default: //unreachable
+        case GasChemistry::EQUILIBRIUM:
+        default: //unreachable: FROZEN/EQUILIBRIUM points are updated via
+                 // update_thermodynamic_state_from_table instead.
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
+}
+
+void MocNozzle::update_thermodynamic_state_from_table(CharacteristicPoint& point, size_t idx, double weight) {
+    point.temperature = pm_table.interpolate_at_index(idx, weight, pm_table.temperatures) / m_T_ref;
+    point.pressure = pm_table.interpolate_at_index(idx, weight, pm_table.pressures) / m_P_ref;
 }
 
 MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
@@ -1749,6 +1747,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
                 return MocErrorCode::PM_INVERSION_FAILED;
             }
             point.V = point.mach;
+            update_thermodynamic_state(point);
             break;
         }
         case GasChemistry::FROZEN:
@@ -1759,6 +1758,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
                 point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
                 point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
                 point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+                update_thermodynamic_state_from_table(point, idx, weight);
             } catch (const std::out_of_range& e) {
                 log_warning("Prandtl-Meyer table lookup by nu = {} out of range: {}", nu, e.what());
                 return MocErrorCode::TABLE_RANGE_EXCEEDED;
@@ -1768,7 +1768,6 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
-    update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
     return MocErrorCode::NONE;
 }
@@ -1781,6 +1780,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint
             point.gamma_s = m_options.gamma;
             point.nu = prandtl_meyer(point.mach, point.gamma_s);
             point.V = mach;
+            update_thermodynamic_state(point);
             break;
         }
         case GasChemistry::FROZEN:
@@ -1791,6 +1791,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint
                 point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
                 point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
                 point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+                update_thermodynamic_state_from_table(point, idx, weight);
             } catch (const std::out_of_range& e) {
                 log_warning("Prandtl-Meyer table lookup by mach = {} out of range: {}", mach, e.what());
                 return MocErrorCode::TABLE_RANGE_EXCEEDED;
@@ -1800,7 +1801,6 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
-    update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
     return MocErrorCode::NONE;
 }
@@ -1813,6 +1813,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& p
             point.gamma_s = m_options.gamma;
             point.mach = V; // for a perfect gas, the velocity is kept dimensionless
             point.nu = prandtl_meyer(point.mach, point.gamma_s);
+            update_thermodynamic_state(point);
             break;
         }
         case GasChemistry::FROZEN:
@@ -1823,6 +1824,7 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& p
                 point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
                 point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
                 point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
+                update_thermodynamic_state_from_table(point, idx, weight);
             } catch (const std::out_of_range& e) {
                 log_warning("Prandtl-Meyer table lookup by V = {} out of range: {}", V, e.what());
                 return MocErrorCode::TABLE_RANGE_EXCEEDED;
@@ -1832,7 +1834,6 @@ MocErrorCode MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& p
         default: //unreachable
             throw std::runtime_error("Invalid value of GasChemistry specified.");
     }
-    update_thermodynamic_state(point);
     point.mu = mach_to_mu(point.mach);
     return MocErrorCode::NONE;
 }
