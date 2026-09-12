@@ -199,10 +199,10 @@ class CharacteristicNet {
      */
     size_t seed_wall_point(const CharacteristicPoint& pt);
 
-    // Mark a chain as inactive.
+    /** Mark a chain as inactive. */
     void terminate_chain(size_t chain_idx, ChainTermination termtype);
 
-    // Mark a chain as inactive while updating the last point.
+    /** Mark a chain as inactive while updating the last point. */
     void update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, ChainTermination termtype);
 
     /** True while at least one chain is still being marched. */
@@ -215,7 +215,8 @@ class CharacteristicNet {
      *  for both the chain-pairing ladder and the front-based (analysis/Rao) kernels. */
     std::vector<CharacteristicPoint> wall_points() const;
 
-    // Generate view of metadata of active chains that belong to a given family.
+    /** View of the metadata of active chains that belong to a given family (or all active
+     *  chains, if `family` is UNSPECIFIED). */
     auto active_chains(CharacteristicFamily family = CharacteristicFamily::UNSPECIFIED) {
         auto is_active = [family](const ChainMetadata& meta) {
             if (family != CharacteristicFamily::UNSPECIFIED) {

@@ -101,9 +101,9 @@ private:
     };
 
     /**
-     * ONE copy of "trace a ray back to `front` -> fit its Riemann invariants there with the
-     * ENO-clamped quadratic -> set the resulting thermodynamic state" (previously
-     * triplicated across the three unit processes below).
+     * The one shared implementation of "trace a ray back to `front` -> fit its Riemann
+     * invariants there with the ENO-clamped quadratic -> set the resulting thermodynamic
+     * state", used by all three unit processes below.
      *
      * @param allow_axis_mirror When the direct trace misses `front`, retry by mirroring the
      *        ray (and negating its angle) across the axis -- used for the C+ family (and

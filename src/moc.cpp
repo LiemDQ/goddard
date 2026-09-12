@@ -247,8 +247,9 @@ MocFrontShear summarize_front_shear(
         size_t count = 0;
         for (size_t i = begin + 1; i < end; i++) {
             const double step = pass_diagnostics[i].*member - pass_diagnostics[i - 1].*member;
-            // The front's ends are rebuilt every pass and can retreat when a chain retires;
-            // only forward motion is a marching step.
+            // The front's ends are rebuilt every pass and the axis end can move upstream
+            // when the tilt relaxation (MocOptions::front_tilt_decay) outpaces the axial
+            // step; only forward motion is a marching step.
             if (step > 0.0) {
                 total += step;
                 count++;

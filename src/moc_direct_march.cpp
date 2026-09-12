@@ -1,7 +1,4 @@
-// Chain-pairing kernel for minimum-length design (see moc_direct_march.hpp). Moved verbatim
-// out of moc_nozzle.cpp: MocNozzle::solve_characteristic_kernel and its helpers become
-// DirectMarch::run() and its private methods, with `net`/`line` threaded through as
-// MocSolveContext/StartLine/CharacteristicNet members instead of parameters.
+// Chain-pairing kernel for minimum-length design (see moc_direct_march.hpp).
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -53,8 +50,8 @@ std::optional<MocFailure> DirectMarch::run() {
     int iters = 0;
 
     // Populated the instant any unit process reports a numerical failure; the march
-    // aborts immediately rather than continuing to build on top of an invalid point
-    // (which is what let corrupted points silently propagate through the net before).
+    // aborts immediately rather than continuing to build on top of an invalid point, which
+    // would let a corrupted point silently propagate through the rest of the net.
     std::optional<MocFailure> failure;
 
     while (m_net.has_active_chains() && iters < maxiter && !failure.has_value()) {

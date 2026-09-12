@@ -38,6 +38,7 @@ struct CharacteristicPoint {
     /// Serialized Cantera state; empty for perfect-gas solves. Internal detail.
     std::vector<double> cantera_state;
 
+    /** Set K_plus/K_minus from the current theta and nu. */
     void update_Ks();
 };
 

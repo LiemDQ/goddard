@@ -42,9 +42,6 @@ std::pair<double, double> characteristic_intersection_with_angle(
     double y = (x  - p2.x) * tan(angle2) + p2.y;
 
     return {x,y};
-} 
-
-// -- CharacteristicNet --
-
+}
 
 } // namespace Goddard
