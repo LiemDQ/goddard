@@ -74,21 +74,19 @@ MocResult MocNozzle::solve() {
 
     if (m_options.chemistry == GasChemistry::PERFECT_GAS) {
         // Pure algebraic path: no Cantera dependency
-        m_P_ref = 1.0; // dimensionless stagnation pressure
-        m_T_ref = 1.0; // dimensionless stagnation temperature
-
         // throat populated with dummy values; they are not used in the perfect gas case.
         throat = ThroatCondition{
             .converged = true,
             .speed_of_sound = 1.0,
             .H_stagnation = 1.0,
-            .P_inlet = m_P_ref,
+            .P_inlet = 1.0, // dimensionless stagnation pressure
             .S_inlet = 1.0,
             .gamma_s = m_options.gamma,
             .dlV_dlP_T = -1.0,
             .dlV_dlT_P = 1.0,
             .state = {}
         };
+        m_thermo = MocThermo::perfect_gas(m_options.gamma);
     }
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
@@ -96,19 +94,7 @@ MocResult MocNozzle::solve() {
         nozzle_opts.chemistry = m_options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);
         throat = nozzle.solve_throat_conditions();
-        m_gas->restore_state(throat.state);
-
-        m_P_ref = throat.P_inlet;
-        m_T_ref = m_gas->thermo()->temperature();
-
-        double a_throat = m_gas->speed_of_sound();
-
-        pm_table.build_table(
-            *m_gas->thermo(),
-            m_options.chemistry == GasChemistry::EQUILIBRIUM,
-            throat.S_inlet,
-            throat.H_stagnation,
-            a_throat);
+        m_thermo = MocThermo::tabulated(*m_gas, m_options.chemistry, throat);
     }
 
     MocResult result;
@@ -408,8 +394,6 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
         m_gas->thermo()->restoreState(throat.state);
     }
 
-    ThermodynamicContext context = build_thermo_context();
-
     // Resolve which start line this solve actually uses, once, as a single enum-valued
     // decision that both the fan/KL choice below and the theta_max derivation key off of
     // (previously a bool computed the choice while a separate ad hoc condition guarded the
@@ -466,12 +450,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
     if (resolved_start_line == MocStartLine::CENTERED_FAN) {
         derive_fan_theta_max();
     }
-    // MocInitialization holds a ThermodynamicContext by value, which carries a reference
-    // member (its PrandtlMeyerTable) -- that makes the class copy-constructible but not
-    // copy-assignable, so a rebuild after the fallback below uses emplace() (in-place
-    // construction) rather than assignment.
-    std::optional<MocInitialization> initializer;
-    initializer.emplace(geometry, context, init_options);
+    MocInitialization initializer(geometry, *m_thermo, init_options);
 
     switch (m_options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
@@ -482,7 +461,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // A centered expansion fan is collinear along a single C+ characteristic.
             m_initial_line_family = CharacteristicFamily::PLUS;
 
-            auto expansion_line = initializer->initialize_centered_expansion(throat);
+            auto expansion_line = initializer.initialize_centered_expansion(throat);
             // Mirror the fan angles (user-supplied or auto-generated inside the
             // initializer) into m_theta_schedule: the min-length wall solve reads
             // theta_wall = theta_max - m_theta_schedule[k] for each wall point.
@@ -526,8 +505,8 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                     // CharacteristicNet::add_initial_data_line's nullopt branch for how this
                     // non-collinear line is actually seeded into the net without that
                     // re-marching.
-                    data_line = initializer->initialize_kliegel_levine(throat);
-                    m_init_wall_bc_residual = initializer->last_wall_bc_residual;
+                    data_line = initializer.initialize_kliegel_levine(throat);
+                    m_init_wall_bc_residual = initializer.last_wall_bc_residual;
                 }
                 catch (const KlWallAngleFallback& e) {
                     // MocOptions::start_line was AUTO (a forced KLIEGEL_LEVINE throws
@@ -539,12 +518,12 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                              "R = {:.6f}; using centered-fan initialization.", e.miss, e.R);
                     resolved_start_line = MocStartLine::CENTERED_FAN;
                     derive_fan_theta_max();
-                    initializer.emplace(geometry, context, init_options);
+                    initializer = MocInitialization(geometry, *m_thermo, init_options);
                 }
             }
             if (resolved_start_line == MocStartLine::CENTERED_FAN) {
                 m_initial_line_family = CharacteristicFamily::PLUS;
-                auto expansion_line = initializer->initialize_centered_expansion(throat);
+                auto expansion_line = initializer.initialize_centered_expansion(throat);
                 m_theta_schedule.resize(expansion_line.size());
                 for (size_t i = 0; i < expansion_line.size(); i++) {
                     m_theta_schedule[i] = expansion_line[i].theta;
@@ -825,7 +804,7 @@ PointResult MocNozzle::solve_initial_axis_point_centered_exp(const Characteristi
         case MocFlowKind::PLANAR: {
             point.theta = expansion_point.theta;
             // nu = expansion point nu follows from geometric analysis
-            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
                 point, expansion_point.nu, expansion_point.mach);
             if (thermo_error != MocErrorCode::NONE) {
                 point.x = expansion_point.x;
@@ -846,7 +825,7 @@ PointResult MocNozzle::solve_initial_axis_point_centered_exp(const Characteristi
             // and the first axis point is a direct consequence of this geometric
             // construction. Source terms enter in subsequent solve_axis_point calls.
             point.theta = expansion_point.theta;
-            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
                 point, expansion_point.nu, expansion_point.mach);
             if (thermo_error != MocErrorCode::NONE) {
                 point.x = expansion_point.x;
@@ -879,7 +858,7 @@ PointResult MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_pare
         case MocFlowKind::PLANAR: {
 
             axis_point.K_minus = off_axis_parent.K_minus;
-            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
                 axis_point,
                 axis_point.K_minus - axis_point.theta,
                 off_axis_parent.mach);
@@ -914,7 +893,7 @@ PointResult MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_pare
             // dtheta + dnu = S => nu_2 - nu_1 = S + theta_1 = S + K_minus_1
             double nu_pred = axis_point.K_minus + source_pred;
 
-            MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
                 axis_point,
                 nu_pred,
                 off_axis_parent.mach);
@@ -939,7 +918,7 @@ PointResult MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_pare
 
             // Corrected nu: K_minus from parent, + source contribution
             double nu_corrected = off_axis_parent.K_minus + source_corrected;
-            thermo_error = update_thermodynamic_state_from_nu(axis_point, nu_corrected, axis_point.mach);
+            thermo_error = m_thermo->set_state_from_nu(axis_point, nu_corrected, axis_point.mach);
             if (thermo_error != MocErrorCode::NONE) {
                 return {axis_point, thermo_error};
             }
@@ -1000,7 +979,7 @@ PointResult MocNozzle::solve_interior_point_planar(
     // Position (x, y) is computed after the thermo update below, so a thermo
     // failure here leaves p3.x/p3.y unset; fall back to a parent's coordinates so
     // the returned point still carries a meaningful location for diagnostics.
-    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
         p3, 0.5*(p1.K_minus - p2.K_plus), mach_guess);
     if (thermo_error != MocErrorCode::NONE) {
         p3.x = p1.x;
@@ -1066,7 +1045,7 @@ PointResult MocNozzle::solve_interior_point_axisymmetric(
     double K_plus = (p2.theta - p2.nu) - L*(p3.x - p2.x);
     double K_minus = (p1.theta + p1.nu) + M*(p3.x - p1.x);
     p3.theta = 0.5*(K_minus + K_plus);
-    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
         p3, 0.5*(K_minus - K_plus), 0.5*(p1.mach + p2.mach));
     if (thermo_error != MocErrorCode::NONE) {
         return {p3, thermo_error};
@@ -1091,7 +1070,7 @@ PointResult MocNozzle::solve_interior_point_axisymmetric(
     K_plus = (p2.theta - p2.nu) - L_avg*(p3.x - p2.x);
     K_minus = (p1.theta + p1.nu) + M_avg*(p3.x - p1.x);
     p3.theta = 0.5*(K_minus + K_plus);
-    thermo_error = update_thermodynamic_state_from_nu(p3, 0.5*(K_minus - K_plus), p3.mach);
+    thermo_error = m_thermo->set_state_from_nu(p3, 0.5*(K_minus - K_plus), p3.mach);
     if (thermo_error != MocErrorCode::NONE) {
         return {p3, thermo_error};
     }
@@ -1144,7 +1123,7 @@ PointResult MocNozzle::solve_interior_point_iterative(
     if (mach < 1.0) {
         return {p3, MocErrorCode::PM_INVERSION_FAILED};
     }
-    MocErrorCode thermo_error = update_thermodynamic_state_from_mach(p3, mach);
+    MocErrorCode thermo_error = m_thermo->set_state_from_mach(p3, mach);
     if (thermo_error != MocErrorCode::NONE) {
         return {p3, thermo_error};
     }
@@ -1169,7 +1148,7 @@ PointResult MocNozzle::solve_interior_point_iterative(
         if (mach_new < 1.0) {
             return {p3, MocErrorCode::PM_INVERSION_FAILED};
         }
-        thermo_error = update_thermodynamic_state_from_mach(p3, mach_new);
+        thermo_error = m_thermo->set_state_from_mach(p3, mach_new);
         if (thermo_error != MocErrorCode::NONE) {
             return {p3, thermo_error};
         }
@@ -1216,7 +1195,7 @@ PointResult MocNozzle::solve_wall_flow(
     // For now, this gives a first-order approximation.
 
     wall_point.K_plus = interior_parent.K_plus;
-    MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
         wall_point,
         wall_point.theta - wall_point.K_plus,
         interior_parent.mach);
@@ -1286,7 +1265,7 @@ PointResult MocNozzle::solve_wall_point_design(
                 // C+ compatibility nu_P = theta_P - theta_B + nu_B + S, matching the interior
                 // solver's K+ = theta - nu decreasing by the source along C+ (d(theta-nu) = -S).
                 // The source enters with a +S sign here, NOT -S.
-                MocErrorCode thermo_error = update_thermodynamic_state_from_nu(
+                MocErrorCode thermo_error = m_thermo->set_state_from_nu(
                     wall_point,
                     wall_point.theta-interior_parent.theta + S + interior_parent.nu,
                     interior_parent.mach);
@@ -1327,66 +1306,6 @@ PointResult MocNozzle::solve_wall_point_design(
     return {wall_point, MocErrorCode::NONE};
 }
 
-double MocNozzle::gamma_s_from_mach(double mach) const {
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            return m_options.gamma;
-        }
-        case GasChemistry::FROZEN: 
-        case GasChemistry::EQUILIBRIUM: {
-            return pm_table.interpolate_gamma_s_from_mach(mach);
-        }
-        default:
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-    // unreachable
-    return m_options.gamma;
-}
-
-double MocNozzle::gamma_s_from_nu(double nu) const {
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            return m_options.gamma;
-        }
-        case GasChemistry::FROZEN: 
-        case GasChemistry::EQUILIBRIUM: {
-            return pm_table.interpolate_gamma_s_from_nu(nu);
-        }
-        default:
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-    // unreachable
-    return m_options.gamma;
-}
-
-double MocNozzle::mach_from_nu(const CharacteristicPoint& point, double mach_guess) const {
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            return mach_from_prandtl_meyer(point.nu, point.gamma_s, mach_guess);
-        }
-        case GasChemistry::FROZEN: 
-        case GasChemistry::EQUILIBRIUM: {
-            return pm_table.interpolate_mach(point.nu);
-        }
-        default: //unreachable
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-}
-
-double MocNozzle::nu_from_mach(double mach) const {
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            return prandtl_meyer(mach, m_options.gamma);
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            return pm_table.interpolate_nu_from_mach(mach);
-        }
-        default: //unreachable
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-}
-
 double MocNozzle::find_node_mach(
     const CharacteristicPoint& p1,
     const CharacteristicPoint& p2,
@@ -1413,9 +1332,10 @@ double MocNozzle::find_node_mach(
             // dnu/dM for perfect gas
             derivative = 2.0 * prandtl_meyer_derivative(mach, m_options.gamma);
         } else {
-            auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
-            nu3 = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
-            double V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
+            const PrandtlMeyerTable& table = m_thermo->table();
+            auto [idx, weight] = table.find_mach_index_and_weight(mach);
+            nu3 = table.interpolate_at_index(idx, weight, table.nus);
+            double V = table.interpolate_at_index(idx, weight, table.velocities);
             derivative = 2.0 * sqrt(mach * mach - 1.0) / V;
         }
 
@@ -1429,150 +1349,6 @@ double MocNozzle::find_node_mach(
     log_warning("find_node_mach did not converge after {} iterations. "
         "Last Mach={}, delta_theta={}.", max_iter, mach, delta_theta);
     return -1.0;
-}
-
-void MocNozzle::update_thermodynamic_state(CharacteristicPoint& point) {
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            // the choice of upstream point can be arbitrary due to Crocco's theorem
-            // stagnation factor at throat is = 1 by definition
-            double stagnation_ratio = stagnation_factor(point.mach, point.gamma_s);
-            point.temperature = m_T_ref / stagnation_ratio;
-            point.pressure = m_P_ref / pow(stagnation_ratio, point.gamma_s / (point.gamma_s - 1.0));
-            break;
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM:
-        default: //unreachable: FROZEN/EQUILIBRIUM points are updated via
-                 // update_thermodynamic_state_from_table instead.
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-}
-
-void MocNozzle::update_thermodynamic_state_from_table(CharacteristicPoint& point, size_t idx, double weight) {
-    point.temperature = pm_table.interpolate_at_index(idx, weight, pm_table.temperatures) / m_T_ref;
-    point.pressure = pm_table.interpolate_at_index(idx, weight, pm_table.pressures) / m_P_ref;
-}
-
-MocErrorCode MocNozzle::update_thermodynamic_state_from_nu(
-    CharacteristicPoint& point,
-    double nu, double mach_guess)
-{
-    if (nu < 0.0) {
-        log_warning("Negative Prandtl-Meyer angle nu = {}. Subsonic flow or numerical error.", nu);
-    }
-    point.nu = nu;
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            point.gamma_s = m_options.gamma;
-            point.mach = mach_from_prandtl_meyer(nu, point.gamma_s, mach_guess);
-            // mach_from_prandtl_meyer's documented failure sentinel: the Newton
-            // solve for the inverse Prandtl-Meyer function did not converge. Report
-            // it as data instead of letting -1.0 flow into mach_to_mu() and
-            // corrector-step Mach averages downstream.
-            if (point.mach < 0.0) {
-                log_warning("Prandtl-Meyer inversion failed to converge for nu = {}.", nu);
-                return MocErrorCode::PM_INVERSION_FAILED;
-            }
-            point.V = point.mach;
-            update_thermodynamic_state(point);
-            break;
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            try {
-                auto [idx, weight] = pm_table.find_nu_index_and_weight(nu);
-                point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
-                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-                point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
-                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
-                update_thermodynamic_state_from_table(point, idx, weight);
-            } catch (const std::out_of_range& e) {
-                log_warning("Prandtl-Meyer table lookup by nu = {} out of range: {}", nu, e.what());
-                return MocErrorCode::TABLE_RANGE_EXCEEDED;
-            }
-            break;
-        }
-        default: //unreachable
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-    point.mu = mach_to_mu(point.mach);
-    return MocErrorCode::NONE;
-}
-
-MocErrorCode MocNozzle::update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach) {
-    point.mach = mach;
-
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            point.gamma_s = m_options.gamma;
-            point.nu = prandtl_meyer(point.mach, point.gamma_s);
-            point.V = mach;
-            update_thermodynamic_state(point);
-            break;
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            try {
-                auto [idx, weight] = pm_table.find_mach_index_and_weight(mach);
-                point.V = pm_table.interpolate_at_index(idx, weight, pm_table.velocities);
-                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-                point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
-                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
-                update_thermodynamic_state_from_table(point, idx, weight);
-            } catch (const std::out_of_range& e) {
-                log_warning("Prandtl-Meyer table lookup by mach = {} out of range: {}", mach, e.what());
-                return MocErrorCode::TABLE_RANGE_EXCEEDED;
-            }
-            break;
-        }
-        default: //unreachable
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-    point.mu = mach_to_mu(point.mach);
-    return MocErrorCode::NONE;
-}
-
-MocErrorCode MocNozzle::update_thermodynamic_state_from_V(CharacteristicPoint& point, double V) {
-    point.V = V;
-
-    switch (m_options.chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            point.gamma_s = m_options.gamma;
-            point.mach = V; // for a perfect gas, the velocity is kept dimensionless
-            point.nu = prandtl_meyer(point.mach, point.gamma_s);
-            update_thermodynamic_state(point);
-            break;
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM: {
-            try {
-                auto [idx, weight] = pm_table.find_V_index_and_weight(V);
-                point.mach = pm_table.interpolate_at_index(idx, weight, pm_table.machs);
-                point.gamma_s = pm_table.interpolate_at_index(idx, weight, pm_table.gamma_s);
-                point.nu = pm_table.interpolate_at_index(idx, weight, pm_table.nus);
-                point.cantera_state = pm_table.interpolate_state_at_index(idx, weight);
-                update_thermodynamic_state_from_table(point, idx, weight);
-            } catch (const std::out_of_range& e) {
-                log_warning("Prandtl-Meyer table lookup by V = {} out of range: {}", V, e.what());
-                return MocErrorCode::TABLE_RANGE_EXCEEDED;
-            }
-            break;
-        }
-        default: //unreachable
-            throw std::runtime_error("Invalid value of GasChemistry specified.");
-    }
-    point.mu = mach_to_mu(point.mach);
-    return MocErrorCode::NONE;
-}
-
-ThermodynamicContext MocNozzle::build_thermo_context() {
-    return ThermodynamicContext{
-        .gas = m_gas, 
-        .table = pm_table, 
-        .T_ref = m_T_ref, 
-        .P_ref = m_P_ref, 
-        .gamma_s = m_options.gamma};
 }
 
 std::pair<double,double> MocNozzle::find_wall_hit(

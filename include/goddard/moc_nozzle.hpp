@@ -1,6 +1,7 @@
 #pragma once
 #include "goddard/moc.hpp"
 #include "goddard/moc_unit_processes.hpp"
+#include "goddard/moc_thermo.hpp"
 
 namespace Goddard {
 
@@ -109,18 +110,6 @@ protected:
     PointResult solve_axis_point(
         const CharacteristicPoint& off_axis_parent);
 
-    double gamma_s_from_mach(double mach) const;
-    double gamma_s_from_nu(double nu) const;
-    /**
-     * Get mach number from characteristic Prandtl-Meyer expansion angle.
-     */
-    double mach_from_nu(const CharacteristicPoint& point, double mach_guess = 0.0) const;
-
-    /**
-     * Get Prandtl-Meyer expansion angle from mach number.
-     */
-    double nu_from_mach(double mach) const;
-    
     /**
      * Iteratively find the mach number of the intersecting node.
      */
@@ -133,27 +122,6 @@ protected:
 
     /* Find where wall intersects with line extending outwards from a characteristic point, for a specified angle */
     std::pair<double,double> find_wall_hit(const CharacteristicPoint& p, const NozzleProfile& wall, double char_angle) const;
-
-    ThermodynamicContext build_thermo_context();
-
-    void update_thermodynamic_state(CharacteristicPoint& point);
-
-    // FROZEN/EQUILIBRIUM counterpart to update_thermodynamic_state(): sets
-    // temperature and pressure directly from the PrandtlMeyerTable's
-    // temperature/pressure columns at the (idx, weight) pair already found by
-    // the caller for the other interpolated columns (V, gamma_s, mach/nu,
-    // cantera_state), instead of restoring a Cantera state per point.
-    void update_thermodynamic_state_from_table(CharacteristicPoint& point, size_t idx, double weight);
-
-    // These three are the critical chokepoint for the perfect-gas Prandtl-Meyer
-    // inversion and the Cantera/table lookups: a failure (PM inversion
-    // non-convergence, or an out-of-range table query) is reported via the
-    // returned MocErrorCode instead of being laundered into point.mach as a
-    // sentinel value. Callers MUST check the return value before using point's
-    // newly-set fields.
-    MocErrorCode update_thermodynamic_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0);
-    MocErrorCode update_thermodynamic_state_from_mach(CharacteristicPoint& point, double mach);
-    MocErrorCode update_thermodynamic_state_from_V(CharacteristicPoint& point, double V);
 
     /**
      * Source term for axisymmetric flow along C+ characteristic.
@@ -281,9 +249,9 @@ protected:
      * simple-wave ray through it, with the uniform state beyond the last ray above and the
      * contour's angle at the wall point.
      *
-     * Not const: extension points are given their full thermodynamic state via
-     * update_thermodynamic_state_from_nu (a non-const chokepoint), so FROZEN/EQUILIBRIUM
-     * chemistry stay consistent here exactly as everywhere else in the kernel.
+     * Extension points are given their full thermodynamic state via
+     * MocThermo::set_state_from_nu, so FROZEN/EQUILIBRIUM chemistry stay consistent here
+     * exactly as everywhere else in the kernel.
      *
      * @throws ConvergenceError if a thermodynamic update for an extension point fails;
      *         caught by solve()'s existing initialization exception boundary.
@@ -403,6 +371,7 @@ protected:
     // the initializer for MocInitDiagnostics::wall_bc_residual. Reset by solve().
     double m_init_wall_bc_residual = 0.0;
     std::optional<Gas> m_gas;
+    std::optional<MocThermo> m_thermo;
     std::vector<double> m_theta_schedule;
 
     // Characteristic family the initial data line lies along, if any. A centered
@@ -414,11 +383,6 @@ protected:
     std::optional<CharacteristicFamily> m_initial_line_family;
 
     std::vector<std::string> m_messages;
-
-    PrandtlMeyerTable pm_table;
-
-    double m_P_ref; //reference pressure for dimensionalization
-    double m_T_ref; //reference temperature for dimensionalization
 };
 
 } // namespace Goddard

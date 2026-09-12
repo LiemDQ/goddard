@@ -4,6 +4,7 @@
 #include "goddard/error.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/moc.hpp"
+#include "goddard/moc_thermo.hpp"
 #include "goddard/nozzle.hpp"
 
 namespace Goddard {
@@ -29,7 +30,7 @@ public:
 
 class MocInitialization {
     public:
-    MocInitialization(NozzleGeometry geom, ThermodynamicContext& thermo, const MocOptions& options);
+    MocInitialization(NozzleGeometry geom, const MocThermo& thermo, const MocOptions& options);
     
     /**
      * Create an initial dataline using the Sauer method. The data points form a parabola shape
@@ -121,7 +122,7 @@ class MocInitialization {
     double KL_dyMachdx(double x, double y, double gamma, double R) const;
     double KL_solve_transonic_x(double y, double gamma, double R, double x_guess = 0.0) const;
 
-    ThermodynamicContext m_thermo;
+    const MocThermo* m_thermo;
     MocOptions m_options;
 
 };

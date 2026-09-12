@@ -270,7 +270,7 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
         pt.y = y;
         pt.theta = 0.5 * (K_minus + K_plus);
         throw_if_thermo_error(
-            update_thermodynamic_state_from_nu(pt, 0.5 * (K_minus - K_plus), 1.05),
+            m_thermo->set_state_from_nu(pt, 0.5 * (K_minus - K_plus), 1.05),
             "Inverse march initial front (fan plane)", x0, y);
         pt.K_plus = pt.theta - pt.nu;
         pt.K_minus = pt.theta + pt.nu;
@@ -288,7 +288,7 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     wall_pt.y = y_wall;
     wall_pt.theta = wall.theta_at_interpolated(x0);
     throw_if_thermo_error(
-        update_thermodynamic_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach),
+        m_thermo->set_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach),
         "Inverse march initial front (fan wall point)", wall_pt.x, wall_pt.y);
     wall_pt.K_plus = wall_pt.theta - wall_pt.nu;
     wall_pt.K_minus = wall_pt.theta + wall_pt.nu;
@@ -311,7 +311,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
     if (!seed_seg.has_value()) return {p4, MocErrorCode::NON_DOWNSTREAM_POINT};
     FrontFit seed_fit = lagrange_front_fit(net, front, *seed_seg, y_new);
     p4.theta = seed_fit.theta;
-    MocErrorCode err = update_thermodynamic_state_from_nu(p4, seed_fit.nu, seed_fit.mach);
+    MocErrorCode err = m_thermo->set_state_from_nu(p4, seed_fit.nu, seed_fit.mach);
     if (err != MocErrorCode::NONE) return {p4, err};
 
     const bool axisymmetric = (m_options.flow_type == MocFlowKind::AXISYMMETRIC);
@@ -334,7 +334,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
             out.x = h.x;
             out.y = h.y;
             out.theta = h.mirrored ? -fit.theta : fit.theta;
-            return update_thermodynamic_state_from_nu(out, fit.nu, fit.mach);
+            return m_thermo->set_state_from_nu(out, fit.nu, fit.mach);
         };
 
         CharacteristicPoint foot_minus{}, foot_plus{};
@@ -375,7 +375,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
         const double theta_prev = p4.theta;
         const double nu_prev = p4.nu;
         p4.theta = 0.5 * (K_minus + K_plus);
-        err = update_thermodynamic_state_from_nu(p4, 0.5 * (K_minus - K_plus), p4.mach);
+        err = m_thermo->set_state_from_nu(p4, 0.5 * (K_minus - K_plus), p4.mach);
         if (err != MocErrorCode::NONE) return {p4, err};
 
         const bool converged =
@@ -406,7 +406,7 @@ PointResult MocNozzle::solve_inverse_march_axis_point(
     axis_point.theta = 0.0;
 
     const CharacteristicPoint& seed_src = net.points[front.front()];
-    MocErrorCode err = update_thermodynamic_state_from_nu(axis_point, seed_src.nu, seed_src.mach);
+    MocErrorCode err = m_thermo->set_state_from_nu(axis_point, seed_src.nu, seed_src.mach);
     if (err != MocErrorCode::NONE) return {axis_point, err};
 
     const bool axisymmetric = (m_options.flow_type == MocFlowKind::AXISYMMETRIC);
@@ -423,7 +423,7 @@ PointResult MocNozzle::solve_inverse_march_axis_point(
         foot.x = hit->x;
         foot.y = hit->y;
         foot.theta = hit->mirrored ? -fit.theta : fit.theta;
-        err = update_thermodynamic_state_from_nu(foot, fit.nu, fit.mach);
+        err = m_thermo->set_state_from_nu(foot, fit.nu, fit.mach);
         if (err != MocErrorCode::NONE) return {axis_point, err};
 
         double nu_new;
@@ -444,7 +444,7 @@ PointResult MocNozzle::solve_inverse_march_axis_point(
         }
 
         const double nu_prev = axis_point.nu;
-        err = update_thermodynamic_state_from_nu(axis_point, nu_new, axis_point.mach);
+        err = m_thermo->set_state_from_nu(axis_point, nu_new, axis_point.mach);
         if (err != MocErrorCode::NONE) return {axis_point, err};
 
         const bool converged = std::abs(axis_point.nu - nu_prev) < 1e-9;
@@ -471,7 +471,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
     wall_point.theta = m_options.nozzle_profile.theta_at_interpolated(x_new); // fixed by the contour
 
     const CharacteristicPoint& seed_src = net.points[front.back()];
-    MocErrorCode err = update_thermodynamic_state_from_nu(wall_point, seed_src.nu, seed_src.mach);
+    MocErrorCode err = m_thermo->set_state_from_nu(wall_point, seed_src.nu, seed_src.mach);
     if (err != MocErrorCode::NONE) return {wall_point, err};
 
     const bool axisymmetric = (m_options.flow_type == MocFlowKind::AXISYMMETRIC);
@@ -488,7 +488,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
         foot.x = hit->x;
         foot.y = hit->y;
         foot.theta = hit->mirrored ? -fit.theta : fit.theta;
-        err = update_thermodynamic_state_from_nu(foot, fit.nu, fit.mach);
+        err = m_thermo->set_state_from_nu(foot, fit.nu, fit.mach);
         if (err != MocErrorCode::NONE) return {wall_point, err};
 
         // K+ transported with cplus_source_term(foot, wall_point), exactly as the DIRECT
@@ -499,7 +499,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
         const double nu_new = wall_point.theta - foot.theta + S + foot.nu;
 
         const double nu_prev = wall_point.nu;
-        err = update_thermodynamic_state_from_nu(wall_point, nu_new, wall_point.mach);
+        err = m_thermo->set_state_from_nu(wall_point, nu_new, wall_point.mach);
         if (err != MocErrorCode::NONE) return {wall_point, err};
 
         const bool converged = std::abs(wall_point.nu - nu_prev) < 1e-9;
