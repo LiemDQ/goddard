@@ -11,8 +11,8 @@ static constexpr double DEG = M_PI / 180.0;
 
 // Helper: create a MocNozzle configured for axisymmetric perfect-gas Rao design.
 // downstream_wall_curvature_radius is left at its default (0.382, positive), so
-// generate_initial_data_line() takes the Kliegel-Levine transonic path -- the
-// combination documented as recommended for DESIGN_RAO/ANALYSIS.
+// build_start_line() takes the Kliegel-Levine transonic path -- the combination
+// documented as recommended for DESIGN_RAO/ANALYSIS.
 static MocNozzle make_rao_solver(
     double gamma, double expansion_ratio, double length_fraction, int num_chars)
 {
@@ -28,16 +28,14 @@ static MocNozzle make_rao_solver(
     return MocNozzle(opts);
 }
 
-// Flipped 2026-09-09 (D.md item 2 / Addendum): DESIGN_RAO is seeded by the
-// Kliegel-Levine start line and, before Package A/B, shared the unresolved axisymmetric
-// marching failure that blocked conical ANALYSIS at AR >= 4 (see
-// instructions/moc_convergence_roadmap.md) -- this configuration did not reach the exit
-// plane and was asserted on a recorded coverage floor (0.8195) rather than `converged`,
-// "for the same reason... a boolean that flips... tells you less than the number that
-// drifted." Package A's wall-consistent KL line and Package B's inverse march (the
+// DESIGN_RAO is seeded by the Kliegel-Levine start line and used to share the unresolved
+// axisymmetric marching failure that once blocked conical ANALYSIS at AR >= 4: that
+// configuration did not reach the exit plane and was asserted on a recorded coverage
+// floor (0.8195) rather than `converged`, since a boolean that flips tells you less than
+// the number that drifted. The wall-consistent KL start line and the inverse march (the
 // default for DESIGN_RAO) together remove that structural failure, so the coverage-floor
-// pattern -- which "exists only because nothing converged" (D.md item 2) -- is replaced
-// with an assertion of convergence.
+// pattern -- which existed only because nothing converged -- is replaced here with an
+// assertion of convergence.
 TEST(MocDesignRao, BasicSolveReachesRecordedCoverage) {
     auto solver = make_rao_solver(1.23, 5.0, 0.8, 15);
     auto result = solver.solve();
@@ -60,12 +58,11 @@ TEST(MocDesignRao, BasicSolveReachesRecordedCoverage) {
 }
 
 // ============================================================
-// D.md item 5: Rao contours must outperform a conical nozzle of the same length and
-// area ratio -- the whole point of the Rao/thrust-optimized-parabola shape (Rao 1958;
-// see generate_Rao_TOP_nozzle's references). This is "the originally-planned... test"
-// noted in the project memory as dropped during the pre-fix debugging sessions because
-// no (AR, Lf) combination reliably converged; Packages A and B are what make it possible
-// now.
+// Rao contours must outperform a conical nozzle of the same length and area ratio --
+// the whole point of the Rao/thrust-optimized-parabola shape (Rao 1958; see
+// generate_Rao_TOP_nozzle's references). This comparison was dropped during earlier
+// debugging because no (AR, Lf) combination reliably converged; the wall-consistent KL
+// start line and the inverse march are what make it possible now.
 // ============================================================
 
 namespace {

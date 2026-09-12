@@ -112,15 +112,15 @@ static double area_mean_exit_mach(const MocResult& result) {
 
 // Wall Mach non-decreasing along the contour (monotone up to `tolerance`), and the
 // smallest flow angle in the net bounded below by min_theta_lo (guards against a folded,
-// runaway solution) -- the physical checks D.md item 1 / Addendum 2026-09-09 require of
-// every default-throat conical solve. Shared by the item-1 default-options test and the
-// flipped MocKlInitConvergence tripwires (item 2), which exercise the same throat
-// geometry through a different options path (forced KLIEGEL_LEVINE start line).
+// runaway solution) -- the physical checks every default-throat conical solve must
+// satisfy. Shared by ConicalDefaultThroatConvergesAcrossN and the MocKlInitConvergence
+// tripwires below, which exercise the same throat geometry through a different options
+// path (forced KLIEGEL_LEVINE start line).
 //
 // expect_dip additionally asserts min_theta < min_theta_hi_deg, i.e. that the axis
-// compression (diagnosis.md A8) has actually formed by min_theta_hi_deg; pass false at
-// grids coarse enough that it need not have formed yet (measured: exactly 0 deg -- the
-// axis points' own pinned theta, not a real dip -- at N=8 for this throat).
+// compression has actually formed by min_theta_hi_deg; pass false at grids coarse enough
+// that it need not have formed yet (measured: exactly 0 deg -- the axis points' own
+// pinned theta, not a real dip -- at N=8 for this throat).
 static void check_conical_default_throat_physics(
     const MocResult& result, const std::string& tag,
     double wall_mach_tol, double min_theta_lo_deg, double min_theta_hi_deg,
@@ -142,7 +142,7 @@ static void check_conical_default_throat_physics(
         << " deg at x=" << result.min_theta_x << " (folded solution?)";
     if (expect_dip) {
         EXPECT_LT(result.min_theta, min_theta_hi_deg * DEG)
-            << tag << ": the r_arc=0.382 axis compression (diagnosis.md A8) is expected here "
+            << tag << ": the r_arc=0.382 axis compression is expected here "
             << "(got " << result.min_theta / DEG << " deg); if it has vanished, the geometry "
             << "or the physics changed -- update this test";
     }
@@ -192,14 +192,13 @@ TEST(MocConvergence, PlanarDesignAreaRatioConvergesTo1D) {
 }
 
 // ------------------------------------------------------------
-// Planar design->analysis round trip (D.md item 4 / Addendum 2026-09-09):
-// reanalyze a designed contour with a centered-fan start line, using the inverse
-// (reference-plane) march -- the only kernel MocMode::ANALYSIS uses. Its wall solve
-// interpolates the contour's vertex angles linearly (wall_angle_at,
-// src/moc_inverse_march.cpp), unlike the old chain-pairing kernel's wall solve, which
-// queried NozzleProfile::theta_at (piecewise constant per facet) and failed to
-// converge here at both N=8 and N=32 on that facet-quantization artifact -- see B.md
-// "Corrections after implementation" item 4 and diagnosis.md A8 for that history.
+// Planar design->analysis round trip: reanalyze a designed contour with a centered-fan
+// start line, using the inverse (reference-plane) march -- the only kernel
+// MocMode::ANALYSIS uses. Its wall solve interpolates the contour's vertex angles
+// linearly (theta_at_interpolated, src/moc_inverse_march.cpp), unlike the old
+// chain-pairing kernel's wall solve, which queried NozzleProfile::theta_at (piecewise
+// constant per facet) and failed to converge here at both N=8 and N=32 on that
+// facet-quantization artifact.
 //
 // Measured on this tree: the round trip converges at both levels with the error
 // shrinking (1.4e-2 -> 1.4e-3), consistent with InverseMarch.PlanarDesignRoundTrip's
@@ -299,18 +298,18 @@ TEST(MocConvergence, AxiDesign1DConsistencyBounded) {
 }
 
 // ------------------------------------------------------------
-// Axisymmetric design->analysis round trip (D.md item 3 / Addendum 2026-09-09): design
-// with DESIGN_MIN_LENGTH (always DIRECT; unchanged) at N = 8, 16, 32, then analyze the
-// design's own contour with the default (AUTO -> INVERSE for axisymmetric ANALYSIS)
-// scheme. The DIRECT design's exit Mach carries a known +0.08 bias against the 1-D
-// area-Mach relation (AxiDesign1DConsistencyBounded) and the inverse-march analysis of
-// its contour gives a non-uniform exit plane, so the two exit Machs are not directly
-// comparable (the addendum: "do not compare against the DIRECT design's exit Mach").
-// What must hold for a correct isentropic analysis instead: the exit-plane mass flow
-// matches the throat's, and the area-averaged exit Mach matches the 1-D value for the
-// contour's area ratio, both increasingly well with N -- the same construction
-// InverseMarch.AxiDesignRoundTripConservesMass (test_moc_inverse_march.cpp) uses for a
-// Rao-schedule design; this test exercises the DESIGN_MIN_LENGTH schedule instead.
+// Axisymmetric design->analysis round trip: design with DESIGN_MIN_LENGTH (always the
+// chain ladder, DirectMarch; unchanged by this refactor) at N = 8, 16, 32, then analyze
+// the design's own contour with ANALYSIS, which always uses the reference-plane march
+// (InverseMarch). The chain-ladder design's exit Mach carries a known +0.08 bias against
+// the 1-D area-Mach relation (AxiDesign1DConsistencyBounded) and the inverse-march
+// analysis of its contour gives a non-uniform exit plane, so the two exit Machs are not
+// directly comparable. What must hold for a correct isentropic analysis instead: the
+// exit-plane mass flow matches the throat's, and the area-averaged exit Mach matches the
+// 1-D value for the contour's area ratio, both increasingly well with N -- the same
+// construction InverseMarch.AxiDesignRoundTripConservesMass (test_moc_inverse_march.cpp)
+// uses for a Rao-schedule design; this test exercises the DESIGN_MIN_LENGTH schedule
+// instead.
 // ------------------------------------------------------------
 TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
     double gamma = 1.4;
@@ -351,27 +350,27 @@ TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
 }
 
 // ------------------------------------------------------------
-// Default-options conical convergence (D.md item 1 / Addendum 2026-09-09). Every
-// option left at its default: MocMode::ANALYSIS always uses the inverse
-// (reference-plane) march, MocStartLine::AUTO (resolves to KLIEGEL_LEVINE at this
-// throat -- the wall-angle mismatch of 0.145 rad is within kl_max_wall_angle_error's
-// default 0.25 rad), and NozzleGeometry::downstream_wall_curvature_radius's default
-// (0.382), matching the arc radius passed to generate_conical_nozzle. This is what a
-// caller gets by only setting num_characteristics/gamma/geometry and a contour --
-// distinct from InverseMarch.ConicalConvergesAtCleanThroat and
-// .ConicalDefaultThroatReachesExit (test_moc_inverse_march.cpp), which force the
-// start line explicitly at r_arc = 2.0 and 0.382 respectively.
+// Default-options conical convergence. Every option left at its default:
+// MocMode::ANALYSIS always uses the inverse (reference-plane) march,
+// MocStartLine::AUTO (resolves to KLIEGEL_LEVINE at this throat -- the wall-angle
+// mismatch of 0.145 rad is within kl_max_wall_angle_error's default 0.25 rad), and
+// NozzleGeometry::downstream_wall_curvature_radius's default (0.382), matching the
+// arc radius passed to generate_conical_nozzle. This is what a caller gets by only
+// setting num_characteristics/gamma/geometry and a contour -- distinct from
+// InverseMarch.ConicalConvergesAtCleanThroat and .ConicalDefaultThroatReachesExit
+// (test_moc_inverse_march.cpp), which force the start line explicitly at r_arc = 2.0
+// and 0.382 respectively.
 //
-// diagnosis.md A8 documents a compression converging on the axis at this throat
-// (r_arc = 0.382) near x ~ 3.4, which steepens under refinement and both AR = 4 and
-// AR = 8 pass through (the arc/throat geometry is identical upstream of the exit cut
-// for both; only where the exit is cut differs). That rules out a pointwise exit-Mach
-// Cauchy check as the accuracy metric at AR = 4, whose exit sits just past the
-// compression -- the addendum's replacement is used instead: exit-plane mass flow
-// within 2% of the throat value at every N, closer at N=61 than N=31, exit-Mach
-// Cauchy convergence only for AR = 8 (exit well beyond the compression), and
-// min_theta recorded and bounded to (-8, -1) deg -- the compression is expected, and
-// its disappearance or an unbounded runaway both indicate a regression.
+// This throat (r_arc = 0.382) forms a compression converging on the axis near x ~ 3.4,
+// which steepens under refinement and both AR = 4 and AR = 8 pass through (the
+// arc/throat geometry is identical upstream of the exit cut for both; only where the
+// exit is cut differs). That rules out a pointwise exit-Mach Cauchy check as the
+// accuracy metric at AR = 4, whose exit sits just past the compression -- exit-plane
+// mass flow within 2% of the throat value at every N, closer at N=61 than N=31, is
+// used instead; exit-Mach Cauchy convergence is checked only for AR = 8 (exit well
+// beyond the compression), and min_theta is recorded and bounded to (-8, -1) deg --
+// the compression is expected, and its disappearance or an unbounded runaway both
+// indicate a regression.
 // ------------------------------------------------------------
 TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
     const double gamma = 1.4;
@@ -410,8 +409,8 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
 
             // 1e-2 matches MocKlInitConvergence.FirstWallHitsHaveMonotoneMach's tolerance
-            // at this same throat (r_arc=0.382): the wall-consistency correction (Package A)
-            // shrinks the pre-fix dip to a peak-to-trough of 0/0.007/0.014 at N=15/31/61 with
+            // at this same throat (r_arc=0.382): the wall-consistency correction shrinks the
+            // pre-fix dip to a peak-to-trough of 0/0.007/0.014 at N=15/31/61 with
             // the largest single step -0.0062, comfortably under this bound. r_arc=2.0's
             // InverseMarch.ConicalConvergesAtCleanThroat is a clean throat with no such
             // wall-Mach dip and uses a tighter 1e-3, which does not apply here.
@@ -439,8 +438,8 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
         }
         if (ar > 4.0 && ok[0] && ok[1] && ok[2]) {
             // Exit Mach Cauchy convergence only for AR=8, whose exit lies well beyond the
-            // axis compression (diagnosis.md A8); AR=4's exit sits just past it and is not
-            // a convergence metric (mass flow is, above).
+            // axis compression; AR=4's exit sits just past it and is not a convergence
+            // metric (mass flow is, above).
             EXPECT_LT(std::abs(exit_mach[2] - exit_mach[1]), 0.75 * std::abs(exit_mach[1] - exit_mach[0]))
                 << "AR=" << ar << ": exit Mach increments must shrink (M15=" << exit_mach[0]
                 << ", M31=" << exit_mach[1] << ", M61=" << exit_mach[2] << ")";
@@ -455,19 +454,15 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
 // the default, selected for axisymmetric ANALYSIS/DESIGN_RAO), distinct from the
 // fan-init path (downstream_wall_curvature_radius <= 0) the tests above use.
 //
-// Before this phase, the KL start line seeded only a C+ per interior point (the
-// wall point's C- was the only characteristic reaching the near-axis region),
-// leaving that region of the initial mesh empty: the first C- to reach the axis
-// descended the entire radius in one step, which blew up the axisymmetric source
-// term and produced a Prandtl-Meyer-inversion or non-downstream-intersection
-// failure for most (area_ratio, N) combinations (see
-// instructions/moc_convergence_roadmap.md Sec 1 for the pre-fix baseline and
-// trace evidence). The fix: MocInitialization::initialize_kliegel_levine now
-// rigidly shifts the start line downstream of the raw sonic locus
-// (MocOptions::initial_line_axial_shift) so it can be seeded with both
-// characteristic families (CharacteristicNet::add_initial_data_line), plus two
-// pairing-hardening fixes in MocNozzle::solve_characteristic_kernel and
-// sort_plus_edges_by_proximity.
+// Historically the KL start line seeded only a C+ per interior point (the wall
+// point's C- was the only characteristic reaching the near-axis region), leaving
+// that region of the initial mesh empty: the first C- to reach the axis descended
+// the entire radius in one step, which blew up the axisymmetric source term and
+// produced a Prandtl-Meyer-inversion or non-downstream-intersection failure for
+// most (area_ratio, N) combinations. The fix: MocInitialization::
+// initialize_kliegel_levine rigidly shifts the start line downstream of the raw
+// sonic locus (MocOptions::initial_line_axial_shift) so it can be seeded with both
+// characteristic families (CharacteristicNet::add_initial_data_line).
 // ============================================================
 
 static MocResult solve_conical_kl_analysis(
@@ -483,9 +478,9 @@ static MocResult solve_conical_kl_analysis(
     // downstream_wall_curvature_radius left at its positive default: KL-init path.
     //
     // start_line is forced rather than left at AUTO: r_arc = 0.382 is the exact throat this
-    // helper's own name calls out (the flagship case diagnosis.md Sec A2 documents the KL
-    // series recovering under half the wall angle for), so under AUTO's new wall-angle-miss
-    // check (MocOptions::kl_max_wall_angle_error, package A) every call here would silently
+    // helper's own name calls out (the flagship case the KL series recovers under half the
+    // wall angle for), so under AUTO's wall-angle-miss check
+    // (MocOptions::kl_max_wall_angle_error) every call here would silently
     // fall back to the centered fan -- which converges worse for this contour at low N than
     // the wall-consistency-corrected KL line does (measured: AR=2 N=15 fan hits
     // NEGATIVE_THETA where corrected KL reaches the exit plane). Forcing KLIEGEL_LEVINE
@@ -501,32 +496,22 @@ static MocResult solve_conical_kl_analysis(
     return solver.solve();
 }
 
-// AR=2 converged at every grid level even before this phase; it is a regression
-// guard that dual-family seeding and the pairing-hardening fixes did not break
-// the already-working case, and the computed area ratio should track the
-// requested contour AR increasingly closely (mass conservation through a
-// correctly-marched supersonic flow field) as N grows.
-// Judged on exit_coverage, not area_ratio.
+// AR=2 converged at every grid level even before this phase; it is a regression guard
+// that dual-family seeding did not break the already-working case, and the computed area
+// ratio should track the requested contour AR increasingly closely (mass conservation
+// through a correctly-marched supersonic flow field) as N grows.
 //
-// area_ratio is read off the last point of the outflow staircase, a ragged boundary of
-// independently terminated chains, so it lands short of the contour even for a march that
-// reached the exit plane. Mesh control moves area_ratio by up to 4% while exit_mach is
-// bit-identical (instructions/moc_convergence_roadmap.md Sec 4), which is what disqualifies
-// it as the accuracy metric. It is kept below as a loose secondary check with a tolerance
-// that reflects what the staircase can actually deliver; exit_coverage carries the
-// assertion that matters.
-//
-// Coverage floors and area_ratio tolerances updated for Package A's wall-consistency
-// correction (initialize_kliegel_levine, multiplicative variant): forcing every KL-seeded
-// point's flow angle to be consistent with the contour's own wall boundary condition
-// changes the near-wall theta distribution enough to move this coarse-grid AR=2 case's
-// coverage down a little, even though the correction's target is a different regime (the
-// N=15/31/61 wall-Mach-monotonicity and mass-flow defects the correction fixes -- see
-// FirstWallHitsHaveMonotoneMach and StartLineMassFlowWithinTwoPercent below). Measured
-// 2026-09-02, after the correction: coverage 0.9486/0.9756/0.9942 and area_ratio
-// 1.761/1.863/1.934 at N=8/15/31 (was 0.99+/1.93-1.94 uniformly before). The trend that
-// actually matters -- coverage improving monotonically with N, toward the AR=2 target --
-// still holds and is checked explicitly below.
+// exit_coverage and reached_exit_plane are effectively restatements of `converged` here:
+// solve_conical_kl_analysis sets MocMode::ANALYSIS, which always uses the inverse
+// (reference-plane) march, and that kernel's last front lands exactly on the exit plane
+// (MocStepLimiter::EXIT) on any solve that does not fail partway -- so a converged
+// ANALYSIS solve always reports exit_coverage == 1.0. There is no ragged outflow
+// staircase of independently terminated chains here (that description applies to the
+// chain-pairing ladder DESIGN_MIN_LENGTH uses, not to this kernel), so the coverage_floor
+// array and the previous_coverage monotonicity check below are loose regression guards
+// rather than tight per-N measurements. area_ratio is likewise read directly off the
+// exit-plane front rather than off a staircase; its tolerance is kept loose as a secondary
+// check while convergence at every grid level is the assertion that matters.
 TEST(MocKlInitConvergence, ConicalAR2ReachesExitPlaneAcrossN) {
     const int levels[3] = {8, 15, 31};
     const double coverage_floor[3] = {0.94, 0.97, 0.99};
@@ -548,15 +533,14 @@ TEST(MocKlInitConvergence, ConicalAR2ReachesExitPlaneAcrossN) {
     }
 }
 
-// AR=4 N=8, forced KLIEGEL_LEVINE (see solve_conical_kl_analysis): before Package A's
-// wall-consistency correction this stopped at exit_coverage ~0.81 with NEGATIVE_THETA; a
-// coverage floor was tracked instead of `converged` because the case sat on the
-// convergence boundary of the near-axis void (roadmap Sec 4). Package A (wall-consistent
-// KL line) and Package B (inverse march) together move this configuration off that
-// boundary. Flipped 2026-09-09 (D.md item 2 / Addendum): asserted on convergence and the
-// physical checks of ConicalDefaultThroatConvergesAcrossN (mass conservation, monotone
-// wall Mach, the bounded axis compression) rather than a coverage floor, which "exists
-// only because nothing converged" (D.md item 2).
+// AR=4 N=8, forced KLIEGEL_LEVINE (see solve_conical_kl_analysis): before the
+// wall-consistency correction and the inverse march, this configuration stopped at
+// exit_coverage ~0.81 with NEGATIVE_THETA, sitting on the convergence boundary of the
+// near-axis void, so a coverage floor was tracked instead of `converged`. The
+// wall-consistent KL start line and the inverse march together move this configuration
+// off that boundary, so it is asserted here on convergence and the same physical checks
+// as ConicalDefaultThroatConvergesAcrossN (mass conservation, monotone wall Mach, the
+// bounded axis compression) rather than a coverage floor.
 TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
     auto result = solve_conical_kl_analysis(4.0, 8);
 
@@ -569,8 +553,8 @@ TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
     EXPECT_TRUE(result.reached_exit_plane);
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.area_ratio, 2.0);
-    // N=8 is coarser than the N=15/31/61 grids diagnosis.md A8 measured the compression
-    // on (-3.1/-5.0 deg at N=31/61); measured here: min_theta is exactly 0 deg (the axis
+    // N=8 is coarser than the N=15/31/61 grids the compression was measured on
+    // (-3.1/-5.0 deg at N=31/61); measured here: min_theta is exactly 0 deg (the axis
     // points' own pinned theta -- no dip has formed yet), so expect_dip=false skips that
     // assertion while the lower bound still guards against a runaway fold.
     check_conical_default_throat_physics(result, "_AR4_N8", /*wall_mach_tol=*/1e-2,
@@ -580,13 +564,12 @@ TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
         << "AR=4 N=8 exit-plane mass-flow error";
 }
 
-// Flipped 2026-09-09 (D.md item 2 / Addendum): with the wall-consistent KL line
-// (Package A) and the inverse march (Package B), both AR=4 and AR=8 reach the exit plane
-// at every N and satisfy the same physical checks as ConicalDefaultThroatConvergesAcrossN
-// -- mass conservation across the exit plane and a bounded axis compression (not a
-// coverage floor, which "exists only because nothing converged", D.md item 2). This
-// mirrors that test but through solve_conical_kl_analysis's forced-KLIEGEL_LEVINE,
-// default-mesh-control options path rather than fully-default options.
+// With the wall-consistent KL start line and the inverse march, both AR=4 and AR=8 reach
+// the exit plane at every N and satisfy the same physical checks as
+// ConicalDefaultThroatConvergesAcrossN -- mass conservation across the exit plane and a
+// bounded axis compression, rather than a coverage floor. This mirrors that test but
+// through solve_conical_kl_analysis's forced-KLIEGEL_LEVINE options path rather than
+// fully-default options.
 TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
     for (int n : {15, 31}) {
         auto result = solve_conical_kl_analysis(4.0, n);
@@ -602,7 +585,7 @@ TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
         auto result = solve_conical_kl_analysis(8.0, n);
         ASSERT_TRUE(result.converged) << "N=" << n << " AR=8: " << result.failure.message;
         EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
-        // N=8 is coarser than diagnosis.md A8's measured grid (N=31/61); the compression
+        // N=8 is coarser than the measured grid above (N=31/61); the compression
         // dip need not have fully formed there (see the AR=4 N=8 comment above), so its
         // lower bound is left open at N=8 and tightened at N=15/31.
         const bool coarse = (n == 8);
@@ -617,26 +600,27 @@ TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
 }
 
 // ------------------------------------------------------------
-// Wall-consistency correction (Package A): the KL start line's wall end is now forced to
-// match the contour's own wall angle (initialize_kliegel_levine), instead of the series'
-// raw (and, at this throat, badly wrong -- see KliegelLevineClosedForm.SeriesMissesWallAngleAtSmallR)
-// value. diagnosis.md Sec A1 traces the pre-fix defect: K+ on the near-wall interior points
-// is 8-10 deg too negative, the first wall solve over-expands, and the wall Mach *decreases*
-// over the next several wall points before recovering (dips of 3/7/12 wall points at
-// N=15/31/61, growing with N -- refining the grid does not cure it, since the defect is a
-// property of the series, not the mesh).
+// Wall-consistency correction: the KL start line's wall end is now forced to match the
+// contour's own wall angle (initialize_kliegel_levine), instead of the series' raw (and,
+// at this throat, badly wrong -- see KliegelLevineClosedForm.SeriesMissesWallAngleAtSmallR)
+// value. The pre-fix defect: K+ on the near-wall interior points is 8-10 deg too negative,
+// the first wall solve over-expands, and the wall Mach *decreases* over the next several
+// wall points before recovering (dips of 3/7/12 wall points at N=15/31/61, growing with N
+// -- refining the grid does not cure it, since the defect is a property of the series, not
+// the mesh).
 // ------------------------------------------------------------
 
-// Sorted by x: net.wall_points() is built by iterating chain_metadata in chain-creation
-// order, not by x, and the KL line's dual-family seeding creates one C+ chain per interior
-// data-line point in axis-to-wall order -- the axis-seeded chain has to travel the farthest
-// (highest mu, near-sonic) and so is the *last* to reach the wall, while the near-wall chain
-// arrives almost immediately. So the raw vector is closer to reverse-x order than to
-// march order; every comparison here re-sorts by x first, which is what "wall Mach along
-// the nozzle" means physically and what diagnosis.md's own point-by-point table reports.
+// Sorted by x: net.wall_point_indices (and so net.wall_points()) is filled in march
+// order, not x order, and the KL line's dual-family seeding creates one C+ chain per
+// interior data-line point in axis-to-wall order -- the axis-seeded chain has to travel
+// the farthest (highest mu, near-sonic) and so is the *last* to reach the wall, while the
+// near-wall chain arrives almost immediately. So the raw vector is closer to reverse-x
+// order than to march order; every comparison here re-sorts by x first, which is what
+// "wall Mach along the nozzle" means physically.
 static std::vector<CharacteristicPoint> wall_points_by_x(const MocResult& result) {
-    // wall_point_indices is filled by both kernels (the INVERSE march builds no chains, so
-    // net.wall_points(), which walks chain terminations, is empty there).
+    // wall_point_indices is filled by every kernel (chain-pairing ladder and front-based
+    // alike), so this gather step duplicates net.wall_points(); the sort below is the only
+    // reason this helper exists rather than calling that directly.
     std::vector<CharacteristicPoint> pts;
     for (size_t idx : result.net.wall_point_indices) pts.push_back(result.net.points[idx]);
     std::sort(pts.begin(), pts.end(),
@@ -644,18 +628,17 @@ static std::vector<CharacteristicPoint> wall_points_by_x(const MocResult& result
     return pts;
 }
 
-// This is the test that matters (A.md): before this package, at r_arc = 0.382, AR = 4, mesh
-// control non-binding (isolating the initial-data-line defect from the marching front's own
-// refinement), the first wall-adjacent points' Mach *decreases* for several points before
+// This is the test that matters: before the wall-consistency correction, at r_arc = 0.382,
+// AR = 4, the first wall-adjacent points' Mach *decreases* for several points before
 // turning around. Measured on this tree pre-fix: dips 3/7/13 wall points deep at N=15/31/61,
 // bottoming 0.045/0.064/0.093 in Mach below the first point. The multiplicative
 // wall-consistency correction (see initialize_kliegel_levine) shrinks that to 0/2/4 points
 // (peak-to-trough 0/0.007/0.014), and the largest single-step regression across all three N
 // is -0.0062 -- two orders of magnitude below the pre-fix largest step of roughly -0.03.
 // tolerance is set to 0.01, comfortably above that residual (attributable to the line still
-// being a finite-order series, not to the K+ deficit this package targets) and comfortably
-// below both the pre-fix defect and the p=1 additive variant's largest single step (-0.0146,
-// see the package report), so a regression back toward either would fail this test.
+// being a finite-order series, not to the K+ deficit this correction targets) and
+// comfortably below both the pre-fix defect and an additive-correction variant's largest
+// single step (-0.0146), so a regression back toward either would fail this test.
 TEST(MocKlInitConvergence, FirstWallHitsHaveMonotoneMach) {
     constexpr double tolerance = 0.01;
     for (int n : {15, 31, 61}) {
@@ -673,9 +656,9 @@ TEST(MocKlInitConvergence, FirstWallHitsHaveMonotoneMach) {
 }
 
 // The start line's own mass flow should match the 1-D critical mass flow through the throat
-// to within a couple of percent; before this package the raw (uncorrected) series carried
-// -4.3% to -4.6% at this throat (the wall-angle deficit biases the near-wall velocity
-// components), comfortably outside any reasonable tolerance.
+// to within a couple of percent; before the wall-consistency correction the raw
+// (uncorrected) series carried -4.3% to -4.6% at this throat (the wall-angle deficit biases
+// the near-wall velocity components), comfortably outside any reasonable tolerance.
 TEST(MocKlInitConvergence, StartLineMassFlowWithinTwoPercent) {
     auto result = solve_conical_kl_analysis(4.0, 31);
     EXPECT_LT(std::abs(result.init_diagnostics.mass_flow_error), 0.02)

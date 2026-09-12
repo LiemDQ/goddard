@@ -218,8 +218,9 @@ TEST(KliegelLevineClosedForm, IrrotationalityHoldsAtEachOrder) {
 // condition exactly, the flow angle it gives at (x, r_w(x)) -- v*/u* = tan(theta), since
 // both components share the same critical-speed normalization -- would equal the arc's own
 // slope dr_w/dx there. This checks that identity in closed form, independent of any
-// NozzleProfile or MocNozzle solve: it is the same measurement diagnosis.md Sec A2 reports
-// (theta_series/theta_wall), reproduced directly from the series and the assumed arc.
+// NozzleProfile or MocNozzle solve: it is the same measurement (theta_series/theta_wall)
+// MocInitDiagnostics::wall_bc_residual reports, reproduced directly from the series and
+// the assumed arc.
 //
 // Absolute residual is O(eps^4): a correctly truncated third-order (in eps = 1/(R+1))
 // series should miss its own boundary condition by one order beyond its last kept term.
@@ -259,8 +260,8 @@ TEST(KliegelLevineClosedForm, WallBoundaryConditionResidualOrder) {
     }
 }
 
-// Pins the known limitation diagnosis.md Sec A2 documents: the truncated third-order series
-// does not converge in its z-dependent terms for R below ~1-2, and at the default throat
+// Pins a known limitation: the truncated third-order series does not converge in its
+// z-dependent terms for R below ~1-2, and at the default throat
 // (R = 0.382) recovers under half the wall angle the assumed arc actually has. This is the
 // numeric fact that motivates initialize_kliegel_levine's wall-consistency correction and
 // MocOptions::kl_max_wall_angle_error.
@@ -330,9 +331,8 @@ TEST(KliegelLevineVsSauer, ConvergesToSauerAsCurvatureRadiusGrows) {
     // So initialize_kliegel_levine's transonic line must converge to
     // initialize_sauer's as R grows -- once the constant downstream shift
     // (MocOptions::initial_line_axial_shift, applied so the line is usable for
-    // dual-family seeding; see instructions/moc_convergence_roadmap.md Sec 2
-    // Step 0) is disabled, since that shift is an intentional, R-independent
-    // offset that this asymptotic identity was never about.
+    // dual-family seeding) is disabled, since that shift is an intentional,
+    // R-independent offset that this asymptotic identity was never about.
     double gamma = 1.4;
     MocOptions opts = make_options(gamma, 9, MocFlowKind::AXISYMMETRIC);
     opts.initial_line_axial_shift = 0.0;
@@ -485,7 +485,7 @@ TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY)
 }
 
 // ============================================================
-// Wall-consistency correction and MocOptions::start_line (Package A)
+// Wall-consistency correction and MocOptions::start_line
 // ============================================================
 
 // kl_max_wall_angle_error is left at its generous 0.2 here (rather than the library

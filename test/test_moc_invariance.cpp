@@ -8,13 +8,13 @@ using namespace Goddard;
 // ============================================================
 // Bit-level invariance of the minimum-length design path.
 //
-// instructions/moc_convergence_roadmap.md Sec 7 requires DESIGN_MIN_LENGTH
-// planar and axisymmetric output to be unchanged by any work on the
-// Kliegel-Levine start line: min-length always initializes with a centered
-// expansion fan (moc_nozzle.cpp, generate_initial_data_line) and uses the
-// chain-pairing ladder only, unaffected by anything on the inverse-march path.
-// That invariance was not enforced by any test, so a KL-path change could
-// silently move the one configuration validated against Anderson Table 11.1.
+// DESIGN_MIN_LENGTH planar and axisymmetric output must stay unchanged by
+// any work on the Kliegel-Levine start line: min-length always initializes
+// with a centered expansion fan (build_start_line, moc_initialization.cpp)
+// and uses the chain ladder (DirectMarch) only, unaffected by anything on
+// the inverse-march path. That invariance was not enforced by any test, so
+// a KL-path change could silently move the one configuration validated
+// against Anderson Table 11.1.
 //
 // The references were captured from the tree at the baseline commit with
 // %.17g and are exact to the last bit there. The comparison tolerance is
