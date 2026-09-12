@@ -593,7 +593,16 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
     // as an ANALYSIS contour at the same throat does -- and DESIGN_RAO's profile is equally
     // available here: solve() resolves the wall contour (which generates the Rao contour
     // for DESIGN_RAO) before build_start_line() runs, for every mode.
+    // MocInitialization reads its wall contour from its own MocOptions copy (its constructor
+    // predates MocSolveContext and takes MocOptions, not a resolved NozzleProfile), so the
+    // copy's nozzle_profile has to be the *resolved* contour (ctx.wall) rather than
+    // ctx.options.nozzle_profile as given: for DESIGN_RAO the latter is whatever the caller
+    // passed (typically empty; the generated Rao contour lives only in ctx.wall now that
+    // solve() no longer writes it back into options.nozzle_profile -- see resolve_wall_profile
+    // in moc_nozzle.cpp). initialize_kliegel_levine's wall-consistent correction and its
+    // y_wall fixed-point both key off this field.
     MocOptions init_options = ctx.options;
+    init_options.nozzle_profile = ctx.wall;
     auto derive_fan_theta_max = [&]() {
         if (ctx.options.mode != MocMode::ANALYSIS && ctx.options.mode != MocMode::DESIGN_RAO) return;
         const NozzleProfile& wall = ctx.wall;

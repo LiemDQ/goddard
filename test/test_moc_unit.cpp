@@ -58,7 +58,7 @@ TEST_F(MocInteriorAlgebraicTest, UniformFlow) {
     auto p1 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 0.5);
     auto p2 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 1.5);
 
-    auto p3 = solver.m_options.gamma; // just checking it's set
+    auto p3 = solver.options.gamma; // just checking it's set
     (void)p3;
 
     // Call the public solve which dispatches to algebraic

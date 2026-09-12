@@ -192,7 +192,7 @@ struct MocOptions {
  * outside its usable range.
  *
  * Called from the MocNozzle constructors and again at the top of solve(), since
- * MocNozzle::m_options is public and can be changed after construction. This is programmer
+ * MocNozzle::options is public and can be changed after construction. This is programmer
  * error, not a numerical failure, so it throws rather than returning a MocFailure --
  * solve()'s "never throws for numerical failures" contract is unaffected.
  *

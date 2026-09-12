@@ -26,6 +26,7 @@ add_library(
   moc_unit_processes.cpp
   moc_thermo.cpp
   moc_initialization.cpp
+  moc_direct_march.cpp
   moc_nozzle.cpp
   moc_inverse_march.cpp
   shocks.cpp
