@@ -1,6 +1,7 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/characteristics.hpp"
+#include "goddard/moc_unit_processes.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
 #include "cantera/core.h"

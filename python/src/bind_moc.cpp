@@ -94,26 +94,20 @@ void bind_moc(nb::module_& m) {
         .value("NORMAL", Goddard::MocLogLevel::NORMAL)
         .value("DEBUG", Goddard::MocLogLevel::DEBUG);
 
-    // Nested in ChainMetadata on the C++ side; flattened to module scope here, since nesting
-    // them under the Python class would make every reference a mouthful.
-    //
-    // Literal docstrings rather than DOC(): both enums are declared inline as part of the
-    // member they type (`enum class Family {...} family;`), so it is ambiguous whether
-    // pybind11_mkdoc attaches the preceding comment to the type or to the member.
-    nb::enum_<Goddard::ChainMetadata::Family>(m, "CharacteristicFamily",
-                                              "Which family a characteristic belongs to: "
-                                              "C+ (PLUS) or C- (MINUS).")
-        .value("UNSPECIFIED", Goddard::ChainMetadata::Family::UNSPECIFIED)
-        .value("PLUS", Goddard::ChainMetadata::Family::PLUS)
-        .value("MINUS", Goddard::ChainMetadata::Family::MINUS);
+    // CharacteristicFamily and ChainTermination are top-level enums on the C++ side too
+    // (characteristics.hpp / characteristic_net.hpp); bound at module scope here like every
+    // other enum, rather than nested under a Python class, since nesting them under
+    // ChainMetadata would make every reference a mouthful.
+    nb::enum_<Goddard::CharacteristicFamily>(m, "CharacteristicFamily",
+                                             DOC(Goddard, CharacteristicFamily))
+        .value("UNSPECIFIED", Goddard::CharacteristicFamily::UNSPECIFIED)
+        .value("PLUS", Goddard::CharacteristicFamily::PLUS)
+        .value("MINUS", Goddard::CharacteristicFamily::MINUS);
 
-    nb::enum_<Goddard::ChainMetadata::TerminationType>(m, "ChainTermination",
-                                                       "How a characteristic chain stopped "
-                                                       "being marched.")
-        .value("NOT_TERMINATED", Goddard::ChainMetadata::TerminationType::NOT_TERMINATED)
-        .value("WALL", Goddard::ChainMetadata::TerminationType::WALL)
-        .value("AXIS", Goddard::ChainMetadata::TerminationType::AXIS)
-        .value("OUTFLOW", Goddard::ChainMetadata::TerminationType::OUTFLOW);
+    nb::enum_<Goddard::ChainTermination>(m, "ChainTermination", DOC(Goddard, ChainTermination))
+        .value("NOT_TERMINATED", Goddard::ChainTermination::NOT_TERMINATED)
+        .value("WALL", Goddard::ChainTermination::WALL)
+        .value("AXIS", Goddard::ChainTermination::AXIS);
 
     // MocErrorCode is bound in bind_enums.cpp.
 
@@ -416,12 +410,10 @@ void bind_moc(nb::module_& m) {
     nb::class_<Goddard::ChainMetadata>(m, "ChainMetadata", DOC(Goddard, ChainMetadata))
         .def(nb::init<>())
         .def_rw("active", &Goddard::ChainMetadata::active, DOC(Goddard, ChainMetadata, active))
-        // See the enum bindings above: the inline `enum class ... member;` declarations make
-        // the DOC() key ambiguous, so these two carry literal docstrings.
         .def_rw("termination", &Goddard::ChainMetadata::termination,
-                "How this chain stopped being marched.")
+                DOC(Goddard, ChainMetadata, termination))
         .def_rw("family", &Goddard::ChainMetadata::family,
-                "Which characteristic family this chain belongs to.")
+                DOC(Goddard, ChainMetadata, family))
         .def_rw("origin_point_idx", &Goddard::ChainMetadata::origin_point_idx,
                 DOC(Goddard, ChainMetadata, origin_point_idx))
         .def_rw("latest_point_idx", &Goddard::ChainMetadata::latest_point_idx,
@@ -429,7 +421,7 @@ void bind_moc(nb::module_& m) {
 
     // ---- CharacteristicNet ----
 
-    nb::class_<Goddard::CharacteristicNet>(m, "CharacteristicNet")
+    nb::class_<Goddard::CharacteristicNet>(m, "CharacteristicNet", DOC(Goddard, CharacteristicNet))
         .def(nb::init<>())
         .def_ro("points", &Goddard::CharacteristicNet::points,
                 DOC(Goddard, CharacteristicNet, points))
@@ -506,8 +498,6 @@ void bind_moc(nb::module_& m) {
              DOC(Goddard, CharacteristicNet, wall_points))
         .def("axis_points", &Goddard::CharacteristicNet::axis_points,
              DOC(Goddard, CharacteristicNet, axis_points))
-        .def("outflow_points", &Goddard::CharacteristicNet::outflow_points,
-             DOC(Goddard, CharacteristicNet, outflow_points))
         .def("leading_point",
              nb::overload_cast<size_t>(&Goddard::CharacteristicNet::leading_point, nb::const_),
              "chain_idx"_a, DOC(Goddard, CharacteristicNet, leading_point))

@@ -23,6 +23,7 @@ add_library(
   characteristics.cpp
   characteristic_net.cpp
   moc.cpp
+  moc_unit_processes.cpp
   moc_initialization.cpp
   moc_nozzle.cpp
   moc_inverse_march.cpp

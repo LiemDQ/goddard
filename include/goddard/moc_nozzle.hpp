@@ -1,5 +1,6 @@
 #pragma once
 #include "goddard/moc.hpp"
+#include "goddard/moc_unit_processes.hpp"
 
 namespace Goddard {
 
@@ -176,15 +177,15 @@ protected:
 
 
     struct LeadingEdgeView {
-        ChainMetadata::Family family;
+        CharacteristicFamily family;
         std::vector<double> y_values;
         std::vector<size_t> chain_indices;
         std::vector<size_t> leading_pt_indices;
     };
     // Generate struct-of-array of leading edge values for a specified family.
-    LeadingEdgeView leading_edges(const CharacteristicNet& net, ChainMetadata::Family family) const;
+    LeadingEdgeView leading_edges(const CharacteristicNet& net, CharacteristicFamily family) const;
 
-    void update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const;
+    void update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, CharacteristicFamily family) const;
 
     /**
      * Reorder a C+ leading-edge view by descending y (closest to the wall first), tie-broken
@@ -289,17 +290,6 @@ protected:
      */
     std::vector<CharacteristicPoint> build_inverse_initial_front(
         const std::vector<CharacteristicPoint>& data_line);
-
-    /**
-     * Append a front's points to `net` (no chain bookkeeping -- the inverse kernel does not
-     * use CharacteristicNet::c_chains/membership beyond an empty placeholder) and register
-     * CharacteristicNet::fronts, wall_point_indices/wall_x/wall_y and axis_point_indices for
-     * it. Used both to seed F_0 and, every pass, to record the front the pass just built.
-     *
-     * @return the point indices of the seeded front, axis to wall.
-     */
-    std::vector<size_t> seed_inverse_front(
-        CharacteristicNet& net, const std::vector<CharacteristicPoint>& front_points) const;
 
     /**
      * Inverse reference-plane marching kernel: starting from the front already
@@ -421,7 +411,7 @@ protected:
     // generators (which know the strategy they used) and consumed by solve() when seeding
     // the net. This cannot be recovered by inspecting the points: a Riemann invariant is
     // only constant along a characteristic for planar flow, not axisymmetric.
-    std::optional<ChainMetadata::Family> m_initial_line_family;
+    std::optional<CharacteristicFamily> m_initial_line_family;
 
     std::vector<std::string> m_messages;
 

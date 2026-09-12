@@ -95,8 +95,6 @@ def test_characteristic_net_boundaries(planar_result):
     net = planar_result.net
     assert len(net.wall_points()) > 0
     assert len(net.axis_points()) > 0
-    # outflow_points may legitimately be empty for a min-length design.
-    assert isinstance(net.outflow_points(), list)
     assert net.wall_point_indices.dtype == np.int64
     assert net.axis_point_indices.dtype == np.int64
     assert isinstance(net.wall_x, np.ndarray)

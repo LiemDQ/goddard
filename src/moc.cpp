@@ -8,6 +8,33 @@
 
 namespace Goddard {
 
+std::string_view to_string(MocErrorCode code) {
+    switch (code) {
+        case MocErrorCode::NONE: return "NONE";
+        case MocErrorCode::NEGATIVE_NU: return "NEGATIVE_NU";
+        case MocErrorCode::NEGATIVE_THETA: return "NEGATIVE_THETA";
+        case MocErrorCode::SUBSONIC_MACH: return "SUBSONIC_MACH";
+        case MocErrorCode::NONFINITE_VALUE: return "NONFINITE_VALUE";
+        case MocErrorCode::PM_INVERSION_FAILED: return "PM_INVERSION_FAILED";
+        case MocErrorCode::TABLE_RANGE_EXCEEDED: return "TABLE_RANGE_EXCEEDED";
+        case MocErrorCode::NON_DOWNSTREAM_POINT: return "NON_DOWNSTREAM_POINT";
+        case MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS: return "WALL_QUERY_OUT_OF_BOUNDS";
+        case MocErrorCode::INITIALIZATION_FAILED: return "INITIALIZATION_FAILED";
+        case MocErrorCode::MAX_ITERATIONS_REACHED: return "MAX_ITERATIONS_REACHED";
+        default: return "UNKNOWN";
+    }
+}
+
+std::string_view to_string(MocStepLimiter limiter) {
+    switch (limiter) {
+        case MocStepLimiter::NONE: return "NONE";
+        case MocStepLimiter::CFL: return "CFL";
+        case MocStepLimiter::WALL_FOOT: return "WALL_FOOT";
+        case MocStepLimiter::WALL_TURN: return "WALL_TURN";
+        case MocStepLimiter::EXIT: return "EXIT";
+        default: return "UNKNOWN";
+    }
+}
 
 namespace {
 
@@ -52,10 +79,10 @@ MocCrossings find_like_characteristic_crossings(const CharacteristicNet& net) {
     constexpr size_t max_reported = 10000;
     double first_x = std::numeric_limits<double>::max();
 
-    const ChainMetadata::Family families[2] = {
-        ChainMetadata::Family::PLUS, ChainMetadata::Family::MINUS};
+    const CharacteristicFamily families[2] = {
+        CharacteristicFamily::PLUS, CharacteristicFamily::MINUS};
 
-    for (ChainMetadata::Family family : families) {
+    for (CharacteristicFamily family : families) {
         std::vector<CharacteristicSegment> segments;
         for (size_t c = 0; c < net.c_chains.size(); c++) {
             if (net.chain_metadata[c].family != family) continue;

@@ -93,7 +93,7 @@ TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {
     // for planar flow K+ (= theta - nu) is constant along a C+ chain and K- (= theta + nu)
     // is constant along a C- chain. (The previous version treated each c_chains[i] as a
     // wavefront with a shared K+, which is not how the chain-based net is organized.)
-    using Family = ChainMetadata::Family;
+    using Family = CharacteristicFamily;
     for (size_t c = 0; c < result.net.c_chains.size(); c++) {
         const auto& chain = result.net.c_chains[c];
         if (chain.size() < 2) continue;
@@ -243,8 +243,9 @@ TEST(MocSolve, CustomThetaSchedule) {
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
 
-    // Should have 5 characteristics (from schedule), not 99
-    EXPECT_EQ(result.net.wall_points().size(), 5u);
+    // Should have 5 characteristics (from schedule), not 99, plus the seeded throat-lip
+    // anchor that wall_points() now includes (see CharacteristicNet::wall_x doc).
+    EXPECT_EQ(result.net.wall_points().size(), 6u);
 }
 
 TEST(MocSolve, ExitMachConsistentWithThetaMax) {

@@ -2,7 +2,6 @@
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/chemistry.hpp"
-#include "goddard/characteristics.hpp"
 #include "goddard/moc.hpp"
 #include "goddard_docstrings.h"
 
@@ -32,7 +31,7 @@ void bind_enums(nb::module_& m) {
         .value("SUBSONIC_AREA_RATIO", Goddard::ExpansionType::SUBSONIC_AREA_RATIO)
         .value("PRESSURE_RATIO", Goddard::ExpansionType::PRESSURE_RATIO);
 
-    nb::enum_<Goddard::MocErrorCode>(m, "MocErrorCode")
+    nb::enum_<Goddard::MocErrorCode>(m, "MocErrorCode", DOC(Goddard, MocErrorCode))
         .value("NONE", Goddard::MocErrorCode::NONE)
         .value("NEGATIVE_NU", Goddard::MocErrorCode::NEGATIVE_NU)
         .value("NEGATIVE_THETA", Goddard::MocErrorCode::NEGATIVE_THETA)
