@@ -19,6 +19,22 @@ def planar_result():
     return MocNozzle(opts).solve()
 
 
+@pytest.fixture
+def analysis_result(planar_result):
+    """Analysis of the designed contour: the front-marching kernel, which records
+    per-pass diagnostics (the minimum-length design ladder records none)."""
+    from goddard import MocOptions, MocFlowKind, GasChemistry, MocMode, MocNozzle
+
+    opts = MocOptions()
+    opts.flow_type = MocFlowKind.PLANAR
+    opts.chemistry = GasChemistry.PERFECT_GAS
+    opts.mode = MocMode.ANALYSIS
+    opts.num_characteristics = 10
+    opts.gamma = 1.4
+    opts.nozzle_profile = planar_result.profile
+    return MocNozzle(opts).solve()
+
+
 def test_planar_perfect_gas_solve(planar_result):
     assert planar_result.converged
     assert planar_result.exit_mach > 1.0
@@ -86,7 +102,7 @@ def test_characteristic_net_boundaries(planar_result):
     assert isinstance(net.wall_x, np.ndarray)
 
 
-def test_result_diagnostic_fields_readable(planar_result):
+def test_result_diagnostic_fields_readable(planar_result, analysis_result):
     from goddard import MocCrossings, MocFailure, MocErrorCode
 
     assert isinstance(planar_result.failure, MocFailure)
@@ -96,8 +112,12 @@ def test_result_diagnostic_fields_readable(planar_result):
     assert isinstance(planar_result.exit_coverage, float)
     assert isinstance(planar_result.reached_exit_plane, bool)
 
-    assert len(planar_result.pass_diagnostics) > 0
-    diag = planar_result.pass_diagnostics[0]
+    # Per-pass diagnostics are recorded by the front-marching kernel (analysis and Rao
+    # design) only; the minimum-length design ladder records none.
+    assert len(planar_result.pass_diagnostics) == 0
+    assert analysis_result.converged
+    assert len(analysis_result.pass_diagnostics) > 0
+    diag = analysis_result.pass_diagnostics[0]
     # `pass` is a Python keyword, so the field is exposed as pass_index.
     assert isinstance(diag.pass_index, int)
     assert isinstance(diag.max_spacing, float)
@@ -383,7 +403,7 @@ def test_pass_diagnostics_table():
 # Plotting — smoke level: the helpers run and hand back Axes.
 # ---------------------------------------------------------------------------
 
-def test_plotting_helpers(planar_result):
+def test_plotting_helpers(planar_result, analysis_result):
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     from matplotlib.axes import Axes
@@ -395,7 +415,8 @@ def test_plotting_helpers(planar_result):
     assert isinstance(gp.plot_profile(planar_result.profile), Axes)
     assert isinstance(gp.plot_exit_plane(planar_result, field="mach"), Axes)
 
-    axes = gp.plot_front_diagnostics(planar_result)
+    # Front diagnostics exist only for the front-marching kernel (analysis, Rao design).
+    axes = gp.plot_front_diagnostics(analysis_result)
     assert len(axes) == 3
     assert all(isinstance(ax, Axes) for ax in axes)
 
