@@ -1,6 +1,7 @@
 #pragma once
 #include "goddard/chemistry.hpp"
 #include "goddard/characteristics.hpp"
+#include "goddard/moc.hpp"   // MocErrorCode
 #include "goddard/prandtlmeyer.hpp"
 
 namespace Goddard {
