@@ -74,9 +74,8 @@ protected:
         const CharacteristicPoint& p1,
         const CharacteristicPoint& p2);
 
-    // nullopt: no wall hit within the profile bounds (legitimate outflow).
-    // Populated with a nonzero PointResult::error: a numerical failure occurred.
-    std::optional<PointResult> solve_wall_point(
+    // Minimum-length design only. Check PointResult::error for a numerical failure.
+    PointResult solve_wall_point(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         int wall_point_index);
@@ -90,12 +89,6 @@ protected:
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         double theta_wall);
-
-    // Compute flow at known wall position. nullopt: no wall hit within the
-    // profile bounds (legitimate outflow), as opposed to a populated PointResult
-    // with a nonzero error, which is a numerical failure.
-    std::optional<PointResult> solve_wall_point_analysis(
-        const CharacteristicPoint& interior_parent);
 
     /** The first point is a special case, as it lies on the axis but is assigned a
      * nonzero theta. This is because the calculations are started on the characteristic line
@@ -115,16 +108,6 @@ protected:
     PointResult solve_axis_point(
         const CharacteristicPoint& off_axis_parent);
 
-    // Determine where parent characteristic intersects with arbitrary wall profile.
-    std::pair<double, double> intersect_characteristic_with_wall(
-        const CharacteristicPoint& interior_parent,
-        const NozzleProfile& wall);
-    
-    /**
-     * Returns the geometric length of the nozzle measured from the throat.
-     */
-    double maximum_nozzle_length() const;
-    
     double gamma_s_from_mach(double mach) const;
     double gamma_s_from_nu(double nu) const;
     /**
@@ -239,128 +222,13 @@ protected:
      * When the truly-nearest C- above is already claimed, the result is empty rather than
      * the next-nearest unclaimed one -- settling for a farther partner would violate lattice
      * adjacency. A claim implies someone else progressed this pass, so waiting cannot
-     * deadlock. Shared by the marching kernel and build_front so mesh control measures
-     * exactly the steps the kernel will take; they diverged when the criterion had its own
-     * copy of this search.
+     * deadlock.
      */
     PairSearch find_pair_partner(
         double plus_y,
         const LeadingEdgeView& minus_edges,
         const std::vector<bool>& claimed,
         const CharacteristicNet& net) const;
-
-    /** One segment of the marching front: the C+/C- parent pair that will form a mesh cell. */
-    struct FrontSegment {
-        size_t lower_pt_idx;      ///< C+ leading point (below).
-        size_t upper_pt_idx;      ///< C- leading point (above).
-        size_t lower_plus_chain;  ///< C+ chain led by lower_pt_idx.
-        size_t upper_minus_chain; ///< C- chain led by upper_pt_idx.
-        double arc;               ///< Straight-line length of the segment.
-    };
-
-    /**
-     * The marching front, as the ordered list of C+/C- parent pairs the next pass will march.
-     *
-     * Replays find_pair_partner over the same sorted C+ edges with the same claim
-     * bookkeeping the kernel uses, so there is exactly one segment per pairing that will
-     * actually happen. Wall-bound and skipped C+ edges contribute no segment.
-     */
-    std::vector<FrontSegment> build_front(
-        const CharacteristicNet& net,
-        const LeadingEdgeView& plus_edges,
-        const LeadingEdgeView& minus_edges) const;
-
-    /**
-     * Hold the marching front's point spacing between bounds, then rebuild both leading-edge
-     * views. Runs once at the top of each kernel pass, before pairing.
-     *
-     * Segments longer than max_front_spacing_factor x the local target are subdivided down
-     * to the target; rungs whose neighbours have crowded closer than
-     * min_front_spacing_factor x the target are retired. This is the classical marched-line
-     * mesh control that keeps a characteristic mesh from being merely whatever the
-     * characteristics happen to sample -- see MocOptions::max_front_spacing_factor for why
-     * the axisymmetric net cannot manage its own density.
-     *
-     * Segment length is measured as arc length, not height. The failure this exists to
-     * prevent is a front segment stretching downstream while *shrinking* in height as it
-     * turns tangent to the C- family, which a height-only measure reads as finer than
-     * typical exactly when it is worst.
-     *
-     * State for an inserted rung is interpolated across the front between the bracketing
-     * points: the region being refined contains no characteristic of either family to
-     * interpolate *along* (that absence is exactly the defect), so this reconstructs missing
-     * data rather than resampling existing data. The error is O(spacing) and refinement
-     * holds the spacing near the target, keeping it the same order as the scheme's own
-     * truncation error -- an argument only as good as the order-of-accuracy test that
-     * checks it.
-     *
-     * Excluded for DESIGN_MIN_LENGTH, where the C- count *defines* the contour: inserting
-     * would change the nozzle being designed rather than the mesh resolving it.
-     *
-     * @param diag  Filled with this pass's front geometry and insert/retire counts.
-     * @return number of rungs inserted this pass
-     */
-    size_t control_front_spacing(
-        CharacteristicNet& net,
-        LeadingEdgeView& plus_edges,
-        LeadingEdgeView& minus_edges,
-        MocPassDiagnostics& diag);
-
-    /**
-     * The C+ and C- side lengths (s, t) of the mesh cell a front segment will form.
-     *
-     * The segment is the cell's diagonal: (above - below) = s * u_plus - t * u_minus. Empty
-     * when that system is singular or either side is non-positive, which means the segment
-     * is no longer spacelike and no cell exists.
-     */
-    std::optional<std::pair<double, double>> cell_sides(
-        const CharacteristicNet& net, const FrontSegment& segment) const;
-
-/**
-     * The points of the previous marching front local to `segment`, ordered by ascending y.
-     *
-     * Each front point was produced by pairing two points one step upstream, so the
-     * predecessors of the bracketing points' chains span the region a new rung's
-     * characteristics reach back into. Returns fewer than two points when a bracketing chain
-     * has no history -- freshly born at an axis or wall reflection, or itself just inserted --
-     * in which case no inverse solve is possible.
-     */
-    std::vector<size_t> previous_front_points(
-        const CharacteristicNet& net, const FrontSegment& segment) const;
-
-    /**
-     * Solve for the flow state at a prescribed location from the previous marching front.
-     *
-     * The inverse of the ordinary interior unit process: instead of two parents fixing where
-     * the new point lands, the location is prescribed and the two characteristics through it
-     * are traced *back* to the previous front, where their feet are interpolated. The
-     * compatibility relations then transport the invariants forward to the point.
-     *
-     * This is what makes an inserted rung a genuine solution rather than a fabricated one.
-     * Interpolating (theta, nu) directly across the current front -- the obvious thing to do --
-     * produces a point satisfying *neither* compatibility relation: its K+ and K- are blends
-     * taken from characteristics that do not pass through it. Here both invariants are
-     * evaluated at the actual feet of the actual characteristics through the point. Some
-     * cross-family reconstruction remains unavoidable, because the characteristic being
-     * created does not yet exist -- that absence is the defect being repaired -- but it is
-     * confined to the feet, and the resulting state is on the solution manifold.
-     *
-     * @param seed  Initial guess (a cross-front interpolation is adequate); only seeds the iteration.
-     * @return the solved point, or an error code when a foot falls outside the previous front
-     *         (extrapolation is refused rather than clamped).
-     */
-    PointResult solve_inverse_interior_point(
-        double x_new, double y_new,
-        const CharacteristicNet& net,
-        const std::vector<size_t>& previous_front,
-        const CharacteristicPoint& seed);
-
-        /** Record front spacing/aspect/margin statistics for `front` into `diag`. */
-    void record_front_diagnostics(
-        const CharacteristicNet& net,
-        const std::vector<FrontSegment>& front,
-        double target_spacing,
-        MocPassDiagnostics& diag) const;
 
     /**
      * Measure the initial data line: its fit to the prescribed wall, its Mach and Mach-angle
@@ -396,20 +264,10 @@ protected:
     double start_line_mass_flow_error(
         const std::vector<CharacteristicPoint>& data_line) const;
 
-    // -- Inverse (reference-plane) marching kernel (Package B) --
-    // See instructions/moc_fix/B.md for the algorithm this group of methods implements;
-    // the unit processes below are new siblings of solve_interior_point_axisymmetric /
-    // solve_axis_point / solve_wall_point_analysis for the INVERSE kernel, not
-    // replacements -- the DIRECT kernel and its unit processes above are unchanged.
-
-    /**
-     * Resolve MocOptions::march_scheme's AUTO value into a concrete scheme, once per
-     * solve(). AUTO selects INVERSE for axisymmetric ANALYSIS and DESIGN_RAO, DIRECT
-     * otherwise; MocMode::DESIGN_MIN_LENGTH always resolves to DIRECT (validate_moc_options
-     * rejects INVERSE explicitly requested together with DESIGN_MIN_LENGTH before this is
-     * reached).
-     */
-    MocMarchScheme resolve_march_scheme() const;
+    // -- Inverse (reference-plane) marching kernel --
+    // Used by MocMode::ANALYSIS and MocMode::DESIGN_RAO. The unit processes below are
+    // siblings of solve_interior_point_axisymmetric / solve_axis_point for this kernel, not
+    // replacements -- the minimum-length kernel and its unit processes above are unchanged.
 
     /**
      * Build the inverse kernel's first marching front F_0 from the initial data line
@@ -444,7 +302,7 @@ protected:
         CharacteristicNet& net, const std::vector<CharacteristicPoint>& front_points) const;
 
     /**
-     * Inverse reference-plane marching kernel (Package B): starting from the front already
+     * Inverse reference-plane marching kernel: starting from the front already
      * seeded as `net.fronts.back()`, repeatedly builds the next front by prescribing its
      * geometry and tracing each new point's two characteristics back to the previous front,
      * until a step lands exactly on the exit plane (MocStepLimiter::EXIT).
@@ -465,7 +323,7 @@ protected:
      * Inverse-march interior unit process: solve for the flow state at the prescribed
      * point (x_new, y_new), whose two characteristics are traced back to `front` (the
      * previous marching front) and interpolated there (Sec. 5 of B.md), then transported
-     * forward with the same axisymmetric source terms as solve_inverse_interior_point.
+     * forward with the same axisymmetric source terms as solve_interior_point_axisymmetric.
      *
      * Handles the near-axis case where the C+ foot's trace would cross the axis before
      * meeting `front`: the foot is found by mirroring the ray (and negating its
@@ -497,7 +355,7 @@ protected:
      * point (x_new, y_new). theta is fixed by the contour (NozzleProfile::theta_at); the
      * single C+ foot is traced back to `front` and K+ is transported with
      * cplus_source_term(foot, wall_point), iterated (retracing the foot each pass) until nu
-     * stops moving -- the same fixed-point structure solve_wall_point_analysis uses, but
+     * stops moving -- the same fixed-point structure the axisymmetric wall solve uses, but
      * converged on nu directly rather than on the source-term residual, since here the
      * position is prescribed and only the foot (and hence the source term) is unknown.
      */
@@ -544,10 +402,6 @@ protected:
     void log_debug(const std::string& msg);
 
     bool m_is_solved = false;
-    // Running totals for the whole march, so the front-size cap applies across passes
-    // rather than per pass. Reset by solve().
-    size_t m_inserted_characteristics = 0;
-    size_t m_retired_characteristics = 0;
     // Per-pass front geometry, copied into MocResult::pass_diagnostics.
     std::vector<MocPassDiagnostics> m_pass_diagnostics;
     // Target front spacing at the throat, and the throat radius in net units. Both are set
@@ -555,9 +409,6 @@ protected:
     // length rather than to the mesh's own statistics.
     double m_reference_spacing = 0.0;
     double m_throat_radius = 1.0;
-    // Set once per march when a front segment is found already non-spacelike, so the
-    // warning that mesh control engaged too late is reported but not repeated per pass.
-    bool m_warned_non_spacelike = false;
     // Raw wall-boundary-condition residual of the Kliegel-Levine start line, copied from
     // the initializer for MocInitDiagnostics::wall_bc_residual. Reset by solve().
     double m_init_wall_bc_residual = 0.0;
@@ -576,10 +427,8 @@ protected:
 
     PrandtlMeyerTable pm_table;
 
-    double m_L_ref; //reference length for dimensionalization
     double m_P_ref; //reference pressure for dimensionalization
     double m_T_ref; //reference temperature for dimensionalization
-    double m_S_ref; //reference entropy
 };
 
 } // namespace Goddard

@@ -11,10 +11,10 @@ using namespace Goddard;
 // instructions/moc_convergence_roadmap.md Sec 7 requires DESIGN_MIN_LENGTH
 // planar and axisymmetric output to be unchanged by any work on the
 // Kliegel-Levine start line: min-length always initializes with a centered
-// expansion fan (moc_nozzle.cpp, generate_initial_data_line) and is excluded
-// by mode from mesh control (control_front_spacing). That invariance was not
-// enforced by any test, so a KL-path change could silently move the one
-// configuration validated against Anderson Table 11.1.
+// expansion fan (moc_nozzle.cpp, generate_initial_data_line) and uses the
+// chain-pairing ladder only, unaffected by anything on the inverse-march path.
+// That invariance was not enforced by any test, so a KL-path change could
+// silently move the one configuration validated against Anderson Table 11.1.
 //
 // The references were captured from the tree at the baseline commit with
 // %.17g and are exact to the last bit there. The comparison tolerance is
@@ -139,39 +139,3 @@ TEST(MocInvariance, DesignMinLengthUnchanged) {
     }
 }
 
-// Mesh control is excluded by mode for DESIGN_MIN_LENGTH (control_front_spacing
-// returns early), so changing its knobs must not move the design at all. This is
-// the cheap direct check of that exclusion, which the golden values above would
-// only catch indirectly.
-TEST(MocInvariance, DesignMinLengthIgnoresMeshControlOptions) {
-    for (const GoldenCase& c : golden_cases()) {
-        SCOPED_TRACE(c.name);
-        MocResult baseline = solve_golden(c);
-
-        MocOptions o;
-        o.flow_type = c.flow;
-        o.chemistry = GasChemistry::PERFECT_GAS;
-        o.mode = MocMode::DESIGN_MIN_LENGTH;
-        o.gamma = c.gamma;
-        o.theta_max = c.theta_max_deg * M_PI / 180.0;
-        o.num_characteristics = c.num_characteristics;
-        o.geometry.throat_radius = 1.0;
-        // Deliberately extreme, but still inside validate_moc_options' bounds.
-        o.max_front_spacing_factor = 1.01;
-        o.min_front_spacing_factor = 0.49;
-        o.max_cell_aspect_ratio = 1.01;
-        MocNozzle solver(o);
-        MocResult stressed = solver.solve();
-
-        ASSERT_TRUE(stressed.converged) << c.name << ": " << stressed.failure.message;
-        EXPECT_EQ(stressed.inserted_characteristics, 0u) << c.name;
-        EXPECT_EQ(stressed.retired_characteristics, 0u) << c.name;
-        EXPECT_DOUBLE_EQ(stressed.exit_mach, baseline.exit_mach) << c.name;
-        EXPECT_DOUBLE_EQ(stressed.area_ratio, baseline.area_ratio) << c.name;
-        ASSERT_EQ(stressed.net.wall_x.size(), baseline.net.wall_x.size()) << c.name;
-        for (size_t i = 0; i < baseline.net.wall_x.size(); i++) {
-            EXPECT_DOUBLE_EQ(stressed.net.wall_x[i], baseline.net.wall_x[i]) << c.name << " i=" << i;
-            EXPECT_DOUBLE_EQ(stressed.net.wall_y[i], baseline.net.wall_y[i]) << c.name << " i=" << i;
-        }
-    }
-}

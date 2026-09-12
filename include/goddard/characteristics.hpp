@@ -72,8 +72,7 @@ enum class MocErrorCode {
     NON_DOWNSTREAM_POINT,      ///< The computed intersection lies at or behind (upstream of) one of its parent points.
     WALL_QUERY_OUT_OF_BOUNDS,  ///< A wall-profile query (e.g. theta_at) fell outside the profile's domain.
     INITIALIZATION_FAILED,     ///< Construction of the initial data line (transonic start line) failed to converge.
-    MAX_ITERATIONS_REACHED,    ///< The characteristic kernel reached its iteration safety cap before all chains terminated.
-    INCOMPLETE_MARCH           ///< Every chain terminated without the net reaching the exit plane; the field covers only part of the nozzle.
+    MAX_ITERATIONS_REACHED     ///< The characteristic kernel reached its iteration safety cap before all chains terminated.
 };
 
 /**

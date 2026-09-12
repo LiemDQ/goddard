@@ -126,9 +126,9 @@ TEST(MocDesignRao, CfExceedsConicalOfSameLengthAndAreaRatio) {
                 cone_opts.geometry.throat_radius = 1.0;
                 cone_opts.geometry.downstream_wall_curvature_radius = 0.382;
                 cone_opts.nozzle_profile = cone;
-                // march_scheme, start_line left at their AUTO defaults, as in
+                // start_line left at its AUTO default, as in
                 // MocDefaultOptionsConvergence.ConicalDefaultThroatConvergesAcrossN
-                // (test_moc_convergence.cpp): AUTO -> INVERSE for axisymmetric ANALYSIS.
+                // (test_moc_convergence.cpp). MocMode::ANALYSIS always uses the inverse march.
 
                 MocResult cone_result = MocNozzle(cone_opts).solve();
                 ASSERT_TRUE(cone_result.converged) << tag << " (comparison cone): "

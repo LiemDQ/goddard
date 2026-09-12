@@ -37,17 +37,13 @@ static MocResult solve_design(MocFlowKind kind, double gamma, double theta_max, 
 
 // Analyze a designed contour with centered-fan initialization (the design
 // contour has a sharp throat corner, so the fan is the consistent start line).
-// march_scheme defaults to AUTO (INVERSE for analysis, planar and axisymmetric); test_moc_inverse_march.cpp's InverseMarch.PlanarDesignRoundTrip and
-// diagnosis.md A8/B.md's "Corrections after implementation" motivate forcing it
-// explicitly where the two schemes are being compared.
+// MocMode::ANALYSIS always uses the inverse (reference-plane) march.
 static MocResult solve_analysis_of(const MocResult& design_result,
-                                   MocFlowKind kind, double gamma, int n,
-                                   MocMarchScheme scheme = MocMarchScheme::AUTO) {
+                                   MocFlowKind kind, double gamma, int n) {
     MocOptions opts = make_options(kind, gamma, 0.0, n);
     opts.mode = MocMode::ANALYSIS;
     opts.geometry.downstream_wall_curvature_radius = -1.0; // centered-fan init
     opts.nozzle_profile = design_result.profile;
-    opts.march_scheme = scheme;
     MocNozzle solver(opts);
     return solver.solve();
 }
@@ -196,73 +192,57 @@ TEST(MocConvergence, PlanarDesignAreaRatioConvergesTo1D) {
 }
 
 // ------------------------------------------------------------
-// Planar design->analysis round trip, DIRECT vs INVERSE (D.md item 4 /
-// Addendum 2026-09-09). Both schemes reanalyze the same designed contour with
-// a centered-fan start line; DIRECT's wall solve (solve_wall_point_analysis,
-// src/moc_nozzle.cpp) queries NozzleProfile::theta_at, which is piecewise
-// constant per facet, while the inverse kernel's own wall solve interpolates
-// the vertex angles linearly (wall_angle_at, src/moc_inverse_march.cpp -- see
-// B.md "Corrections after implementation" item 4 and diagnosis.md A8). That
-// difference is reported here, not worked around: fixing NozzleProfile::theta_at
-// itself is a library change and out of this package's scope (a Package E
-// candidate per the addendum).
+// Planar design->analysis round trip (D.md item 4 / Addendum 2026-09-09):
+// reanalyze a designed contour with a centered-fan start line, using the inverse
+// (reference-plane) march -- the only kernel MocMode::ANALYSIS uses. Its wall solve
+// interpolates the contour's vertex angles linearly (wall_angle_at,
+// src/moc_inverse_march.cpp), unlike the old chain-pairing kernel's wall solve, which
+// queried NozzleProfile::theta_at (piecewise constant per facet) and failed to
+// converge here at both N=8 and N=32 on that facet-quantization artifact -- see B.md
+// "Corrections after implementation" item 4 and diagnosis.md A8 for that history.
 //
-// Measured on this tree: DIRECT fails to converge at both N=8 and N=32 (NEGATIVE_THETA,
-// a per-facet kink accumulating into a small negative theta late in the march -- see
-// solve_wall_point_analysis/NozzleProfile::theta_at above); the facet-quantization
-// artifact is set by the wall polyline's own resolution (60-ish facets from the
-// design), not by the characteristic spacing, so refining N does not cure it. INVERSE
-// converges at both levels with the error shrinking (1.4e-2 -> 1.4e-3), consistent with
-// InverseMarch.PlanarDesignRoundTrip's 4.4e-3 / 1.5e-3 at N=16/32
-// (test_moc_inverse_march.cpp, same contour/round-trip construction).
+// Measured on this tree: the round trip converges at both levels with the error
+// shrinking (1.4e-2 -> 1.4e-3), consistent with InverseMarch.PlanarDesignRoundTrip's
+// 4.4e-3 / 1.5e-3 at N=16/32 (test_moc_inverse_march.cpp, same contour/round-trip
+// construction).
 // ------------------------------------------------------------
 TEST(MocConvergence, PlanarRoundTripErrorShrinksWithN) {
     double gamma = 1.4;
     double theta_max = 15.0 * DEG;
     const int levels[2] = {8, 32};
 
-    for (MocMarchScheme scheme : {MocMarchScheme::DIRECT, MocMarchScheme::INVERSE}) {
-        const std::string scheme_name = (scheme == MocMarchScheme::DIRECT) ? "Direct" : "Inverse";
-        double err[2] = {0.0, 0.0};
-        bool ok[2] = {false, false};
-        for (int i = 0; i < 2; i++) {
-            auto design = solve_design(MocFlowKind::PLANAR, gamma, theta_max, levels[i]);
-            ASSERT_TRUE(design.converged) << scheme_name << " design N=" << levels[i];
-            auto analysis = solve_analysis_of(design, MocFlowKind::PLANAR, gamma, levels[i], scheme);
-            ok[i] = analysis.converged;
-            RecordProperty(scheme_name + "_converged_N" + std::to_string(levels[i]),
-                           ok[i] ? "true" : "false");
-            if (ok[i]) {
-                err[i] = std::abs(analysis.exit_mach - design.exit_mach);
-                RecordProperty(scheme_name + "_exit_mach_error_N" + std::to_string(levels[i]),
-                               std::to_string(err[i]));
-            } else {
-                // Failure honesty holds for either scheme: a non-converging solve must
-                // never silently succeed.
-                EXPECT_NE(analysis.failure.code, MocErrorCode::NONE)
-                    << scheme_name << " N=" << levels[i]
-                    << ": a non-converging solve must carry a specific failure code";
-                RecordProperty(scheme_name + "_failure_code_N" + std::to_string(levels[i]),
-                               std::string(to_string(analysis.failure.code)));
-            }
+    double err[2] = {0.0, 0.0};
+    bool ok[2] = {false, false};
+    for (int i = 0; i < 2; i++) {
+        auto design = solve_design(MocFlowKind::PLANAR, gamma, theta_max, levels[i]);
+        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        auto analysis = solve_analysis_of(design, MocFlowKind::PLANAR, gamma, levels[i]);
+        ok[i] = analysis.converged;
+        RecordProperty("converged_N" + std::to_string(levels[i]), ok[i] ? "true" : "false");
+        if (ok[i]) {
+            err[i] = std::abs(analysis.exit_mach - design.exit_mach);
+            RecordProperty("exit_mach_error_N" + std::to_string(levels[i]),
+                           std::to_string(err[i]));
+        } else {
+            // Failure honesty: a non-converging solve must never silently succeed.
+            EXPECT_NE(analysis.failure.code, MocErrorCode::NONE)
+                << "N=" << levels[i]
+                << ": a non-converging solve must carry a specific failure code";
+            RecordProperty("failure_code_N" + std::to_string(levels[i]),
+                           std::string(to_string(analysis.failure.code)));
         }
-
-        if (scheme == MocMarchScheme::INVERSE) {
-            // The fix under test: the inverse kernel's wall solve does not carry the
-            // facet-quantization artifact, so the round trip must actually converge and
-            // improve with N -- there is no known limitation to carve out here.
-            ASSERT_TRUE(ok[0]) << "INVERSE N=8 must converge";
-            ASSERT_TRUE(ok[1]) << "INVERSE N=32 must converge";
-            EXPECT_LT(err[1], err[0])
-                << "INVERSE round-trip error must not grow with N (N=8 " << err[0]
-                << ", N=32 " << err[1] << ")";
-            EXPECT_LT(err[1], 5e-3) << "INVERSE N=32 round-trip error " << err[1]
-                << " (see InverseMarch.PlanarDesignRoundTrip for the same check at N=16/32)";
-        }
-        // DIRECT is documented above, not gated: the facet-quantized wall angle is a
-        // pre-existing library defect (NozzleProfile::theta_at) this package does not
-        // fix. The RecordProperty entries above carry the measured numbers for the report.
     }
+
+    // The inverse kernel's wall solve does not carry the facet-quantization artifact,
+    // so the round trip must actually converge and improve with N -- there is no known
+    // limitation to carve out here.
+    ASSERT_TRUE(ok[0]) << "N=8 must converge";
+    ASSERT_TRUE(ok[1]) << "N=32 must converge";
+    EXPECT_LT(err[1], err[0])
+        << "round-trip error must not grow with N (N=8 " << err[0]
+        << ", N=32 " << err[1] << ")";
+    EXPECT_LT(err[1], 5e-3) << "N=32 round-trip error " << err[1]
+        << " (see InverseMarch.PlanarDesignRoundTrip for the same check at N=16/32)";
 }
 
 // ------------------------------------------------------------
@@ -372,15 +352,15 @@ TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
 
 // ------------------------------------------------------------
 // Default-options conical convergence (D.md item 1 / Addendum 2026-09-09). Every
-// option left at its default: MocMarchScheme::AUTO (resolves to INVERSE for
-// axisymmetric ANALYSIS), MocStartLine::AUTO (resolves to KLIEGEL_LEVINE at this
+// option left at its default: MocMode::ANALYSIS always uses the inverse
+// (reference-plane) march, MocStartLine::AUTO (resolves to KLIEGEL_LEVINE at this
 // throat -- the wall-angle mismatch of 0.145 rad is within kl_max_wall_angle_error's
 // default 0.25 rad), and NozzleGeometry::downstream_wall_curvature_radius's default
 // (0.382), matching the arc radius passed to generate_conical_nozzle. This is what a
 // caller gets by only setting num_characteristics/gamma/geometry and a contour --
 // distinct from InverseMarch.ConicalConvergesAtCleanThroat and
 // .ConicalDefaultThroatReachesExit (test_moc_inverse_march.cpp), which force the
-// scheme and start line explicitly at r_arc = 2.0 and 0.382 respectively.
+// start line explicitly at r_arc = 2.0 and 0.382 respectively.
 //
 // diagnosis.md A8 documents a compression converging on the axis at this throat
 // (r_arc = 0.382) near x ~ 3.4, which steepens under refinement and both AR = 4 and
@@ -413,7 +393,7 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
             opts.geometry.throat_radius = 1.0;
             opts.geometry.downstream_wall_curvature_radius = 0.382; // == generate_conical_nozzle's arc below
             opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0, 60);
-            // march_scheme, start_line: left at MocOptions defaults (AUTO, AUTO).
+            // start_line: left at its MocOptions default (AUTO).
 
             MocNozzle solver(opts);
             MocResult result = solver.solve();
@@ -490,12 +470,8 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
 // sort_plus_edges_by_proximity.
 // ============================================================
 
-// disable_mesh_control: set the three mesh-control factors so they never trigger (as
-// tools/moc_sweep.cpp does for its "mesh_control off" rows), to isolate the initial-data-line
-// behavior from the marching front's own refinement/coarsening. Defaults to false so
-// existing callers keep the solver's default mesh control unchanged.
 static MocResult solve_conical_kl_analysis(
-    double area_ratio, int n, double gamma = 1.4, bool disable_mesh_control = false)
+    double area_ratio, int n, double gamma = 1.4)
 {
     MocOptions opts;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
@@ -520,11 +496,6 @@ static MocResult solve_conical_kl_analysis(
     // failure mode with a threshold tight enough to trigger it).
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
     opts.kl_max_wall_angle_error = 0.2; // below the 0.25 default; kept explicit so the helper is independent of it
-    if (disable_mesh_control) {
-        opts.max_front_spacing_factor = 1e9;
-        opts.min_front_spacing_factor = 1e-9;
-        opts.max_cell_aspect_ratio = 1e9;
-    }
     opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 15.0, 60);
     MocNozzle solver(opts);
     return solver.solve();
@@ -688,7 +659,7 @@ static std::vector<CharacteristicPoint> wall_points_by_x(const MocResult& result
 TEST(MocKlInitConvergence, FirstWallHitsHaveMonotoneMach) {
     constexpr double tolerance = 0.01;
     for (int n : {15, 31, 61}) {
-        auto result = solve_conical_kl_analysis(4.0, n, 1.4, /*disable_mesh_control=*/true);
+        auto result = solve_conical_kl_analysis(4.0, n);
         std::vector<CharacteristicPoint> wall_pts = wall_points_by_x(result);
         const size_t window = std::min<size_t>(12, wall_pts.size());
         ASSERT_GE(wall_pts.size(), 8u) << "N=" << n << ": too few wall points to judge monotonicity";
@@ -706,7 +677,7 @@ TEST(MocKlInitConvergence, FirstWallHitsHaveMonotoneMach) {
 // -4.3% to -4.6% at this throat (the wall-angle deficit biases the near-wall velocity
 // components), comfortably outside any reasonable tolerance.
 TEST(MocKlInitConvergence, StartLineMassFlowWithinTwoPercent) {
-    auto result = solve_conical_kl_analysis(4.0, 31, 1.4, /*disable_mesh_control=*/true);
+    auto result = solve_conical_kl_analysis(4.0, 31);
     EXPECT_LT(std::abs(result.init_diagnostics.mass_flow_error), 0.02)
         << "mass_flow_error = " << result.init_diagnostics.mass_flow_error;
 }

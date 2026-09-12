@@ -46,25 +46,6 @@ enum class MocLogLevel {
             // diagnosing a non-converging or misbehaving solve, not routine use.
 };
 
-/**
- * Which marching kernel solve() uses to advance the characteristic net.
- *
- * DIRECT is the original chain-pairing kernel (MocNozzle::solve_characteristic_kernel):
- * it advances a front of chain leading edges by pairing neighbours, and its two
- * characteristic families keep the densities they were seeded with. INVERSE
- * (MocNozzle::solve_inverse_characteristic_kernel) instead prescribes every point of
- * every marching front and traces its two characteristics back to the previous front,
- * so both families are represented at the same density everywhere and the wall is
- * sampled at every step -- see instructions/moc_fix/B.md for the full algorithm.
- */
-enum class MocMarchScheme {
-    AUTO,   ///< Selects INVERSE for ANALYSIS (planar and axisymmetric) and DESIGN_RAO,
-            ///< DIRECT for DESIGN_MIN_LENGTH, whose contour is defined by the
-            ///< characteristics DIRECT absorbs at the wall.
-    DIRECT, ///< Force the chain-pairing kernel.
-    INVERSE ///< Force the reference-plane marching kernel. Invalid with DESIGN_MIN_LENGTH.
-};
-
 /** What limited the length of the last inverse-march step (MocPassDiagnostics::step_limiter). */
 enum class MocStepLimiter {
     NONE,      ///< No step has been taken yet.
@@ -128,7 +109,8 @@ struct MocOptions {
 
     /// Maximum wall angle (radians), for MocMode::DESIGN_MIN_LENGTH.
     double theta_max;
-    /// Target exit Mach number, for the design modes.
+    /// Target exit Mach number, for the design modes. Not read by the solver; the design
+    /// target is set through theta_max.
     double exit_mach;
 
     /**
@@ -158,28 +140,6 @@ struct MocOptions {
      */
     double initial_line_axial_shift = 0.1;
 
-    /**
-     * Shifts the Kliegel-Levine start line's points toward the axis (negative) or toward the
-     * wall (positive), between uniform spacing in y (0) and uniform spacing in where their
-     * C- characteristics reach the axis (+/-1).
-     *
-     * Those two distributions differ by a factor of ~7, because the near-axis region is a
-     * double zero: y -> 0 and cot(mu) -> 0 together, the start line being near-sonic on the
-     * axis. Uniform in y therefore lands the C- from the lower third of the line within a few
-     * percent of a throat radius of each other. That grading is set by the flow rather than
-     * the mesh, so it is independent of num_characteristics (measured 6.2 to 7.2 for N = 8 to
-     * 61) -- which is why refining the grid never cured the axisymmetric breakdown.
-     *
-     * Both directions have been swept, and neither fixes it. Equalizing the arrivals (+1)
-     * empties the near-axis mesh and is strictly worse at every N. Clustering toward the axis
-     * (negative) helps, but only slightly and only in exit coverage: measured 0.697 -> 0.721
-     * at N=61 for AR=4, against a target of 1.0. The apparent cure at N=15 and clustering
-     * -0.2 (coverage 0.730 -> 0.981, area ratio 2.13 -> 3.85) is a coarse-grid threshold
-     * artifact -- the march happens to clear a barrier that N=31 and N=61 do not -- and must
-     * not be read as a fix. Default 0 because the benefit does not survive refinement.
-     */
-    double initial_line_clustering = 0.0;
-
     /** Which initial data line to build; see MocStartLine. */
     MocStartLine start_line = MocStartLine::AUTO;
 
@@ -197,74 +157,7 @@ struct MocOptions {
      */
     double kl_max_wall_angle_error = 0.25;
 
-    /**
-     * Upper bound on marching-front point spacing, as a multiple of the local target
-     * spacing (see front_spacing_growth). A front segment longer than this is subdivided
-     * into as many pieces as it takes to bring it back to the target.
-     *
-     * The kernel's front is a ladder whose rungs each own one C+ and one C- chain, and a
-     * unit process always places its result strictly between its two parents -- so the net
-     * cannot add characteristics on its own. In axisymmetric flow the wall-born C- family
-     * descends far more slowly than the near-sonic family seeded below it, opening a
-     * sampling void at the throat-arc expansion fan that stretches every pass and never
-     * heals. It eventually elongates a mesh cell far enough that a front segment becomes
-     * tangent to a characteristic and the unit process degenerates. Bounding the spacing
-     * is the classical marched-line cure and is applied unconditionally; there is no
-     * disable switch, because convergence above area ratio ~4 depends on it.
-     *
-     * Must be > 1. A factor at or below 1 triggers on essentially every segment and the
-     * refinement runs away.
-     */
-    double max_front_spacing_factor = 1.5;
-
-    /**
-     * Lower bound on marching-front point spacing, as a multiple of the local target
-     * spacing. A rung whose neighbours have crowded closer than this is retired.
-     *
-     * Compression regions (notably a Rao contour's turn-back) drive same-family
-     * characteristics together; without deletion the front's point count only ever grows
-     * and the cells become ill-conditioned. Must be well below max_front_spacing_factor,
-     * or refinement and coarsening thrash against each other.
-     */
-    double min_front_spacing_factor = 0.35;
-
-    /**
-     * How much the target spacing is allowed to grow with the local nozzle radius, from
-     * 0 (constant spacing everywhere) to 1 (spacing proportional to radius).
-     *
-     * A nozzle's front legitimately coarsens as it expands: the front's arc length grows
-     * roughly as the local radius while the rung count is conserved, and the flow
-     * downstream is smoother, so the same truncation error tolerates a longer step. Tying
-     * the target to the radius permits exactly that much coarsening and no more. The
-     * alternative of measuring against the front's own median spacing was tried and fails:
-     * a threshold computed from the spacings it judges is satisfied by any uniformly
-     * coarsening mesh, so it never sees a void whose width is set by the flow rather than
-     * by the mesh. At the default 1.0 the front holds roughly num_characteristics rungs
-     * from throat to exit.
-     */
-    double front_spacing_growth = 1.0;
-
-    /**
-     * Largest tolerated ratio of the C- to the C+ side of a mesh cell, before the rung that
-     * forms it is retired.
-     *
-     * A front segment is a cell diagonal, so bounding its length bounds the long side but
-     * leaves the short side free to collapse: a C+ whose partner has marched on while it
-     * stalled ends up sitting almost exactly on that partner's C- characteristic, and the
-     * cell degenerates while its diagonal still looks perfectly healthy. That is a
-     * same-family convergence, and the classical remedy is to delete one of the two
-     * redundant points -- they carry nearly the same C- information. Measured healthy fronts
-     * wander between 1 and 5; the runaway this bounds climbs geometrically past 200.
-     */
-    double max_cell_aspect_ratio = 6.0;
-
-    /** Safety cap on marching-front size, so a bad criterion cannot run away. */
-    size_t max_front_points = 0; ///< 0 selects the default, 4 * num_characteristics.
-
     NozzleProfile nozzle_profile; // wall geometry -- for analysis mode
-
-    /** Which marching kernel to use; see MocMarchScheme. */
-    MocMarchScheme march_scheme = MocMarchScheme::AUTO;
 
     /**
      * Inverse march only: fraction of the domain-of-dependence step taken each pass, in
@@ -363,11 +256,6 @@ struct MocPassDiagnostics {
     double min_spacing = 0.0;           ///< Shortest front-segment arc length.
     double max_spacing = 0.0;           ///< Longest front-segment arc length. The void shows up here.
     double mean_spacing = 0.0;          ///< Mean front-segment arc length.
-    double target_spacing = 0.0;        ///< Target spacing this pass (see MocOptions::front_spacing_growth).
-    double max_cell_aspect = 0.0;       ///< Largest C-/C+ cell side ratio t/s; diverges as the front turns tangent to the C- family.
-    double min_spacelike_margin = 0.0;  ///< Smallest normalized spacelike margin over front segments; reaching 0 is the NON_DOWNSTREAM_POINT failure.
-    size_t inserted = 0;                ///< Rungs inserted this pass.
-    size_t retired = 0;                 ///< Rungs retired this pass.
 
     // The front's two ends, recorded separately. The axisymmetric failure is that they
     // advance at very different axial rates -- the front shears until a near-axis point
@@ -378,9 +266,9 @@ struct MocPassDiagnostics {
     double front_axis_spacing = 0.0;    ///< Arc length of the bottom-most front segment.
     double front_wall_spacing = 0.0;    ///< Arc length of the top-most front segment.
 
-    /// Inverse march only: axial step length taken this pass. 0 for the DIRECT kernel.
+    /// Inverse march only: axial step length taken this pass. 0 for minimum-length design.
     double step_dx = 0.0;
-    /// Inverse march only: which limiter bound step_dx this pass; NONE for the DIRECT kernel.
+    /// Inverse march only: which limiter bound step_dx this pass; NONE for minimum-length design.
     MocStepLimiter step_limiter = MocStepLimiter::NONE;
 };
 
@@ -538,12 +426,8 @@ struct MocResult {
     double nozzle_length;   ///< Distance from throat to exit plane, in length units.
     double area_ratio;      ///< Exit area divided by throat area.
 
-    /// Rungs added to the marching front by mesh control (MocOptions::max_front_spacing_factor).
-    size_t inserted_characteristics = 0;
-    /// Rungs retired from the marching front by mesh control (MocOptions::min_front_spacing_factor).
-    size_t retired_characteristics = 0;
-
-    /// Per-pass marching-front geometry; one entry per kernel pass, in order.
+    /// Per-pass marching-front geometry; one entry per kernel pass, in order. Recorded by the
+    /// inverse march only; empty for minimum-length design.
     std::vector<MocPassDiagnostics> pass_diagnostics;
 
     /// Properties of the initial data line, measured before the march begins.
@@ -562,9 +446,10 @@ struct MocResult {
      */
     double exit_coverage = 0.0;
     /// Same-family characteristic crossings in the finished net; nonzero means coalescence.
-    /// Always zero for MocMarchScheme::INVERSE, which prescribes every front directly and
-    /// builds no characteristic chains (CharacteristicNet::c_chains) for this scan to see;
-    /// see CharacteristicNet::fronts for INVERSE's own mesh record.
+    /// Meaningful for chain nets, i.e. minimum-length design; always zero for the
+    /// front-based nets of analysis/Rao, which prescribe every front directly and build no
+    /// characteristic chains (CharacteristicNet::c_chains) for this scan to see; see
+    /// CharacteristicNet::fronts for their own mesh record.
     MocCrossings crossings;
 
     /// True when exit_coverage is within the (deliberately loose) staircase allowance.
