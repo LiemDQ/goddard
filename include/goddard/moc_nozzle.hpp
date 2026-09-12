@@ -1,6 +1,7 @@
 #pragma once
 #include "goddard/moc.hpp"
 #include "goddard/moc_context.hpp"
+#include "goddard/moc_initialization.hpp"
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/moc_thermo.hpp"
 
@@ -44,25 +45,19 @@ protected:
 
     auto setup_nozzle_profile(const NozzleGeometry& geometry) -> NozzleProfile;
 
-    // generate initial data line (both the perfect-gas and Cantera-backed paths;
-    // for perfect gas the throat is populated with dummy values)
-    std::vector<CharacteristicPoint> generate_initial_data_line(
-        const ThroatCondition& throat,
-        const NozzleGeometry& geometry,
-        size_t num_points);
-
     // propagate kernel region (C+/C- intersections). Returns the failure that
     // aborted the march (a unit-process error, or the iteration safety cap being
     // reached), or std::nullopt if every chain terminated cleanly.
-    std::optional<MocFailure> solve_characteristic_kernel(CharacteristicNet& net);
+    std::optional<MocFailure> solve_characteristic_kernel(CharacteristicNet& net, const StartLine& line);
 
     // Minimum-length design only. Check PointResult::error for a numerical failure.
-    // Resolves the wall angle from the theta schedule, then delegates to
-    // solve_wall_point_design (moc_unit_processes.hpp).
+    // Resolves the wall angle from the theta schedule (line.theta_schedule), then
+    // delegates to solve_wall_point_design (moc_unit_processes.hpp).
     PointResult solve_wall_point(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
-        int wall_point_index);
+        int wall_point_index,
+        const StartLine& line);
 
     struct LeadingEdgeView {
         CharacteristicFamily family;
@@ -119,55 +114,21 @@ protected:
         const std::vector<bool>& claimed,
         const CharacteristicNet& net) const;
 
-    /**
-     * Measure the initial data line: its fit to the prescribed wall, its Mach and Mach-angle
-     * spread, the grading of its characteristics' axis arrivals, its own spacelike margin,
-     * and the mass flow it carries against the 1-D critical value.
-     *
-     * Called once, after the line is built and the mesh-control anchors are set, for every
-     * mode and both initializers. See MocInitDiagnostics for why each quantity is there.
-     *
-     * @param data_line The initial data line, ordered axis to wall.
-     * @return The populated diagnostics record.
-     */
-    MocInitDiagnostics record_init_diagnostics(
-        const std::vector<CharacteristicPoint>& data_line) const;
-
-    /**
-     * Relative error of the mass flow carried across the initial data line, against the
-     * 1-D critical mass flow through the throat.
-     *
-     * This is the only check on the start line that appeals to physics rather than to the
-     * line's own construction: a start line whose series has been evaluated outside its
-     * range, or whose state variables have been misinterpreted, will not carry the right
-     * mass however self-consistent it looks.
-     *
-     * For a centered fan the line is a C+ characteristic that stops one point short of the
-     * throat lip (the lip is seeded separately), so it under-counts by O(1/N) by
-     * construction; judge that path by whether the deficit shrinks with N.
-     *
-     * @param data_line The initial data line, ordered axis to wall.
-     * @return Signed relative error, or NaN for frozen/equilibrium chemistry, where the
-     *         density is not recoverable from the stored point state.
-     */
-    double start_line_mass_flow_error(
-        const std::vector<CharacteristicPoint>& data_line) const;
-
     // -- Inverse (reference-plane) marching kernel --
     // Used by MocMode::ANALYSIS and MocMode::DESIGN_RAO. The unit processes below are
     // siblings of solve_interior_point/solve_axis_point (moc_unit_processes.hpp) for this
     // kernel, not replacements -- the minimum-length kernel is unchanged.
 
     /**
-     * Build the inverse kernel's first marching front F_0 from the initial data line
-     * solve() already constructed (generate_initial_data_line).
+     * Build the inverse kernel's first marching front F_0 from the start line solve() already
+     * constructed (build_start_line, moc_initialization.hpp).
      *
-     * A Kliegel-Levine transonic line (m_initial_line_family empty) already spans axis to
-     * wall and is returned unchanged. A centered-fan line (m_initial_line_family == PLUS) is
-     * a C+ characteristic and cannot be marched from directly; the front is built instead on
-     * the plane through the fan's first axis point, each point carrying the state of the
-     * simple-wave ray through it, with the uniform state beyond the last ray above and the
-     * contour's angle at the wall point.
+     * A Kliegel-Levine transonic line (line.family empty) already spans axis to wall and is
+     * returned unchanged. A centered-fan line (line.family == PLUS) is a C+ characteristic
+     * and cannot be marched from directly; the front is built instead on the plane through
+     * the fan's first axis point, each point carrying the state of the simple-wave ray
+     * through it, with the uniform state beyond the last ray above and the contour's angle
+     * at the wall point.
      *
      * Extension points are given their full thermodynamic state via
      * MocThermo::set_state_from_nu, so FROZEN/EQUILIBRIUM chemistry stay consistent here
@@ -176,8 +137,7 @@ protected:
      * @throws ConvergenceError if a thermodynamic update for an extension point fails;
      *         caught by solve()'s existing initialization exception boundary.
      */
-    std::vector<CharacteristicPoint> build_inverse_initial_front(
-        const std::vector<CharacteristicPoint>& data_line);
+    std::vector<CharacteristicPoint> build_inverse_initial_front(const StartLine& line);
 
     /**
      * Inverse reference-plane marching kernel: starting from the front already
@@ -261,20 +221,8 @@ protected:
     // length rather than to the mesh's own statistics.
     double m_reference_spacing = 0.0;
     double m_throat_radius = 1.0;
-    // Raw wall-boundary-condition residual of the Kliegel-Levine start line, copied from
-    // the initializer for MocInitDiagnostics::wall_bc_residual. Reset by solve().
-    double m_init_wall_bc_residual = 0.0;
     std::optional<Gas> m_gas;
     std::optional<MocThermo> m_thermo;
-    std::vector<double> m_theta_schedule;
-
-    // Characteristic family the initial data line lies along, if any. A centered
-    // expansion fan is collinear along one characteristic (the canonical C+ case); a
-    // transonic start line crosses many and leaves this empty. Set by the initial-data-line
-    // generators (which know the strategy they used) and consumed by solve() when seeding
-    // the net. This cannot be recovered by inspecting the points: a Riemann invariant is
-    // only constant along a characteristic for planar flow, not axisymmetric.
-    std::optional<CharacteristicFamily> m_initial_line_family;
 
     // Messages collected during solve() (see MocLog); copied into MocResult::messages at
     // the end of solve(). Reset at the top of every solve() call.

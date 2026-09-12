@@ -182,16 +182,15 @@ std::optional<FootHit> trace_with_axis_mirror(
 
 } // namespace
 
-std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
-    const std::vector<CharacteristicPoint>& data_line)
+std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(const StartLine& line)
 {
-    if (!m_initial_line_family.has_value()) {
+    if (!line.family.has_value()) {
         // Kliegel-Levine topology (or a test-injected override, seeded through the same
         // path -- see m_inverse_front_override): already spans axis to wall.
-        return data_line;
+        return line.points;
     }
 
-    // Centered-fan topology. data_line is the marched C+ from the fan's first axis point
+    // Centered-fan topology. line.points is the marched C+ from the fan's first axis point
     // through the rays: a characteristic, which cannot serve as an inverse-march front (a C+
     // traced back from the next front runs parallel to it). Build F_0 instead on the plane
     // x = x0 through that first axis point. Every plane point lies on one of the fan's rays
@@ -205,8 +204,9 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     // with nu from the C+ compatibility relation with the point below it. The lip is (0, 1)
     // in the normalized units initialize_centered_expansion uses.
     const NozzleProfile& wall = m_options.nozzle_profile;
+    const std::vector<CharacteristicPoint>& data_line = line.points;
     const size_t n_rays = data_line.size();
-    if (n_rays < 2 || m_theta_schedule.size() < n_rays) {
+    if (n_rays < 2 || line.theta_schedule.size() < n_rays) {
         throw ConvergenceError("Inverse march initial front (fan): data line and theta schedule are inconsistent.");
     }
     const double x0 = data_line.front().x;
@@ -226,7 +226,7 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     }
     // Invariants on ray i at a fraction f of the way from the lip to its marched point.
     auto ray_invariants = [&](size_t i, double f, double& K_minus, double& K_plus) {
-        const double theta_lip = m_theta_schedule[i];
+        const double theta_lip = line.theta_schedule[i];
         const double K_minus_lip = 2.0 * theta_lip;   // nu = theta on a centered fan's rays
         const double K_plus_lip = 0.0;
         K_minus = K_minus_lip + f * (data_line[i].K_minus - K_minus_lip);

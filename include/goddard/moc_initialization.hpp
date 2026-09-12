@@ -1,9 +1,11 @@
 #pragma once
 #include <cmath>
+#include <optional>
 #include <vector>
 #include "goddard/error.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/moc.hpp"
+#include "goddard/moc_context.hpp"
 #include "goddard/moc_thermo.hpp"
 #include "goddard/nozzle.hpp"
 
@@ -14,11 +16,10 @@ namespace Goddard {
  * MocStartLine::AUTO and the raw series misses the wall boundary condition by more than
  * MocOptions::kl_max_wall_angle_error.
  *
- * MocNozzle::generate_initial_data_line catches exactly this type and falls back to the
- * centered fan (logging why); nothing else should catch it. A forced
- * MocStartLine::KLIEGEL_LEVINE throws Goddard::ConvergenceError instead -- not caught here
- * -- which surfaces as MocErrorCode::INITIALIZATION_FAILED via MocNozzle::solve()'s
- * exception boundary.
+ * build_start_line catches exactly this type and falls back to the centered fan (logging
+ * why); nothing else should catch it. A forced MocStartLine::KLIEGEL_LEVINE throws
+ * Goddard::ConvergenceError instead -- not caught here -- which surfaces as
+ * MocErrorCode::INITIALIZATION_FAILED via MocNozzle::solve()'s exception boundary.
  */
 class KlWallAngleFallback : public std::runtime_error {
 public:
@@ -126,5 +127,39 @@ class MocInitialization {
     MocOptions m_options;
 
 };
+
+/** The initial data line a solve marches from, with what the kernels need to know about it. */
+struct StartLine {
+    std::vector<CharacteristicPoint> points;            ///< Ordered axis to wall.
+    std::optional<CharacteristicFamily> family;         ///< PLUS when the line lies along one characteristic (a centered fan); empty for a transonic line.
+    std::vector<double> theta_schedule;                 ///< Fan angles; the minimum-length wall solve reads theta_max - theta_schedule[k].
+    MocStartLine used = MocStartLine::AUTO;             ///< Which start line was actually built (never AUTO on return).
+    double wall_bc_residual = 0.0;                      ///< Kliegel-Levine raw wall-angle miss; 0 for the fan.
+};
+
+/**
+ * Build the start line for the solve described by `ctx`.
+ *
+ * Resolves MocOptions::start_line (including the AUTO wall-angle-miss fallback to the
+ * centered fan), constructs it via MocInitialization, and validates every point.
+ *
+ * @throws ConvergenceError, std::out_of_range, or NotImplementedError on failure;
+ *         MocNozzle::solve() converts the first two into a MocFailure.
+ */
+StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& throat);
+
+/**
+ * Measure the start line: its fit to the prescribed wall, its Mach and Mach-angle spread,
+ * the grading of its characteristics' axis arrivals, its own spacelike margin, and the mass
+ * flow it carries against the 1-D critical value. See MocInitDiagnostics for why each
+ * quantity is there.
+ *
+ * @param line The start line built by build_start_line (or the test override wrapped into
+ *             one).
+ * @param reference_spacing Characteristic spacing at the throat, for the normalized fields.
+ * @param throat_radius Throat radius in net units, for the mass-flow reference.
+ */
+MocInitDiagnostics measure_start_line(const StartLine& line, const MocSolveContext& ctx,
+                                      double reference_spacing, double throat_radius);
 
 } // namespace Goddard
