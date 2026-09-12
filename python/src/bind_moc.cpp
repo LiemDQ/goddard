@@ -742,15 +742,15 @@ void bind_moc(nb::module_& m) {
                             Goddard::MocOptions options) {
             new (self) Goddard::MocNozzle(gas, std::move(options));
         }, "gas"_a, "options"_a)
-        .def_rw("options", &Goddard::MocNozzle::m_options,
+        .def_rw("options", &Goddard::MocNozzle::options,
                 "Solver configuration. Public and re-read by solve(), so it can be adjusted "
                 "between solves.")
         .def("solve", &Goddard::MocNozzle::solve, DOC(Goddard, MocNozzle, solve))
         .def("is_solved", &Goddard::MocNozzle::is_solved, DOC(Goddard, MocNozzle, is_solved))
         .def("__repr__", [](const Goddard::MocNozzle& self) {
             return std::format("<MocNozzle mode={} flow={} solved={}>",
-                               mode_name(self.m_options.mode),
-                               flow_kind_name(self.m_options.flow_type),
+                               mode_name(self.options.mode),
+                               flow_kind_name(self.options.flow_type),
                                self.is_solved());
         });
 
