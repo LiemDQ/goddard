@@ -156,6 +156,7 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
  *
  * @param line The start line built by build_start_line (or the test override wrapped into
  *             one).
+ * @param ctx MocSolveContext (thermo dispatch, wall profile, options) the line was built for.
  * @param reference_spacing Characteristic spacing at the throat, for the normalized fields.
  * @param throat_radius Throat radius in net units, for the mass-flow reference.
  */

@@ -28,12 +28,12 @@ struct PointResult {
  * Validity of a computed point: finite fields, supersonic, non-negative Prandtl-Meyer angle,
  * and (by default) non-negative flow angle.
  *
- * The flow-angle requirement is what the DIRECT kernel uses to catch a march that has gone
- * wrong. It is optional because a negative flow angle is physically admissible in the
- * analysis of an arbitrary contour (any locally converging wall) and because, wherever the
- * exact angle is zero -- the uniform exit region of a minimum-length nozzle, the axis
- * neighbourhood -- a computed angle is discretization noise of either sign, which a
- * tolerance of the solver's abstol cannot absorb.
+ * The flow-angle requirement is what the chain ladder (`DirectMarch`, minimum-length design)
+ * uses to catch a march that has gone wrong. It is optional because a negative flow angle is
+ * physically admissible in the analysis of an arbitrary contour (any locally converging
+ * wall) and because, wherever the exact angle is zero -- the uniform exit region of a
+ * minimum-length nozzle, the axis neighbourhood -- a computed angle is discretization noise
+ * of either sign, which a tolerance of the solver's abstol cannot absorb.
  *
  * @param pt  Point to validate.
  * @param tol Absolute tolerance for the nu/theta non-negativity checks (axis points
@@ -48,9 +48,10 @@ MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol,
 // -- Classical unit processes (pure free functions) --------------------------------------
 // Every process below takes the whole solve's fixed inputs (options, wall contour, thermo
 // dispatch, log) as a MocSolveContext, and the point(s) it is solving from. These are the
-// minimum-length (DIRECT) kernel's unit processes; the inverse-march kernel's own interior/
-// axis/wall processes are siblings that live with that kernel (moc_inverse_march.cpp) but
-// share the source-term helpers and axis corrector below.
+// chain ladder's (`DirectMarch`, minimum-length design) unit processes; the reference-plane
+// march's (`InverseMarch`, analysis and Rao design) own interior/axis/wall processes are
+// siblings that live with that kernel (moc_inverse_march.cpp) but share the source-term
+// helpers and axis corrector below.
 
 /** Interior point: dispatches on ctx.options.flow_type to the planar or axisymmetric solve. */
 PointResult solve_interior_point(
@@ -177,9 +178,9 @@ double find_node_mach(
  * specializes: passing zero-source lambdas reproduces the planar algebraic solve, and passing
  * cminus_source_term/cplus_source_term reproduces (to the discretization's own order, not
  * bit-for-bit -- it is a different iteration scheme) the axisymmetric predictor-corrector.
- * Not called by either kernel; kept, by user decision, as a documented general-purpose
- * building block, with a regression test (test/test_moc_unit_processes.cpp) standing in for
- * the kernel call neither exercises it today.
+ * Not called by either kernel; kept as a documented general-purpose building block, with a
+ * regression test (test/test_moc_unit_processes.cpp) standing in for the kernel call neither
+ * exercises it today.
  */
 template <typename CMinusSource, typename CPlusSource>
 PointResult solve_interior_point_iterative(

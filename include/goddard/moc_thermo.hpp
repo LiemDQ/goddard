@@ -11,12 +11,11 @@ struct ThroatCondition;
 
 /**
  * The isentrope every point of a MoC solve lies on: state as a function of nu, Mach or
- * velocity.
+ * velocity, for either a perfect gas or a tabulated frozen/equilibrium real gas.
  *
- * Replaces the pre-refactor duplication between CharacteristicPoint's own thermodynamic-update
- * methods and MocNozzle's private ones -- both computed the same perfect-gas/tabulated-real-gas
- * dispatch, but only MocNozzle's reported failure as data (MocErrorCode) instead of throwing.
- * This class is that single dispatch, immutable once built.
+ * The single thermodynamic dispatch shared by initialization, both kernels, and every unit
+ * process. Failure is reported as a MocErrorCode return rather than by throwing, so a caller
+ * can attach point/pass context before surfacing a MocFailure. Immutable once built.
  */
 class MocThermo {
 public:
@@ -28,21 +27,32 @@ public:
      */
     static MocThermo tabulated(Gas& gas, GasChemistry chemistry, const ThroatCondition& throat);
 
+    /** Which dispatch branch set_state_from_*() takes. */
     GasChemistry chemistry() const;
     double gamma() const;                     ///< Perfect gas only: the constant gamma.
     const PrandtlMeyerTable& table() const;    ///< Real gas only.
+    /** Real gas only: throat temperature (K) that table T is normalized against by set_pressure_temperature_from_table. */
     double T_ref() const;
+    /** Real gas only: throat pressure (Pa) that table P is normalized against by set_pressure_temperature_from_table. */
     double P_ref() const;
 
-    // Convenience accessors (moved from MocNozzle, kept by user decision even though uncalled).
+    // Convenience accessors; not called by the kernels themselves, which go through the
+    // set_state_from_* chokepoints below.
+    /** Prandtl-Meyer angle (or generalized PM function), in radians, at a given Mach number. */
     double nu_from_mach(double mach) const;
+    /** Mach number at a given Prandtl-Meyer angle (radians); `mach_guess` seeds perfect-gas Newton iteration. */
     double mach_from_nu(double nu, double mach_guess = 0.0) const;
+    /** Local isentropic exponent at a given Mach number. */
     double gamma_s_from_mach(double mach) const;
+    /** Local isentropic exponent at a given Prandtl-Meyer angle (radians). */
     double gamma_s_from_nu(double nu) const;
 
     // The chokepoints. On failure the point's fields are unspecified and the code says why.
+    /** Set `point`'s full state from a Prandtl-Meyer angle nu (radians); `mach_guess` seeds perfect-gas Newton iteration. */
     MocErrorCode set_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0) const;
+    /** Set `point`'s full state from a Mach number. */
     MocErrorCode set_state_from_mach(CharacteristicPoint& point, double mach) const;
+    /** Set `point`'s full state from a velocity (m/s for real gas; Mach number for perfect gas). */
     MocErrorCode set_state_from_V(CharacteristicPoint& point, double V) const;
 
 private:

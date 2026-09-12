@@ -51,8 +51,8 @@ protected:
      * seeds the inverse kernel's first front directly from these points instead of running
      * build_start_line, so a hand-built front with a known exact solution (e.g. uniform flow,
      * or a manufactured source-flow field) can be marched without requiring a throat/KL/fan
-     * construction consistent with it. See InverseMarch.UniformFlowStaysUniform and
-     * InverseMarch.SourceFlowSecondOrder (test/test_moc_inverse_march.cpp).
+     * construction consistent with it. See InverseMarchUniformFlow.StaysUniform and
+     * InverseMarchSourceFlow.SecondOrderConvergence (test/test_moc_inverse_march.cpp).
      */
     std::optional<std::vector<CharacteristicPoint>> m_inverse_front_override;
 

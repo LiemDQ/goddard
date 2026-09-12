@@ -39,11 +39,11 @@ enum class MocMode {
 
 /** How much diagnostic output a solve collects into MocResult::messages. */
 enum class MocLogLevel {
-    NORMAL, ///< Default: only log_warning()/log_info() messages collected.
+    NORMAL, ///< Default: only MocLog::warning()/MocLog::info() messages collected.
     DEBUG   ///< also collect (and echo live to stderr) a verbose kernel trace --
             // initial-data-line construction, every interior-point pairing, wall
-            // hits/outflow terminations, and axis reflections. Verbose; meant for
-            // diagnosing a non-converging or misbehaving solve, not routine use.
+            // hits, and axis reflections. Verbose; meant for diagnosing a
+            // non-converging or misbehaving solve, not routine use.
 };
 
 /** What limited the length of the last inverse-march step (MocPassDiagnostics::step_limiter). */
@@ -92,6 +92,7 @@ enum class MocStartLine { AUTO, KLIEGEL_LEVINE, CENTERED_FAN };
  * Options for method of characteristics simulations.
  */
 struct MocOptions {
+    // -- Problem definition --
     MocFlowKind flow_type = MocFlowKind::PLANAR;
     GasChemistry chemistry = GasChemistry::PERFECT_GAS;
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
@@ -104,9 +105,13 @@ struct MocOptions {
     SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
     /// Throat and contour geometry.
     NozzleGeometry geometry;
+    /// Wall contour to march against in MocMode::ANALYSIS; ignored by the design modes, which
+    /// generate their own contour and report it in MocResult::profile instead.
+    NozzleProfile nozzle_profile;
     /// Set to MocLogLevel::DEBUG for a verbose kernel trace.
     MocLogLevel log_level = MocLogLevel::NORMAL;
 
+    // -- Design --
     /// Maximum wall angle (radians), for MocMode::DESIGN_MIN_LENGTH.
     double theta_max;
     /// Target exit Mach number, for the design modes. Not read by the solver; the design
@@ -123,6 +128,10 @@ struct MocOptions {
      */
     std::vector<double> theta_schedule;
 
+    // -- Start line --
+    /** Which initial data line to build; see MocStartLine. */
+    MocStartLine start_line = MocStartLine::AUTO;
+
     /**
      * Downstream shift (dimensionless, in throat radii) applied to every station of the
      * Kliegel-Levine transonic start line, used only for axisymmetric ANALYSIS/DESIGN_RAO
@@ -131,17 +140,12 @@ struct MocOptions {
      * dual-family (C+ and C-) seeding line: near the axis its Mach angle mu approaches
      * 90 deg, and rigidly translating every station downstream by this amount raises the
      * Mach number (lowering mu) everywhere while preserving the locus's own near-axis
-     * curvature -- which a per-station constant-Mach lift does not (it was tried and
-     * empirically produces invalid, behind-parent seeding; see
-     * instructions/moc_convergence_roadmap.md Sec 2 Step 0). Default 0.1 throat radii is a
-     * moderate lift validated against the default geometry; a larger shift trades
-     * numerical margin for accuracy, since it extrapolates the KL series further from the
-     * throat plane it is expanded about.
+     * curvature -- a per-station constant-Mach lift does not, and empirically produces
+     * invalid, behind-parent seeding. Default 0.1 throat radii is a moderate lift validated
+     * against the default geometry; a larger shift trades numerical margin for accuracy,
+     * since it extrapolates the KL series further from the throat plane it is expanded about.
      */
     double initial_line_axial_shift = 0.1;
-
-    /** Which initial data line to build; see MocStartLine. */
-    MocStartLine start_line = MocStartLine::AUTO;
 
     /**
      * Largest |theta_series - theta_wall| (rad) at the Kliegel-Levine line's wall end for
@@ -157,8 +161,7 @@ struct MocOptions {
      */
     double kl_max_wall_angle_error = 0.25;
 
-    NozzleProfile nozzle_profile; // wall geometry -- for analysis mode
-
+    // -- Inverse march --
     /**
      * Inverse march only: fraction of the domain-of-dependence step taken each pass, in
      * (0, 1]. The full domain-of-dependence step (cfl = 1) is the largest step for which
@@ -349,9 +352,10 @@ struct MocInitDiagnostics {
      */
     double axis_arrival_grading = 1.0;
 
-    /// Smallest normalized spacelike margin over the data line's own segments, defined as
-    /// in MocPassDiagnostics. A value <= 0 means the line is crossed by its own
-    /// characteristics, i.e. it is not a valid Cauchy surface for the march.
+    /// Smallest spacelike margin over the data line's own segments: how far a segment sits
+    /// from being parallel to a characteristic through one of its endpoints, as a fraction
+    /// of its height. A value <= 0 means the line is crossed by its own characteristics,
+    /// i.e. it is not a valid Cauchy surface for the march.
     double min_spacelike_margin = 0.0;
 
     /**
@@ -390,8 +394,8 @@ struct MocInitDiagnostics {
 
     /**
      * K+ = theta - nu of the topmost interior point (the data line point just below the
-     * wall end), after the wall-consistency correction. This is the quantity diagnosis.md
-     * Sec A1 tracks: a large negative value here over-expands the first wall solve.
+     * wall end), after the wall-consistency correction. A large negative value here
+     * over-expands the first wall solve.
      */
     double kplus_wall_end = 0.0;
 
@@ -458,15 +462,14 @@ struct MocResult {
     MocInitDiagnostics init_diagnostics;
 
     /**
-     * Fraction of the target exit radius that the net's outflow boundary actually reached.
+     * Fraction of the target exit radius the solved net reached.
      *
-     * The outflow boundary is a ragged staircase of independently terminated chains, so
-     * even a healthy march ends up to about one characteristic spacing short of the exit
-     * lip; this is O(1/num_characteristics) and shrinks under refinement. Judge a solve by
-     * whether the shortfall *shrinks with N*, not by its value on a single grid -- a coarse
-     * healthy planar solve and a genuinely truncated axisymmetric one are indistinguishable
-     * here (both ~0.92 at N=8). Reported rather than folded into `converged` for exactly
-     * that reason.
+     * Always 1.0 for MocMode::DESIGN_MIN_LENGTH: the minimum-length march is defined to stop
+     * exactly at theta_max, so there is no partial-coverage case to report. For the
+     * front-based modes (ANALYSIS, DESIGN_RAO) the reference-plane march (InverseMarch)
+     * places its last front exactly on the exit plane when it converges (1.0); on a solve
+     * that fails partway, this is instead the fraction of the target exit radius the net's
+     * last wall point actually reached.
      */
     double exit_coverage = 0.0;
     /// Same-family characteristic crossings in the finished net; nonzero means coalescence.
@@ -476,7 +479,8 @@ struct MocResult {
     /// CharacteristicNet::fronts for their own mesh record.
     MocCrossings crossings;
 
-    /// True when exit_coverage is within the (deliberately loose) staircase allowance.
+    /// True when the net actually reached the exit plane; false only for a front-based
+    /// (ANALYSIS/DESIGN_RAO) solve that failed partway -- always true for minimum-length design.
     bool reached_exit_plane = false;
 
     /**

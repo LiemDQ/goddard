@@ -20,9 +20,9 @@ namespace {
 
 // Resolved wall contour for a solve: options.nozzle_profile as given (ANALYSIS,
 // DESIGN_MIN_LENGTH), or the generated Rao contour (DESIGN_RAO). Returned by value so the
-// caller holds it as a solve() local -- never written back into options.nozzle_profile (that
-// write-back was a bug: it made a later solve on the same MocNozzle instance, with mode
-// changed away from DESIGN_RAO, see the stale Rao contour from a prior solve).
+// caller holds it as a solve() local -- never written back into options.nozzle_profile: doing
+// so would leave a later solve on the same MocNozzle instance, with mode changed away from
+// DESIGN_RAO, reading a stale Rao contour from the prior solve.
 NozzleProfile resolve_wall_profile(const MocOptions& options) {
     switch (options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
@@ -76,8 +76,8 @@ ExitPlane exit_plane_of(const CharacteristicNet& net, MocMode mode) {
         return exit_plane;
     }
 
-    // Add the last characteristic for min length nozzle. Guarded by emptiness: a kernel
-    // that now fails fast can abort before any axis/wall point has been recorded, where
+    // Add the last characteristic for min length nozzle. Guarded by emptiness: the kernel
+    // fails fast, so it can abort before any axis/wall point has been recorded, where
     // leading_axis_point()/leading_wall_point() would otherwise index an empty vector.
     if (!net.axis_point_indices.empty()) {
         append_exit_plane_point(exit_plane, net.leading_axis_point());
@@ -90,8 +90,7 @@ ExitPlane exit_plane_of(const CharacteristicNet& net, MocMode mode) {
 
 // Exit-to-throat area ratio, given the throat reference radius r_throat (net.wall_y.front()
 // for the ladder, the geometry throat radius for the inverse march -- see solve()). Callers
-// guard net.wall_y/r_throat emptiness themselves, matching the two guards that used to gate
-// this arithmetic inline.
+// guard net.wall_y/r_throat emptiness themselves before calling this.
 double area_ratio_of(const CharacteristicNet& net, MocFlowKind flow, double r_throat) {
     const double y_ratio = net.wall_y.back() / r_throat;
     return (flow == MocFlowKind::PLANAR) ? y_ratio : y_ratio * y_ratio;
@@ -182,11 +181,11 @@ MocResult MocNozzle::solve() {
             direct_march.emplace(ctx, line, net);
             direct_march->seed();
 
-            // Anchor mesh control to the geometry, once, from the line actually seeded. Both
-            // init paths put a wall point at the throat lip first, so wall_y.front() is the
-            // throat radius in whatever units the net is carrying; taking it from the net rather
-            // than from geometry.throat_radius keeps the two consistent even when the initial
-            // line is built in normalized coordinates.
+            // Establish throat_radius and reference_spacing, once, from the line actually
+            // seeded. Both init paths put a wall point at the throat lip first, so
+            // wall_y.front() is the throat radius in whatever units the net is carrying;
+            // taking it from the net rather than from geometry.throat_radius keeps the two
+            // consistent even when the initial line is built in normalized coordinates.
             if (!net.wall_y.empty() && net.wall_y.front() > 0.0 &&
                 options.num_characteristics > 1) {
                 throat_radius = net.wall_y.front();
@@ -195,19 +194,19 @@ MocResult MocNozzle::solve() {
             }
         }
         else {
-            // INVERSE: no throat-lip anchor is seeded (see InverseMarch::initial_front /
-            // CharacteristicNet::add_front); wall_x.front() is F_0's own wall point, not
-            // (0, 1), so the throat radius for area_ratio/mesh purposes comes from the
-            // geometry directly.
+            // The front-based kernel (InverseMarch): no throat-lip anchor is seeded (see
+            // InverseMarch::initial_front / CharacteristicNet::add_front); wall_x.front() is
+            // F_0's own wall point, not (0, 1), so the throat radius for area_ratio and
+            // diagnostic purposes comes from the geometry directly.
             inverse_march.emplace(ctx, net);
             inverse_march->seed(m_inverse_front_override.has_value()
                 ? line.points : inverse_march->initial_front(line));
             throat_radius = (options.geometry.throat_radius > 0.0)
                 ? options.geometry.throat_radius : 1.0;
-            // reference_spacing was silently left at 0 here before this step, which made
-            // MocInitDiagnostics::wall_gap_over_spacing and wall_station_to_tangency use
-            // spacing = 1 for every analysis/Rao solve; anchoring it the same way the ladder
-            // does is the one intended behavior change of this refactor.
+            // Without this, reference_spacing would stay 0 for every analysis/Rao solve,
+            // which would make MocInitDiagnostics::wall_gap_over_spacing and
+            // wall_station_to_tangency silently report spacing = 1; anchoring it the same way
+            // the chain ladder does keeps both kernels' diagnostics comparable.
             if (options.num_characteristics > 1) {
                 reference_spacing = throat_radius / static_cast<double>(options.num_characteristics - 1);
             }
@@ -279,22 +278,19 @@ MocResult MocNozzle::solve() {
     result.pass_diagnostics = inverse_march.has_value() ? inverse_march->pass_diagnostics
                                                          : std::vector<MocPassDiagnostics>{};
 
-    // How much of the requested exit radius the outflow boundary actually reached. The
-    // boundary is a ragged staircase of independently terminated chains, so even a healthy
-    // march ends up to about one characteristic spacing short; the allowance below is two
-    // spacings. This is reported, not folded into `converged`: measured coverage does not
-    // separate a coarse-but-healthy solve from a truncated one (planar N=8 and the
-    // axisymmetric AR=4 N=8 truncation both sit at 0.92), so the meaningful test is whether
-    // the shortfall shrinks under refinement, which only a grid sweep can see.
+    // Fraction of the target exit radius the net reached (MocResult::exit_coverage). Always
+    // full for the minimum-length ladder, which is defined to stop exactly at theta_max. For
+    // the front-based kernel the last pass always lands exactly on the exit plane when the
+    // march converges; on a solve that fails partway, this instead reports how far the net's
+    // last wall point got, which is the diagnostic exit_coverage exists for.
     if (options.mode == MocMode::DESIGN_MIN_LENGTH) {
         result.exit_coverage = 1.0;
         result.reached_exit_plane = true;
     }
     else {
-        // The inverse march always lands its last front exactly on the exit plane (see
-        // InverseMarch::run()'s MocStepLimiter::EXIT step) -- there is no ragged outflow
-        // staircase to fall short of. A march that failed partway did not reach it; report
-        // how far it got instead.
+        // The inverse march always lands its last front exactly on the exit plane when it
+        // converges (see InverseMarch::run()'s MocStepLimiter::EXIT step). A march that
+        // failed partway did not reach it; report how far it got instead.
         if (!kernel_failure.has_value()) {
             result.exit_coverage = 1.0;
             result.reached_exit_plane = true;
@@ -309,8 +305,8 @@ MocResult MocNozzle::solve() {
     }
     if (options.mode != MocMode::DESIGN_MIN_LENGTH) {
         // net.wall_x.front()/wall_y.front() are F_0's own wall point, not the throat lip
-        // (0, 1) DirectMarch seeds -- see the INVERSE seeding branch above -- so the throat
-        // radius reference comes from the geometry directly instead.
+        // (0, 1) DirectMarch seeds -- see the front-based seeding branch above -- so the
+        // throat radius reference comes from the geometry directly instead.
         if (!net.wall_y.empty()) {
             result.area_ratio = area_ratio_of(net, options.flow_type, throat_radius);
         }
@@ -320,11 +316,11 @@ MocResult MocNozzle::solve() {
     }
 
     // Exit Mach:
-    // For a min-length nozzle the exit flow is uniform, so the last computed point
-    // (on the final characteristic) is representative.
-    // In analysis mode the outflow boundary is a ragged staircase of terminated
-    // chains and the last computed point is arbitrary; report the centerline exit
-    // Mach (most downstream axis point) instead.
+    // For a min-length nozzle the exit flow is uniform by construction, so the last computed
+    // point (on the final characteristic) is representative.
+    // For analysis/Rao the exit flow is generally not uniform, so no single computed point
+    // represents "the" exit Mach; report the centerline value (most downstream axis point)
+    // instead, for a number that is consistently defined across modes.
     if (!net.points.empty()) {
         if (options.mode != MocMode::DESIGN_MIN_LENGTH && !net.axis_point_indices.empty()) {
             result.exit_mach = net.leading_axis_point().mach;
@@ -337,11 +333,7 @@ MocResult MocNozzle::solve() {
     result.profile.x = net.wall_x;
     result.profile.y = net.wall_y;
 
-    // Exit plane extraction:
-    // For a min-length nozzle, the exit plane is the last wavefront + last wall point.
-    // The last wavefront contains the axis point, and each preceding wavefront's
-    // last point was absorbed into wall calculations.
-    // For every other mode, it is exactly the last front the kernel built.
+    // Exit plane extraction: see exit_plane_of() above.
     result.exit_plane = exit_plane_of(net, options.mode);
 
     m_is_solved = true;

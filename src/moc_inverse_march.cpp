@@ -52,8 +52,9 @@ std::optional<std::pair<size_t, double>> trace_back_to_front(
  * overshoots the plateau, and in planar flow that overshoot is then carried downstream
  * exactly, along the characteristics, so it accumulates into a ringing of a degree or more
  * around the plateau -- enough to drive the small flow angle next to the axis negative.
- * Measured on the planar minimum-length round trip before this guard: K- of 30.74 deg two
- * points above the axis where the exact value is 30.00 everywhere.
+ * Without the guard below, a planar minimum-length design contour fed back through
+ * analysis measures K- of 30.74 deg two points above the axis where the exact value is
+ * 30.00 everywhere.
  *
  * Two standard remedies, both applied: the three-point stencil is chosen on the side of the
  * bracketing segment with the smaller second difference (ENO selection, so a stencil is not
@@ -160,9 +161,9 @@ std::optional<FootHit> trace_plain(
  * A C+ traced backward from a point close to the axis can cross y=0 before meeting `front`
  * (which only spans y >= 0): by axisymmetric/planar centerline mirror symmetry, tracing the
  * reflected ray from (x0, -y0) at -angle into the (unreflected) front and negating theta on
- * the way back gives the physically correct foot, now reported at y < 0. See B.md Sec.
- * "Interior point", axis mirror. Used only for the C+ family (and the wall's own C+
- * trace, defensively) -- see trace_plain for why C- must not fall back to this.
+ * the way back gives the physically correct foot, now reported at y < 0. Used only for the
+ * C+ family (and the wall's own C+ trace, defensively) -- see trace_plain for why C- must
+ * not fall back to this.
  */
 std::optional<FootHit> trace_with_axis_mirror(
     double x0, double y0, double angle,
@@ -195,7 +196,8 @@ std::vector<CharacteristicPoint> InverseMarch::initial_front(const StartLine& st
     // marched state, blending across the two bracketing rays. In planar flow the invariants
     // are constant along a ray and this is exact; in axisymmetric flow the C- source term
     // accumulated over the ray -- large near the lip, where the rays are near-sonic -- enters
-    // through the marched state exactly as the DIRECT kernel's own one-step fan does. Points
+    // through the marched state exactly as the chain ladder's (DirectMarch) own one-step fan
+    // does. Points
     // above the last ray take the last ray's state; the wall point takes the contour's angle
     // with nu from the C+ compatibility relation with the point below it. The lip is (0, 1)
     // in the normalized units initialize_centered_expansion uses.
@@ -309,9 +311,9 @@ PointResult InverseMarch::solve_interior_point(double x, double y, const std::ve
     p4.x = x;
     p4.y = y;
 
-    // Seed from a direct cross-front interpolation at y (B.md Sec. 5); only seeds the
-    // iteration below, so a linear/quadratic blend across characteristics is fine here even
-    // though it would not be an admissible final answer.
+    // Seed from a direct cross-front interpolation at y; only seeds the iteration below, so
+    // a linear/quadratic blend across characteristics is fine here even though it would not
+    // be an admissible final answer.
     std::optional<size_t> seed_seg = bracket_front(m_net, front, y);
     if (!seed_seg.has_value()) return {p4, MocErrorCode::NON_DOWNSTREAM_POINT};
     FrontFit seed_fit = lagrange_front_fit(m_net, front, *seed_seg, y);
@@ -376,7 +378,7 @@ PointResult InverseMarch::solve_interior_point(double x, double y, const std::ve
         const bool converged =
             std::abs(p4.theta - theta_prev) < 1e-9 && std::abs(p4.nu - nu_prev) < 1e-9;
         // Predictor-corrector angle for the next trace: average of the refined new point
-        // and the foot found this iteration (B.md Sec. "Interior point").
+        // and the foot found this iteration.
         angle_minus = average_cminus_angle(p4, foot_minus->state);
         angle_plus = average_cplus_angle(p4, foot_plus->state);
         if (converged) break;
@@ -458,10 +460,10 @@ PointResult InverseMarch::solve_wall_point(double x, double y, const std::vector
         if (!foot.has_value()) return {wall_point, MocErrorCode::NON_DOWNSTREAM_POINT};
         if (err_foot != MocErrorCode::NONE) return {wall_point, err_foot};
 
-        // K+ transported with cplus_source_term(foot, wall_point), exactly as the DIRECT
-        // wall solvers do; here the position is prescribed and the foot (and hence the
-        // source term) is what iterates, so convergence is judged on nu rather than on the
-        // source-term residual those solvers use.
+        // K+ transported with cplus_source_term(foot, wall_point), exactly as the chain
+        // ladder's (DirectMarch) wall solvers do; here the position is prescribed and the
+        // foot (and hence the source term) is what iterates, so convergence is judged on nu
+        // rather than on the source-term residual those solvers use.
         const double S = axisymmetric ? cplus_source_term(foot->state, wall_point) : 0.0;
         const double nu_new = wall_point.theta - foot->state.theta + S + foot->state.nu;
 
@@ -599,9 +601,9 @@ void InverseMarch::prescribe_front(
     // and relaxed toward a vertical plane by removing a fraction lambda of every offset.
     // lambda is capped so the relaxation moves no point by more than half a step: every
     // point advances by between dx/2 and 3dx/2, which is what the step bounds assume. (A
-    // fixed per-pass decay of the tilt, independent of dx, moved the axis end *upstream*
-    // whenever the near-axis step was small, which is how the first version of this kernel
-    // failed at pass 0 on a Kliegel-Levine front.)
+    // fixed per-pass decay of the tilt, independent of dx, would move the axis end
+    // *upstream* whenever the near-axis step is small, which fails at pass 0 on a
+    // Kliegel-Levine front.)
     const size_t M = front.size();
     const CharacteristicPoint& wall_old = m_net.points[front.back()];
     const NozzleProfile& wall_profile = m_ctx.wall;

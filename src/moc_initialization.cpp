@@ -171,9 +171,9 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     // front shears until pairing breaks down. The ratio is set by the flow, not the mesh, so
     // it is *independent of num_characteristics*: refining the grid halves every gap and
     // leaves the grading (measured 6.2 to 7.2 for N = 8 to 61) intact. That is why grid
-    // refinement never cured the axisymmetric breakdown -- and why clustering the line
-    // toward the axis to compensate was tried and abandoned (the benefit does not survive
-    // refinement); interior stations are simply uniform in y.
+    // refinement never cures the axisymmetric breakdown, and why clustering the line toward
+    // the axis would not help either: the benefit of such clustering does not survive
+    // refinement, so interior stations are simply uniform in y.
     std::vector<CharacteristicPoint> points(num_points);
     const double last = static_cast<double>(num_points - 1);
 
@@ -196,12 +196,11 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     // Wall-consistent correction. The wall point's theta was left as the raw series value
     // above (evaluate() has no notion of the contour), and that raw value is frequently
     // wrong by a lot: at the default r_arc = 0.382 the series recovers only ~40% of the
-    // contour's own wall angle there (diagnosis.md Sec A2 -- the truncated z-dependent
-    // terms of a third-order expansion do not converge for a throat this sharply curved).
-    // Leaving that mismatch in place, as an earlier version of this function argued for,
-    // makes K+ = theta - nu on the near-wall interior points 8-10 deg too negative, which
-    // the first wall solve reads as an over-expansion and the wall Mach dips for the next
-    // several wall points before recovering (Sec A1) -- refining the grid does not cure it,
+    // contour's own wall angle there (the truncated z-dependent terms of a third-order
+    // expansion do not converge for a throat this sharply curved). Leaving that mismatch in
+    // place makes K+ = theta - nu on the near-wall interior points 8-10 deg too negative,
+    // which the first wall solve reads as an over-expansion and the wall Mach dips for the
+    // next several wall points before recovering -- refining the grid does not cure it,
     // since the mismatch is a property of the series, not of the mesh.
     //
     // Measure the raw mismatch first (before touching any theta), then either let the
@@ -210,12 +209,11 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     // contour exactly.
     //
     // The correction is multiplicative (theta_i *= theta_wall / theta_series_wall), not a
-    // uniform or linearly-graded additive offset: three variants were measured against
-    // conical AR=4, r_arc=0.382, N=15/31/61, mesh control non-binding (see the package
-    // report for the full table). An additive correction weighted by (y_i/y_wall) -- p=1 --
-    // reduces the wall-Mach dip diagnosis.md Sec A1 documents but leaves it 7 wall points
-    // deep at N=61 (peak-to-trough 0.035 in Mach) with the largest single-step regression
-    // (-0.015). Squaring the weight (p=2) or scaling multiplicatively both concentrate the
+    // uniform or linearly-graded additive offset: measured against conical AR=4,
+    // r_arc=0.382, N=15/31/61, an additive correction weighted by (y_i/y_wall) -- p=1 --
+    // reduces the wall-Mach dip but leaves it 7 wall points deep at N=61 (peak-to-trough
+    // 0.035 in Mach) with the largest single-step regression (-0.015). Squaring the weight
+    // (p=2) or scaling multiplicatively both concentrate the
     // correction much more sharply at the wall end, where the series is weakest and
     // irrotationality ties every interior theta to the same u/v polynomials the wall angle
     // was read from; either shrinks the dip to 4 points at N=61 (0.014 peak-to-trough,
@@ -260,7 +258,7 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     }
     // Else: no wall profile to check against (e.g. MocInitialization exercised directly,
     // without a MocNozzle solve() around it) -- nothing to correct or measure against, so
-    // the series' own theta is returned unmodified, exactly as before this change.
+    // the series' own theta is returned unmodified.
 
     //TODO: corrector step with updated gamma
 
@@ -462,8 +460,8 @@ double MocInitialization::KL_solve_transonic_x(double y, double gamma, double R,
 
 namespace {
 
-// The centered-fan march loop, written once: MocMode::DESIGN_MIN_LENGTH and the
-// ANALYSIS/DESIGN_RAO fan branch both ran this identical loop (previously duplicated).
+// The centered-fan march loop, shared by MocMode::DESIGN_MIN_LENGTH and the
+// ANALYSIS/DESIGN_RAO fan branch.
 std::vector<CharacteristicPoint> march_centered_fan(
     const MocSolveContext& ctx, const std::vector<CharacteristicPoint>& expansion_line)
 {
@@ -555,9 +553,8 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
     }
 
     // Resolve which start line this solve actually uses, once, as a single enum-valued
-    // decision that both the fan/KL choice below and the theta_max derivation key off of
-    // (previously a bool computed the choice while a separate ad hoc condition guarded the
-    // theta_max derivation, and the two could disagree once a fallback was possible).
+    // decision that both the fan/KL choice below and the theta_max derivation key off of,
+    // so the two cannot disagree.
     // MocStartLine::AUTO keeps today's rule: a positive downstream curvature radius and
     // axisymmetric flow select the Kliegel-Levine series; anything else selects the fan.
     // The series is also not valid for planar flow when forced (validate_moc_options
@@ -585,22 +582,21 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
     // between the eager fan path and the AUTO fallback below (see the KL catch clause) so
     // the fallback gets exactly the same theta_max the eager path would have used.
     //
-    // DESIGN_RAO is included alongside ANALYSIS: before this package DESIGN_RAO's default
-    // positive curvature radius meant it never took the fan branch at all (use_centered_fan
-    // was false whenever curvature was positive and axisymmetric), so this branch's
-    // ANALYSIS-only guard was never exercised for it. The AUTO wall-angle-miss fallback
-    // changes that -- DESIGN_RAO's default r_arc = 0.382 throat misses the threshold just
-    // as an ANALYSIS contour at the same throat does -- and DESIGN_RAO's profile is equally
-    // available here: solve() resolves the wall contour (which generates the Rao contour
-    // for DESIGN_RAO) before build_start_line() runs, for every mode.
+    // DESIGN_RAO is included alongside ANALYSIS: its default positive curvature radius does
+    // not guarantee the Kliegel-Levine series meets the wall-angle threshold (the default
+    // r_arc = 0.382 throat misses it, just as an ANALYSIS contour at the same throat does),
+    // so the AUTO wall-angle-miss fallback can still land DESIGN_RAO on the fan branch, and
+    // DESIGN_RAO's profile is equally available here: solve() resolves the wall contour
+    // (which generates the Rao contour for DESIGN_RAO) before build_start_line() runs, for
+    // every mode.
     // MocInitialization reads its wall contour from its own MocOptions copy (its constructor
-    // predates MocSolveContext and takes MocOptions, not a resolved NozzleProfile), so the
-    // copy's nozzle_profile has to be the *resolved* contour (ctx.wall) rather than
-    // ctx.options.nozzle_profile as given: for DESIGN_RAO the latter is whatever the caller
-    // passed (typically empty; the generated Rao contour lives only in ctx.wall now that
-    // solve() no longer writes it back into options.nozzle_profile -- see resolve_wall_profile
-    // in moc_nozzle.cpp). initialize_kliegel_levine's wall-consistent correction and its
-    // y_wall fixed-point both key off this field.
+    // takes a MocOptions, not a resolved NozzleProfile), so the copy's nozzle_profile has to
+    // be the *resolved* contour (ctx.wall) rather than ctx.options.nozzle_profile as given:
+    // for DESIGN_RAO the latter is whatever the caller passed (typically empty), since the
+    // generated Rao contour lives only in ctx.wall -- solve() does not write it back into
+    // options.nozzle_profile (see resolve_wall_profile in moc_nozzle.cpp).
+    // initialize_kliegel_levine's wall-consistent correction and its y_wall fixed-point both
+    // key off this field.
     MocOptions init_options = ctx.options;
     init_options.nozzle_profile = ctx.wall;
     auto derive_fan_theta_max = [&]() {
