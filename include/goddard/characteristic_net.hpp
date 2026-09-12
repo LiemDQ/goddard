@@ -7,6 +7,11 @@
 
 namespace Goddard {
 
+/** How a characteristic chain stopped being marched. */
+enum class ChainTermination {
+    NOT_TERMINATED, WALL, AXIS
+};
+
 /**
  * Bookkeeping for one characteristic chain in a CharacteristicNet.
  *
@@ -16,14 +21,10 @@ namespace Goddard {
 struct ChainMetadata {
     /// False once the chain has terminated; only active chains are still marched.
     bool active = true;
-    /// How a chain stopped being marched.
-    enum class TerminationType {
-        NOT_TERMINATED, WALL, AXIS, OUTFLOW
-    } termination = TerminationType::NOT_TERMINATED;
-    /// Which characteristic family the chain belongs to.
-    enum class Family {
-        UNSPECIFIED, PLUS, MINUS
-    } family;
+    /// How this chain stopped being marched.
+    ChainTermination termination = ChainTermination::NOT_TERMINATED;
+    /// Which characteristic family this chain belongs to.
+    CharacteristicFamily family;
     /// Index into CharacteristicNet::points of the chain's first point.
     size_t origin_point_idx;
     /// Index into CharacteristicNet::points of the chain's leading (most downstream) point.
@@ -43,12 +44,16 @@ struct PointMembership {
     std::optional<size_t> c_minus_chain_idx;
 };
 
+/**
+ * The method-of-characteristics flow field mesh: every solved point, the characteristic
+ * chains and marching fronts that connect them, and the wall/axis boundary bookkeeping.
+ * Built up incrementally by the two kernels (the chain-pairing ladder for minimum-length
+ * design, the reference-plane march for analysis and Rao design) via the mutation methods
+ * below; queried afterward via the columnar point data and the boundary/chain accessors.
+ */
 class CharacteristicNet {
 
     public:
-    using Family = ChainMetadata::Family;
-    using TerminationType = ChainMetadata::TerminationType;
-    
     /**
      * Every point in the net, in creation order. The index is opaque; the flow-field topology
      * lives in `c_chains`, and the boundaries in `wall_point_indices`/`axis_point_indices`.
@@ -76,16 +81,21 @@ class CharacteristicNet {
     /** Indices into `points` of the points lying on the centerline, in march order. */
     std::vector<size_t> axis_point_indices;
 
-    /** Axial coordinates of the wall points, in length units. */
+    /**
+     * Axial coordinates of the wall points, in length units. The net owns the invariant
+     * that `wall_x`/`wall_y` stay parallel to `wall_point_indices` (same length, same
+     * order); every method that appends to `wall_point_indices` appends to these too.
+     */
     std::vector<double> wall_x;
-    /** Radial coordinates of the wall points, in length units. */
+    /** Radial coordinates of the wall points, in length units. See `wall_x`. */
     std::vector<double> wall_y;
 
     /**
-     * Inverse march only (MocMarchScheme::INVERSE): point indices of every marching front,
-     * axis to wall, in order. `fronts.front()` is the initial front F_0 and `fronts.back()`
-     * is the exit plane once the march has completed. Empty for the DIRECT kernel, which
-     * has no synchronized front -- its topology lives entirely in `c_chains`.
+     * Point indices of every marching front, axis to wall, in order. Populated by the
+     * front-based nets (analysis and Rao design): `fronts.front()` is the initial front F_0
+     * and `fronts.back()` is the exit plane once the march has completed. Empty for the
+     * chain-pairing ladder (minimum-length design), which has no synchronized front -- its
+     * topology lives entirely in `c_chains`.
      */
     std::vector<std::vector<size_t>> fronts;
 
@@ -127,12 +137,8 @@ class CharacteristicNet {
      * assumed to lie on distinct characteristics (a non-collinear transonic start line, e.g.
      * Kliegel-Levine): every interior point seeds both a C+ and a C- chain, mirroring the
      * fan-init topology, and the last point (already at the wall) immediately reflects into
-     * the first C- chain, exactly as a wall reflection would during marching. This requires
-     * the line to be lifted off the raw sonic (v=0) locus first (see
-     * MocInitialization::initialize_kliegel_levine and
-     * MocOptions::initial_line_axial_shift) -- pairing two points still on the raw sonic
-     * locus directly can land behind both parents, since mu -> 90 deg there near the axis.
-     * The first point (the axis bootstrap) seeds only a C+: giving it a C- would immediately
+     * the first C- chain, exactly as a wall reflection would during marching. The first
+     * point (the axis bootstrap) seeds only a C+: giving it a C- would immediately
      * re-reflect it off the axis as a degenerate point. When `on_characteristic` is set the
      * points are collinear along a single characteristic of that family (e.g. a centered
      * expansion fan), and are seeded as one shared chain via add_initial_characteristic.
@@ -142,19 +148,27 @@ class CharacteristicNet {
      */
     void add_initial_data_line(
         const std::vector<CharacteristicPoint>& points,
-        std::optional<Family> on_characteristic = std::nullopt);
+        std::optional<CharacteristicFamily> on_characteristic = std::nullopt);
 
     /** Add points from an initial data line that happens to be along a characteristic.
      * This is primarily used when the initial data line originates from a centered expansion.
     */
-    void add_initial_characteristic(const std::vector<CharacteristicPoint>& points, Family family = Family::PLUS);
+    void add_initial_characteristic(const std::vector<CharacteristicPoint>& points,
+                                     CharacteristicFamily family = CharacteristicFamily::PLUS);
 
-    /** Create a new characteristic with `pt_idx` as the starting point, 
+    /** Add a marching front's points (axis to wall) to the net: no chain membership (the
+     * front-based kernels do not use c_chains), but registers the front's axis and wall
+     * points and records it in `fronts`.
+     * @return Indices into `points` of the added front, axis to wall.
+     */
+    std::vector<size_t> add_front(const std::vector<CharacteristicPoint>& front_points);
+
+    /** Create a new characteristic with `pt_idx` as the starting point,
      * and add it to the tracking lists.
-     * 
+     *
      * @return Index of the chain
      */
-    size_t create_chain(size_t pt_idx, Family family);
+    size_t create_chain(size_t pt_idx, CharacteristicFamily family);
     
     /** Add a characteristic chain and its metadata to be tracked. 
      * @return Index of the chain
@@ -186,27 +200,25 @@ class CharacteristicNet {
     size_t seed_wall_point(const CharacteristicPoint& pt);
 
     // Mark a chain as inactive.
-    void terminate_chain(size_t chain_idx, TerminationType termtype);
-    
-    // Mark a chain as inactive while updating the last point. 
-    void update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, TerminationType termtype);
+    void terminate_chain(size_t chain_idx, ChainTermination termtype);
+
+    // Mark a chain as inactive while updating the last point.
+    void update_and_terminate_chain(size_t chain_idx, size_t last_pt_idx, ChainTermination termtype);
 
     /** True while at least one chain is still being marched. */
     bool has_active_chains() const;
 
-    /**
-     * The leading points of every chain that terminated by flowing out of the domain.
-     */
-    std::vector<CharacteristicPoint> outflow_points() const;
-    /** Every point lying on the centerline, in march order. */
+    /** Every point at `axis_point_indices`, in march order. Kernel-independent: populated
+     *  for both the chain-pairing ladder and the front-based (analysis/Rao) kernels. */
     std::vector<CharacteristicPoint> axis_points() const;
-    /** Every point lying on the nozzle wall, in march order. */
+    /** Every point at `wall_point_indices`, in march order. Kernel-independent: populated
+     *  for both the chain-pairing ladder and the front-based (analysis/Rao) kernels. */
     std::vector<CharacteristicPoint> wall_points() const;
 
     // Generate view of metadata of active chains that belong to a given family.
-    auto active_chains(Family family = Family::UNSPECIFIED) {
-        auto is_active = [family](const ChainMetadata& meta) { 
-            if (family != Family::UNSPECIFIED) {
+    auto active_chains(CharacteristicFamily family = CharacteristicFamily::UNSPECIFIED) {
+        auto is_active = [family](const ChainMetadata& meta) {
+            if (family != CharacteristicFamily::UNSPECIFIED) {
                 return meta.active && (meta.family == family);
             }
             else return meta.active;

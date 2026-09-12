@@ -90,19 +90,26 @@ TEST_P(MocTextbookValidation, WallFlowMatchesReference) {
     const auto& ref = GetParam();
     const auto wall_pts = result.net.wall_points();
 
-    ASSERT_EQ(wall_pts.size(), ref.wall_nodes.size())
-        << "Expected one wall point per characteristic";
+    // wall_points() now includes the seeded throat-lip anchor (wall_pts[0]) ahead of the
+    // solved wall points, so there is one more entry than the Anderson table has rows. The
+    // anchor carries theta == theta_max exactly (that is what it was seeded with) but no
+    // solved thermodynamic state, so it is checked separately from the node-by-node
+    // comparison below.
+    ASSERT_EQ(wall_pts.size(), ref.wall_nodes.size() + 1)
+        << "Expected one wall point per characteristic, plus the seeded throat-lip anchor";
+    EXPECT_NEAR(wall_pts.front().theta / DEG, ref.theta_max_deg, 1e-6);
 
-    // The first wall point corresponds to the small bootstrap ray (theta_schedule[0]), so
-    // its angle is theta_max - theta_schedule[0] rather than exactly theta_max (the throat-lip
-    // value Anderson Table 11.1 tabulates as wall node 0). Validate it loosely; compare the
-    // remaining, well-defined wall points node-for-node against the textbook.
-    EXPECT_NEAR(wall_pts.front().theta / DEG, ref.theta_max_deg, 0.5);
-    EXPECT_GT(wall_pts.front().mach, 1.0);
+    // The first *solved* wall point corresponds to the small bootstrap ray
+    // (theta_schedule[0]), so its angle is theta_max - theta_schedule[0] rather than exactly
+    // theta_max (the throat-lip value Anderson Table 11.1 tabulates as wall node 0).
+    // Validate it loosely; compare the remaining, well-defined wall points node-for-node
+    // against the textbook.
+    EXPECT_NEAR(wall_pts[1].theta / DEG, ref.theta_max_deg, 0.5);
+    EXPECT_GT(wall_pts[1].mach, 1.0);
 
     for (size_t i = 1; i < ref.wall_nodes.size(); i++) {
         const auto& node = ref.wall_nodes[i];
-        const auto& pt = wall_pts[i];
+        const auto& pt = wall_pts[i + 1];
         EXPECT_NEAR(pt.theta / DEG, node.theta, 0.01) << "wall theta mismatch at index " << i;
         EXPECT_NEAR(pt.nu / DEG, node.nu, 0.01) << "wall nu mismatch at index " << i;
         EXPECT_NEAR(pt.mach, node.mach, 0.01) << "wall Mach mismatch at index " << i;
@@ -140,18 +147,20 @@ TEST_P(MocTextbookValidation, ExitMach) {
 }
 
 TEST_P(MocTextbookValidation, UniformExitFlow) {
-    // The last wavefront should have nearly uniform Mach and theta ~ 0
-    // (the straightening section cancels all expansion waves)
-    const auto& last_wf = result.net.outflow_points();
+    // The exit plane should have nearly uniform Mach and theta ~ 0 (the straightening
+    // section cancels all expansion waves). CharacteristicNet::outflow_points() is gone --
+    // no minimum-length chain ever terminates OUTFLOW, so it always returned an empty
+    // vector -- MocResult::exit_plane is the exit-plane sample this test actually wants.
+    const auto& exit_plane = result.exit_plane;
 
-    for (const auto& pt : last_wf) {
-        EXPECT_NEAR(pt.theta, 0.0, 0.5 * DEG)
+    for (double theta : exit_plane.theta) {
+        EXPECT_NEAR(theta, 0.0, 0.5 * DEG)
             << "Exit plane theta should be ~0";
     }
 
-    if (last_wf.size() > 1) {
-        double m_first = last_wf.front().mach;
-        double m_last = last_wf.back().mach;
+    if (exit_plane.mach.size() > 1) {
+        double m_first = exit_plane.mach.front();
+        double m_last = exit_plane.mach.back();
         EXPECT_NEAR(m_first, m_last, 0.02)
             << "Exit plane Mach should be approximately uniform";
     }

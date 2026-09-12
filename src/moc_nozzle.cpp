@@ -165,14 +165,15 @@ MocResult MocNozzle::solve() {
         }
         else {
             // INVERSE: no throat-lip anchor is seeded (see build_inverse_initial_front /
-            // seed_inverse_front); wall_x.front() is F_0's own wall point, not (0, 1), so the
-            // throat radius for area_ratio/mesh purposes comes from the geometry directly.
+            // CharacteristicNet::add_front); wall_x.front() is F_0's own wall point, not
+            // (0, 1), so the throat radius for area_ratio/mesh purposes comes from the
+            // geometry directly.
             std::vector<CharacteristicPoint> front0 = build_inverse_initial_front(data_line);
             if (front0.size() < 2) {
                 throw ConvergenceError(
                     "Inverse march: initial front has fewer than two points.");
             }
-            seed_inverse_front(net, front0);
+            net.add_front(front0);
             m_throat_radius = (m_options.geometry.throat_radius > 0.0)
                 ? m_options.geometry.throat_radius : 1.0;
         }
@@ -479,7 +480,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             // Therefore all initialization methods simplify to straight line initialization.
 
             // A centered expansion fan is collinear along a single C+ characteristic.
-            m_initial_line_family = ChainMetadata::Family::PLUS;
+            m_initial_line_family = CharacteristicFamily::PLUS;
 
             auto expansion_line = initializer->initialize_centered_expansion(throat);
             // Mirror the fan angles (user-supplied or auto-generated inside the
@@ -542,7 +543,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 }
             }
             if (resolved_start_line == MocStartLine::CENTERED_FAN) {
-                m_initial_line_family = ChainMetadata::Family::PLUS;
+                m_initial_line_family = CharacteristicFamily::PLUS;
                 auto expansion_line = initializer->initialize_centered_expansion(throat);
                 m_theta_schedule.resize(expansion_line.size());
                 for (size_t i = 0; i < expansion_line.size(); i++) {
@@ -595,7 +596,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
 }
 
 std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicNet& net) {
-    using Family = ChainMetadata::Family;
+    using Family = CharacteristicFamily;
     LeadingEdgeView plus_edges = leading_edges(net, Family::PLUS);
     sort_plus_edges_by_proximity(plus_edges, net);
     LeadingEdgeView minus_edges = leading_edges(net, Family::MINUS);
@@ -763,10 +764,9 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
         // minimum-length contour.
         for (auto&& [pt, mem] : intersections) {
             if (!mem.c_minus_chain_idx.has_value()) {
-                // C+ reaches the wall: absorb it (no reflected wave).
+                // C+ reaches the wall: absorb it (no reflected wave). terminate_c_plus_at_wall
+                // pushes wall_x/wall_y itself.
                 net.terminate_c_plus_at_wall(*mem.c_plus_chain_idx, pt);
-                net.wall_x.push_back(pt.x);
-                net.wall_y.push_back(pt.y);
             }
             else if (!mem.c_plus_chain_idx.has_value()) {
                 // C- reaches the axis: reflect it into a new upward-marching C+.
@@ -1652,7 +1652,7 @@ double MocNozzle::cminus_source_term(
     return -sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
 }
 
-MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net, ChainMetadata::Family fam) const {
+MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net, CharacteristicFamily fam) const {
     LeadingEdgeView view;
     view.family = fam;
     for (size_t i = 0; i < net.chain_metadata.size(); i++) {
@@ -1666,7 +1666,7 @@ MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net
     return view;
 }
 
-void MocNozzle::update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, ChainMetadata::Family family) const {
+void MocNozzle::update_leading_edges(LeadingEdgeView& view, const CharacteristicNet& net, CharacteristicFamily family) const {
     view.y_values.clear();
     view.chain_indices.clear();
     view.leading_pt_indices.clear();

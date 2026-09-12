@@ -215,7 +215,7 @@ struct MocCrossings {
     size_t count = 0;          ///< Number of same-family characteristic crossings found.
     double first_x = 0.0;      ///< Position of the most upstream crossing.
     double first_y = 0.0;
-    ChainMetadata::Family first_family = ChainMetadata::Family::UNSPECIFIED; ///< Family that crossed there.
+    CharacteristicFamily first_family = CharacteristicFamily::UNSPECIFIED; ///< Family that crossed there.
 };
 
 /**
@@ -399,6 +399,30 @@ struct MocInitDiagnostics {
      *  is AUTO and the Kliegel-Levine series was rejected in favor of the fan. */
     MocStartLine start_line_used = MocStartLine::AUTO;
 };
+
+/**
+ * Classification of the numerical/physical failure modes that can occur while
+ * resolving a single unit process (interior/wall/axis point solve) or marching
+ * the method-of-characteristics net as a whole.
+ */
+enum class MocErrorCode {
+    NONE,                      ///< No error; the point/solve is valid.
+    NEGATIVE_NU,               ///< Prandtl-Meyer angle (or generalized PM function) nu is negative beyond tolerance.
+    NEGATIVE_THETA,            ///< Flow angle theta is negative beyond tolerance.
+    SUBSONIC_MACH,             ///< Mach number is below 1.0; the supersonic compatibility relations no longer apply.
+    NONFINITE_VALUE,           ///< One of the point's numeric fields (x, y, theta, nu, mach, mu) is NaN or infinite.
+    PM_INVERSION_FAILED,       ///< The Prandtl-Meyer inversion (nu -> Mach), or an equivalent Mach rootfind, failed to converge.
+    TABLE_RANGE_EXCEEDED,      ///< A PrandtlMeyerTable lookup (by nu, Mach, or velocity) fell outside the tabulated range.
+    NON_DOWNSTREAM_POINT,      ///< The computed intersection lies at or behind (upstream of) one of its parent points.
+    WALL_QUERY_OUT_OF_BOUNDS,  ///< A wall-profile query (e.g. theta_at) fell outside the profile's domain.
+    INITIALIZATION_FAILED,     ///< Construction of the initial data line (transonic start line) failed to converge.
+    MAX_ITERATIONS_REACHED     ///< The characteristic kernel reached its iteration safety cap before all chains terminated.
+};
+
+/**
+ * Human-readable name for a MocErrorCode, for log/diagnostic messages.
+ */
+std::string_view to_string(MocErrorCode code);
 
 /**
  * Describes a numerical or physical failure encountered while solving a MocNozzle

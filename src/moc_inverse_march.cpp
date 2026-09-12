@@ -13,17 +13,6 @@
 
 namespace Goddard {
 
-std::string_view to_string(MocStepLimiter limiter) {
-    switch (limiter) {
-        case MocStepLimiter::NONE: return "NONE";
-        case MocStepLimiter::CFL: return "CFL";
-        case MocStepLimiter::WALL_FOOT: return "WALL_FOOT";
-        case MocStepLimiter::WALL_TURN: return "WALL_TURN";
-        case MocStepLimiter::EXIT: return "EXIT";
-        default: return "UNKNOWN";
-    }
-}
-
 namespace {
 
 // Ray/polyline intersection: walk upstream from (x, y) along `angle` until the polyline
@@ -304,24 +293,6 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     wall_pt.K_plus = wall_pt.theta - wall_pt.nu;
     wall_pt.K_minus = wall_pt.theta + wall_pt.nu;
     return front;
-}
-
-std::vector<size_t> MocNozzle::seed_inverse_front(
-    CharacteristicNet& net, const std::vector<CharacteristicPoint>& front_points) const
-{
-    std::vector<size_t> indices;
-    indices.reserve(front_points.size());
-    for (const CharacteristicPoint& pt : front_points) {
-        net.points.push_back(pt);
-        net.membership.push_back(PointMembership{});
-        indices.push_back(net.points.size() - 1);
-    }
-    net.axis_point_indices.push_back(indices.front());
-    net.wall_point_indices.push_back(indices.back());
-    net.wall_x.push_back(front_points.back().x);
-    net.wall_y.push_back(front_points.back().y);
-    net.fronts.push_back(indices);
-    return indices;
 }
 
 PointResult MocNozzle::solve_inverse_march_interior_point(
@@ -736,7 +707,7 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
             pass, dx_cfl, dx_foot, dx_turn, dx_exit, dx, lambda, x_w, y_w, x_new[0]);
 
         // --- Step 7: bookkeeping ---
-        std::vector<size_t> new_front = seed_inverse_front(net, new_front_points);
+        std::vector<size_t> new_front = net.add_front(new_front_points);
 
         MocPassDiagnostics diag;
         diag.pass = pass;

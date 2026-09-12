@@ -1,7 +1,6 @@
 #pragma once
 #include <vector>
 #include <optional>
-#include <string_view>
 
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas.hpp"
@@ -14,6 +13,12 @@ struct ThermodynamicContext {
     double P_ref = 101325.0;
     double gamma_s = 1.4;
 };
+
+/** Which family a characteristic belongs to: C+ (PLUS) or C- (MINUS). */
+enum class CharacteristicFamily {
+    UNSPECIFIED, PLUS, MINUS
+};
+
 /**
  * One node of the characteristic mesh: the flow state at a point, plus the two Riemann
  * invariants carried through it.
@@ -55,66 +60,6 @@ class CharacteristicPoint {
     // cantera_state), instead of restoring a Cantera state per point.
     void update_thermodynamic_state_from_table(ThermodynamicContext& ctxt, size_t idx, double weight);
 };
-
-/**
- * Classification of the numerical/physical failure modes that can occur while
- * resolving a single unit process (interior/wall/axis point solve) or marching
- * the method-of-characteristics net as a whole.
- */
-enum class MocErrorCode {
-    NONE,                      ///< No error; the point/solve is valid.
-    NEGATIVE_NU,               ///< Prandtl-Meyer angle (or generalized PM function) nu is negative beyond tolerance.
-    NEGATIVE_THETA,            ///< Flow angle theta is negative beyond tolerance.
-    SUBSONIC_MACH,             ///< Mach number is below 1.0; the supersonic compatibility relations no longer apply.
-    NONFINITE_VALUE,           ///< One of the point's numeric fields (x, y, theta, nu, mach, mu) is NaN or infinite.
-    PM_INVERSION_FAILED,       ///< The Prandtl-Meyer inversion (nu -> Mach), or an equivalent Mach rootfind, failed to converge.
-    TABLE_RANGE_EXCEEDED,      ///< A PrandtlMeyerTable lookup (by nu, Mach, or velocity) fell outside the tabulated range.
-    NON_DOWNSTREAM_POINT,      ///< The computed intersection lies at or behind (upstream of) one of its parent points.
-    WALL_QUERY_OUT_OF_BOUNDS,  ///< A wall-profile query (e.g. theta_at) fell outside the profile's domain.
-    INITIALIZATION_FAILED,     ///< Construction of the initial data line (transonic start line) failed to converge.
-    MAX_ITERATIONS_REACHED     ///< The characteristic kernel reached its iteration safety cap before all chains terminated.
-};
-
-/**
- * Human-readable name for a MocErrorCode, for log/diagnostic messages.
- */
-std::string_view to_string(MocErrorCode code);
-
-/**
- * A CharacteristicPoint together with the error code (if any) produced while
- * computing it. Unit-process solvers return this instead of a bare
- * CharacteristicPoint so a numerical failure is reported as data -- instead of
- * being laundered into the point's fields (e.g. a sentinel Mach number) or
- * thrown as an exception.
- */
-struct PointResult {
-    CharacteristicPoint point;
-    MocErrorCode error = MocErrorCode::NONE;
-};
-
-/**
- * Check a computed characteristic point for physical/numerical validity.
- *
- * @param pt  Point to validate.
- * @param tol Absolute tolerance for the nu/theta non-negativity checks (axis points
- *            legitimately pin theta to exactly 0.0, and interior points can carry
- *            small negative roundoff).
- * @return MocErrorCode::NONE if the point is valid, else the first violated
- *         condition in priority order: nu, theta, mach, finiteness.
- */
-/**
- * Validity of a computed point: finite fields, supersonic, non-negative Prandtl-Meyer angle,
- * and (by default) non-negative flow angle.
- *
- * The flow-angle requirement is what the DIRECT kernel uses to catch a march that has gone
- * wrong. It is optional because a negative flow angle is physically admissible in the
- * analysis of an arbitrary contour (any locally converging wall) and because, wherever the
- * exact angle is zero -- the uniform exit region of a minimum-length nozzle, the axis
- * neighbourhood -- a computed angle is discretization noise of either sign, which a
- * tolerance of the solver's abstol cannot absorb.
- */
-MocErrorCode check_point_validity(const CharacteristicPoint& pt, double tol,
-                                  bool require_nonnegative_theta = true);
 
 constexpr double average_angle(double angle1, double angle2) {
     return 0.5*(angle1+angle2);

@@ -39,13 +39,18 @@ TEST(MocPhase2, WallPointsStored) {
 
     // Wall points should be stored with full flow properties.
     // (net.points now holds the entire flow field, not just wall points, so the old
-    //  points.size() == wall_x.size()-1 equality no longer applies. The wall coordinate
-    //  list carries one entry per terminated wall point plus the seeded throat lip at (0,1).)
+    //  points.size() == wall_x.size()-1 equality no longer applies. wall_x/wall_points()
+    //  are now both kernel-owned and parallel: one entry per wall point, including the
+    //  seeded throat lip at (0,1).)
     EXPECT_GT(result.net.points.size(), 0u);
-    EXPECT_EQ(result.net.wall_x.size(), result.net.wall_points().size() + 1);
+    EXPECT_EQ(result.net.wall_x.size(), result.net.wall_points().size());
 
     const auto wall_pts = result.net.wall_points();
-    for (const auto& wp : wall_pts) {
+    // wall_pts[0] is the seeded throat-lip anchor: it carries the design theta_max but no
+    // solved thermodynamic state (mach/pressure/temperature stay at their zero default), so
+    // only the solved wall points from index 1 on are checked for full flow properties.
+    for (size_t i = 1; i < wall_pts.size(); i++) {
+        const auto& wp = wall_pts[i];
         EXPECT_GT(wp.mach, 1.0) << "Wall point should be supersonic";
         EXPECT_GT(wp.x, 0.0) << "Wall point should be downstream of throat";
         EXPECT_GT(wp.y, 0.0) << "Wall point should be above axis";
@@ -617,7 +622,9 @@ TEST(MocAnalysis, PlanarWallPointsPopulated) {
     auto result = analysis_solver.solve();
 
     EXPECT_GT(result.net.points.size(), 0u);
-    for (const auto& wp : result.net.outflow_points()) {
+    // wall_points() is now kernel-independent: populated for the front-based analysis net,
+    // not just the chain-pairing ladder (CharacteristicNet::outflow_points() is gone).
+    for (const auto& wp : result.net.wall_points()) {
         EXPECT_GT(wp.mach, 1.0) << "Wall points should be supersonic";
         EXPECT_GT(wp.x, 0.0) << "Wall points should be downstream of throat";
     }
