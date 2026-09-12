@@ -1,19 +1,9 @@
 #pragma once
 #include <vector>
-#include <optional>
 #include <string_view>
 
-#include "goddard/prandtlmeyer.hpp"
-#include "goddard/gas.hpp"
 namespace Goddard {
 
-struct ThermodynamicContext {
-    std::optional<Gas> gas;
-    const PrandtlMeyerTable& table;
-    double T_ref = 273.15;
-    double P_ref = 101325.0;
-    double gamma_s = 1.4;
-};
 /**
  * One node of the characteristic mesh: the flow state at a point, plus the two Riemann
  * invariants carried through it.
@@ -21,9 +11,11 @@ struct ThermodynamicContext {
  * For perfect-gas solves the thermodynamic quantities are normalized by their stagnation
  * values and `V` holds the Mach number; for frozen and equilibrium chemistry they are
  * dimensional SI.
+ *
+ * Plain data: the thermodynamic state is filled in by MocThermo (see moc_thermo.hpp), not by
+ * a method on this type.
  */
-class CharacteristicPoint {
-    public:
+struct CharacteristicPoint {
     double theta;       ///< Flow angle, in radians.
     double nu;          ///< Prandtl-Meyer angle (or generalized PM function), in radians.
     double pressure;    ///< Static pressure; Pa, or normalized by the stagnation pressure for perfect gas.
@@ -38,22 +30,9 @@ class CharacteristicPoint {
     double x;           ///< Axial position, in length units.
     double y;           ///< Radial (or transverse) position, in length units.
     /// Serialized Cantera state; empty for perfect-gas solves. Internal detail.
-    std::vector<double> cantera_state; 
+    std::vector<double> cantera_state;
 
-    void update_thermodynamic_state_from_nu(ThermodynamicContext& ctxt, double nu, double mach_guess = 1.0);
-    void update_thermodynamic_state_from_mach(ThermodynamicContext& ctxt, double mach);
-    void update_thermodynamic_state_from_V(ThermodynamicContext& ctxt, double V);
     void update_Ks();
-
-    private:
-    void update_thermodynamic_state(ThermodynamicContext& ctxt);
-
-    // FROZEN/EQUILIBRIUM counterpart to update_thermodynamic_state(): sets
-    // temperature and pressure directly from the PrandtlMeyerTable's
-    // temperature/pressure columns at the (idx, weight) pair already found by
-    // the caller for the other interpolated columns (V, gamma_s, mach/nu,
-    // cantera_state), instead of restoring a Cantera state per point.
-    void update_thermodynamic_state_from_table(ThermodynamicContext& ctxt, size_t idx, double weight);
 };
 
 /**

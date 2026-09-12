@@ -37,17 +37,6 @@ public:
 
 namespace {
 
-ThermodynamicContext make_perfect_gas_context(double gamma) {
-    static PrandtlMeyerTable dummy_table; // unused: PERFECT_GAS never touches it
-    return ThermodynamicContext{
-        .gas = std::nullopt,
-        .table = dummy_table,
-        .T_ref = 1.0,
-        .P_ref = 1.0,
-        .gamma_s = gamma,
-    };
-}
-
 ThroatCondition make_perfect_gas_throat(double gamma) {
     return ThroatCondition{
         .converged = true,
@@ -114,7 +103,7 @@ TEST(KliegelLevineClosedForm, AxisAndWallVelocityMatchPublishedEquations) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = 1.0;
-    ThermodynamicContext thermo = make_perfect_gas_context(1.4);
+    MocThermo thermo = MocThermo::perfect_gas(1.4);
     MocOptions opts = make_options(1.4, 5, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -138,7 +127,7 @@ TEST(KliegelLevineClosedForm, MatchesTable1ExperimentalCase) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -159,7 +148,7 @@ TEST(KliegelLevineClosedForm, WallLeadsAxisThroughTransonicRegion) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = 1.0;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -189,7 +178,7 @@ TEST(KliegelLevineClosedForm, IrrotationalityHoldsAtEachOrder) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = 1.0;
-    ThermodynamicContext thermo = make_perfect_gas_context(1.4);
+    MocThermo thermo = MocThermo::perfect_gas(1.4);
     MocOptions opts = make_options(1.4, 5, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -244,7 +233,7 @@ TEST(KliegelLevineClosedForm, WallBoundaryConditionResidualOrder) {
         NozzleGeometry geom;
         geom.throat_radius = 1.0;
         geom.downstream_wall_curvature_radius = R;
-        ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+        MocThermo thermo = MocThermo::perfect_gas(gamma);
         MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
         MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -283,7 +272,7 @@ TEST(KliegelLevineClosedForm, SeriesMissesWallAngleAtSmallR) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -313,7 +302,7 @@ TEST(KliegelLevineTransonicLine, SolvedLineHasZeroRadialVelocity) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, 9, MocFlowKind::AXISYMMETRIC);
     MocInitializationTestAccess init(geom, thermo, opts);
 
@@ -347,7 +336,7 @@ TEST(KliegelLevineVsSauer, ConvergesToSauerAsCurvatureRadiusGrows) {
     double gamma = 1.4;
     MocOptions opts = make_options(gamma, 9, MocFlowKind::AXISYMMETRIC);
     opts.initial_line_axial_shift = 0.0;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     ThroatCondition throat = make_perfect_gas_throat(gamma);
 
     auto max_x_diff = [&](double R) {
@@ -389,7 +378,7 @@ TEST(SauerInitialization, TransonicLineMatchesClosedForm) {
                 NozzleGeometry geom;
                 geom.throat_radius = 1.0;
                 geom.downstream_wall_curvature_radius = R;
-                ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+                MocThermo thermo = MocThermo::perfect_gas(gamma);
                 MocOptions opts = make_options(gamma, 5, flow);
                 MocInitialization init(geom, thermo, opts);
                 ThroatCondition throat = make_perfect_gas_throat(gamma);
@@ -428,7 +417,7 @@ TEST(SauerInitialization, MachIsConvertedFromCriticalVelocityRatio) {
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, 5, MocFlowKind::AXISYMMETRIC);
     MocInitialization init(geom, thermo, opts);
     ThroatCondition throat = make_perfect_gas_throat(gamma);
@@ -477,7 +466,7 @@ TEST(KliegelLevineInitialization, ProducesRequestedNumberOfPointsWithMonotonicY)
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
     geom.downstream_wall_curvature_radius = R;
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocOptions opts = make_options(gamma, n, MocFlowKind::AXISYMMETRIC);
     MocInitialization init(geom, thermo, opts);
     ThroatCondition throat = make_perfect_gas_throat(gamma);
@@ -523,7 +512,7 @@ TEST(KliegelLevineInitialization, WallEndTangentToContour) {
     // The data line itself: initialize_kliegel_levine() is public, so it is exercised the
     // same way ProducesRequestedNumberOfPointsWithMonotonicY above does, only now with a
     // wall profile present so the wall-consistency correction actually engages.
-    ThermodynamicContext thermo = make_perfect_gas_context(gamma);
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
     MocInitialization init(geom, thermo, opts);
     ThroatCondition throat = make_perfect_gas_throat(gamma);
     auto data_line = init.initialize_kliegel_levine(throat);

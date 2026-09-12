@@ -16,11 +16,29 @@ double gquad(double gamma, double a, double b, double c, double d) {
     return (a*gamma*gamma + b*gamma + c)/d;
 }
 
+namespace {
+// MocInitialization communicates failure by exception (its public methods return a plain
+// std::vector<CharacteristicPoint>, with no room for an error code), so a nonzero MocThermo
+// chokepoint result has to be converted back into one here. The mapping matches what
+// MocNozzle::solve()'s existing exception boundary already does for every other initializer
+// failure, so a chokepoint failure reached during start-line construction still surfaces as
+// the same MocErrorCode it always has: TABLE_RANGE_EXCEEDED throws std::out_of_range (solve()
+// maps that type to MocErrorCode::TABLE_RANGE_EXCEEDED); anything else throws
+// Goddard::ConvergenceError (maps to MocErrorCode::INITIALIZATION_FAILED).
+void throw_if_thermo_error(MocErrorCode code, std::string_view context) {
+    if (code == MocErrorCode::NONE) return;
+    if (code == MocErrorCode::TABLE_RANGE_EXCEEDED) {
+        throw std::out_of_range(std::format("{}: {}", context, to_string(code)));
+    }
+    throw ConvergenceError(std::format("{}: {}", context, to_string(code)));
+}
+} // namespace
+
 MocInitialization::MocInitialization(
-    NozzleGeometry geom, 
-    ThermodynamicContext& thermo, 
-    const MocOptions& options) 
-    : geometry(geom), m_thermo(thermo), m_options(options)
+    NozzleGeometry geom,
+    const MocThermo& thermo,
+    const MocOptions& options)
+    : geometry(geom), m_thermo(&thermo), m_options(options)
 {
 
 }
@@ -28,22 +46,21 @@ MocInitialization::MocInitialization(
 void MocInitialization::set_state_from_critical_velocity_ratio(
     CharacteristicPoint& pt, double m_star, const ThroatCondition& throat)
 {
-    GasChemistry chemistry = m_thermo.gas.has_value()
-        ? m_thermo.gas->chemistry
-        : GasChemistry::PERFECT_GAS;
-
-    if (chemistry == GasChemistry::PERFECT_GAS) {
+    if (m_thermo->chemistry() == GasChemistry::PERFECT_GAS) {
         // The perfect-gas path keeps velocity dimensionless and equal to the Mach number,
         // so the conversion has to happen here rather than being folded into a velocity.
-        pt.update_thermodynamic_state_from_mach(
-            m_thermo, mach_from_critical_velocity_ratio(m_star, throat.gamma_s));
+        throw_if_thermo_error(
+            m_thermo->set_state_from_mach(pt, mach_from_critical_velocity_ratio(m_star, throat.gamma_s)),
+            "Transonic start line (critical velocity ratio, perfect gas)");
         return;
     }
 
     // For a real gas the M*<->M algebra is not available in closed form, but its defining
     // relation is: a* is the throat speed of sound, so V follows directly and the
     // PrandtlMeyerTable can be looked up by velocity.
-    pt.update_thermodynamic_state_from_V(m_thermo, m_star * throat.speed_of_sound);
+    throw_if_thermo_error(
+        m_thermo->set_state_from_V(pt, m_star * throat.speed_of_sound),
+        "Transonic start line (critical velocity ratio, real gas)");
 }
 
 std::vector<CharacteristicPoint> MocInitialization::initialize_sauer(const ThroatCondition& throat) {
@@ -285,8 +302,10 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
         pt.x = sonic_point.x;
         pt.y = sonic_point.y; // dimensionless throat radius
         pt.theta = theta_schedule[i];
-        
-        pt.update_thermodynamic_state_from_nu(m_thermo, pt.theta, 1.0);
+
+        throw_if_thermo_error(
+            m_thermo->set_state_from_nu(pt, pt.theta, 1.0),
+            "Centered-fan initialization");
         pt.update_Ks();
         points.push_back(pt);
     }

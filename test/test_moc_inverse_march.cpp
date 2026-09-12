@@ -29,7 +29,7 @@ public:
 };
 
 // Builds a manufactured front point given (x, y, theta, mach, gamma) directly, bypassing
-// ThermodynamicContext (perfect-gas only, matching every test in this file): nu and mu follow
+// MocThermo (perfect-gas only, matching every test in this file): nu and mu follow
 // from the perfect-gas Prandtl-Meyer relations, and pressure/temperature are set to harmless
 // placeholders since check_point_validity does not examine them.
 CharacteristicPoint make_point(double x, double y, double theta, double mach, double gamma) {
