@@ -1,6 +1,7 @@
 #pragma once
 #include <optional>
 #include <vector>
+#include <utility>
 #include "goddard/moc.hpp"
 
 namespace Goddard {
@@ -24,9 +25,9 @@ namespace Goddard {
 class MocNozzle {
 public:
 
-    MocNozzle(MocOptions options): options(options) { validate_moc_options(options); }
+    MocNozzle(MocOptions opts): options(std::move(opts)) { validate_moc_options(options); }
 
-    MocNozzle(Gas gas, MocOptions options): options(options), m_gas(gas) { validate_moc_options(options); }
+    MocNozzle(Gas gas, MocOptions opts): options(std::move(opts)), m_gas(std::move(gas)) { validate_moc_options(options); }
 
     /**
      * March the characteristic net and return the solved flow field.

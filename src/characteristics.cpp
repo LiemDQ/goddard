@@ -24,16 +24,6 @@ void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const 
 
 std::pair<double, double> characteristic_intersection_with_angle(
     const CharacteristicPoint& p1, 
-    const CharacteristicPoint& p2)
-{
-    double angle1 = p1.theta - p1.mu;
-    double angle2 = p2.theta + p2.mu;
-
-    return characteristic_intersection_with_angle(p1, p2, angle1, angle2);
-}
-
-std::pair<double, double> characteristic_intersection_with_angle(
-    const CharacteristicPoint& p1, 
     const CharacteristicPoint& p2, 
     double angle1,
     double angle2)

@@ -278,14 +278,17 @@ MocResult MocNozzle::solve() {
     result.pass_diagnostics = inverse_march.has_value() ? inverse_march->pass_diagnostics
                                                          : std::vector<MocPassDiagnostics>{};
 
-    // Fraction of the target exit radius the net reached (MocResult::exit_coverage). Always
-    // full for the minimum-length ladder, which is defined to stop exactly at theta_max. For
+    // Fraction of the target exit radius the net reached (MocResult::exit_coverage). Full for
+    // the minimum-length ladder when it completes, since that contour is defined to stop
+    // exactly at theta_max; a ladder that fails partway leaves the defaults (0, false). For
     // the front-based kernel the last pass always lands exactly on the exit plane when the
     // march converges; on a solve that fails partway, this instead reports how far the net's
     // last wall point got, which is the diagnostic exit_coverage exists for.
     if (options.mode == MocMode::DESIGN_MIN_LENGTH) {
-        result.exit_coverage = 1.0;
-        result.reached_exit_plane = true;
+        if (!kernel_failure.has_value()) {
+            result.exit_coverage = 1.0;
+            result.reached_exit_plane = true;
+        }
     }
     else {
         // The inverse march always lands its last front exactly on the exit plane when it
