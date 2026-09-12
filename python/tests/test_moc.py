@@ -95,8 +95,6 @@ def test_result_diagnostic_fields_readable(planar_result):
     assert planar_result.crossings.count == 0
     assert isinstance(planar_result.exit_coverage, float)
     assert isinstance(planar_result.reached_exit_plane, bool)
-    assert planar_result.inserted_characteristics >= 0
-    assert planar_result.retired_characteristics >= 0
 
     assert len(planar_result.pass_diagnostics) > 0
     diag = planar_result.pass_diagnostics[0]
@@ -327,11 +325,12 @@ def test_conical_axisymmetric_analysis_converges():
     through goddard.moc_analysis converges, exit_plane.y increases strictly from the axis
     to the exit radius, and the inverse-march front record (net.fronts) is non-empty.
 
-    flow_type=AXISYMMETRIC + mode=ANALYSIS (moc_analysis's default) resolves
-    MocMarchScheme.AUTO to INVERSE (see MocMarchScheme in moc.hpp) -- the same default
-    path MocDefaultOptionsConvergence.ConicalDefaultThroatConvergesAcrossN exercises in
-    C++ (test_moc_convergence.cpp) -- so this is a Python-side check that the same fix
-    is reachable through the bindings, not a new numerical claim.
+    flow_type=AXISYMMETRIC + mode=ANALYSIS (moc_analysis's default) always marches
+    the reference-plane (inverse) kernel -- analysis and Rao design never use the
+    chain-ladder (direct) kernel, which is reserved for minimum-length design -- the
+    same default path MocDefaultOptionsConvergence.ConicalDefaultThroatConvergesAcrossN
+    exercises in C++ (test_moc_convergence.cpp) -- so this is a Python-side check that
+    the same fix is reachable through the bindings, not a new numerical claim.
     """
     from goddard import conical_nozzle, moc_analysis, MocFlowKind
 

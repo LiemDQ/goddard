@@ -202,22 +202,6 @@ def bezier_nozzle(area_ratio, theta_n_deg, theta_e_deg, *,
         length_frac=length_frac, n_points=n_points)
 
 
-def _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
-                        front_spacing_growth, max_cell_aspect_ratio,
-                        max_front_points):
-    """Set the marching-front mesh controls that were explicitly requested."""
-    if max_front_spacing_factor is not None:
-        opts.max_front_spacing_factor = max_front_spacing_factor
-    if min_front_spacing_factor is not None:
-        opts.min_front_spacing_factor = min_front_spacing_factor
-    if front_spacing_growth is not None:
-        opts.front_spacing_growth = front_spacing_growth
-    if max_cell_aspect_ratio is not None:
-        opts.max_cell_aspect_ratio = max_cell_aspect_ratio
-    if max_front_points is not None:
-        opts.max_front_points = max_front_points
-
-
 def _build_nozzle(opts, gas, solution):
     """Pick the MocNozzle constructor matching the supplied gas description."""
     if gas is not None:
@@ -230,9 +214,7 @@ def _build_nozzle(opts, gas, solution):
 def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
                flow_type=None, chemistry=None, throat_radius=1.0,
                exit_mach=None, geometry=None, log_level=None,
-               max_front_spacing_factor=None, min_front_spacing_factor=None,
-               front_spacing_growth=None, max_cell_aspect_ratio=None,
-               max_front_points=None, gas=None, solution=None):
+               gas=None, solution=None):
     """Design a minimum-length nozzle using the Method of Characteristics.
 
     Args:
@@ -245,11 +227,6 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         exit_mach: Target exit Mach number, if the design is Mach-driven.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
-        max_front_spacing_factor: Upper bound on marching-front point spacing.
-        min_front_spacing_factor: Lower bound on marching-front point spacing.
-        front_spacing_growth: How much target spacing grows with nozzle radius.
-        max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
-        max_front_points: Safety cap on marching-front size (0 selects the default).
         gas: A Gas for chemistry-based calculations.
         solution: A SolutionHandle, as an alternative to ``gas``.
 
@@ -276,18 +253,13 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         opts.exit_mach = exit_mach
     if log_level is not None:
         opts.log_level = log_level
-    _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
-                        front_spacing_growth, max_cell_aspect_ratio, max_front_points)
 
     return _build_nozzle(opts, gas, solution).solve()
 
 
 def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
                    gamma=1.4, flow_type=None, chemistry=None, throat_radius=1.0,
-                   geometry=None, log_level=None,
-                   max_front_spacing_factor=None, min_front_spacing_factor=None,
-                   front_spacing_growth=None, max_cell_aspect_ratio=None,
-                   max_front_points=None, march_scheme=None, start_line=None,
+                   geometry=None, log_level=None, start_line=None,
                    gas=None, solution=None):
     """Design a Rao thrust-optimized nozzle using the Method of Characteristics.
 
@@ -305,13 +277,6 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         geometry: A NozzleGeometry, overriding ``throat_radius``, ``expansion_ratio``
             and ``length_frac``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
-        max_front_spacing_factor: Upper bound on marching-front point spacing.
-        min_front_spacing_factor: Lower bound on marching-front point spacing.
-        front_spacing_growth: How much target spacing grows with nozzle radius.
-        max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
-        max_front_points: Safety cap on marching-front size (0 selects the default).
-        march_scheme: MocMarchScheme; defaults to MocOptions' own AUTO (INVERSE for
-            axisymmetric Rao contours).
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``).
@@ -340,22 +305,15 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         opts.geometry.length_fraction = length_frac
     if log_level is not None:
         opts.log_level = log_level
-    if march_scheme is not None:
-        opts.march_scheme = march_scheme
     if start_line is not None:
         opts.start_line = start_line
-    _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
-                        front_spacing_growth, max_cell_aspect_ratio, max_front_points)
 
     return _build_nozzle(opts, gas, solution).solve()
 
 
 def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
                  flow_type=None, chemistry=None, throat_radius=1.0,
-                 geometry=None, log_level=None,
-                 max_front_spacing_factor=None, min_front_spacing_factor=None,
-                 front_spacing_growth=None, max_cell_aspect_ratio=None,
-                 max_front_points=None, march_scheme=None, start_line=None,
+                 geometry=None, log_level=None, start_line=None,
                  gas=None, solution=None):
     """Analyse an existing nozzle contour using the Method of Characteristics.
 
@@ -368,13 +326,6 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
         throat_radius: Throat radius, used when ``geometry`` is not given.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
-        max_front_spacing_factor: Upper bound on marching-front point spacing.
-        min_front_spacing_factor: Lower bound on marching-front point spacing.
-        front_spacing_growth: How much target spacing grows with nozzle radius.
-        max_cell_aspect_ratio: Largest tolerated mesh-cell side ratio.
-        max_front_points: Safety cap on marching-front size (0 selects the default).
-        march_scheme: MocMarchScheme; defaults to MocOptions' own AUTO (INVERSE for
-            analysis, planar and axisymmetric).
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``, or the contour's downstream curvature
@@ -406,12 +357,8 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     opts.nozzle_profile = profile
     if log_level is not None:
         opts.log_level = log_level
-    if march_scheme is not None:
-        opts.march_scheme = march_scheme
     if start_line is not None:
         opts.start_line = start_line
-    _apply_mesh_control(opts, max_front_spacing_factor, min_front_spacing_factor,
-                        front_spacing_growth, max_cell_aspect_ratio, max_front_points)
 
     return _build_nozzle(opts, gas, solution).solve()
 
@@ -427,12 +374,16 @@ def pass_diagnostics_table(result):
 
     Returns:
         dict mapping field name to a numpy array with one entry per kernel pass.
+        Fields: pass_index, front_points, min_spacing, max_spacing, mean_spacing,
+        front_axis_x, front_wall_x, front_axis_spacing, front_wall_spacing,
+        step_dx, step_limiter.
     """
     import numpy as np
 
     fields = ("pass_index", "front_points", "min_spacing", "max_spacing",
-              "mean_spacing", "target_spacing", "max_cell_aspect",
-              "min_spacelike_margin", "inserted", "retired")
+              "mean_spacing", "front_axis_x", "front_wall_x",
+              "front_axis_spacing", "front_wall_spacing", "step_dx",
+              "step_limiter")
     diagnostics = result.pass_diagnostics
     return {
         name: np.array([getattr(d, name) for d in diagnostics])

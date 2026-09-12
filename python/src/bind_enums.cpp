@@ -43,13 +43,7 @@ void bind_enums(nb::module_& m) {
         .value("NON_DOWNSTREAM_POINT", Goddard::MocErrorCode::NON_DOWNSTREAM_POINT)
         .value("WALL_QUERY_OUT_OF_BOUNDS", Goddard::MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS)
         .value("INITIALIZATION_FAILED", Goddard::MocErrorCode::INITIALIZATION_FAILED)
-        .value("MAX_ITERATIONS_REACHED", Goddard::MocErrorCode::MAX_ITERATIONS_REACHED)
-        .value("INCOMPLETE_MARCH", Goddard::MocErrorCode::INCOMPLETE_MARCH);
-
-    nb::enum_<Goddard::MocMarchScheme>(m, "MocMarchScheme", DOC(Goddard, MocMarchScheme))
-        .value("AUTO", Goddard::MocMarchScheme::AUTO)
-        .value("DIRECT", Goddard::MocMarchScheme::DIRECT)
-        .value("INVERSE", Goddard::MocMarchScheme::INVERSE);
+        .value("MAX_ITERATIONS_REACHED", Goddard::MocErrorCode::MAX_ITERATIONS_REACHED);
 
     nb::enum_<Goddard::MocStepLimiter>(m, "MocStepLimiter", DOC(Goddard, MocStepLimiter))
         .value("NONE", Goddard::MocStepLimiter::NONE)

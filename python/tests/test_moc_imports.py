@@ -27,19 +27,13 @@ def test_import_moc_enums():
     assert MocLogLevel.DEBUG is not None
 
     assert MocErrorCode.NONE is not None
-    assert MocErrorCode.INCOMPLETE_MARCH is not None
 
     assert CharacteristicFamily.PLUS is not None
     assert CharacteristicFamily.MINUS is not None
-    assert ChainTermination.MERGED is not None
 
 
 def test_import_moc_marching_enums():
-    from goddard import MocMarchScheme, MocStepLimiter, MocStartLine
-
-    assert MocMarchScheme.AUTO is not None
-    assert MocMarchScheme.DIRECT is not None
-    assert MocMarchScheme.INVERSE is not None
+    from goddard import MocStepLimiter, MocStartLine
 
     assert MocStepLimiter.NONE is not None
     assert MocStepLimiter.CFL is not None
@@ -166,17 +160,6 @@ def test_moc_options_defaults():
     assert opts.theta_max == pytest.approx(0.0)
     assert opts.exit_mach == pytest.approx(0.0)
     assert len(opts.theta_schedule) == 0
-
-
-def test_moc_options_mesh_control_defaults():
-    from goddard import MocOptions
-
-    opts = MocOptions()
-    assert opts.max_front_spacing_factor == pytest.approx(1.5)
-    assert opts.min_front_spacing_factor == pytest.approx(0.35)
-    assert opts.front_spacing_growth == pytest.approx(1.0)
-    assert opts.max_cell_aspect_ratio == pytest.approx(6.0)
-    assert opts.max_front_points == 0
     assert opts.initial_line_axial_shift == pytest.approx(0.1)
 
 
@@ -190,8 +173,6 @@ def test_moc_options_kwargs():
         num_characteristics=20,
         gamma=1.3,
         theta_max=0.3,
-        max_front_spacing_factor=1.8,
-        max_front_points=64,
     )
     assert opts.flow_type == MocFlowKind.AXISYMMETRIC
     assert opts.chemistry == GasChemistry.FROZEN
@@ -199,8 +180,6 @@ def test_moc_options_kwargs():
     assert opts.num_characteristics == 20
     assert opts.gamma == pytest.approx(1.3)
     assert opts.theta_max == pytest.approx(0.3)
-    assert opts.max_front_spacing_factor == pytest.approx(1.8)
-    assert opts.max_front_points == 64
 
 
 def test_moc_options_mutability():
@@ -227,10 +206,9 @@ def test_validate_moc_options_rejects_bad_input():
 
 
 def test_moc_options_marching_defaults():
-    from goddard import MocOptions, MocMarchScheme, MocStartLine
+    from goddard import MocOptions, MocStartLine
 
     opts = MocOptions()
-    assert opts.march_scheme == MocMarchScheme.AUTO
     assert opts.start_line == MocStartLine.AUTO
     assert opts.inverse_cfl == pytest.approx(0.8)
     assert opts.max_wall_turn_per_step == pytest.approx(0.0175)
@@ -239,17 +217,15 @@ def test_moc_options_marching_defaults():
 
 
 def test_moc_options_marching_kwargs():
-    from goddard import MocOptions, MocMarchScheme, MocStartLine
+    from goddard import MocOptions, MocStartLine
 
     opts = MocOptions(
-        march_scheme=MocMarchScheme.INVERSE,
         start_line=MocStartLine.KLIEGEL_LEVINE,
         inverse_cfl=0.5,
         max_wall_turn_per_step=0.01,
         front_tilt_decay=0.7,
         kl_max_wall_angle_error=0.1,
     )
-    assert opts.march_scheme == MocMarchScheme.INVERSE
     assert opts.start_line == MocStartLine.KLIEGEL_LEVINE
     assert opts.inverse_cfl == pytest.approx(0.5)
     assert opts.max_wall_turn_per_step == pytest.approx(0.01)
@@ -257,8 +233,8 @@ def test_moc_options_marching_kwargs():
     assert opts.kl_max_wall_angle_error == pytest.approx(0.1)
 
     # Also settable after construction, like every other MocOptions field.
-    opts.march_scheme = MocMarchScheme.DIRECT
-    assert opts.march_scheme == MocMarchScheme.DIRECT
+    opts.start_line = MocStartLine.CENTERED_FAN
+    assert opts.start_line == MocStartLine.CENTERED_FAN
 
 
 def test_characteristic_net_fronts_default_empty():
@@ -292,13 +268,11 @@ def test_moc_result_min_theta_and_init_diagnostics_defaults():
     assert diagnostics.start_line_used == MocStartLine.AUTO
 
 
-def test_convenience_moc_functions_accept_march_scheme_and_start_line():
+def test_convenience_moc_functions_accept_start_line():
     from goddard.convenience import moc_analysis, moc_rao_design
 
     for func in (moc_analysis, moc_rao_design):
         params = inspect.signature(func).parameters
-        assert "march_scheme" in params
-        assert params["march_scheme"].default is None
         assert "start_line" in params
         assert params["start_line"].default is None
 
