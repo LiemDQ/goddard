@@ -9,7 +9,6 @@ from goddard._core import (
     MocMode,
     MocLogLevel,
     MocErrorCode,
-    MocMarchScheme,
     MocStepLimiter,
     MocStartLine,
     CharacteristicFamily,

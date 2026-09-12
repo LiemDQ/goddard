@@ -49,11 +49,12 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
                             minus_color="tab:red", wall_color="k"):
     """Draw the characteristic mesh: every C+ and C- line in the net.
 
-    MocMarchScheme.INVERSE prescribes a sequence of marching fronts instead of
-    chain-paired characteristics, so CharacteristicNet.chains is empty for it; this
-    draws CharacteristicNet.fronts (one polyline each) in that case instead of
-    drawing nothing. Use :func:`plot_fronts` directly for more control over that
-    drawing (e.g. thinning a fine march with ``every``).
+    Analysis and Rao-design solves (the reference-plane march) prescribe a
+    sequence of marching fronts instead of chain-paired characteristics, so
+    CharacteristicNet.chains is empty for them; this draws CharacteristicNet.fronts
+    (one polyline each) in that case instead of drawing nothing. Use
+    :func:`plot_fronts` directly for more control over that drawing (e.g. thinning
+    a fine march with ``every``).
 
     Args:
         result_or_net: A MocResult or a CharacteristicNet.
@@ -125,10 +126,11 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
 def plot_fronts(result_or_net, ax=None, *, every=1, **kwargs):
     """Draw every marching front of an inverse-march net as one polyline each.
 
-    Meaningful for MocMarchScheme.INVERSE, whose mesh topology is the sequence of
-    fronts in CharacteristicNet.fronts (axis to wall, in march order) rather than
-    the chain-paired characteristics DIRECT builds. A DIRECT net carries no fronts,
-    so this draws nothing for one.
+    Meaningful for analysis and Rao-design solves (the reference-plane march),
+    whose mesh topology is the sequence of fronts in CharacteristicNet.fronts
+    (axis to wall, in march order) rather than the chain-paired characteristics
+    that minimum-length design (the chain ladder) builds. A minimum-length design
+    net carries no fronts, so this draws nothing for one.
 
     Args:
         result_or_net: A MocResult or a CharacteristicNet.
@@ -161,18 +163,19 @@ def plot_fronts(result_or_net, ax=None, *, every=1, **kwargs):
 def mesh_node_mask(net):
     """Boolean mask selecting the net points that are genuine solution nodes.
 
-    A DIRECT net carries a few points that were never produced by a unit process:
-    the seeded throat-lip wall point, for one, which only bootstraps the wall march
-    and holds placeholder zeros for Mach, pressure and temperature. Such points
-    belong to no characteristic chain, which is what this tests for. Contouring
-    over them puts a spurious cold spot at the throat and drags the colour scale
-    down to zero.
+    A minimum-length design net (the chain ladder) carries a few points that were
+    never produced by a unit process: the seeded throat-lip wall point, for one,
+    which only bootstraps the wall march and holds placeholder zeros for Mach,
+    pressure and temperature. Such points belong to no characteristic chain, which
+    is what this tests for. Contouring over them puts a spurious cold spot at the
+    throat and drags the colour scale down to zero.
 
-    MocMarchScheme.INVERSE builds no chains at all (CharacteristicNet.chains is
-    empty; its topology lives in CharacteristicNet.fronts instead), so every point
-    has empty membership regardless of whether it is a genuine solution node --
-    for that scheme every point *is* one, so this treats them all as mesh nodes
-    rather than reading "no chain membership" as "bootstrap placeholder".
+    Analysis and Rao-design solves (the reference-plane march) build no chains at
+    all (CharacteristicNet.chains is empty; its topology lives in
+    CharacteristicNet.fronts instead), so every point has empty membership
+    regardless of whether it is a genuine solution node -- for those solves every
+    point *is* one, so this treats them all as mesh nodes rather than reading
+    "no chain membership" as "bootstrap placeholder".
 
     Args:
         net: A CharacteristicNet.
@@ -304,10 +307,10 @@ def plot_exit_plane(result, ax=None, *, field="mach", **kwargs):
 def plot_front_diagnostics(result, axes=None):
     """Plot the marching front's per-pass geometry history.
 
-    Three stacked panels: point spacing against its target, the worst mesh-cell
-    aspect ratio, and the smallest spacelike margin. These are the quantities that
-    expose a sampling void or a degenerating cell, neither of which is visible in
-    the finished net.
+    Three stacked panels: point spacing (min/mean/max), the axial step size, and
+    the front's axis and wall stations. These are the quantities that expose a
+    sampling void, a stalled march, or a degenerating front, none of which is
+    visible in the finished net.
 
     Args:
         result: A MocResult.
@@ -333,16 +336,16 @@ def plot_front_diagnostics(result, axes=None):
     axes[0].plot(passes, table["min_spacing"], label="min")
     axes[0].plot(passes, table["mean_spacing"], label="mean")
     axes[0].plot(passes, table["max_spacing"], label="max")
-    axes[0].plot(passes, table["target_spacing"], "k--", label="target")
     axes[0].set_ylabel("front spacing")
     axes[0].legend(fontsize="small")
 
-    axes[1].plot(passes, table["max_cell_aspect"])
-    axes[1].set_ylabel("max cell aspect")
+    axes[1].plot(passes, table["step_dx"])
+    axes[1].set_ylabel("step dx")
 
-    axes[2].plot(passes, table["min_spacelike_margin"])
-    axes[2].axhline(0.0, color="tab:red", linewidth=0.8, linestyle="--")
-    axes[2].set_ylabel("min spacelike margin")
+    axes[2].plot(passes, table["front_axis_x"], label="axis")
+    axes[2].plot(passes, table["front_wall_x"], label="wall")
+    axes[2].set_ylabel("front station x")
     axes[2].set_xlabel("kernel pass")
+    axes[2].legend(fontsize="small")
 
     return axes

@@ -113,9 +113,7 @@ void bind_moc(nb::module_& m) {
         .value("NOT_TERMINATED", Goddard::ChainMetadata::TerminationType::NOT_TERMINATED)
         .value("WALL", Goddard::ChainMetadata::TerminationType::WALL)
         .value("AXIS", Goddard::ChainMetadata::TerminationType::AXIS)
-        .value("OUTFLOW", Goddard::ChainMetadata::TerminationType::OUTFLOW)
-        .value("CORNER_FAN_ORIGIN", Goddard::ChainMetadata::TerminationType::CORNER_FAN_ORIGIN)
-        .value("MERGED", Goddard::ChainMetadata::TerminationType::MERGED);
+        .value("OUTFLOW", Goddard::ChainMetadata::TerminationType::OUTFLOW);
 
     // MocErrorCode is bound in bind_enums.cpp.
 
@@ -296,14 +294,8 @@ void bind_moc(nb::module_& m) {
                             Goddard::NozzleProfile nozzle_profile,
                             Goddard::MocLogLevel log_level,
                             double initial_line_axial_shift,
-                            double max_front_spacing_factor,
-                            double min_front_spacing_factor,
-                            double front_spacing_growth,
-                            double max_cell_aspect_ratio,
-                            size_t max_front_points,
                             Goddard::MocStartLine start_line,
                             double kl_max_wall_angle_error,
-                            Goddard::MocMarchScheme march_scheme,
                             double inverse_cfl,
                             double max_wall_turn_per_step,
                             double front_tilt_decay) {
@@ -321,14 +313,8 @@ void bind_moc(nb::module_& m) {
             self->nozzle_profile = std::move(nozzle_profile);
             self->log_level = log_level;
             self->initial_line_axial_shift = initial_line_axial_shift;
-            self->max_front_spacing_factor = max_front_spacing_factor;
-            self->min_front_spacing_factor = min_front_spacing_factor;
-            self->front_spacing_growth = front_spacing_growth;
-            self->max_cell_aspect_ratio = max_cell_aspect_ratio;
-            self->max_front_points = max_front_points;
             self->start_line = start_line;
             self->kl_max_wall_angle_error = kl_max_wall_angle_error;
-            self->march_scheme = march_scheme;
             self->inverse_cfl = inverse_cfl;
             self->max_wall_turn_per_step = max_wall_turn_per_step;
             self->front_tilt_decay = front_tilt_decay;
@@ -345,14 +331,8 @@ void bind_moc(nb::module_& m) {
             "nozzle_profile"_a = Goddard::NozzleProfile(),
             "log_level"_a = Goddard::MocLogLevel::NORMAL,
             "initial_line_axial_shift"_a = 0.1,
-            "max_front_spacing_factor"_a = 1.5,
-            "min_front_spacing_factor"_a = 0.35,
-            "front_spacing_growth"_a = 1.0,
-            "max_cell_aspect_ratio"_a = 6.0,
-            "max_front_points"_a = 0,
             "start_line"_a = Goddard::MocStartLine::AUTO,
             "kl_max_wall_angle_error"_a = 0.25,
-            "march_scheme"_a = Goddard::MocMarchScheme::AUTO,
             "inverse_cfl"_a = 0.8,
             "max_wall_turn_per_step"_a = 0.0175,
             "front_tilt_decay"_a = 0.9)
@@ -378,22 +358,10 @@ void bind_moc(nb::module_& m) {
         .def_rw("log_level", &Goddard::MocOptions::log_level, DOC(Goddard, MocOptions, log_level))
         .def_rw("initial_line_axial_shift", &Goddard::MocOptions::initial_line_axial_shift,
                 DOC(Goddard, MocOptions, initial_line_axial_shift))
-        .def_rw("max_front_spacing_factor", &Goddard::MocOptions::max_front_spacing_factor,
-                DOC(Goddard, MocOptions, max_front_spacing_factor))
-        .def_rw("min_front_spacing_factor", &Goddard::MocOptions::min_front_spacing_factor,
-                DOC(Goddard, MocOptions, min_front_spacing_factor))
-        .def_rw("front_spacing_growth", &Goddard::MocOptions::front_spacing_growth,
-                DOC(Goddard, MocOptions, front_spacing_growth))
-        .def_rw("max_cell_aspect_ratio", &Goddard::MocOptions::max_cell_aspect_ratio,
-                DOC(Goddard, MocOptions, max_cell_aspect_ratio))
-        .def_rw("max_front_points", &Goddard::MocOptions::max_front_points,
-                DOC(Goddard, MocOptions, max_front_points))
         .def_rw("start_line", &Goddard::MocOptions::start_line,
                 DOC(Goddard, MocOptions, start_line))
         .def_rw("kl_max_wall_angle_error", &Goddard::MocOptions::kl_max_wall_angle_error,
                 DOC(Goddard, MocOptions, kl_max_wall_angle_error))
-        .def_rw("march_scheme", &Goddard::MocOptions::march_scheme,
-                DOC(Goddard, MocOptions, march_scheme))
         .def_rw("inverse_cfl", &Goddard::MocOptions::inverse_cfl,
                 DOC(Goddard, MocOptions, inverse_cfl))
         .def_rw("max_wall_turn_per_step", &Goddard::MocOptions::max_wall_turn_per_step,
@@ -610,16 +578,6 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, MocPassDiagnostics, max_spacing))
         .def_ro("mean_spacing", &Goddard::MocPassDiagnostics::mean_spacing,
                 DOC(Goddard, MocPassDiagnostics, mean_spacing))
-        .def_ro("target_spacing", &Goddard::MocPassDiagnostics::target_spacing,
-                DOC(Goddard, MocPassDiagnostics, target_spacing))
-        .def_ro("max_cell_aspect", &Goddard::MocPassDiagnostics::max_cell_aspect,
-                DOC(Goddard, MocPassDiagnostics, max_cell_aspect))
-        .def_ro("min_spacelike_margin", &Goddard::MocPassDiagnostics::min_spacelike_margin,
-                DOC(Goddard, MocPassDiagnostics, min_spacelike_margin))
-        .def_ro("inserted", &Goddard::MocPassDiagnostics::inserted,
-                DOC(Goddard, MocPassDiagnostics, inserted))
-        .def_ro("retired", &Goddard::MocPassDiagnostics::retired,
-                DOC(Goddard, MocPassDiagnostics, retired))
         .def_ro("front_axis_x", &Goddard::MocPassDiagnostics::front_axis_x,
                 DOC(Goddard, MocPassDiagnostics, front_axis_x))
         .def_ro("front_wall_x", &Goddard::MocPassDiagnostics::front_wall_x,
@@ -634,10 +592,8 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, MocPassDiagnostics, step_limiter))
         .def("__repr__", [](const Goddard::MocPassDiagnostics& self) {
             return std::format(
-                "<MocPassDiagnostics pass={} front_points={} spacing=[{:.3g}, {:.3g}] "
-                "target={:.3g} aspect={:.3g}>",
-                self.pass, self.front_points, self.min_spacing, self.max_spacing,
-                self.target_spacing, self.max_cell_aspect);
+                "<MocPassDiagnostics pass={} front_points={} spacing=[{:.3g}, {:.3g}]>",
+                self.pass, self.front_points, self.min_spacing, self.max_spacing);
         });
 
     // ---- MocFrontShear ----
@@ -742,10 +698,6 @@ void bind_moc(nb::module_& m) {
         .def_ro("nozzle_length", &Goddard::MocResult::nozzle_length,
                 DOC(Goddard, MocResult, nozzle_length))
         .def_ro("area_ratio", &Goddard::MocResult::area_ratio, DOC(Goddard, MocResult, area_ratio))
-        .def_ro("inserted_characteristics", &Goddard::MocResult::inserted_characteristics,
-                DOC(Goddard, MocResult, inserted_characteristics))
-        .def_ro("retired_characteristics", &Goddard::MocResult::retired_characteristics,
-                DOC(Goddard, MocResult, retired_characteristics))
         .def_ro("pass_diagnostics", &Goddard::MocResult::pass_diagnostics,
                 DOC(Goddard, MocResult, pass_diagnostics))
         .def_ro("init_diagnostics", &Goddard::MocResult::init_diagnostics,
