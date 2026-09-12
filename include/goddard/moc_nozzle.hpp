@@ -1,17 +1,18 @@
 #pragma once
 #include "goddard/moc.hpp"
+#include "goddard/moc_context.hpp"
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/moc_thermo.hpp"
 
 namespace Goddard {
 
 
-/** 
+/**
  * Main class for performing 2D nozzle supersonic flow simulations using
- * the method of characteristics (MoC). Simulation specification is done with `MocOptions`. 
- * 
- * There are two modes of usage: 
- * - Design mode, where a specific mach number or other end goal is specified 
+ * the method of characteristics (MoC). Simulation specification is done with `MocOptions`.
+ *
+ * There are two modes of usage:
+ * - Design mode, where a specific mach number or other end goal is specified
  * and the nozzle profile is determined by the solver.
  * - Analysis mode, where an arbitrary nozzle profile is provided and the solver determines
  * the flow field and performance metrics.
@@ -37,12 +38,12 @@ public:
     bool is_solved() const;
 
     MocOptions m_options;
-    
+
 
 protected:
 
     auto setup_nozzle_profile(const NozzleGeometry& geometry) -> NozzleProfile;
-   
+
     // generate initial data line (both the perfect-gas and Cantera-backed paths;
     // for perfect gas the throat is populated with dummy values)
     std::vector<CharacteristicPoint> generate_initial_data_line(
@@ -55,94 +56,13 @@ protected:
     // reached), or std::nullopt if every chain terminated cleanly.
     std::optional<MocFailure> solve_characteristic_kernel(CharacteristicNet& net);
 
-    // unit processes
-
-    PointResult solve_interior_point(
-        const CharacteristicPoint& c_minus_parent,
-        const CharacteristicPoint& c_plus_parent);
-
-    // Planar algebraic special case
-    PointResult solve_interior_point_planar(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2);
-
-    // Axisymmetric flow
-    PointResult solve_interior_point_axisymmetric(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2);
-
-    // iterative path (generalized compatibility equation with arbitrary source term)
-    PointResult solve_interior_point_iterative(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2);
-
     // Minimum-length design only. Check PointResult::error for a numerical failure.
+    // Resolves the wall angle from the theta schedule, then delegates to
+    // solve_wall_point_design (moc_unit_processes.hpp).
     PointResult solve_wall_point(
         const CharacteristicPoint& interior_parent,
         const CharacteristicPoint& previous_wall_point,
         int wall_point_index);
-
-    PointResult solve_wall_flow(
-        const CharacteristicPoint& interior_parent,
-        double theta_wall);
-
-    // compute flow + position from previous wall point
-    PointResult solve_wall_point_design(
-        const CharacteristicPoint& interior_parent,
-        const CharacteristicPoint& previous_wall_point,
-        double theta_wall);
-
-    /** The first point is a special case, as it lies on the axis but is assigned a
-     * nonzero theta. This is because the calculations are started on the characteristic line
-     * along which theta is known.
-     *
-     * This leads to a small physical inconsistency, but it is necessary to bootstrap the downstream marching.
-     */
-    PointResult solve_initial_axis_point_centered_exp(
-        const CharacteristicPoint& expansion_point);
-
-    /**
-     * Compute flow properties at centerline for axisymmetric flow.
-     *
-     * A special method is needed because the axisymmetric compatibility
-     * equations have a singularity on the axis of rotation.
-     * */
-    PointResult solve_axis_point(
-        const CharacteristicPoint& off_axis_parent);
-
-    /**
-     * Iteratively find the mach number of the intersecting node.
-     */
-    double find_node_mach(
-        const CharacteristicPoint& p1,
-        const CharacteristicPoint& p2,
-        double source_delta,
-        double mach_guess = 0.0
-    );
-
-    /* Find where wall intersects with line extending outwards from a characteristic point, for a specified angle */
-    std::pair<double,double> find_wall_hit(const CharacteristicPoint& p, const NozzleProfile& wall, double char_angle) const;
-
-    /**
-     * Source term for axisymmetric flow along C+ characteristic.
-     */
-    double cplus_source_term(
-        const CharacteristicPoint& p1, 
-        double new_y) const;
-    
-    /**
-     * Source term for axisymmetric flow along C+ characteristic.
-     */
-    double cplus_source_term(
-        const CharacteristicPoint& p1, 
-        const CharacteristicPoint& p3) const;
-    /**
-     * Source term for axisymmetric flow along C- characteristic.
-     */
-    double cminus_source_term(
-        const CharacteristicPoint& p1, 
-        double new_y) const;
-
 
     struct LeadingEdgeView {
         CharacteristicFamily family;
@@ -235,8 +155,8 @@ protected:
 
     // -- Inverse (reference-plane) marching kernel --
     // Used by MocMode::ANALYSIS and MocMode::DESIGN_RAO. The unit processes below are
-    // siblings of solve_interior_point_axisymmetric / solve_axis_point for this kernel, not
-    // replacements -- the minimum-length kernel and its unit processes above are unchanged.
+    // siblings of solve_interior_point/solve_axis_point (moc_unit_processes.hpp) for this
+    // kernel, not replacements -- the minimum-length kernel is unchanged.
 
     /**
      * Build the inverse kernel's first marching front F_0 from the initial data line
@@ -281,7 +201,8 @@ protected:
      * Inverse-march interior unit process: solve for the flow state at the prescribed
      * point (x_new, y_new), whose two characteristics are traced back to `front` (the
      * previous marching front) and interpolated there (Sec. 5 of B.md), then transported
-     * forward with the same axisymmetric source terms as solve_interior_point_axisymmetric.
+     * forward with the same axisymmetric source terms as the axisymmetric interior process
+     * (moc_unit_processes.hpp).
      *
      * Handles the near-axis case where the C+ foot's trace would cross the axis before
      * meeting `front`: the foot is found by mirroring the ray (and negating its
@@ -298,10 +219,10 @@ protected:
     /**
      * Inverse-march axis unit process: solve for the flow state at the prescribed axis
      * point (x_new, 0). theta is pinned to 0; the single C- foot is traced back to `front`
-     * and the axis-limit source term is applied with the same algebra as solve_axis_point's
-     * corrector (dy/y_avg = -2 there is an algebraic identity whenever the far point sits at
-     * y=0, so it generalizes unchanged to a traced-back foot that is not an actual net
-     * parent).
+     * and the axis-limit source term is applied via axis_source_correction (moc_unit_processes.hpp),
+     * the same algebra solve_axis_point's corrector uses (dy/y_avg = -2 there is an algebraic
+     * identity whenever the far point sits at y=0, so it generalizes unchanged to a
+     * traced-back foot that is not an actual net parent).
      */
     PointResult solve_inverse_march_axis_point(
         double x_new,
@@ -332,33 +253,6 @@ protected:
      */
     std::optional<std::vector<CharacteristicPoint>> m_inverse_front_override;
 
-    // Logging helpers
-    template <typename... Args>
-    void log_warning(std::string_view fmt, Args&&... args) {
-        m_messages.push_back("Warning: " + std::vformat(fmt, std::make_format_args(args...)));
-    }
-    void log_warning(const std::string& msg);
-    
-    template <typename... Args>
-    void log_info(std::string_view fmt, Args&&... args) {
-        m_messages.push_back("Info: " + std::vformat(fmt, std::make_format_args(args...)));
-    }
-    void log_info(const std::string& msg);
-
-    // Verbose kernel/initialization trace, only active when m_options.log_level ==
-    // MocLogLevel::DEBUG. Collected in m_messages like log_warning/log_info (so it
-    // surfaces via MocResult::messages and the Python binding with no extra
-    // plumbing), and additionally echoed live to stderr immediately as each call
-    // happens -- useful for a hang or a solve that never returns (maxiter reached),
-    // where messages collected only in the returned MocResult would never be seen.
-    template <typename... Args>
-    void log_debug(std::string_view fmt, Args&&... args) {
-        if (m_options.log_level == MocLogLevel::DEBUG) {
-            log_debug(std::vformat(fmt, std::make_format_args(args...)));
-        }
-    }
-    void log_debug(const std::string& msg);
-
     bool m_is_solved = false;
     // Per-pass front geometry, copied into MocResult::pass_diagnostics.
     std::vector<MocPassDiagnostics> m_pass_diagnostics;
@@ -382,7 +276,14 @@ protected:
     // only constant along a characteristic for planar flow, not axisymmetric.
     std::optional<CharacteristicFamily> m_initial_line_family;
 
-    std::vector<std::string> m_messages;
+    // Messages collected during solve() (see MocLog); copied into MocResult::messages at
+    // the end of solve(). Reset at the top of every solve() call.
+    MocLog m_log;
+
+    // Everything a kernel or unit process needs for one solve, besides the points it works
+    // on: emplaced in solve() once m_thermo and the resolved wall contour exist. Unit
+    // processes are called as free functions (moc_unit_processes.hpp) with *m_context.
+    std::optional<MocSolveContext> m_context;
 };
 
 } // namespace Goddard

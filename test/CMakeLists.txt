@@ -22,6 +22,7 @@ add_executable(
     test_prandtl_meyer.cpp
     test_prandtl_meyer_table.cpp
     test_moc_unit.cpp
+    test_moc_unit_processes.cpp
     test_moc_design.cpp
     test_moc_phases.cpp
     test_moc_convergence.cpp

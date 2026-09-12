@@ -15,38 +15,6 @@
 
 namespace Goddard {
 
-namespace {
-// Unwraps a PointResult produced while constructing the initial data line. Unlike
-// the kernel (which communicates a unit-process failure back to solve() via a
-// returned MocFailure), the initial data line runs before the kernel and
-// communicates failure through solve()'s exception boundary: throwing here is
-// caught by MocNozzle::solve() and converted to MocFailure{INITIALIZATION_FAILED}.
-CharacteristicPoint unwrap_or_throw(const PointResult& result, std::string_view context) {
-    if (result.error != MocErrorCode::NONE) {
-        throw ConvergenceError(std::format(
-            "{}: unit process failed at ({}, {}) with error {}.",
-            context, result.point.x, result.point.y, to_string(result.error)));
-    }
-    return result.point;
-}
-} // namespace
-
-// -- Logging helpers --
-void MocNozzle::log_warning(const std::string& msg) {
-    m_messages.push_back("Warning: " + msg);
-}
-
-void MocNozzle::log_info(const std::string& msg) {
-    m_messages.push_back("Info: " + msg);
-}
-
-void MocNozzle::log_debug(const std::string& msg) {
-    if (m_options.log_level != MocLogLevel::DEBUG) return;
-    std::string full = "Debug: " + msg;
-    m_messages.push_back(full);
-    std::cerr << full << std::endl;
-}
-
 bool MocNozzle::is_solved() const {
     return m_is_solved;
 }
@@ -57,7 +25,7 @@ MocResult MocNozzle::solve() {
     // adjust it between construction and solve().
     validate_moc_options(m_options);
 
-    m_messages.clear();
+    m_log = MocLog(m_options.log_level);
     m_theta_schedule.clear();
     m_initial_line_family.reset();
     m_is_solved = false;
@@ -96,6 +64,11 @@ MocResult MocNozzle::solve() {
         throat = nozzle.solve_throat_conditions();
         m_thermo = MocThermo::tabulated(*m_gas, m_options.chemistry, throat);
     }
+
+    // Everything a kernel or unit process needs for this solve, besides the points it works
+    // on: m_options.nozzle_profile is still where the resolved contour lives at this step
+    // (see setup_nozzle_profile above); a later step moves it out of MocOptions.
+    m_context.emplace(MocSolveContext{m_options, m_options.nozzle_profile, *m_thermo, m_log});
 
     MocResult result;
 
@@ -185,7 +158,7 @@ MocResult MocNozzle::solve() {
 
     if (result.failure.code != MocErrorCode::NONE) {
         result.converged = false;
-        result.messages = m_messages;
+        result.messages = m_log.messages;
         m_is_solved = true;
         return result;
     }
@@ -208,7 +181,7 @@ MocResult MocNozzle::solve() {
         result.min_theta_x = lowest->x;
         result.min_theta_y = lowest->y;
         if (result.min_theta < -0.5 * M_PI / 180.0) {
-            log_warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f}): a compression is "
+            m_log.warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f}): a compression is "
                 "converging on the axis (a forming shock); the isentropic solution downstream "
                 "of it is approximate.", result.min_theta * 180.0 / M_PI,
                 result.min_theta_x, result.min_theta_y);
@@ -216,7 +189,7 @@ MocResult MocNozzle::solve() {
     }
 
     result.net = net;
-    result.messages = m_messages;
+    result.messages = m_log.messages;
     if (kernel_failure.has_value()) {
         result.failure = *kernel_failure;
         result.converged = false;
@@ -414,7 +387,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
             m_options.geometry.downstream_wall_curvature_radius > 0.0 &&
             m_options.mode != MocMode::DESIGN_MIN_LENGTH)
         {
-            log_info("Kliegel-Levine initialization is only valid for axisymmetric flow; "
+            m_log.info("Kliegel-Levine initialization is only valid for axisymmetric flow; "
                      "using centered-fan initialization for planar flow.");
         }
     }
@@ -477,12 +450,12 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                 // special case: the first point is on the centerline
                 if (i == 0) {
                     upstream_point = unwrap_or_throw(
-                        solve_initial_axis_point_centered_exp(expansion_point),
+                        solve_fan_axis_point(*m_context, expansion_point),
                         "Initial data line (min-length axis point)");
                 }
                 else {
                     upstream_point = unwrap_or_throw(
-                        solve_interior_point(expansion_point, upstream_point),
+                        solve_interior_point(*m_context, expansion_point, upstream_point),
                         "Initial data line (min-length interior point)");
                 }
                 data_line.push_back(upstream_point);
@@ -514,7 +487,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                     // propagate to solve()'s exception boundary as INITIALIZATION_FAILED).
                     // Rebuild as the centered fan below, with theta_max derived exactly as
                     // the eager fan path derives it.
-                    log_info("Kliegel-Levine series misses the wall angle by {:.6f} rad at "
+                    m_log.info("Kliegel-Levine series misses the wall angle by {:.6f} rad at "
                              "R = {:.6f}; using centered-fan initialization.", e.miss, e.R);
                     resolved_start_line = MocStartLine::CENTERED_FAN;
                     derive_fan_theta_max();
@@ -535,13 +508,13 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
                     // special case: the first point is on the centerline
                     if (i == 0) {
                         upstream_point = unwrap_or_throw(
-                            solve_initial_axis_point_centered_exp(expansion_point),
+                            solve_fan_axis_point(*m_context, expansion_point),
                             "Initial data line (centered-fan axis point)");
                         data_line.push_back(upstream_point);
                     }
                     else {
                         upstream_point = unwrap_or_throw(
-                            solve_interior_point(expansion_point, upstream_point),
+                            solve_interior_point(*m_context, expansion_point, upstream_point),
                             "Initial data line (centered-fan interior point)");
                         data_line.push_back(upstream_point);
                     }
@@ -556,7 +529,7 @@ std::vector<CharacteristicPoint> MocNozzle::generate_initial_data_line(
 
     for (size_t i = 0; i < data_line.size(); i++) {
         const auto& pt = data_line[i];
-        log_debug("INIT[{}] x={:.6f} y={:.6f} theta={:.6f} nu={:.6f} mach={:.6f} mu={:.6f}",
+        m_log.debug("INIT[{}] x={:.6f} y={:.6f} theta={:.6f} nu={:.6f} mach={:.6f} mu={:.6f}",
             i, pt.x, pt.y, pt.theta, pt.nu, pt.mach, pt.mu);
         // The Kliegel-Levine and Sauer transonic-line initializers compute Mach
         // directly (not via Prandtl-Meyer inversion) and are not funneled through a
@@ -600,7 +573,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
     std::optional<MocFailure> failure;
 
     while (net.has_active_chains() && iters < maxiter && !failure.has_value()) {
-        log_debug("--- kernel pass {}: {} active C+, {} active C- ---",
+        m_log.debug("--- kernel pass {}: {} active C+, {} active C- ---",
             iters, plus_edges.chain_indices.size(), minus_edges.chain_indices.size());
         intersections.clear();
         paired_cminus.clear();
@@ -630,7 +603,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                 const CharacteristicPoint& minus_pt = net.points[match.pt_idx];
                 const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
 
-                PointResult result = solve_interior_point(minus_pt, plus_pt);
+                PointResult result = solve_interior_point(*m_context, minus_pt, plus_pt);
                 if (result.error != MocErrorCode::NONE) {
                     failure = MocFailure{
                         result.error,
@@ -642,7 +615,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                     };
                     break;
                 }
-                log_debug("PAIR minus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) "
+                m_log.debug("PAIR minus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) "
                     "plus(x={:.6f},y={:.6f},th={:.6f},mu={:.6f}) -> (x={:.6f},y={:.6f},mach={:.6f})",
                     minus_pt.x, minus_pt.y, minus_pt.theta, minus_pt.mu,
                     plus_pt.x, plus_pt.y, plus_pt.theta, plus_pt.mu,
@@ -664,7 +637,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                 // this chain active and retry once that C- has advanced on the next pass,
                 // rather than wrongly treating it as a wall hit.
                 const CharacteristicPoint& plus_pt = net.points[plus_edges.leading_pt_indices[i]];
-                log_debug("SKIP plus(x={:.6f},y={:.6f}) waiting for scarce C- partner "
+                m_log.debug("SKIP plus(x={:.6f},y={:.6f}) waiting for scarce C- partner "
                     "(already claimed this pass)", plus_pt.x, plus_pt.y);
             }
             else [[unlikely]] { // C+ intersects with wall
@@ -686,7 +659,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                     };
                     break;
                 }
-                log_debug("WALL plus(x={:.6f},y={:.6f}) -> wall hit at (x={:.6f},y={:.6f})",
+                m_log.debug("WALL plus(x={:.6f},y={:.6f}) -> wall hit at (x={:.6f},y={:.6f})",
                     plus_pt.x, plus_pt.y, result.point.x, result.point.y);
                 intersections.push_back({
                     result.point,
@@ -718,7 +691,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
             )
         {
             const CharacteristicPoint& minus_pt = net.leading_point(*min_y_cminus_idx);
-            PointResult axis_result = solve_axis_point(minus_pt);
+            PointResult axis_result = solve_axis_point(*m_context, minus_pt);
             if (axis_result.error != MocErrorCode::NONE) {
                 failure = MocFailure{
                     axis_result.error,
@@ -729,7 +702,7 @@ std::optional<MocFailure> MocNozzle::solve_characteristic_kernel(CharacteristicN
                 };
                 break;
             }
-            log_debug("AXIS minus(x={:.6f},y={:.6f}) reflects off axis", minus_pt.x, minus_pt.y);
+            m_log.debug("AXIS minus(x={:.6f},y={:.6f}) reflects off axis", minus_pt.x, minus_pt.y);
             intersections.push_back({
                 axis_result.point,
                 PointMembership {
@@ -794,638 +767,7 @@ PointResult MocNozzle::solve_wall_point(
         theta_wall = m_options.theta_max - m_theta_schedule[k];
     }
 
-    return solve_wall_point_design(interior_parent, previous_wall_point, theta_wall);
-}
-
-PointResult MocNozzle::solve_initial_axis_point_centered_exp(const CharacteristicPoint& expansion_point) {
-    CharacteristicPoint point{};
-    point.y = 0.0; //point always lies on axis
-    switch (m_options.flow_type) {
-        case MocFlowKind::PLANAR: {
-            point.theta = expansion_point.theta;
-            // nu = expansion point nu follows from geometric analysis
-            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-                point, expansion_point.nu, expansion_point.mach);
-            if (thermo_error != MocErrorCode::NONE) {
-                point.x = expansion_point.x;
-                return {point, thermo_error};
-            }
-            point.K_plus = point.theta - point.nu;
-            point.K_minus = expansion_point.K_minus;
-
-            double c_minus_angle = average_cminus_angle(expansion_point, point);
-            point.x = expansion_point.x - expansion_point.y / tan(c_minus_angle);
-            break;
-        }
-        case MocFlowKind::AXISYMMETRIC: {
-            // Same approach as planar for the initial axis point:
-            // assign theta from the expansion fan to bootstrap marching.
-            // The axisymmetric source term is not applied here because the
-            // initial expansion fan is modeled as a centered expansion at a point,
-            // and the first axis point is a direct consequence of this geometric
-            // construction. Source terms enter in subsequent solve_axis_point calls.
-            point.theta = expansion_point.theta;
-            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-                point, expansion_point.nu, expansion_point.mach);
-            if (thermo_error != MocErrorCode::NONE) {
-                point.x = expansion_point.x;
-                return {point, thermo_error};
-            }
-            point.K_plus = point.theta - point.nu;
-            point.K_minus = expansion_point.K_minus;
-
-            double c_minus_angle = average_cminus_angle(expansion_point, point);
-            point.x = expansion_point.x - expansion_point.y / tan(c_minus_angle);
-            break;
-        }
-        default:
-            throw std::runtime_error("Invalid flow type specified.");
-    }
-
-    MocErrorCode validity = check_point_validity(point, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        return {point, validity};
-    }
-    return {point, MocErrorCode::NONE};
-}
-
-PointResult MocNozzle::solve_axis_point(const CharacteristicPoint& off_axis_parent) {
-    CharacteristicPoint axis_point{};
-    axis_point.y = 0.0;
-    axis_point.theta = 0.0; // symmetry condition
-
-    switch (m_options.flow_type) {
-        case MocFlowKind::PLANAR: {
-
-            axis_point.K_minus = off_axis_parent.K_minus;
-            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-                axis_point,
-                axis_point.K_minus - axis_point.theta,
-                off_axis_parent.mach);
-            if (thermo_error != MocErrorCode::NONE) {
-                axis_point.x = off_axis_parent.x;
-                return {axis_point, thermo_error};
-            }
-
-            axis_point.K_plus = axis_point.theta - axis_point.nu;
-
-            double c_minus_angle = 0.5 * (off_axis_parent.theta + axis_point.theta)
-                - 0.5 * (off_axis_parent.mu + axis_point.mu);
-
-            axis_point.x = off_axis_parent.x - off_axis_parent.y/tan(c_minus_angle);
-            break;
-        }
-        case MocFlowKind::AXISYMMETRIC: {
-
-            const double theta = off_axis_parent.theta;
-            const double mu = off_axis_parent.mu;
-            // Predictor method recommended by Zucrow & Hoffman, ch. 17
-            // Use parent point as initial guess for source term.
-            // The C- compatibility per dy is d(theta+nu) = [sin(theta)/(M sin(theta-mu))] (dy/y).
-            // The descent from the parent to the axis has dy = -y_parent (signed), which makes
-            // the source contribution positive (sin(theta-mu) < 0).
-            axis_point.K_minus = off_axis_parent.K_minus;
-
-            const double dy = -off_axis_parent.y; // y_axis - y_parent
-            double source_pred = sin(theta) / (off_axis_parent.mach * sin(theta - mu))
-                * dy / off_axis_parent.y;
-
-            // dtheta + dnu = S => nu_2 - nu_1 = S + theta_1 = S + K_minus_1
-            double nu_pred = axis_point.K_minus + source_pred;
-
-            MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-                axis_point,
-                nu_pred,
-                off_axis_parent.mach);
-            if (thermo_error != MocErrorCode::NONE) {
-                axis_point.x = off_axis_parent.x;
-                return {axis_point, thermo_error};
-            }
-
-            axis_point.K_plus = axis_point.theta - axis_point.nu;
-
-            double c_minus_angle = average_cminus_angle(off_axis_parent, axis_point);
-            axis_point.x = off_axis_parent.x - off_axis_parent.y / tan(c_minus_angle);
-
-            // Corrector: apply the averaged source term with the same signed dy:
-            // dy/y_avg = (0 - y_parent)/(y_parent/2) = -2, and theta_avg = theta_parent/2,
-            // which together reproduce the finite sin(theta)/y limit at the axis.
-            double dy_over_y_avg = -2.0;
-            double theta_avg = 0.5 * off_axis_parent.theta;
-            double mu_avg = 0.5 * (off_axis_parent.mu + axis_point.mu);
-            double M_avg = 0.5 * (off_axis_parent.mach + axis_point.mach);
-            double source_corrected = sin(theta_avg)/ (M_avg * sin(theta_avg - mu_avg)) * dy_over_y_avg;
-
-            // Corrected nu: K_minus from parent, + source contribution
-            double nu_corrected = off_axis_parent.K_minus + source_corrected;
-            thermo_error = m_thermo->set_state_from_nu(axis_point, nu_corrected, axis_point.mach);
-            if (thermo_error != MocErrorCode::NONE) {
-                return {axis_point, thermo_error};
-            }
-            axis_point.K_minus = axis_point.nu; // theta=0
-            axis_point.K_plus = -axis_point.nu;
-
-            // Recompute position with corrected slope
-            c_minus_angle = average_cminus_angle(off_axis_parent, axis_point);
-            axis_point.x = off_axis_parent.x - off_axis_parent.y / tan(c_minus_angle);
-            break;
-        }
-        default:
-            throw std::runtime_error("Invalid flow type specified.");
-    }
-
-    // solve_axis_point has no non-downstream guard today (a documented gap): the
-    // resulting axis point's x must not precede its parent's.
-    if (axis_point.x < off_axis_parent.x) {
-        log_warning("Non-downstream axis intersection at ({}, {}). Parent at x={}.",
-            axis_point.x, axis_point.y, off_axis_parent.x);
-        return {axis_point, MocErrorCode::NON_DOWNSTREAM_POINT};
-    }
-
-    MocErrorCode validity = check_point_validity(axis_point, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        log_warning("Invalid axis point at ({}, {}): error code {}.",
-            axis_point.x, axis_point.y, to_string(validity));
-        return {axis_point, validity};
-    }
-
-    return {axis_point, MocErrorCode::NONE};
-}
-
-PointResult MocNozzle::solve_interior_point(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2)
-{
-    switch (m_options.flow_type) {
-        case MocFlowKind::PLANAR: {
-            return solve_interior_point_planar(p1, p2);
-        }
-        case MocFlowKind::AXISYMMETRIC: {
-            return solve_interior_point_axisymmetric(p1, p2);
-        }
-        default:
-            throw std::runtime_error("Invalid MoC flow type specified.");
-    }
-}
-
-PointResult MocNozzle::solve_interior_point_planar(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2)
-{
-    CharacteristicPoint p3{};
-    p3.theta = 0.5*(p1.K_minus + p2.K_plus);
-    double mach_guess = 0.5*(p1.mach + p2.mach);
-
-    // Position (x, y) is computed after the thermo update below, so a thermo
-    // failure here leaves p3.x/p3.y unset; fall back to a parent's coordinates so
-    // the returned point still carries a meaningful location for diagnostics.
-    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-        p3, 0.5*(p1.K_minus - p2.K_plus), mach_guess);
-    if (thermo_error != MocErrorCode::NONE) {
-        p3.x = p1.x;
-        p3.y = p1.y;
-        return {p3, thermo_error};
-    }
-    p3.K_minus = p3.theta + p3.nu;
-    p3.K_plus = p3.theta - p3.nu;
-
-    // compute intersection point
-    // assumimg characteristics are straight lines.
-    double c_minus_angle = average_cminus_angle(p1, p3);
-    double c_plus_angle = average_cplus_angle(p2, p3);
-
-    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
-    p3.x = x;
-    p3.y = y;
-
-    // validity checks
-    if (p3.x < p1.x || p3.x < p2.x) {
-        log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
-            p3.x, p3.y, p1.x, p2.x);
-        return {p3, MocErrorCode::NON_DOWNSTREAM_POINT};
-    }
-
-    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        log_warning("Invalid interior point at ({}, {}): error code {}.",
-            p3.x, p3.y, to_string(validity));
-        return {p3, validity};
-    }
-
-    return {p3, MocErrorCode::NONE};
-}
-PointResult MocNozzle::solve_interior_point_axisymmetric(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2)
-{
-    CharacteristicPoint p3{};
-
-    // Axisymmetric interior point in the (theta, nu) formulation, consistent with the planar,
-    // wall, and axis solvers. The Riemann invariants K+ = theta - nu (constant along C+) and
-    // K- = theta + nu (constant along C-) pick up source terms in axisymmetric flow:
-    //   along C+:  d(theta - nu) = -L dx,   L = sin(mu) sin(theta) / (y cos(theta + mu))
-    //   along C-:  d(theta + nu) = +M dx,   M = sin(mu) sin(theta) / (y cos(theta - mu))
-    // With L = M = 0 this reduces exactly to the planar solver. Working in nu (rather than the
-    // velocity form) keeps it exact for perfect gas, where nu = nu(M); the velocity form would
-    // require the *true* velocity for cot(mu) dV/V = dnu to hold, but V is stored as M here.
-
-    // Predictor: straight characteristics, source terms evaluated at the parents.
-    double c_minus_angle = p1.theta - p1.mu;
-    double c_plus_angle = p2.theta + p2.mu;
-
-    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
-    p3.x = x;
-    p3.y = y;
-
-    // NOTE: watch out for singularities when a parent is on the centerline.
-    // The averaging of y should prevent issues.
-    double L = sin(p2.mu)*sin(p2.theta)/(0.5*(p2.y+p3.y) * cos(p2.theta + p2.mu));
-    double M = sin(p1.mu)*sin(p1.theta)/(0.5*(p1.y+p3.y) * cos(p1.theta - p1.mu));
-
-    double K_plus = (p2.theta - p2.nu) - L*(p3.x - p2.x);
-    double K_minus = (p1.theta + p1.nu) + M*(p3.x - p1.x);
-    p3.theta = 0.5*(K_minus + K_plus);
-    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-        p3, 0.5*(K_minus - K_plus), 0.5*(p1.mach + p2.mach));
-    if (thermo_error != MocErrorCode::NONE) {
-        return {p3, thermo_error};
-    }
-
-    // Corrector: average the characteristic angles and source terms across the step.
-    double c_minus_angle_corrected = average_cminus_angle(p1, p3);
-    double c_plus_angle_corrected = average_cplus_angle(p2, p3);
-    auto [x_corrected, y_corrected] = characteristic_intersection_with_angle(
-        p1, p2,
-        c_minus_angle_corrected,
-        c_plus_angle_corrected);
-    p3.x = x_corrected;
-    p3.y = y_corrected;
-    double mu1_avg = 0.5*(p1.mu + p3.mu);
-    double mu2_avg = 0.5*(p2.mu + p3.mu);
-    double theta1_avg = 0.5*(p1.theta + p3.theta);
-    double theta2_avg = 0.5*(p2.theta + p3.theta);
-    double M_avg = sin(mu1_avg)*sin(theta1_avg)/(0.5*(p1.y+p3.y) * cos(c_minus_angle_corrected));
-    double L_avg = sin(mu2_avg)*sin(theta2_avg)/(0.5*(p2.y+p3.y) * cos(c_plus_angle_corrected));
-
-    K_plus = (p2.theta - p2.nu) - L_avg*(p3.x - p2.x);
-    K_minus = (p1.theta + p1.nu) + M_avg*(p3.x - p1.x);
-    p3.theta = 0.5*(K_minus + K_plus);
-    thermo_error = m_thermo->set_state_from_nu(p3, 0.5*(K_minus - K_plus), p3.mach);
-    if (thermo_error != MocErrorCode::NONE) {
-        return {p3, thermo_error};
-    }
-    p3.K_minus = p3.theta + p3.nu;
-    p3.K_plus = p3.theta - p3.nu;
-
-    // validity checks
-    if (p3.x < p1.x || p3.x < p2.x) {
-        log_warning("Non-downstream intersection at ({}, {}). Parents at x=({}, {}).",
-            p3.x, p3.y, p1.x, p2.x);
-        return {p3, MocErrorCode::NON_DOWNSTREAM_POINT};
-    }
-
-    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        log_warning("Invalid interior point at ({}, {}): error code {}.",
-            p3.x, p3.y, to_string(validity));
-        return {p3, validity};
-    }
-
-    return {p3, MocErrorCode::NONE};
-}
-
-PointResult MocNozzle::solve_interior_point_iterative(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2)
-{
-    // General procedure:
-    // 1. Receive theta and nu from the two incoming characteristics
-    // 2. Estimate characteristic slopes at parent nodes
-    // 3. Intersect straight line characteristics
-    // 4. Compute source terms (if applicable)
-    // 5. Solve nonlinear equation in V using upstream states only
-    // 6. Get theta from either compatibility equation 
-    // 7. Correct characteristic slope by averaging with endpoint 
-    // 8. Correct V by averaging with endpoint 
-    // 9. Recompute theta and source terms at corrected location
-    // 10. [optional] One additional pass if source term changed significantly
-    CharacteristicPoint p3{};
-    double c_minus_angle = p1.theta - p1.mu;
-    double c_plus_angle = p2.theta + p2.mu;
-
-    auto [x, y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
-    p3.x = x;
-    p3.y = y;
-    double S1 = cminus_source_term(p1, y);
-    double S2 = cplus_source_term(p2, y);
-
-    double mach = find_node_mach(p1, p2, S1 - S2, 0.5 * (p1.mach + p2.mach));
-    if (mach < 1.0) {
-        return {p3, MocErrorCode::PM_INVERSION_FAILED};
-    }
-    MocErrorCode thermo_error = m_thermo->set_state_from_mach(p3, mach);
-    if (thermo_error != MocErrorCode::NONE) {
-        return {p3, thermo_error};
-    }
-
-    // from compatibility equation.
-    p3.theta = S1 + p1.theta - (p3.nu - p1.nu);
-    p3.K_plus = p3.theta - p3.nu;
-    p3.K_minus = p3.theta + p3.nu;
-
-    // corrector step
-    const int max_iters = 3;
-
-    for (int i = 0; i < max_iters; i++) {
-        c_minus_angle = average_cminus_angle(p1, p3);
-        c_plus_angle = average_cplus_angle(p2, p3);
-        auto [new_x, new_y] = characteristic_intersection_with_angle(p1, p2, c_minus_angle, c_plus_angle);
-        p3.x = new_x;
-        p3.y = new_y;
-        double S1_new = cminus_source_term(p1, new_y);
-        double S2_new = cplus_source_term(p2, new_y);
-        double mach_new = find_node_mach(p1, p2, S1_new - S2_new, p3.mach);
-        if (mach_new < 1.0) {
-            return {p3, MocErrorCode::PM_INVERSION_FAILED};
-        }
-        thermo_error = m_thermo->set_state_from_mach(p3, mach_new);
-        if (thermo_error != MocErrorCode::NONE) {
-            return {p3, thermo_error};
-        }
-
-        p3.theta = S1_new + p1.theta - (p3.nu - p1.nu);
-        p3.K_plus = p3.theta - p3.nu;
-        p3.K_minus = p3.theta + p3.nu;
-        double residual = std::max(std::abs(S1_new - S1), std::abs(S2_new - S2));
-        if (residual < m_options.solver_options.abstol) break;
-        S1 = S1_new;
-        S2 = S2_new;
-
-        if (i == max_iters - 1 && residual >= m_options.solver_options.abstol) {
-            log_warning("Iterative interior solver did not converge."
-                "Residual={} after {} iterations at ({}, {}).", residual, max_iters, p3.x, p3.y);
-        }
-    }
-
-    MocErrorCode validity = check_point_validity(p3, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        return {p3, validity};
-    }
-    return {p3, MocErrorCode::NONE};
-}
-
-PointResult MocNozzle::solve_wall_flow(
-    const CharacteristicPoint& interior_parent,
-    double theta_wall)
-{
-    CharacteristicPoint wall_point{};
-    // geometric constraint: the flow at the wall must follow the wall curvature
-    wall_point.theta = theta_wall;
-    // Predictor: planar K+ preservation
-    // Flow solve: compatibility equation along C+ from interior parent
-    // K+ is preserved: theta - nu = const along C+
-    // this only applies for planar flow.
-
-    // For axisymmetric flow, K+ is not preserved along C+.
-    // Use predictor-corrector: start with planar approximation,
-    // then correct using the source term.
-    // The source term correction requires y, which is computed later
-    // in solve_wall_point_design/analysis. We store the predictor result
-    // and the corrector is applied in those methods.
-    // For now, this gives a first-order approximation.
-
-    wall_point.K_plus = interior_parent.K_plus;
-    MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-        wall_point,
-        wall_point.theta - wall_point.K_plus,
-        interior_parent.mach);
-    if (thermo_error != MocErrorCode::NONE) {
-        return {wall_point, thermo_error};
-    }
-    wall_point.K_minus = wall_point.theta + wall_point.nu;
-
-    return {wall_point, MocErrorCode::NONE};
-}
-
-PointResult MocNozzle::solve_wall_point_design(
-    const CharacteristicPoint& interior_parent,
-    const CharacteristicPoint& previous_wall_point,
-    double theta_wall)
-{
-    PointResult flow_result = solve_wall_flow(interior_parent, theta_wall);
-    if (flow_result.error != MocErrorCode::NONE) {
-        flow_result.point.x = interior_parent.x;
-        flow_result.point.y = interior_parent.y;
-        return flow_result;
-    }
-    CharacteristicPoint wall_point = flow_result.point;
-
-    // the angle between the interior point and the wall point
-    // is given by the C+ characteristic.
-    double c_plus_angle = average_cplus_angle(interior_parent, wall_point);
-
-    // the angle between the previous wall point and the current wall point
-    // is given by wall_theta.
-    double prev_wall_angle = 0.5*(previous_wall_point.theta + wall_point.theta);
-
-    auto [x,y] = characteristic_intersection_with_angle(
-        interior_parent, previous_wall_point,
-        c_plus_angle, prev_wall_angle);
-
-    wall_point.x = x;
-    wall_point.y = y;
-
-    switch (m_options.flow_type) {
-        case MocFlowKind::PLANAR: { break; }
-        case MocFlowKind::AXISYMMETRIC: {
-            // Wall corrector step
-            // Unlike the case of an interior point, we only have one characteristic line
-            // and theta is already known (specified by wall).
-            // The general compatibility equation for the C+ characteristic is:
-            // $theta_P - theta_B - S_{BP} = nu_P - nu_B$
-            // where S is the source term, B is the interior point and P is the wall point.
-
-            // The solution procedure is:
-            // 1. Calculate source term from estimated y.
-            // 2. Calculate nu from axisymmetric compatibility equation.
-            // 3. Obtain thermodynamic values for given value of nu.
-            // 4. Recompute new position based on new C+ angle
-            // 5. Repeat until source residual is satisfactory.
-            // In practice only 1-2 iterations should be needed.
-            double old_S = 0.0;
-            double residual = 0.0;
-            const int max_iter = 4;
-            for (int i = 0; i < max_iter; i++){
-
-                double S = cplus_source_term(interior_parent, wall_point);
-                residual = std::abs(S - old_S);
-                old_S = S;
-                if (residual < m_options.solver_options.abstol) break;
-
-                // C+ compatibility nu_P = theta_P - theta_B + nu_B + S, matching the interior
-                // solver's K+ = theta - nu decreasing by the source along C+ (d(theta-nu) = -S).
-                // The source enters with a +S sign here, NOT -S.
-                MocErrorCode thermo_error = m_thermo->set_state_from_nu(
-                    wall_point,
-                    wall_point.theta-interior_parent.theta + S + interior_parent.nu,
-                    interior_parent.mach);
-                if (thermo_error != MocErrorCode::NONE) {
-                    return {wall_point, thermo_error};
-                }
-
-                wall_point.K_plus = wall_point.theta - wall_point.nu;
-                wall_point.K_minus = wall_point.theta + wall_point.nu;
-                double corrected_cplus_angle = average_cplus_angle(interior_parent, wall_point);
-                auto [new_x,new_y] = characteristic_intersection_with_angle(
-                    interior_parent,
-                    previous_wall_point,
-                    corrected_cplus_angle,
-                    prev_wall_angle);
-
-                wall_point.x = new_x;
-                wall_point.y = new_y;
-
-                if (i == max_iter - 1 && residual >= m_options.solver_options.abstol) {
-                    log_warning("Wall design source term iteration did not converge."
-                        "Residual={} at ({}, {}).", residual, wall_point.x, wall_point.y);
-                }
-            }
-            break;
-        }
-        default:
-            throw std::runtime_error("Invalid flow type specified.");
-    }
-
-    MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol);
-    if (validity != MocErrorCode::NONE) {
-        log_warning("Invalid wall point at ({}, {}): error code {}.",
-            wall_point.x, wall_point.y, to_string(validity));
-        return {wall_point, validity};
-    }
-
-    return {wall_point, MocErrorCode::NONE};
-}
-
-double MocNozzle::find_node_mach(
-    const CharacteristicPoint& p1,
-    const CharacteristicPoint& p2,
-    double source_delta,
-    double mach_guess)
-{
-
-    // initial guess: mach of upstream
-    double mach = (mach_guess > 1.0) ? mach_guess : p1.mach;
-
-    double delta_theta = p1.theta - p2.theta;
-    const int max_iter = 15;
-    // Newton's method to find root
-    // Residual function obtained from combining both compatibility equations:
-    //
-    //$$\epsilon (V_P) = (\theta_{A}- \theta_{B}) + \Delta \nu (V_{A} \rightarrow V_{P})
-    // + \Delta \nu (V_{B} \rightarrow V_{P}) - (S_{A}- S_{B})$$
-    // where A and B indicate upstream points.
-    for (int i = 0; i < max_iter; i++) {
-        double nu3, derivative;
-
-        if (m_options.chemistry == GasChemistry::PERFECT_GAS) {
-            nu3 = prandtl_meyer(mach, m_options.gamma);
-            // dnu/dM for perfect gas
-            derivative = 2.0 * prandtl_meyer_derivative(mach, m_options.gamma);
-        } else {
-            const PrandtlMeyerTable& table = m_thermo->table();
-            auto [idx, weight] = table.find_mach_index_and_weight(mach);
-            nu3 = table.interpolate_at_index(idx, weight, table.nus);
-            double V = table.interpolate_at_index(idx, weight, table.velocities);
-            derivative = 2.0 * sqrt(mach * mach - 1.0) / V;
-        }
-
-        double residual = delta_theta - source_delta + (nu3 - p1.nu) + (nu3 - p2.nu);
-        if (std::abs(residual) < m_options.solver_options.abstol) return mach;
-
-        mach -= residual / derivative;
-    }
-
-    // rootfinding has failed
-    log_warning("find_node_mach did not converge after {} iterations. "
-        "Last Mach={}, delta_theta={}.", max_iter, mach, delta_theta);
-    return -1.0;
-}
-
-std::pair<double,double> MocNozzle::find_wall_hit(
-    const CharacteristicPoint& p, 
-    const NozzleProfile& wall, 
-    double char_angle) const
-{
-    double c_plus_slope = tan(char_angle);
-    double x,y;
-    bool found = false;
-
-    // A wall hit needs at least one segment; a degenerate profile would underflow the
-    // loop bound and the extrapolation indices below.
-    if (wall.x.size() < 2) {
-        throw std::runtime_error("find_wall_hit: nozzle profile has fewer than two points.");
-    }
-
-    for (size_t k = 0; k < wall.x.size() - 1; k++) {
-        double wall_slope = (wall.y[k+1] - wall.y[k])
-            / (wall.x[k+1] - wall.x[k]);
-        double wall_intercept = wall.y[k] - wall_slope * wall.x[k];
-        double char_intercept = p.y - c_plus_slope * p.x;
-
-        double x_intercept = (wall_intercept - char_intercept) / (c_plus_slope - wall_slope);
-
-        // check if intersection is within the wall segment
-        if (x_intercept >= wall.x[k] && x_intercept <= wall.x[k+1]) {
-            x = x_intercept;
-            y = p.y + c_plus_slope * (x - p.x);
-            found = true;
-            break;
-        }
-    }
-    if (!found) { 
-        // if the intersection cannot be found within the nozzle profile, 
-        // trun negative values
-        return {-1.0, -1.0};
-        // size_t last = wall.x.size() - 1;
-        // double wall_slope = (wall.y[last] - wall.y[last-1])/(wall.x[last] - wall.x[last - 1]);
-        // double wall_intercept = wall.y[last] - wall_slope * wall.x[last];
-        // double char_intercept = p.y - c_plus_slope * p.x;
-        // x = (wall_intercept - char_intercept) / (c_plus_slope - wall_slope);
-        // y = p.y + c_plus_slope * (x - p.x);
-        // log_warning("Extrapolating wall intercept to x = {}, y = {}", x, y);
-    }
-    return {x,y};
-}
-
-double MocNozzle::cplus_source_term(
-    const CharacteristicPoint& p, 
-    double new_y) const 
-{
-    double y_avg = 0.5 * (p.y + new_y);
-    double dy = new_y - p.y;
-    return sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
-}
-
-double MocNozzle::cplus_source_term(
-    const CharacteristicPoint& p1, 
-    const CharacteristicPoint& p3) const 
-{
-    double y_avg = 0.5 * (p1.y + p3.y);
-    double dy = p3.y - p1.y;
-    double theta_avg = 0.5 * (p1.theta + p3.theta);
-    double theta_plus_mu_avg = 0.5 * ((p1.theta + p1.mu) + (p3.theta + p3.mu));
-    double mach_avg = 0.5 * (p1.mach + p3.mach);
-    return sin(theta_avg)/(mach_avg * sin(theta_plus_mu_avg)) * dy/y_avg;
-}
-
-double MocNozzle::cminus_source_term(
-    const CharacteristicPoint& p, 
-    double new_y) const 
-{
-    
-    double y_avg = 0.5 * (p.y + new_y);
-    double dy = new_y - p.y;
-    return -sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
+    return solve_wall_point_design(*m_context, interior_parent, previous_wall_point, theta_wall);
 }
 
 MocNozzle::LeadingEdgeView MocNozzle::leading_edges(const CharacteristicNet& net, CharacteristicFamily fam) const {

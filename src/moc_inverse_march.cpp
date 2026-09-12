@@ -180,17 +180,6 @@ std::optional<FootHit> trace_with_axis_mirror(
     return std::nullopt;
 }
 
-/** Throw ConvergenceError if a thermodynamic update failed; caught by solve()'s existing
- * initialization exception boundary, matching moc_nozzle.cpp's unwrap_or_throw pattern
- * (not reused directly: that helper has internal linkage in a different translation unit). */
-void throw_if_thermo_error(MocErrorCode err, std::string_view context, double x, double y) {
-    if (err != MocErrorCode::NONE) {
-        throw ConvergenceError(std::format(
-            "{}: unit process failed at ({}, {}) with error {}.", context, x, y, to_string(err)));
-    }
-}
-
-
 } // namespace
 
 std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
@@ -269,11 +258,9 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
         pt.x = x0;
         pt.y = y;
         pt.theta = 0.5 * (K_minus + K_plus);
-        throw_if_thermo_error(
-            m_thermo->set_state_from_nu(pt, 0.5 * (K_minus - K_plus), 1.05),
-            "Inverse march initial front (fan plane)", x0, y);
-        pt.K_plus = pt.theta - pt.nu;
-        pt.K_minus = pt.theta + pt.nu;
+        MocErrorCode thermo_error = m_thermo->set_state_from_nu(pt, 0.5 * (K_minus - K_plus), 1.05);
+        unwrap_or_throw({pt, thermo_error}, "Inverse march initial front (fan plane)");
+        pt.update_Ks();
         front[j] = pt;
     }
     // The axis point of the plane is the data line's own axis point (it lies on the plane).
@@ -287,11 +274,11 @@ std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     wall_pt.x = x0;
     wall_pt.y = y_wall;
     wall_pt.theta = wall.theta_at_interpolated(x0);
-    throw_if_thermo_error(
-        m_thermo->set_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach),
-        "Inverse march initial front (fan wall point)", wall_pt.x, wall_pt.y);
-    wall_pt.K_plus = wall_pt.theta - wall_pt.nu;
-    wall_pt.K_minus = wall_pt.theta + wall_pt.nu;
+    {
+        MocErrorCode thermo_error = m_thermo->set_state_from_nu(wall_pt, wall_pt.theta - below.K_plus, below.mach);
+        unwrap_or_throw({wall_pt, thermo_error}, "Inverse march initial front (fan wall point)");
+    }
+    wall_pt.update_Ks();
     return front;
 }
 
@@ -352,7 +339,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
             const double th_m = 0.5 * (foot_minus.theta + p4.theta);
             const double y_m = 0.5 * (foot_minus.y + p4.y);
             const double ang_m = 0.5 * (angle_minus + (foot_minus.theta - foot_minus.mu));
-            if (std::abs(y_m) > 1e-12) source_minus = std::sin(mu_m) * std::sin(th_m) / (y_m * std::cos(ang_m));
+            if (std::abs(y_m) > 1e-12) source_minus = axisymmetric_source(mu_m, th_m, y_m, ang_m);
 
             const double mu_p = 0.5 * (foot_plus.mu + p4.mu);
             const double ang_p = 0.5 * (angle_plus + (foot_plus.theta + foot_plus.mu));
@@ -365,7 +352,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
             } else {
                 const double th_p = 0.5 * (foot_plus.theta + p4.theta);
                 const double y_p = 0.5 * (foot_plus.y + p4.y);
-                if (std::abs(y_p) > 1e-12) source_plus = std::sin(mu_p) * std::sin(th_p) / (y_p * std::cos(ang_p));
+                if (std::abs(y_p) > 1e-12) source_plus = axisymmetric_source(mu_p, th_p, y_p, ang_p);
             }
         }
 
@@ -387,8 +374,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
         if (converged) break;
     }
 
-    p4.K_minus = p4.theta + p4.nu;
-    p4.K_plus = p4.theta - p4.nu;
+    p4.update_Ks();
 
     MocErrorCode validity = check_point_validity(p4, m_options.solver_options.abstol, /*require_nonnegative_theta=*/false);
     if (validity != MocErrorCode::NONE) return {p4, validity};
@@ -432,12 +418,7 @@ PointResult MocNozzle::solve_inverse_march_axis_point(
             // since the axis point sits at y=0, so dy/y_avg = -2 is an algebraic identity
             // here (not a small-perturbation approximation) and generalizes unchanged to a
             // traced-back foot that is not an actual net parent.
-            const double theta_avg = 0.5 * foot.theta;
-            const double mu_avg = 0.5 * (foot.mu + axis_point.mu);
-            const double M_avg = 0.5 * (foot.mach + axis_point.mach);
-            const double denom = std::sin(theta_avg - mu_avg);
-            const double source = (std::abs(denom) > 1e-12)
-                ? std::sin(theta_avg) / (M_avg * denom) * (-2.0) : 0.0;
+            const double source = axis_source_correction(foot, axis_point);
             nu_new = (foot.theta + foot.nu) + source;
         } else {
             nu_new = foot.theta + foot.nu; // planar: K- exactly preserved, no source
@@ -507,8 +488,7 @@ PointResult MocNozzle::solve_inverse_march_wall_point(
         if (converged) break;
     }
 
-    wall_point.K_plus = wall_point.theta - wall_point.nu;
-    wall_point.K_minus = wall_point.theta + wall_point.nu;
+    wall_point.update_Ks();
 
     MocErrorCode validity = check_point_validity(wall_point, m_options.solver_options.abstol, false);
     if (validity != MocErrorCode::NONE) return {wall_point, validity};
@@ -702,7 +682,7 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
             new_front_points[M - 1] = wall_result.point;
         }
 
-        log_debug("STEP pass={} dx_cfl={:.6f} dx_foot={:.6f} dx_turn={:.6f} dx_exit={:.6f} "
+        m_log.debug("STEP pass={} dx_cfl={:.6f} dx_foot={:.6f} dx_turn={:.6f} dx_exit={:.6f} "
             "dx={:.6f} lambda={:.4f} x_w={:.6f} y_w={:.6f} x_a={:.6f}",
             pass, dx_cfl, dx_foot, dx_turn, dx_exit, dx, lambda, x_w, y_w, x_new[0]);
 
@@ -737,7 +717,7 @@ std::optional<MocFailure> MocNozzle::solve_inverse_characteristic_kernel(Charact
         }
         m_pass_diagnostics.push_back(diag);
 
-        log_debug("FRONT pass={} dx={:.6f} limiter={} x_axis={:.6f} x_wall={:.6f}",
+        m_log.debug("FRONT pass={} dx={:.6f} limiter={} x_axis={:.6f} x_wall={:.6f}",
             pass, dx, to_string(limiter), x_new[0], x_w);
 
         front = new_front;
