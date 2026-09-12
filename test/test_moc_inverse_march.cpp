@@ -76,7 +76,6 @@ MocOptions make_inverse_options(MocFlowKind flow, double gamma, int n) {
     opts.gamma = gamma;
     opts.num_characteristics = n;
     opts.geometry.throat_radius = 1.0;
-    opts.march_scheme = MocMarchScheme::INVERSE;
     return opts;
 }
 
@@ -519,7 +518,6 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
         opts.num_characteristics = 15;
         opts.geometry.throat_radius = 1.0;
         opts.geometry.downstream_wall_curvature_radius = 2.0;
-        opts.march_scheme = MocMarchScheme::INVERSE;
         opts.nozzle_profile = profile;
 
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");

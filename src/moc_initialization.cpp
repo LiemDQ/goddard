@@ -140,7 +140,8 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     };
 
     // Axial station at which the C- leaving height y reaches the axis, on a straight-ray
-    // estimate. This -- not y -- is the coordinate the start line must be uniform in.
+    // estimate, is the coordinate that would need to be uniform to equalize characteristic
+    // spacing near the axis -- not y.
     //
     // Spacing points uniformly in y spaces their characteristics ~7x non-uniformly here,
     // because the near-axis region is a double zero: y -> 0 and cot(mu) -> 0 together (the
@@ -151,64 +152,22 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_kliegel_levine(co
     // front shears until pairing breaks down. The ratio is set by the flow, not the mesh, so
     // it is *independent of num_characteristics*: refining the grid halves every gap and
     // leaves the grading (measured 6.2 to 7.2 for N = 8 to 61) intact. That is why grid
-    // refinement never cured the axisymmetric breakdown.
-    auto axis_arrival = [&](double y) {
-        const double x = station_x(y);
-        const double u_star = KL_xMach(y, KL_z_coordinate(x, gamma), gamma, R);
-        const double v_star = KL_yMach(x, y, gamma, R);
-        const double mach = mach_from_critical_velocity_ratio(std::hypot(u_star, v_star), gamma);
-        if (!(mach > 1.0)) return x;   // still sonic: the C- is vertical, it arrives at x
-        const double theta = std::atan2(v_star, u_star);
-        const double slope = std::tan(theta - mach_to_mu(mach));
-        if (std::abs(slope) < 1e-12) return x;
-        return x + y / std::abs(slope);
-    };
-
-    // Tabulate the arrival map once, then invert it by interpolation: far cheaper than a
-    // root solve per point, and it makes the monotonicity check free.
-    constexpr size_t table_size = 201;
-    std::vector<double> y_table(table_size), arrival_table(table_size);
-    bool monotone = true;
-    for (size_t k = 0; k < table_size; k++) {
-        y_table[k] = static_cast<double>(k) / static_cast<double>(table_size - 1);
-        arrival_table[k] = axis_arrival(y_table[k]);
-        if (k > 0 && !(arrival_table[k] > arrival_table[k - 1])) monotone = false;
-    }
-
+    // refinement never cured the axisymmetric breakdown -- and why clustering the line
+    // toward the axis to compensate was tried and abandoned (the benefit does not survive
+    // refinement); interior stations are simply uniform in y.
     std::vector<CharacteristicPoint> points(num_points);
     const double last = static_cast<double>(num_points - 1);
 
     for (size_t i = 0; i < num_points; i++) {
         double y;
-        // Interior branches produce a normalized station in [0,1]; the two anchors are
-        // written in normalized terms too so the single scaling below covers every case.
         if (i == 0) {
             y = 0.0;                       // anchor the axis point exactly
         }
         else if (i == num_points - 1) {
             y = 1.0;                       // anchor the wall point on the contour
         }
-        else if (!monotone) {
-            // The arrival map should be monotone for any physical throat; if the series is
-            // being evaluated somewhere it is not, fall back to a uniform line rather than
-            // producing a scrambled start line.
-            y = static_cast<double>(i) / last;
-        }
         else {
-            const double target = arrival_table.front()
-                + (arrival_table.back() - arrival_table.front()) * static_cast<double>(i) / last;
-            const size_t k = static_cast<size_t>(
-                std::lower_bound(arrival_table.begin(), arrival_table.end(), target)
-                - arrival_table.begin());
-            const size_t hi = std::clamp<size_t>(k, 1, table_size - 1);
-            const double a0 = arrival_table[hi - 1], a1 = arrival_table[hi];
-            const double w = (a1 > a0) ? (target - a0) / (a1 - a0) : 0.0;
-            const double y_arrival = y_table[hi - 1] + w * (y_table[hi] - y_table[hi - 1]);
-            const double y_uniform = static_cast<double>(i) / last;
-            const double c = m_options.initial_line_clustering;
-            // c < 0 pushes points toward the axis (y_arrival > y_uniform everywhere), c > 0
-            // toward the wall. Clamped so the line stays inside the throat and ordered.
-            y = std::clamp((1.0 - c) * y_uniform + c * y_arrival, 1e-6, 1.0 - 1e-6);
+            y = static_cast<double>(i) / last;
         }
         // The interior stations are laid out on the unit interval; stretch them onto the
         // line's actual span so they stay evenly distributed when the wall end moves.

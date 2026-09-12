@@ -18,12 +18,7 @@ struct ChainMetadata {
     bool active = true;
     /// How a chain stopped being marched.
     enum class TerminationType {
-        NOT_TERMINATED, WALL, AXIS, OUTFLOW, CORNER_FAN_ORIGIN,
-        // Retired by mesh control because the front crowded around it (see
-        // MocNozzle::control_front_spacing). Deliberately distinct from OUTFLOW: only
-        // OUTFLOW-terminated chains contribute to outflow_points(), so a merged chain
-        // must not be mistaken for one that reached the exit plane.
-        MERGED
+        NOT_TERMINATED, WALL, AXIS, OUTFLOW
     } termination = TerminationType::NOT_TERMINATED;
     /// Which characteristic family the chain belongs to.
     enum class Family {
@@ -183,34 +178,6 @@ class CharacteristicNet {
      */
     size_t terminate_c_plus_at_wall(size_t chain_idx, const CharacteristicPoint& pt);
 
-    /** Point index and the two chain indices created by insert_rung. */
-    struct InsertedRung { size_t point_idx; size_t c_plus_chain_idx; size_t c_minus_chain_idx; };
-
-    /** Insert a new mesh point into the marching front, owning a fresh chain of each family.
-     *
-     * Every interior point of the net is simultaneously the leading edge of one C+ chain and
-     * one C- chain, and it is that pairing the kernel marches. Refining the front therefore
-     * means adding a point that owns both, so the oversized step it splits becomes two
-     * ordinary unit processes on the next pass. See MocNozzle::refine_front for when and why
-     * the front needs refining.
-     *
-     * @return index of the new point and of the C+ and C- chains it originates
-     */
-    InsertedRung insert_rung(const CharacteristicPoint& pt);
-
-    /** Terminate the C+ and C- chains led by `point_idx`, removing it from the marching front.
-     *
-     * The inverse of insert_rung: where insert_rung splits an over-stretched front segment,
-     * this retires a rung the front has crowded around, so a compression region cannot drive
-     * adjacent front points together without bound. The point itself stays in `points` --
-     * every index in the net is permanent, and the retired point remains a valid interior
-     * node of the chains that already passed through it. Only its two *leading* chains stop.
-     *
-     * @return the retired C+ and C- chain indices, or nullopt when `point_idx` does not
-     *         currently lead an active chain of each family (in which case nothing changes).
-     */
-    std::optional<std::pair<size_t, size_t>> retire_rung(size_t point_idx);
-
     /** Seed an initial wall point (e.g. the throat lip) that anchors the wall march.
      * The point owns no characteristic chain; it only bootstraps leading_wall_point()
      * and the wall coordinate lists.
@@ -229,10 +196,6 @@ class CharacteristicNet {
 
     /**
      * The leading points of every chain that terminated by flowing out of the domain.
-     *
-     * Only OUTFLOW-terminated chains contribute, so chains retired by mesh control
-     * (ChainMetadata::TerminationType::MERGED) are excluded -- they never reached the exit
-     * plane and must not be mistaken for points that did.
      */
     std::vector<CharacteristicPoint> outflow_points() const;
     /** Every point lying on the centerline, in march order. */

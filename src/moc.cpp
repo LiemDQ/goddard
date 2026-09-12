@@ -105,47 +105,9 @@ MocCrossings find_like_characteristic_crossings(const CharacteristicNet& net) {
 }
 
 void validate_moc_options(const MocOptions& options) {
-    if (!(options.max_front_spacing_factor > 1.0)) {
-        throw std::invalid_argument(std::format(
-            "max_front_spacing_factor must be greater than 1; got {}. At or below 1 nearly "
-            "every front segment triggers refinement and the march does not terminate.",
-            options.max_front_spacing_factor));
-    }
-    if (!(options.min_front_spacing_factor > 0.0)) {
-        throw std::invalid_argument(std::format(
-            "min_front_spacing_factor must be positive; got {}.",
-            options.min_front_spacing_factor));
-    }
-    if (!(options.min_front_spacing_factor < 0.5 * options.max_front_spacing_factor)) {
-        throw std::invalid_argument(std::format(
-            "min_front_spacing_factor ({}) must be below half of max_front_spacing_factor "
-            "({}); overlapping refine and coarsen bands thrash, inserting and retiring the "
-            "same rung on alternate passes.",
-            options.min_front_spacing_factor, options.max_front_spacing_factor));
-    }
-    if (!(options.initial_line_clustering >= -1.0 && options.initial_line_clustering <= 1.0)) {
-        throw std::invalid_argument(std::format(
-            "initial_line_clustering must lie in [-1, 1]; got {}.", options.initial_line_clustering));
-    }
-    if (!(options.front_spacing_growth >= 0.0 && options.front_spacing_growth <= 1.0)) {
-        throw std::invalid_argument(std::format(
-            "front_spacing_growth must lie in [0, 1]; got {}.", options.front_spacing_growth));
-    }
-    if (!(options.max_cell_aspect_ratio > 1.0)) {
-        throw std::invalid_argument(std::format(
-            "max_cell_aspect_ratio must be greater than 1; got {}. Healthy fronts routinely "
-            "reach 2-5, so a bound at or below 1 retires the entire front.",
-            options.max_cell_aspect_ratio));
-    }
     if (options.num_characteristics < 3) {
         throw std::invalid_argument(std::format(
             "num_characteristics must be at least 3; got {}.", options.num_characteristics));
-    }
-    if (options.max_front_points != 0 &&
-        options.max_front_points <= static_cast<size_t>(options.num_characteristics)) {
-        throw std::invalid_argument(std::format(
-            "max_front_points ({}) must exceed num_characteristics ({}), or be 0 to select "
-            "the default.", options.max_front_points, options.num_characteristics));
     }
     if (!(options.solver_options.abstol > 0.0)) {
         throw std::invalid_argument(std::format(
@@ -164,13 +126,6 @@ void validate_moc_options(const MocOptions& options) {
             "MocStartLine::KLIEGEL_LEVINE requires axisymmetric flow and a positive "
             "NozzleGeometry::downstream_wall_curvature_radius; the Kliegel-Levine series "
             "is axisymmetric only.");
-    }
-    if (options.march_scheme == MocMarchScheme::INVERSE &&
-        options.mode == MocMode::DESIGN_MIN_LENGTH) {
-        throw std::invalid_argument(
-            "MocMarchScheme::INVERSE cannot be used with MocMode::DESIGN_MIN_LENGTH: a "
-            "minimum-length contour is defined by the characteristics the DIRECT kernel "
-            "absorbs at the wall, which INVERSE's prescribed fronts cannot reproduce.");
     }
     if (!(options.inverse_cfl > 0.0 && options.inverse_cfl <= 1.0)) {
         throw std::invalid_argument(std::format(

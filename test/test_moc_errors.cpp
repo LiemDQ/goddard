@@ -233,17 +233,17 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
 // ============================================================
 
 TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly) {
-    // AR=4/N=8 was the original known-broken configuration this test targeted; the
-    // Phase 2 near-axis-void fix (dual-family KL-line seeding via a
-    // downstream-shifted start line) now makes it converge. AR=8 remains a reliably
-    // non-converging configuration for the DIRECT kernel: with the wall-consistent
-    // Kliegel-Levine line it marches to the compression that converges on the axis near
-    // x = 2.7 (instructions/moc_fix/diagnosis.md A8) and stops there on the flow-angle
-    // check. The INVERSE kernel, now the default for axisymmetric analysis, passes through
-    // that compression, so the scheme is pinned to DIRECT here to keep exercising the
-    // failure-honesty machinery.
+    // Deterministic initialization failure, exercised through a tightened
+    // kl_max_wall_angle_error rather than a non-converging march: on this AR=8,
+    // r_arc=0.382 conical contour the raw Kliegel-Levine series misses the wall angle
+    // by ~0.145 rad. That is within the default threshold (0.25 rad), so AUTO would
+    // apply the wall-consistency correction and converge; tightening the threshold to
+    // 0.01 rad rejects it instead, and a forced MocStartLine::KLIEGEL_LEVINE does not
+    // fall back to the centered fan (unlike AUTO), so solve() must report
+    // converged == false with MocErrorCode::INITIALIZATION_FAILED, without throwing.
     MocOptions opts;
-    opts.march_scheme = MocMarchScheme::DIRECT;
+    opts.start_line = MocStartLine::KLIEGEL_LEVINE;
+    opts.kl_max_wall_angle_error = 0.01;
     opts.flow_type = MocFlowKind::AXISYMMETRIC;
     opts.chemistry = GasChemistry::PERFECT_GAS;
     opts.mode = MocMode::ANALYSIS;

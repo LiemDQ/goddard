@@ -1,12 +1,10 @@
-// Inverse (reference-plane) marching kernel for axisymmetric/planar MoC analysis
-// (Package B). See instructions/moc_fix/B.md for the algorithm and
-// instructions/moc_fix/diagnosis.md (Summary, A3, A4) for why the DIRECT chain-pairing
-// kernel (moc_nozzle.cpp) sheds resolution near the axis in axisymmetric analysis.
+// Inverse (reference-plane) marching kernel for axisymmetric/planar MoC analysis and
+// Rao design: used whenever MocOptions::mode is not DESIGN_MIN_LENGTH, which uses the
+// chain-pairing ladder in moc_nozzle.cpp instead.
 //
-// The DIRECT kernel and every unit process it uses (solve_interior_point_axisymmetric,
-// solve_axis_point, solve_wall_point_analysis, solve_inverse_interior_point, and the
-// anonymous trace_back_to_front in moc_nozzle.cpp) are untouched by this file: every
-// method here is a new sibling, not a replacement.
+// The chain-pairing kernel and the unit processes it uses (solve_interior_point_axisymmetric,
+// solve_axis_point) are untouched by this file: every method here is a new sibling, not a
+// replacement.
 #include <cmath>
 #include <algorithm>
 #include <format>
@@ -31,11 +29,6 @@ namespace {
 // Ray/polyline intersection: walk upstream from (x, y) along `angle` until the polyline
 // `front` (indices into net.points, y strictly increasing) is met. Returns the segment
 // index and the parameter along it, or nothing when the ray misses.
-//
-// Deliberately duplicated from the identically-named helper in moc_nozzle.cpp's anonymous
-// namespace (used there by solve_inverse_interior_point for mesh-control rung insertion):
-// that helper has internal linkage in a different translation unit, so it cannot be called
-// from here. The two are kept byte-for-byte identical in logic.
 std::optional<std::pair<size_t, double>> trace_back_to_front(
     double x, double y, double angle,
     const CharacteristicNet& net, const std::vector<size_t>& front)
@@ -211,20 +204,6 @@ void throw_if_thermo_error(MocErrorCode err, std::string_view context, double x,
 
 } // namespace
 
-MocMarchScheme MocNozzle::resolve_march_scheme() const {
-    if (m_options.march_scheme != MocMarchScheme::AUTO) return m_options.march_scheme;
-    if (m_options.mode == MocMode::DESIGN_MIN_LENGTH) return MocMarchScheme::DIRECT;
-    // Analysis of a prescribed contour, planar or axisymmetric, and the Rao design that is
-    // an analysis of a generated contour: the inverse march. Planar was moved here on
-    // 2026-09-10 after the design-to-analysis round trips showed the DIRECT ladder failing
-    // on the contour's facet-quantized wall angle where the inverse march reproduces the
-    // exact planar answer to 1.5e-3 at N = 32.
-    if (m_options.mode == MocMode::ANALYSIS || m_options.mode == MocMode::DESIGN_RAO) {
-        return MocMarchScheme::INVERSE;
-    }
-    return MocMarchScheme::DIRECT;
-}
-
 std::vector<CharacteristicPoint> MocNozzle::build_inverse_initial_front(
     const std::vector<CharacteristicPoint>& data_line)
 {
@@ -393,7 +372,7 @@ PointResult MocNozzle::solve_inverse_march_interior_point(
         MocErrorCode err_p = build_foot(*hit_plus, foot_plus);
         if (err_p != MocErrorCode::NONE) return {p4, err_p};
 
-        // Same source terms as solve_interior_point_axisymmetric / solve_inverse_interior_point:
+        // Same source terms as solve_interior_point_axisymmetric:
         //   along C+:  d(theta - nu) = -L dx,  L = sin(mu) sin(theta) / (y cos(theta + mu))
         //   along C-:  d(theta + nu) = +M dx,  M = sin(mu) sin(theta) / (y cos(theta - mu))
         double source_minus = 0.0, source_plus = 0.0;
