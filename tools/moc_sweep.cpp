@@ -1,12 +1,12 @@
 // MoC convergence sweep: one CSV row per configuration.
 //
-// The companion to instructions/moc_convergence_roadmap.md. That document's elimination
-// scoreboard exists because the same measurements kept being re-derived by hand from
-// one-off probes; this tool makes the evidence tables reproducible with one command.
+// This tool exists because the same convergence measurements kept being re-derived by
+// hand from one-off probes; it makes the evidence tables reproducible with one command.
 //
 // Emits every MocInitDiagnostics field, the front-shear summary, and the convergence
-// metrics the roadmap says to judge on (exit_coverage and exit_mach -- never area_ratio,
-// which mesh control moves by 4% while exit_mach is bit-identical).
+// metrics to judge on (exit_coverage and exit_mach); area_ratio is included for reference
+// but is the less reliable metric for the minimum-length rows, which read it off a
+// staircase of independently terminated chains.
 //
 // Build:  cmake -Dgoddard_BUILD_TOOLS=ON ... && cmake --build build --target moc_sweep
 // Run:    pixi run moc-sweep --out sweep.csv
@@ -36,7 +36,6 @@ struct Config {
     double r_arc = 0.382;  // throat expansion-curve radius AND the KL curvature ratio
     double shift = 0.1;
     double length_frac = 0.8;
-    bool mesh_control = false;
     double gamma = 1.4;
     double half_angle = 15.0;
 };
@@ -88,7 +87,7 @@ MocOptions build_options(const Config& c) {
 }
 
 void write_header(std::ostream& os) {
-    os << "mode,init,flow,area_ratio,n,r_arc,shift,length_frac,mesh_control,gamma,"
+    os << "mode,init,flow,area_ratio,n,r_arc,shift,length_frac,gamma,"
           "start_line_used,"
           "converged,failure_code,fail_x,fail_y,kernel_pass,"
           "exit_mach,exit_coverage,reached_exit_plane,area_ratio_achieved,nozzle_length,"
@@ -118,7 +117,7 @@ void write_row(std::ostream& os, const Config& c, const MocResult& r) {
 
     os << c.mode << ',' << c.init << ',' << c.flow << ',' << num(c.area_ratio) << ','
        << c.n << ',' << num(c.r_arc) << ',' << num(c.shift) << ',' << num(c.length_frac)
-       << ',' << (c.mesh_control ? 1 : 0) << ',' << num(c.gamma) << ','
+       << ',' << num(c.gamma) << ','
        << start_line_name(d.start_line_used) << ','
        << (r.converged ? 1 : 0) << ',' << to_string(r.failure.code) << ','
        << num(r.failure.x) << ',' << num(r.failure.y) << ',' << r.failure.kernel_pass << ','
@@ -142,7 +141,7 @@ void write_row(std::ostream& os, const Config& c, const MocResult& r) {
 std::vector<Config> default_grid() {
     std::vector<Config> grid;
 
-    // Conical analysis: the sweep the roadmap's Sec 5.1 table is built from. r_arc and
+    // Conical analysis: the main convergence-evidence sweep. r_arc and
     // shift move together because the arc/cone tangency sits at r_arc*sin(theta_n)
     // (0.0989 / 0.259 / 0.518 at theta_n = 15 deg) while the default shift is 0.1 --
     // varying r_arc alone also moves the start line's wall point on and off that corner.
@@ -192,8 +191,8 @@ std::vector<Config> default_grid() {
         }
     }
 
-    // Invariance control: min-length is mode-excluded from mesh control and always uses
-    // the fan, so these rows must not move at all across this work.
+    // Invariance control: min-length always uses the chain ladder (DirectMarch) and the
+    // fan start line, so these rows must not move at all across this work.
     for (const char* flow : {"planar", "axi"}) {
         for (int n : {15, 31}) {
             Config c;

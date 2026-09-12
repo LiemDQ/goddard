@@ -1,5 +1,4 @@
-// Acceptance tests for the inverse (reference-plane) marching kernel (Package B).
-// See instructions/moc_fix/B.md for the full spec these implement.
+// Acceptance tests for the inverse (reference-plane) marching kernel (InverseMarch).
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/gas_dynamics.hpp"
@@ -332,8 +331,8 @@ double exit_plane_mass_flow_error(const MocResult& result, double gamma, double 
 } // namespace
 
 // Both marching kernels place a weak compression converging on the axis near x = 3.9-4.3
-// in this geometry, steepening under refinement (instructions/moc_fix/diagnosis.md A8):
-// the internal shock known for conical nozzles with circular-arc throats. The march passes
+// in this geometry, steepening under refinement: the internal shock known for conical
+// nozzles with circular-arc throats. The march passes
 // through it isentropically, so the exit Mach right at it (AR = 4, exit at x = 4.0) is not a
 // convergence metric; AR = 8's exit lies well beyond it and is. Mass conservation across the
 // exit plane is the check that holds for both.
@@ -404,7 +403,7 @@ TEST(InverseMarch, ConicalConvergesAtCleanThroat) {
     }
 }
 
-// The default throat (r_arc = 0.382), where the KL line is wall-corrected (Package A). The
+// The default throat (r_arc = 0.382), where the KL line is wall-corrected. The
 // compression on the axis is stronger here (about -3 deg at N=31 and -5 deg at N=61 near
 // x = 3.4) and steepens with N: a forming shock. The march still reaches the exit plane and
 // conserves mass to about 1%, which is what this asserts; the flow downstream of the
@@ -435,9 +434,10 @@ TEST(InverseMarch, ConicalDefaultThroatReachesExit) {
     }
 }
 
-// Axisymmetric design -> analysis round trip. The DIRECT minimum-length design carries a
-// known +0.08 exit-Mach bias against the 1-D area-Mach relation (it does not conserve mass
-// exactly; see MocConvergence.AxiDesign1DConsistencyBounded), so its exit Mach is not the
+// Axisymmetric design -> analysis round trip. The chain-ladder (DirectMarch)
+// minimum-length design carries a known +0.08 exit-Mach bias against the 1-D area-Mach
+// relation (it does not conserve mass exactly; see
+// MocConvergence.AxiDesign1DConsistencyBounded), so its exit Mach is not the
 // reference here. The analysis of the designed contour is judged on what must hold for any
 // correct isentropic solution: the exit-plane mass flow matches the throat's, increasingly
 // so with N, and the area-averaged exit Mach matches the 1-D value for the contour's

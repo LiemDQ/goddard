@@ -229,8 +229,7 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
 // before this phase, a silently-laundered Prandtl-Meyer inversion failure)
 // must report converged == false with a specific error code, must never
 // throw, and -- the load-bearing assertion -- must never leave a NaN in the
-// net. See instructions/moc_convergence_roadmap.md Sec. 1/4 for the original
-// diagnosis of this laundering bug.
+// net.
 // ============================================================
 
 TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly) {
@@ -252,7 +251,7 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     opts.num_characteristics = 8;
     opts.geometry.throat_radius = 1.0;
     // downstream_wall_curvature_radius left at its positive default (0.382):
-    // generate_initial_data_line() takes the Kliegel-Levine transonic path.
+    // build_start_line() takes the Kliegel-Levine transonic path.
     opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
 
     MocNozzle nozzle(opts);

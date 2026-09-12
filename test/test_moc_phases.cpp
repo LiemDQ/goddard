@@ -559,14 +559,12 @@ TEST(MocThrust, AmbientPressureReducesCf) {
 // Analysis mode
 // ============================================================
 
-// D.md item 4 / Addendum 2026-09-09: design a nozzle, then analyze its own contour using
-// the inverse (reference-plane) march -- the only kernel MocMode::ANALYSIS uses. Its wall
-// solve interpolates the vertex angles linearly (wall_angle_at, src/moc_inverse_march.cpp;
-// B.md "Corrections after implementation" item 4) and does not carry the facet-quantized
-// wall-angle defect the old chain-pairing kernel's wall solve had there (querying
-// NozzleProfile::theta_at, piecewise constant per facet -- see instructions/moc_algorithm.md
-// Sec. 9.1/10 and diagnosis.md A8). Measured on this tree: converges with exit Mach within
-// 5% of design.
+// Design a nozzle, then analyze its own contour using the inverse (reference-plane) march
+// -- the only kernel MocMode::ANALYSIS uses. Its wall solve interpolates the vertex angles
+// linearly (theta_at_interpolated, src/moc_inverse_march.cpp) and does not carry the
+// facet-quantized wall-angle defect the old chain-pairing kernel's wall solve had there
+// (querying NozzleProfile::theta_at, piecewise constant per facet). Measured on this tree:
+// converges with exit Mach within 5% of design.
 TEST(MocAnalysis, PlanarRoundTrip) {
     double gamma = 1.4;
     double theta_max = 15.0 * DEG;
@@ -630,7 +628,7 @@ TEST(MocAnalysis, PlanarWallPointsPopulated) {
     }
 }
 
-// D.md item 4 / Addendum 2026-09-09: as MocAnalysis.PlanarRoundTrip, but axisymmetric.
+// As MocAnalysis.PlanarRoundTrip, but axisymmetric.
 TEST(MocAnalysis, AxiRoundTrip) {
     double gamma = 1.4;
     double theta_max = 12.0 * DEG;
