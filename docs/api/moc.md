@@ -26,6 +26,12 @@ density everywhere. In axisymmetric flow the chain-ladder's chain densities
 diverge near the axis, and on a faceted contour its wall angle is quantized per
 facet; the reference-plane march has neither problem.
 
+::: goddard.MocFlowKind
+
+::: goddard.MocMode
+
+::: goddard.MocLogLevel
+
 ::: goddard.MocStartLine
 
 ::: goddard.MocOptions
@@ -52,7 +58,11 @@ facet; the reference-plane march has neither problem.
 
 ::: goddard.CharacteristicPoint
 
+::: goddard.CharacteristicFamily
+
 ::: goddard.ChainMetadata
+
+::: goddard.ChainTermination
 
 ::: goddard.PointMembership
 
@@ -60,9 +70,17 @@ facet; the reference-plane march has neither problem.
 
 ::: goddard.MocFailure
 
+::: goddard.MocErrorCode
+
 ::: goddard.MocPassDiagnostics
 
 ::: goddard.MocStepLimiter
+
+::: goddard.MocInitDiagnostics
+
+::: goddard.MocFrontShear
+
+::: goddard.summarize_front_shear
 
 ::: goddard.MocCrossings
 

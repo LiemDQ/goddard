@@ -41,6 +41,8 @@ from goddard._core import (
     MocResult,
     MocFailure,
     MocPassDiagnostics,
+    MocInitDiagnostics,
+    MocFrontShear,
     MocCrossings,
     ThrustCoefficient,
     # Classes
@@ -56,6 +58,7 @@ from goddard._core import (
     compute_thrust_coefficient,
     find_like_characteristic_crossings,
     validate_moc_options,
+    summarize_front_shear,
     # Errors
     ConvergenceError,
     # Functions

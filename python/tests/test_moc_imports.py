@@ -50,16 +50,22 @@ def test_import_moc_structs():
     from goddard import (
         NozzleGeometry, NozzleProfile, MocOptions,
         CharacteristicPoint, CharacteristicNet, ChainMetadata, PointMembership,
-        ExitPlane, MocResult, MocFailure, MocPassDiagnostics, MocCrossings,
-        ThrustCoefficient,
+        ExitPlane, MocResult, MocFailure, MocPassDiagnostics, MocInitDiagnostics,
+        MocFrontShear, MocCrossings, ThrustCoefficient,
     )
+
+    assert MocInitDiagnostics is not None
+    assert MocFrontShear is not None
 
 
 def test_import_moc_class():
     from goddard import (
         MocNozzle, compute_thrust_coefficient,
         find_like_characteristic_crossings, validate_moc_options,
+        summarize_front_shear,
     )
+
+    assert summarize_front_shear is not None
 
 
 def test_import_convenience_moc():
@@ -260,8 +266,6 @@ def test_moc_result_min_theta_and_init_diagnostics_defaults():
     assert result.min_theta_x == pytest.approx(0.0)
     assert result.min_theta_y == pytest.approx(0.0)
 
-    # MocInitDiagnostics is reached through MocResult.init_diagnostics rather than
-    # imported directly (it is bound, but not re-exported at package scope).
     diagnostics = result.init_diagnostics
     assert diagnostics.wall_bc_residual == pytest.approx(0.0)
     assert diagnostics.kplus_wall_end == pytest.approx(0.0)
