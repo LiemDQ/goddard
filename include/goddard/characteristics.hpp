@@ -47,6 +47,13 @@ class CharacteristicPoint {
 
     private:
     void update_thermodynamic_state(ThermodynamicContext& ctxt);
+
+    // FROZEN/EQUILIBRIUM counterpart to update_thermodynamic_state(): sets
+    // temperature and pressure directly from the PrandtlMeyerTable's
+    // temperature/pressure columns at the (idx, weight) pair already found by
+    // the caller for the other interpolated columns (V, gamma_s, mach/nu,
+    // cantera_state), instead of restoring a Cantera state per point.
+    void update_thermodynamic_state_from_table(ThermodynamicContext& ctxt, size_t idx, double weight);
 };
 
 /**

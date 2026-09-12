@@ -62,6 +62,8 @@ void PrandtlMeyerTable::build_table(
     machs.clear();
     enthalpies.clear();
     gamma_s.clear();
+    temperatures.clear();
+    pressures.clear();
     states.clear();
 
     velocities.reserve(num_points);
@@ -70,6 +72,8 @@ void PrandtlMeyerTable::build_table(
     machs.reserve(num_points);
     enthalpies.reserve(num_points);
     gamma_s.reserve(num_points);
+    temperatures.reserve(num_points);
+    pressures.reserve(num_points);
     states = std::vector<std::vector<double>>(num_points, std::vector<double>(thermo.stateSize()));
 
     double nu = 0.0;
@@ -82,6 +86,9 @@ void PrandtlMeyerTable::build_table(
         if (equilibrium) {
             thermo.equilibrate("SP");
         }
+
+        temperatures.push_back(thermo.temperature());
+        pressures.push_back(thermo.pressure());
 
         double h = thermo.enthalpy_mass();
         double V = sqrt(std::max(0.0, 2.0 * (h0 - h)));
@@ -150,6 +157,14 @@ double PrandtlMeyerTable::interpolate_gamma_s_from_nu(double nu) const {
 
 double PrandtlMeyerTable::interpolate_gamma_s_from_mach(double mach) const {
     return interp(mach, machs, gamma_s);
+}
+
+double PrandtlMeyerTable::interpolate_T_from_nu(double nu) const {
+    return interp(nu, nus, temperatures);
+}
+
+double PrandtlMeyerTable::interpolate_P_from_nu(double nu) const {
+    return interp(nu, nus, pressures);
 }
 
 double PrandtlMeyerTable::interpolate_nu(double V) const {

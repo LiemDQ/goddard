@@ -154,6 +154,13 @@ protected:
 
     void update_thermodynamic_state(CharacteristicPoint& point);
 
+    // FROZEN/EQUILIBRIUM counterpart to update_thermodynamic_state(): sets
+    // temperature and pressure directly from the PrandtlMeyerTable's
+    // temperature/pressure columns at the (idx, weight) pair already found by
+    // the caller for the other interpolated columns (V, gamma_s, mach/nu,
+    // cantera_state), instead of restoring a Cantera state per point.
+    void update_thermodynamic_state_from_table(CharacteristicPoint& point, size_t idx, double weight);
+
     // These three are the critical chokepoint for the perfect-gas Prandtl-Meyer
     // inversion and the Cantera/table lookups: a failure (PM inversion
     // non-convergence, or an out-of-range table query) is reported via the
