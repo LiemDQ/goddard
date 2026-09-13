@@ -35,6 +35,8 @@ public:
     std::vector<double> enthalpies;
     std::vector<double> dnu_dV;
     std::vector<double> gamma_s;
+    std::vector<double> temperatures;
+    std::vector<double> pressures;
     std::vector<std::vector<double>> states;
 
     /**
@@ -88,7 +90,13 @@ public:
 
     // Get adiabatic index from mach number.
     double interpolate_gamma_s_from_mach(double mach) const;
-        
+
+    // Get static temperature from nu.
+    double interpolate_T_from_nu(double nu) const;
+
+    // Get static pressure from nu.
+    double interpolate_P_from_nu(double nu) const;
+
     // Get nu from velocity.
     double interpolate_nu(double V) const;
 

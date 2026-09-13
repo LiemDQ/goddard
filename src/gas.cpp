@@ -27,6 +27,11 @@ Gas::Gas(const std::string& infile,
     : chemistry(chem), m_sol(Cantera::newSolution(infile, phase_name)) 
 {}
 
+Gas::Gas(double gamma) : m_gamma(gamma)
+{
+    chemistry = GasChemistry::PERFECT_GAS;
+}
+
 Gas::Gas(const Gas& gas) 
     : chemistry(gas.chemistry), m_sol(gas.m_sol->clone()), 
       m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) 
@@ -65,68 +70,68 @@ Gas Gas::create_from_species(
 
 // State setters
 void Gas::set_state_TD(double T, double D) {
-    m_sol->thermo()->setState_TD(T,D);
+    thermo()->setState_TD(T,D);
 }
 
 void Gas::set_state_TP(double T, double P) {
-    m_sol->thermo()->setState_TP(T, P);
+    thermo()->setState_TP(T, P);
 }
 
 void Gas::set_state_TPX(double T, double P, const std::string& composition) {
-    m_sol->thermo()->setState_TPX(T, P, composition);
+    thermo()->setState_TPX(T, P, composition);
 }
 
 void Gas::set_state_TPX(double T, double P, const Composition& composition) {
-    m_sol->thermo()->setState_TPX(T, P, composition);
+    thermo()->setState_TPX(T, P, composition);
 }
 
 void Gas::set_state_TPX(double T, double P, const double* composition) {
-    m_sol->thermo()->setState_TPX(T, P, composition);
+    thermo()->setState_TPX(T, P, composition);
 }
 
 void Gas::set_state_TPY(double T, double P, const std::string& composition) {
-    m_sol->thermo()->setState_TPY(T, P, composition);
+    thermo()->setState_TPY(T, P, composition);
 }
 
 void Gas::set_state_TPY(double T, double P, const Composition& composition) {
-    m_sol->thermo()->setState_TPY(T, P, composition);
+    thermo()->setState_TPY(T, P, composition);
 }
 
 void Gas::set_state_TPY(double T, double P, const double* composition) {
-    m_sol->thermo()->setState_TPY(T, P, composition);
+    thermo()->setState_TPY(T, P, composition);
 }
 
 void Gas::set_state_HP(double H, double P) {
-    m_sol->thermo()->setState_HP(H, P);
+    thermo()->setState_HP(H, P);
 }
 
 void Gas::set_state_SP(double S, double P) {
-    m_sol->thermo()->setState_SP(S, P);
+    thermo()->setState_SP(S, P);
 }
 
 void Gas::set_state_UV(double U, double V) {
-    m_sol->thermo()->setState_UV(U,V);
+    thermo()->setState_UV(U,V);
 }
 
 // 
 
 std::vector<double> Gas::save_state() const {
     std::vector<double> out(thermo()->stateSize());
-    m_sol->thermo()->saveState(out);
+    thermo()->saveState(out);
     return out;
 }
 
 void Gas::copy_state(std::vector<double>& state) const {
-    state.resize(m_sol->thermo()->stateSize());
-    m_sol->thermo()->saveState(state);
+    state.resize(thermo()->stateSize());
+    thermo()->saveState(state);
 }
 
 void Gas::restore_state(const std::vector<double>& state) {
-    m_sol->thermo()->restoreState(state);
+    thermo()->restoreState(state);
 }
 
 ThermodynamicState Gas::snapshot() const {
-    auto t = m_sol->thermo();
+    auto t = thermo();
 
     ThermodynamicState info;
     info.pressure = t->pressure();
@@ -159,68 +164,74 @@ ThermodynamicState Gas::snapshot() const {
 }
 
 std::string Gas::name() const {
-    return m_sol->name();
+    if (has_cantera_sln())  return m_sol->name();
+    else return "";
 }
 
 void Gas::set_name(const std::string& name) {
-    m_sol->setName(name);
+    if (has_cantera_sln()) m_sol->setName(name);
 }
 
 // Basic thermodynamic properties
 
-double Gas::temperature() const { return m_sol->thermo()->temperature(); }
-double Gas::pressure() const { return m_sol->thermo()->pressure(); }
-double Gas::density() const { return m_sol->thermo()->density(); }
-double Gas::enthalpy_mass() const { return m_sol->thermo()->enthalpy_mass(); }
-double Gas::entropy_mass() const { return m_sol->thermo()->entropy_mass(); }
-double Gas::cp_mass() const { return m_sol->thermo()->cp_mass(); }
-double Gas::cv_mass() const { return m_sol->thermo()->cv_mass(); }
-double Gas::molecular_weight() const { return m_sol->thermo()->meanMolecularWeight(); }
+double Gas::temperature() const { return thermo()->temperature(); }
+double Gas::pressure() const { return thermo()->pressure(); }
+double Gas::density() const { return thermo()->density(); }
+double Gas::enthalpy_mass() const { return thermo()->enthalpy_mass(); }
+double Gas::entropy_mass() const { return thermo()->entropy_mass(); }
+double Gas::cp_mass() const { return thermo()->cp_mass(); }
+double Gas::cv_mass() const { return thermo()->cv_mass(); }
+double Gas::molecular_weight() const { return thermo()->meanMolecularWeight(); }
 std::vector<double> Gas::mole_fractions() const { 
     std::vector<double> fracs(num_species());
-    m_sol->thermo()->getMoleFractions(fracs.data());
+    thermo()->getMoleFractions(fracs.data());
     return fracs; 
 }
 std::vector<double> Gas::mass_fractions() const { 
     std::vector<double> fracs(num_species());
-    m_sol->thermo()->getMassFractions(fracs.data());
+    thermo()->getMassFractions(fracs.data());
     return fracs; 
 }
 
-size_t Gas::num_species() const { return m_sol->thermo()->nSpecies(); }
-std::vector<std::string> Gas::species_names() const { return m_sol->thermo()->speciesNames(); }
+size_t Gas::num_species() const { return thermo()->nSpecies(); }
+std::vector<std::string> Gas::species_names() const { return thermo()->speciesNames(); }
 // Chemistry-aware derived properties
 
 double Gas::gamma_s() const {
     switch (chemistry) {
-        case GasChemistry::PERFECT_GAS:
+        case GasChemistry::PERFECT_GAS: {
+            if (has_cantera_sln()) {
+                return thermo()->cp_mass() / thermo()->cv_mass();
+            }
+            else return m_gamma;
+        }
         case GasChemistry::FROZEN:
         case GasChemistry::KINETIC:
-            return m_sol->thermo()->cp_mass() / m_sol->thermo()->cv_mass();
+            return thermo()->cp_mass() / thermo()->cv_mass();
         case GasChemistry::EQUILIBRIUM:
-            return get_thermo_equilibrium_properties(*m_sol->thermo()).gamma_s;
+            return get_thermo_equilibrium_properties(*thermo()).gamma_s;
     }
-    return m_sol->thermo()->cp_mass() / m_sol->thermo()->cv_mass(); // unreachable
+    return thermo()->cp_mass() / thermo()->cv_mass(); // unreachable
 }
 
 double Gas::speed_of_sound() const {
-    return gas_sonic_velocity(*m_sol->thermo(), gamma_s());
+    return gas_sonic_velocity(*thermo(), gamma_s());
 }
 
 double Gas::stagnation_enthalpy(double velocity) const {
-    return gas_stagnation_enthalpy(*m_sol->thermo(), velocity);
+    return gas_stagnation_enthalpy(*thermo(), velocity);
 }
 
 double Gas::stagnation_pressure(double velocity) const {
-    return gas_stagnation_pressure(*m_sol->thermo(), velocity);
+    return gas_stagnation_pressure(*thermo(), velocity);
 }
 
 double Gas::isenthalpic_velocity(double H_stagnation) const {
-    return gas_isenthalpic_velocity(*m_sol->thermo(), H_stagnation);
+    return gas_isenthalpic_velocity(*thermo(), H_stagnation);
 }
 
 double Gas::isenthalpic_velocity() const {
-    return gas_isenthalpic_velocity(*m_sol->thermo(), m_H_stagnation);
+    return gas_isenthalpic_velocity(*thermo(), m_H_stagnation);
 }
 
 double Gas::area_per_mdot(double velocity) const {
@@ -359,21 +370,28 @@ void Gas::set_OF_ratio(
 ExpansionProperties Gas::expansion_properties() const {
     switch (chemistry) {
         case GasChemistry::EQUILIBRIUM:
-            return get_thermo_equilibrium_properties(*m_sol->thermo());
-        case GasChemistry::PERFECT_GAS:
+            return get_thermo_equilibrium_properties(*thermo());
+        case GasChemistry::PERFECT_GAS: {
+            if (!has_cantera_sln()) return {1.0, -1.0, 0.0, m_gamma};
+            else {
+                double cp = thermo()->cp_mass();
+                double g = cp / thermo()->cv_mass();
+                return {1.0, -1.0, cp, g};
+            }
+        }
         case GasChemistry::FROZEN:
         case GasChemistry::KINETIC: {
-            double cp = m_sol->thermo()->cp_mass();
-            double g = cp / m_sol->thermo()->cv_mass();
+            double cp = thermo()->cp_mass();
+            double g = cp / thermo()->cv_mass();
             return {1.0, -1.0, cp, g};
         }
     }
-    return {1.0, -1.0, m_sol->thermo()->cp_mass(),
-            m_sol->thermo()->cp_mass() / m_sol->thermo()->cv_mass()}; // unreachable
+    return {1.0, -1.0, thermo()->cp_mass(),
+            thermo()->cp_mass() / thermo()->cv_mass()}; // unreachable
 }
 
 void Gas::equilibrate(const std::string& XY, const std::string& solver) {
-    m_sol->thermo()->equilibrate(XY, solver);
+    thermo()->equilibrate(XY, solver);
 }
 
 
@@ -385,19 +403,32 @@ void Gas::set_reference_entropy(double S) { m_S0 = S; }
 double Gas::get_reference_entropy() const { return m_S0; }
 
 void Gas::set_current_state_as_reference() {
-    m_H_stagnation = m_sol->thermo()->enthalpy_mass();
-    m_S0 = m_sol->thermo()->entropy_mass();
+    m_H_stagnation = thermo()->enthalpy_mass();
+    m_S0 = thermo()->entropy_mass();
 }
 
 // Accessors
 
-std::shared_ptr<Cantera::Solution> Gas::solution() const { return m_sol; }
-std::shared_ptr<Cantera::ThermoPhase> Gas::thermo() const { return m_sol->thermo(); }
-std::shared_ptr<Cantera::Kinetics> Gas::kinetics() const { return m_sol->kinetics(); }
-std::shared_ptr<Cantera::Transport> Gas::transport() const { return m_sol->transport(); }
+std::shared_ptr<Cantera::Solution> Gas::solution() const { 
+    check_for_valid_cantera();
+    return m_sol; 
+}
+std::shared_ptr<Cantera::ThermoPhase> Gas::thermo() const {
+    check_for_valid_cantera();
+    return m_sol->thermo();
+}
+
+std::shared_ptr<Cantera::Kinetics> Gas::kinetics() const { 
+    check_for_valid_cantera();
+    return m_sol->kinetics(); 
+}
+std::shared_ptr<Cantera::Transport> Gas::transport() const { 
+    check_for_valid_cantera();
+    return m_sol->transport(); 
+}
 
 std::string Gas::report(bool show_thermo, double threshold) const {
-    return m_sol->thermo()->report(show_thermo, threshold);
+    return thermo()->report(show_thermo, threshold);
 }
 
 } // namespace Goddard

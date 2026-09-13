@@ -8,11 +8,13 @@ authors = [
     {name = "Liem Dam-Quang", email="dq@liem.ca"}
 ]
 version = "0.1.0"
-description = "Rocket engine simulation toolkit"
+description = "Reactive flow simulation toolkit"
 readme = "readme.md"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
+    "matplotlib",
+    "pandas"
 ]
 license = { file = "LICENSE" }
 urls ={ Repository = "https://github.com/LiemDQ/goddard", Issues = "https://github.com/LiemDQ/goddard/issues"}

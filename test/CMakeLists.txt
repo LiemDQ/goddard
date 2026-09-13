@@ -16,12 +16,21 @@ add_executable(
     cea_loader.cpp
     cea_comparer.cpp
     test_speciate.cpp
+    test_interpolation.cpp
+    test_profile.cpp
     test_nozzle.cpp
     test_prandtl_meyer.cpp
     test_prandtl_meyer_table.cpp
     test_moc_unit.cpp
+    test_moc_unit_processes.cpp
     test_moc_design.cpp
     test_moc_phases.cpp
+    test_moc_convergence.cpp
+    test_moc_initialization.cpp
+    test_moc_rao.cpp
+    test_moc_errors.cpp
+    test_moc_invariance.cpp
+    test_moc_inverse_march.cpp
     test_kinetic_nozzle.cpp
     test_shocks.cpp
     test_gas.cpp

@@ -7,7 +7,12 @@ from goddard._core import (
     # MoC enums
     MocFlowKind,
     MocMode,
-    MocInitialization,
+    MocLogLevel,
+    MocErrorCode,
+    MocStepLimiter,
+    MocStartLine,
+    CharacteristicFamily,
+    ChainTermination,
     SolverOptions,
     # Structs
     CombustorOptions,
@@ -25,13 +30,20 @@ from goddard._core import (
     ExpansionProperties,
     EquilibriumDerivatives,
     # MoC structs
-    ThroatGeometry,
+    NozzleGeometry,
     NozzleProfile,
     MocOptions,
     CharacteristicPoint,
     CharacteristicNet,
+    ChainMetadata,
+    PointMembership,
     ExitPlane,
     MocResult,
+    MocFailure,
+    MocPassDiagnostics,
+    MocInitDiagnostics,
+    MocFrontShear,
+    MocCrossings,
     ThrustCoefficient,
     # Classes
     SolutionHandle,
@@ -41,9 +53,12 @@ from goddard._core import (
     Combustor,
     Nozzle,
     ThermodynamicState,
-    # MoC class + function
+    # MoC class + functions
     MocNozzle,
     compute_thrust_coefficient,
+    find_like_characteristic_crossings,
+    validate_moc_options,
+    summarize_front_shear,
     # Errors
     ConvergenceError,
     # Functions
@@ -79,7 +94,14 @@ from goddard.convenience import (
     from_cantera,
     gas_from_yaml,
     moc_design,
+    moc_rao_design,
     moc_analysis,
+    conical_nozzle,
+    rao_nozzle,
+    bezier_nozzle,
+    pass_diagnostics_table,
 )
+
+from goddard import plotting
 
 __version__ = "0.1.0"

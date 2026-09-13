@@ -12,10 +12,23 @@ clean = "rm -rf build"
 pip-install = "pip install -e . --no-build-isolation"
 test-python = "pytest python/tests/"
 
+# MoC convergence sweep. Needs -Dgoddard_BUILD_TOOLS=ON at configure time. The library is
+# built with ASan, so the preload and options below are mandatory for any binary linked
+# against it; folding them in here keeps callers from having to know that.
+[tasks.moc-sweep]
+cmd = "./build/tools/moc_sweep"
+env = { LD_PRELOAD = "$CONDA_PREFIX/lib/libasan.so.8", ASAN_OPTIONS = "detect_odr_violation=0:detect_leaks=0" }
+depends-on = ["compile"]
+
 
 [tasks.configure]
 args = [{arg="build_type", default = "Release"}]
 cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }}"
+
+# Quick prototyping build: no warnings-as-errors, no static analysis
+[tasks.configure-quick]
+args = [{arg="build_type", default = "Debug"}]
+cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }} -Dgoddard_WARNINGS_AS_ERRORS=OFF -Dgoddard_ENABLE_CLANG_TIDY=OFF -Dgoddard_ENABLE_CPPCHECK=OFF"
 
 # Configure without sanitizers (needed for Python bindings -- ASan cannot
 # load as an indirect dependency of a Python extension module)
@@ -30,6 +43,8 @@ cmd="bash scripts/cea_to_json.sh --pretty"
 # cantera = "3.2.*"
 libcantera-devel = "3.2.*"
 cmake = ">=3.25"
+clang-tools = "*"
+cppcheck = "*"
 ninja = ">=1.11"
 scons = "*"
 yaml = "*"
@@ -53,9 +68,6 @@ matplotlib = "*"
 loguru = "*"
 pandas = "*"
 scipy = "*"
-
-[feature.data.dependencies]
-pyyaml = "*"
 
 [feature.test.dependencies]
 fortran-compiler = "*"
@@ -114,6 +126,5 @@ depends-on = ["docs-build"]
 [environments]
 default = {solve-group = "default"}
 examples = {features = ["examples"], solve-group = "default"}
-data = {features = ["data"], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
 docs = {features = ["docs", "examples"], solve-group = "default"}

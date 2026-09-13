@@ -13,6 +13,7 @@ project(
     LANGUAGES CXX C)
 
 option(goddard_BUILD_PYTHON "Build Python bindings" ON)
+option(goddard_BUILD_TOOLS "Build diagnostic tools in tools/" OFF)
 option(goddard_BUILD_DOCSTRINGS
   "Extract C++ docstrings into the Python bindings via pybind11_mkdoc and \
 generate nanobind stubs (requires the docs pixi environment)" OFF)
@@ -68,6 +69,10 @@ if(BUILD_TESTING)
   #         DESTINATION "${DATA_INSTALL_DIR}"
   #         FILES_MATCHING PATTERN "*.json"
   # )
+endif()
+
+if(goddard_BUILD_TOOLS)
+  add_subdirectory(tools)
 endif()
 
 # Python bindings

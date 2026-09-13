@@ -1,7 +1,15 @@
 #include <cmath>
+#include <utility>
 #include "goddard/characteristics.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include "goddard/error.hpp"
 namespace Goddard {
+
+
+void CharacteristicPoint::update_Ks() {
+    K_plus = theta - nu;
+    K_minus = theta + nu;
+}
 
 void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const CharacteristicPoint& parent){
     double parent_stagnation_factor = stagnation_factor(parent.mach, parent.gamma_s);
@@ -14,7 +22,7 @@ void characteristic_isentropic_PT_from_parent(CharacteristicPoint& point, const 
     point.pressure = parent.pressure * pow(ratio, average_gamma / (average_gamma - 1.0));
 }
 
-std::pair<double, double> characteristic_intersection_coordinates(
+std::pair<double, double> characteristic_intersection_with_angle(
     const CharacteristicPoint& p1, 
     const CharacteristicPoint& p2, 
     double angle1,
@@ -24,11 +32,6 @@ std::pair<double, double> characteristic_intersection_coordinates(
     double y = (x  - p2.x) * tan(angle2) + p2.y;
 
     return {x,y};
-} 
-    
-int CharacteristicNet::row_offset(int j) const {
-    // row 0 starts at 0, row 1 at N, row 2 at (N-1), etc.
-    return j * num_c_plus - j * (j -1) / 2;
 }
 
 } // namespace Goddard

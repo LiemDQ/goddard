@@ -54,6 +54,6 @@ void bind_kinetic_nozzle(nb::module_& m) {
              "gas"_a, "profile"_a, "mdot"_a, "state"_a, "options"_a=Goddard::NozzleOptions{})
         .def("solve", &Goddard::KineticNozzle::solve,
              "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000)
-        .def_rw("m_profile", &Goddard::KineticNozzle::profile)
+        .def_rw("profile", &Goddard::KineticNozzle::profile)
         .def_rw("mdot",    &Goddard::KineticNozzle::mdot);
 }

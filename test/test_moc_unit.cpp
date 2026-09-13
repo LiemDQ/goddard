@@ -1,4 +1,5 @@
 #include "goddard/moc.hpp"
+#include "goddard/moc_nozzle.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include <cmath>
@@ -57,7 +58,7 @@ TEST_F(MocInteriorAlgebraicTest, UniformFlow) {
     auto p1 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 0.5);
     auto p2 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 1.5);
 
-    auto p3 = solver.m_options.gamma; // just checking it's set
+    auto p3 = solver.options.gamma; // just checking it's set
     (void)p3;
 
     // Call the public solve which dispatches to algebraic
@@ -85,32 +86,30 @@ TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
 
-    // Basic sanity: we should have wavefronts
-    EXPECT_GT(result.net.wavefronts.size(), 0u);
+    // Basic sanity: we should have points
+    EXPECT_GT(result.net.points.size(), 0u);
 
-    // Check that all expansion fan points have K_plus = 0
-    // (centered fan: theta = nu => K_plus = theta - nu = 0)
-    if (!result.net.wavefronts.empty()) {
-        const auto& initial_line = result.net.wavefronts[0];
-        for (const auto& pt : initial_line) {
-            // Data line points inherit K_plus from the expansion fan via the axis/interior solver.
-            // The first (axis) point should have K_plus = -K_minus (symmetry).
-            EXPECT_NEAR(pt.K_plus, 0.0, 1e-10) 
-                << "Initial data line point should have K+ = 0 (theta - nu = 0)";
-            // Actually, only the axis point has theta=0. Skip this for now.
-            break;
-        }
-        if (result.net.wavefronts.size() > 1) {
-            for (size_t i = 1; i < result.net.wavefronts.size(); i++){
-                const auto& wavefront = result.net.wavefronts[i];
-                // all points along the wavefront have the same K+ value
-                double kplus = wavefront.front().K_plus;
-                for (const auto& pt: wavefront) {
-                    EXPECT_NEAR(pt.K_plus, kplus, 1e-10) 
-                        << "Data points in the same wavefront should have the same K+ value";
-                }
+    // Riemann invariants are preserved ALONG a characteristic, not across a wavefront:
+    // for planar flow K+ (= theta - nu) is constant along a C+ chain and K- (= theta + nu)
+    // is constant along a C- chain. (The previous version treated each c_chains[i] as a
+    // wavefront with a shared K+, which is not how the chain-based net is organized.)
+    using Family = CharacteristicFamily;
+    for (size_t c = 0; c < result.net.c_chains.size(); c++) {
+        const auto& chain = result.net.c_chains[c];
+        if (chain.size() < 2) continue;
+        Family fam = result.net.chain_metadata[c].family;
+        if (fam == Family::PLUS) {
+            double kplus = result.net.points[chain.front()].K_plus;
+            for (size_t pt_idx : chain) {
+                EXPECT_NEAR(result.net.points[pt_idx].K_plus, kplus, 1e-9)
+                    << "K+ should be invariant along a C+ chain (chain " << c << ")";
             }
-            //TODO: check K- values too
+        } else if (fam == Family::MINUS) {
+            double kminus = result.net.points[chain.front()].K_minus;
+            for (size_t pt_idx : chain) {
+                EXPECT_NEAR(result.net.points[pt_idx].K_minus, kminus, 1e-9)
+                    << "K- should be invariant along a C- chain (chain " << c << ")";
+            }
         }
     }
 }
@@ -137,12 +136,13 @@ TEST(MocAxisPoint, SymmetryCondition) {
     // Check all wavefronts except first: 
     // first point should be an axis point with theta=0, y=0
     // first wavepoint is intentionally non-symmetrical
-    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
-        const auto& wf = result.net.wavefronts[i];
-        ASSERT_FALSE(wf.empty()) << "Wavefront " << i << " is empty";
-        EXPECT_NEAR(wf[0].theta, 0.0, 1e-12)
+    const auto axis_pts = result.net.axis_points();
+    ASSERT_FALSE(axis_pts.empty()) << "Axis points are empty";
+    for (size_t i = 0; i < axis_pts.size(); i++) {
+        const auto& ap = axis_pts[i];
+        EXPECT_NEAR(ap.theta, 0.0, 1e-12)
             << "Axis point theta should be 0 in wavefront " << i;
-        EXPECT_NEAR(wf[0].y, 0.0, 1e-12)
+        EXPECT_NEAR(ap.y, 0.0, 1e-12)
             << "Axis point y should be 0 in wavefront " << i;
     }
 }
@@ -162,8 +162,10 @@ TEST(MocAxisPoint, KMinusEqualsNu) {
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
     // skip first wavefront -- it is explicitly not set to theta = 0
-    for (size_t i = 1; i < result.net.wavefronts.size(); i++) {
-        const auto& axis_pt = result.net.wavefronts[i][0];
+
+    const auto axis_pts = result.net.axis_points();
+    for (size_t i = 1; i < axis_pts.size(); i++) {
+        const auto& axis_pt = axis_pts[i];
         EXPECT_NEAR(axis_pt.K_minus, axis_pt.nu, 1e-10)
             << "Axis K_minus should equal nu in wavefront " << i;
         EXPECT_NEAR(axis_pt.K_plus, -axis_pt.nu, 1e-10)
@@ -241,8 +243,9 @@ TEST(MocSolve, CustomThetaSchedule) {
     MocNozzle nozzle(opts);
     auto result = nozzle.solve();
 
-    // Should have 5 characteristics (from schedule), not 99
-    EXPECT_EQ(result.net.wavefronts[0].size(), 5u);
+    // Should have 5 characteristics (from schedule), not 99, plus the seeded throat-lip
+    // anchor that wall_points() now includes (see CharacteristicNet::wall_x doc).
+    EXPECT_EQ(result.net.wall_points().size(), 6u);
 }
 
 TEST(MocSolve, ExitMachConsistentWithThetaMax) {

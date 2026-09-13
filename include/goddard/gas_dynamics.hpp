@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <limits>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
 #include "goddard/thermoarray.hpp"
@@ -29,6 +30,44 @@ Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::Arra
 inline double mach_to_mu(double mach) {
     // unfortunately trig functions aren't constexpr until C++26.
     return std::asin(1.0/mach);
+}
+
+/**
+ * @brief Mach number from the critical velocity ratio M* = V/a*.
+ *
+ * M* (also written V/a*, the "characteristic Mach number") normalizes velocity by the
+ * *critical* speed of sound -- the value a would take where the flow is sonic -- rather
+ * than by the local one. The two agree only at M = 1 and diverge quickly above it: M*
+ * is bounded by sqrt((gamma+1)/(gamma-1)) as M grows without limit, so treating an M* as
+ * a Mach number understates the Mach number, and increasingly so the faster the flow.
+ *
+ * Transonic series solutions (Sauer, Hall, Kliegel-Levine) are all posed in M*, so their
+ * output must be converted before it can be used as a Mach number.
+ *
+ * @param m_star Critical velocity ratio V/a*; must be below sqrt((gamma+1)/(gamma-1)).
+ * @param gamma Isentropic exponent.
+ * @return The corresponding Mach number.
+ */
+inline double mach_from_critical_velocity_ratio(double m_star, double gamma) {
+    const double denominator = (gamma + 1.0) - (gamma - 1.0) * m_star * m_star;
+    if (denominator <= 0.0) {
+        // M* has reached its finite ceiling, where M is unbounded. Callers treat a
+        // non-finite Mach as a failed initialization rather than propagating it.
+        return std::numeric_limits<double>::infinity();
+    }
+    return std::sqrt(2.0 * m_star * m_star / denominator);
+}
+
+/**
+ * @brief Critical velocity ratio M* = V/a* from the Mach number. Inverse of
+ *        mach_from_critical_velocity_ratio.
+ *
+ * @param mach Mach number.
+ * @param gamma Isentropic exponent.
+ * @return The corresponding critical velocity ratio.
+ */
+inline double critical_velocity_ratio_from_mach(double mach, double gamma) {
+    return mach * std::sqrt((gamma + 1.0) / (2.0 + (gamma - 1.0) * mach * mach));
 }
 
 

@@ -26,13 +26,20 @@ Goddard performs 5 main types of computations:
   - `EquilibriumNozzle`: Chemical equilibrium nozzle flow
   - `FrozenNozzle`: Frozen composition nozzle flow
 - **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations
-- **MoC** (`moc.hpp/cpp`, `characteristics.hpp/cpp`, `prandtlmeyer.hpp/cpp`): 2D supersonic nozzle flow via Method of Characteristics
-  - `MocNozzle`: Solver class supporting design (minimum-length) and analysis modes
-  - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
-  - `CharacteristicNet`/`CharacteristicPoint`: Flow field mesh and point data
-  - `NozzleProfile`: Wall contour representation with CSV I/O
-  - `PrandtlMeyerTable`: Precomputed isentropic expansion data for non-ideal gas
+- **MoC**: 2D supersonic nozzle flow via Method of Characteristics, one concern per header:
+  - `moc.hpp`: Public options/results/error types (`MocOptions`, `MocResult`, `MocFailure`, `MocErrorCode`, diagnostics structs)
+  - `moc_nozzle.hpp` (`MocNozzle`): Orchestrator. `solve()` validates options, resolves the throat and thermo model, builds the start line, then dispatches to a kernel chosen from `MocMode` and assembles the result
+  - `moc_direct_march.hpp` (`DirectMarch`): Chain-pairing ladder kernel for `MocMode::DESIGN_MIN_LENGTH`
+  - `moc_inverse_march.hpp` (`InverseMarch`): Reference-plane front-marching kernel for `MocMode::ANALYSIS` and `MocMode::DESIGN_RAO`
+  - `moc_unit_processes.hpp`: Pure free-function unit processes (interior/wall/axis point solves) and source-term helpers, plus the generic iterative interior process
+  - `moc_thermo.hpp` (`MocThermo`): The one thermodynamic dispatch used by both kernels (perfect gas / tabulated real gas)
+  - `moc_context.hpp` (`MocLog`, `MocSolveContext`): Per-solve logging and the immutable context passed to kernels and unit processes
+  - `moc_initialization.hpp` (`MocInitialization`, `StartLine`, `build_start_line()`, `measure_start_line()`): Transonic/fan start-line construction and diagnostics
+  - `characteristics.hpp`/`characteristic_net.hpp`: `CharacteristicPoint`, `CharacteristicFamily`, `CharacteristicNet` — flow field mesh and point data
+  - `prandtlmeyer.hpp` (`PrandtlMeyerTable`): Precomputed isentropic expansion data (Mach, nu, T, P) for non-ideal gas
+  - `profile.hpp` (`NozzleProfile`): Wall contour representation with CSV I/O
   - `compute_thrust_coefficient()`: Exit plane integration for thrust performance
+  - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
 - **KineticNozzle** (`kinetic_nozzle.hpp/cpp`): 1D supersonic nozzle with finite-rate chemistry via Cantera's `IdealGasMoleReactor`. Standalone class — does not inherit `NozzleBase` because its spatially-resolved output is incompatible with the discrete area-ratio interface. Instead uses composition: owns a `NozzleBase`-derived object internally for throat conditions only. Output is `KineticNozzleResults` containing a `ThroatCondition` and a vector of `KineticNozzleStation` (x, velocity, Mach, area_ratio, thermo state, per-species Damköhler numbers). The `NozzleChemistryType` constructor parameter selects the throat model (EQUILIBRIUM or FROZEN); KINETIC is not valid as a throat model.
 - **Shocks** (`shocks.hpp/cpp`): Normal shock relations (Rankine-Hugoniot) with perfect-gas and Cantera-state variants. `ShockResult` and `ObliqueShockResult` structs. Oblique shock API is declared but not yet fully implemented.
 
@@ -66,6 +73,10 @@ pixi shell -e default
 pixi run clean
 # configure build
 pixi run configure Debug
+# configure for python module
+pixi run configure-python Debug
+# configure without enabling warnings-as-errors
+pixi run configure-quick
 # compile project
 pixi run compile
 # test project
@@ -243,6 +254,7 @@ When adding or modifying public C++ APIs or Python bindings, follow the conventi
 - In binding files, use `DOC(Goddard, Class, method)` instead of literal strings.
 - Pure-Python functions use Google-style docstrings.
 - Do not duplicate docstrings between C++ headers and binding files.
+- Remove all mannered prose.
 
 ## Instructions
 
