@@ -411,7 +411,7 @@ double cplus_source_term(const CharacteristicPoint& p, double new_y)
 {
     double y_avg = 0.5 * (p.y + new_y);
     double dy = new_y - p.y;
-    return sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
+    return -sin(p.theta)/(p.mach * sin(p.theta + p.mu)) * dy/y_avg;
 }
 
 double cplus_source_term(const CharacteristicPoint& p1, const CharacteristicPoint& p3)
@@ -428,7 +428,7 @@ double cminus_source_term(const CharacteristicPoint& p, double new_y)
 {
     double y_avg = 0.5 * (p.y + new_y);
     double dy = new_y - p.y;
-    return -sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
+    return sin(p.theta)/(p.mach * sin(p.theta - p.mu)) * dy/y_avg;
 }
 
 double axisymmetric_source(double mu_avg, double theta_avg, double y_avg, double char_angle_avg) {
@@ -523,7 +523,7 @@ double find_node_mach(
             derivative = 2.0 * sqrt(mach * mach - 1.0) / V;
         }
 
-        double residual = delta_theta - source_delta + (nu3 - p1.nu) + (nu3 - p2.nu);
+        double residual = (nu3 - p1.nu) + (nu3 - p2.nu) - delta_theta - source_delta;
         if (std::abs(residual) < abstol) return mach;
 
         mach -= residual / derivative;

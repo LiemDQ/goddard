@@ -50,29 +50,12 @@ double zero_source(const CharacteristicPoint&, double) { return 0.0; }
 
 // ── Planar: the iterative solver must reproduce the planar algebraic solver exactly ────────
 //
-// With zero-source lambdas the iterative solver's compatibility equations reduce to exactly
-// the planar algebraic solver's (see solve_interior_point_iterative's doc comment): both
-// solve theta = S + theta_1 - (nu - nu_1) with S = 0, i.e. the same K+ = theta - nu / K- =
-// theta + nu invariants. The two should therefore agree to solver-tolerance roundoff, not
-// merely to discretization order -- for parents that share the same theta.
-//
-// Parents are given EQUAL theta here (0.08 rad at both), not the differing thetas an
-// interior-point pairing usually has. find_node_mach's Newton residual (moved verbatim,
-// unmodified per this step's behavior-preservation mandate) is
-//   delta_theta - source_delta + (nu_P - nu_1) + (nu_P - nu_2) = 0,  delta_theta = theta_1 - theta_2
-// which combines the two compatibility relations theta+nu=K_minus_1 (C-) and
-// theta-nu=K_plus_2-S2 (C+) with the WRONG sign on delta_theta and on S2 relative to
-// eliminating theta_P from that pair (the correct combination is
-// 2 nu_P = delta_theta + nu_1 + nu_2 + S1 + S2, verified by hand against Zucrow & Hoffman
-// ch. 17's compatibility relations) -- confirmed both analytically and by running this test
-// against the moved (unmodified) code: with theta_1=0.10, theta_2=0.05 as in an ordinary
-// pairing, the iterative solver's theta/nu differ from the algebraic solver's by exactly
-// delta_theta = 0.05 rad, not by roundoff. That sign issue is pre-existing in code this step
-// only relocates (it has no caller in either kernel and was never previously tested); fixing
-// it is out of scope for a step whose contract is bit-identical behavior. Using equal-theta
-// parents makes delta_theta vanish, which is where the two solvers DO coincide exactly, and
-// still exercises the full mechanism (Newton Mach solve, corrector loop, thermo dispatch)
-// with genuinely different Mach numbers at the two parents.
+// With zero-source lambdas the iterative solver's compatibility relations are the planar
+// ones: theta + nu = K- of the C- parent and theta - nu = K+ of the C+ parent. Its Newton
+// residual, (nu - nu_1) + (nu - nu_2) - (theta_1 - theta_2) - (S1 - S2), is exactly those
+// two relations with theta eliminated, so for ANY pair of parents -- different flow angles
+// included -- the root is the algebraic solver's nu, and the two solvers agree to solver
+// tolerance, not merely to discretization order.
 TEST(MocUnitProcesses, IterativeSolverReproducesPlanarAlgebraic) {
     MocOptions options = make_options(MocFlowKind::PLANAR);
     NozzleProfile wall;
@@ -80,8 +63,10 @@ TEST(MocUnitProcesses, IterativeSolverReproducesPlanarAlgebraic) {
     MocLog log;
     MocSolveContext ctx{options, wall, thermo, log};
 
-    CharacteristicPoint c_minus_parent = make_point(thermo, 2.0, 0.0, 0.5, 0.08);
-    CharacteristicPoint c_plus_parent = make_point(thermo, 2.2, 0.1, 0.2, 0.08);
+    // Different flow angles at the two parents: theta_1 - theta_2 enters the residual and
+    // must be carried with the right sign.
+    CharacteristicPoint c_minus_parent = make_point(thermo, 2.0, 0.0, 0.5, 0.10);
+    CharacteristicPoint c_plus_parent = make_point(thermo, 2.2, 0.1, 0.2, 0.05);
 
     PointResult algebraic = solve_interior_point(ctx, c_minus_parent, c_plus_parent);
     ASSERT_EQ(algebraic.error, MocErrorCode::NONE);
@@ -97,28 +82,22 @@ TEST(MocUnitProcesses, IterativeSolverReproducesPlanarAlgebraic) {
     EXPECT_NEAR(iterative.point.mach, algebraic.point.mach, 1e-12);
 }
 
-// ── Axisymmetric: the iterative solver (fed the axisymmetric source terms) should agree ────
-// with the axisymmetric algebraic solver to O(h^2), not bit-for-bit
+// ── Axisymmetric: the iterative solver (fed the axisymmetric source terms) must agree ─────
+// with the axisymmetric algebraic solver to second order
 //
-// Unlike the planar case, the two solvers are NOT the same discretization here. The
-// algebraic solver (solve_interior_point) evaluates the axisymmetric source term in
-// dx-form (accumulated along x from each parent, predictor-corrector averaged at the
-// intersection); the iterative solver's cminus_source_term/cplus_source_term evaluate it in
-// dy-form (accumulated along y from each parent to the shared new_y, inside a Newton
-// iteration on Mach). Both are second-order-accurate discretizations of the same
-// compatibility relations (Zucrow & Hoffman ch. 17), so on a smooth flow field they must
-// agree to O(h^2) as the parent separation h shrinks, not exactly.
-//
-// Parents share the same theta at every h (see IterativeSolverReproducesPlanarAlgebraic's
-// comment on find_node_mach's pre-existing sign handling of delta_theta = theta_1 - theta_2):
-// with delta_theta held at exactly 0 for every h, that O(h) term cannot contaminate the O(h^2)
-// comparison this test is actually after. Mach still varies with y, so the cell is not
-// degenerate and the axisymmetric source terms (which depend on theta, not on delta_theta)
-// are genuinely exercised and nonzero.
+// The two solvers are not the same discretization here. The algebraic solver
+// (solve_interior_point) integrates the axisymmetric source term in dx-form, averaged
+// between each parent and the intersection by a predictor-corrector; the iterative solver's
+// cminus_source_term/cplus_source_term integrate it in dy-form from each parent to the shared
+// new_y, inside a Newton iteration on Mach. Both are second-order discretizations of the
+// same compatibility relations (Zucrow & Hoffman ch. 17), so on a smooth flow field their
+// disagreement must shrink like h^2 as the parent separation h shrinks: by a factor of ~4
+// per halving of h. The cell below has both theta and Mach varying with y, so the
+// theta_1 - theta_2 term and both source terms are all exercised with nonzero values.
 namespace {
 
 // A small "cell": two parents straddling y = 0.5 by +/- h/2, sampled from a smooth flow field
-// (constant theta, Mach linear in y) so that halving h is a meaningful refinement of the same
+// (theta and Mach linear in y) so that halving h is a meaningful refinement of the same
 // underlying continuous problem, not two unrelated point pairs.
 struct CellDifference {
     double dtheta, dnu, dmach;
@@ -126,7 +105,7 @@ struct CellDifference {
 
 CellDifference axisymmetric_cell_difference(const MocSolveContext& ctx, const MocThermo& thermo, double h) {
     const double y_center = 0.5;
-    const double theta_common = 0.08;                      // rad; same at both parents, every h
+    const double theta_center = 0.08, theta_slope = 0.25;  // rad, rad per unit y
     const double mach_center = 2.10, mach_slope = 0.6;     // per unit y
 
     const double y_minus = y_center + 0.5 * h;  // C- parent: larger y (see find_pair_partner)
@@ -134,10 +113,10 @@ CellDifference axisymmetric_cell_difference(const MocSolveContext& ctx, const Mo
 
     CharacteristicPoint c_minus_parent = make_point(
         thermo, mach_center + mach_slope * (y_minus - y_center),
-        0.0, y_minus, theta_common);
+        0.0, y_minus, theta_center + theta_slope * (y_minus - y_center));
     CharacteristicPoint c_plus_parent = make_point(
         thermo, mach_center + mach_slope * (y_plus - y_center),
-        0.0, y_plus, theta_common);
+        0.0, y_plus, theta_center + theta_slope * (y_plus - y_center));
 
     // cminus_source_term/cplus_source_term are overloaded (a two-point dy-form also exists,
     // used by the wall solvers); bind explicitly to the (parent, new_y) overload the template
@@ -172,39 +151,30 @@ TEST(MocUnitProcesses, IterativeSolverAgreesWithAxisymmetricAlgebraicToSecondOrd
     CellDifference diff_h = axisymmetric_cell_difference(ctx, thermo, h);
     CellDifference diff_h_half = axisymmetric_cell_difference(ctx, thermo, h / 2.0);
 
-    // Measured residuals at h = 0.01 (perfect gas, gamma = 1.4, the flow field above):
-    // dtheta ~ 9.0e-4 rad, dnu ~ 6.2e-4 rad, dmach ~ 1.3e-3. Larger than a pure O(h^2)
-    // discretization difference would suggest for h = 0.01 -- because it isn't purely that.
-    // find_node_mach's residual (see IterativeSolverReproducesPlanarAlgebraic's comment) also
-    // combines the two dy-form sources S1, S2 with the wrong relative sign for eliminating
-    // theta_P (nu_P = ... + S1 - S2 where the correct elimination needs + S1 + S2); with
-    // theta held equal at both parents that stray -2*S2 term is the only surviving defect,
-    // and S2 itself is O(h) (see cplus_source_term's dy/y_avg factor), so it dominates the
-    // legitimate O(h^2) difference between the dx-form and dy-form source discretizations at
-    // these cell sizes. The bound below is a generous multiple of the measured value -- not
-    // tight to a hypothetical pure O(h^2) residual, since the actual (pre-existing, moved
-    // unmodified) code is not that.
-    constexpr double bound = 4e-3;
+    RecordProperty("dtheta_h", diff_h.dtheta);
+    RecordProperty("dnu_h", diff_h.dnu);
+    RecordProperty("dmach_h", diff_h.dmach);
+    RecordProperty("dtheta_h_half", diff_h_half.dtheta);
+    RecordProperty("dnu_h_half", diff_h_half.dnu);
+
+    // Measured at h = 0.01 (perfect gas, gamma = 1.4, the flow field above): dtheta 5.5e-6,
+    // dnu 6.3e-6, dmach 1.3e-5; at h/2 they are 1.37e-6, 1.56e-6 (ratios 4.02, 4.03). The
+    // bound is a few times the largest measured value.
+    constexpr double bound = 5e-5;
     EXPECT_LT(diff_h.dtheta, bound);
     EXPECT_LT(diff_h.dnu, bound);
     EXPECT_LT(diff_h.dmach, bound);
 
-    // Convergence order: halving h shrinks the disagreement by ~2x (O(h)), not ~4x (O(h^2)),
-    // for the reason above -- the O(h) sign defect in the source combination dominates over
-    // the true O(h^2) discretization difference at these cell sizes. Measured ratio at
-    // h=0.01 vs h=0.005: ~1.99 (dtheta), consistent with O(h). Allow a wide band (1.3x-3.5x)
-    // since this is an asymptotic rate measured at one finite h, not an identity -- and a
-    // floor under the h/2 residual so a chance near-zero difference does not blow up the
-    // ratio. This still catches a real regression: a change that broke the shared
-    // compatibility-equation structure entirely (rather than merely its source-term order)
-    // would not converge at any clean rate as h shrinks.
+    // Convergence order: halving h shrinks the disagreement by ~4x. Allow a band around 4,
+    // since this is an asymptotic rate measured at one finite h, and a floor under the h/2
+    // residual so a chance near-zero difference cannot blow up the ratio.
     constexpr double floor = 1e-13;
     double ratio_theta = diff_h.dtheta / std::max(diff_h_half.dtheta, floor);
     double ratio_nu = diff_h.dnu / std::max(diff_h_half.dnu, floor);
-    EXPECT_GT(ratio_theta, 1.3) << "dtheta(h)=" << diff_h.dtheta << " dtheta(h/2)=" << diff_h_half.dtheta;
-    EXPECT_LT(ratio_theta, 3.5) << "dtheta(h)=" << diff_h.dtheta << " dtheta(h/2)=" << diff_h_half.dtheta;
-    EXPECT_GT(ratio_nu, 1.3) << "dnu(h)=" << diff_h.dnu << " dnu(h/2)=" << diff_h_half.dnu;
-    EXPECT_LT(ratio_nu, 3.5) << "dnu(h)=" << diff_h.dnu << " dnu(h/2)=" << diff_h_half.dnu;
+    EXPECT_GT(ratio_theta, 3.0) << "dtheta(h)=" << diff_h.dtheta << " dtheta(h/2)=" << diff_h_half.dtheta;
+    EXPECT_LT(ratio_theta, 5.5) << "dtheta(h)=" << diff_h.dtheta << " dtheta(h/2)=" << diff_h_half.dtheta;
+    EXPECT_GT(ratio_nu, 3.0) << "dnu(h)=" << diff_h.dnu << " dnu(h/2)=" << diff_h_half.dnu;
+    EXPECT_LT(ratio_nu, 5.5) << "dnu(h)=" << diff_h.dnu << " dnu(h/2)=" << diff_h_half.dnu;
 }
 
 // ── intersect_ray_with_wall ──────────────────────────────────────────────────────────────
