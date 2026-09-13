@@ -4,6 +4,9 @@ Goddard is a software library for simulating chemically reactive compressible fl
 
 At a basic level, Goddard provides similar functionality as NASA's [Chemical Equilibrium with Applications](https://www1.grc.nasa.gov/research-and-engineering/ceaweb/) (CEA), but with a modern API, more features, more extensibility and more flexibility in problem specification. Goddard is built on top of the [Cantera](https://cantera.org/) C++ API and provides very similar results as NASA CEA in applicable situations. However, if you prefer to use CEA, consider [RocketCEA](https://rocketcea.readthedocs.io/en/latest/) or [cea](https://nasa.github.io/cea/) for wrappers around the CEA Fortran code.
 
+![Minimum length nozzle characteristic plot.](assets/moc_min_length.png)
+
+
 ## Features
 
 - **Combustion** — isobaric, recirculated, and isochoric combustion
