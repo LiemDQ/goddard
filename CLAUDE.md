@@ -254,6 +254,7 @@ When adding or modifying public C++ APIs or Python bindings, follow the conventi
 - In binding files, use `DOC(Goddard, Class, method)` instead of literal strings.
 - Pure-Python functions use Google-style docstrings.
 - Do not duplicate docstrings between C++ headers and binding files.
+- Remove all mannered prose.
 
 ## Instructions
 
