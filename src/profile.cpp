@@ -184,7 +184,7 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     // throat-arc loop above already pushed as its last point. Including it again
     // would create a zero-length segment at the junction (NaN slopes in slope_at_idx).
     for (size_t i = 1; i < n_points; i++) {
-        double frac = static_cast<double>(i) / (n_points - 1);
+        double frac = static_cast<double>(i) / static_cast<double>(n_points - 1);
         double a = (1.0 - frac)*(1.0 - frac);
         double x = a * n_x + 2 * (1.0 - frac) * frac * mid_x + frac*frac*length;
         double r = a * n_y + 2 * (1.0 - frac) * frac * mid_y + frac*frac*r_exit;
@@ -386,12 +386,12 @@ void NozzleProfile::populate_throat_expansion_curve(
     double theta_exp_rad = to_radians(theta_n - 90.0);
     //Generate expansion curve
     for (size_t i = 0; i < n_points; i++) {
-        double frac = static_cast<double>(i) / (n_points - 1);
+        double frac = static_cast<double>(i) / static_cast<double>(n_points - 1);
         
         double theta = frac*(theta_exp_rad - to_radians(-90.0)) + to_radians(-90.0);
-        double x = r_expansion_curve*r_throat*cos(theta);
-        double r = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
-        push_back({x,r});
+        double x_coord = r_expansion_curve*r_throat*cos(theta);
+        double r_coord = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
+        push_back({x_coord, r_coord});
     }
 }
 

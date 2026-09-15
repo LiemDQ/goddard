@@ -86,14 +86,6 @@ RocketProblemResults RocketProblem::solve() {
         Gas combustor_gas(m_sln);
         Combustor combustor(combustor_gas, fuel_comp, ox_comp);
 
-        // TODO: workaround for bug in Cantera SolutionArray
-        // prevents incorrect values from being written in RocketProblemResults.
-        // this will have to remain in place until Cantera merges a fix.
-        // see https://github.com/Cantera/cantera/issues/2067
-        if (pressures.size() == 1 && OFs.size() == 1) {
-            pressures.conservativeResize(2);
-            pressures(1) = pressures(0);
-        }
         ThermoArray combustion_states = combustor.solve(fuel_T, ox_T, pressures, OFs, params.combustor_options);
 
         std::vector<NozzleResults> expansion_results;

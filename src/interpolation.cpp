@@ -15,7 +15,7 @@ auto BicubicInterpolator::handle_boundary(double val, double low, double high, B
         }
         default: {
             //unreachable
-            std::runtime_error("Invalid value for BoundsHandling.");
+            throw std::runtime_error("Invalid value for BoundsHandling.");
         }
     }
 }
@@ -44,8 +44,8 @@ auto BicubicInterpolator::interpolate(double x, double y) const -> double {
     if (idx_x1 >= x_size - 1) idx_x1 = x_size - 2;
     if (idx_y1 >= y_size - 1) idx_y1 = y_size - 2;
 
-    double t = x_grid - idx_x1;
-    double u = y_grid - idx_y1;
+    double t = x_grid - static_cast<double>(idx_x1);
+    double u = y_grid - static_cast<double>(idx_y1);
     
     size_t ix[4], iy[4];
     for (int i = 0; i < 4; ++i) {
@@ -71,12 +71,12 @@ auto BicubicInterpolator::interpolate(double x, double y) const -> double {
 }
 
 auto BicubicInterpolator::x_max() const -> double {
-    return x_min + x_step * (x_size - 1);
+    return x_min + x_step * static_cast<double>(x_size - 1);
 }
 
 
 auto BicubicInterpolator::y_max() const -> double {
-    return y_min + y_step * (y_size - 1);
+    return y_min + y_step * static_cast<double>(y_size - 1);
 }
 
 } // namespace Goddard

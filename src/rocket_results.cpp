@@ -68,10 +68,8 @@ RocketProblemResults::RocketProblemResults(
 
         for (std::size_t of_idx = 0; of_idx < N_of; of_idx++) {
             for (std::size_t p_idx = 0; p_idx < N_p; p_idx++) {
-                const std::size_t state_idx = of_idx * N_p + p_idx;
-                if (state_idx >= static_cast<std::size_t>(case_result.inlet_states.size())) {
-                    continue;
-                }
+                const std::size_t state_idx = static_cast<std::size_t>(case_result.inlet_states.flat_index(
+                    static_cast<long>(of_idx), static_cast<long>(p_idx)));
 
                 std::vector<double> inlet_state = case_result.inlet_states.get_state(state_idx);
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
@@ -519,14 +517,9 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
     std::string result;
     for (const auto& name : cases_to_report) {
         const CaseMeta& meta = m_case_meta.at(name);
-        double prev_pressure = -1.0;
 
         for (std::size_t of_idx = 0; of_idx < meta.of_ratios.size(); of_idx++) {
             for (std::size_t p_idx = 0; p_idx < meta.pressures.size(); p_idx++) {
-                // Skip duplicate pressures from the Cantera SolutionArray workaround.
-                if (p_idx > 0 && meta.pressures[p_idx] == prev_pressure) continue;
-                prev_pressure = meta.pressures[p_idx];
-
                 // Collect stations for this (of_idx, p_idx) in order: chamber, throat, exits.
                 std::vector<ThermodynamicState> thermo_states;
                 for (const auto& s : m_stations) {
