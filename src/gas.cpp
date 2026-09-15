@@ -19,27 +19,46 @@ Gas::Gas(const Cantera::Solution& gas, GasChemistry chem)
 
 Gas::Gas(Cantera::Solution&& gas, GasChemistry chem)
     : chemistry(chem), m_sol(gas.shared_from_this()) 
-{}
+{
+    set_current_state_as_reference();
+}
 
 Gas::Gas(const std::string& infile, 
         const std::string& phase_name,
         GasChemistry chem) 
     : chemistry(chem), m_sol(Cantera::newSolution(infile, phase_name)) 
-{}
+{
+    set_current_state_as_reference();
+}
 
 Gas::Gas(double gamma) : m_gamma(gamma)
 {
     chemistry = GasChemistry::PERFECT_GAS;
+    set_current_state_as_reference();
 }
 
 Gas::Gas(const Gas& gas) 
-    : chemistry(gas.chemistry), m_sol(gas.m_sol->clone()), 
+    : chemistry(gas.chemistry), m_sol(gas.m_sol), 
       m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) 
 {}
 
 // copy assignment constructor
 Gas Gas::operator=(const Gas& gas) {
-    return Gas(gas);
+    this->chemistry = gas.chemistry;
+    this->m_H_stagnation = gas.m_H_stagnation;
+    this->m_S0 = gas.m_S0;
+    this->m_gamma = gas.m_gamma;
+    this->m_sol = gas.m_sol;
+
+    return *this;
+}
+
+// deep copy of underlying solution object
+Gas Gas::clone() {
+    if (m_sol) 
+        return Gas(*m_sol, chemistry);
+    else 
+        return Gas(m_gamma);
 }
 
 Gas Gas::create(const std::string& filename, const std::string& phase_name, GasChemistry chemistry) {
@@ -403,8 +422,14 @@ void Gas::set_reference_entropy(double S) { m_S0 = S; }
 double Gas::get_reference_entropy() const { return m_S0; }
 
 void Gas::set_current_state_as_reference() {
-    m_H_stagnation = thermo()->enthalpy_mass();
-    m_S0 = thermo()->entropy_mass();
+    if (m_sol) {
+        m_H_stagnation = thermo()->enthalpy_mass();
+        m_S0 = thermo()->entropy_mass();
+    }
+    else {
+        m_H_stagnation = 1.0;
+        m_S0 = 1.0;
+    }
 }
 
 // Accessors

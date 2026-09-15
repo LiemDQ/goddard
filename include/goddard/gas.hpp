@@ -51,6 +51,8 @@ public:
     Gas(const Gas& gas);
     Gas operator=(const Gas& gas);
 
+    Gas clone();
+
     static Gas create(const std::string& infile, 
         const std::string& phase_name,
         GasChemistry chemistry = GasChemistry::FROZEN);
