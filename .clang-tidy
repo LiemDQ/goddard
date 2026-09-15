@@ -1,26 +1,36 @@
 ---
+# Checks are chosen to find defects, not to impose a style that conflicts with CLAUDE.md:
+# no trailing return types, no mandatory [[nodiscard]], physics notation (T, P, dlogV_dlogT_P)
+# allowed in variable names, magic numbers allowed in numerical code.
 Checks: >
   -*,
   clang-analyzer-*,
   bugprone-*,
-  modernize-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
   performance-*,
-  readability-*
+  -performance-enum-size,
+  -performance-avoid-endl,
+  misc-redundant-expression,
+  misc-throw-by-value-catch-by-reference,
+  misc-unused-using-decls,
+  misc-definitions-in-headers,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-redundant-void-arg,
+  readability-duplicate-include,
+  readability-misleading-indentation,
+  readability-redundant-declaration,
+  readability-identifier-naming
 WarningsAsErrors: ""
-HeaderFilterRegex: "(include|src)/.*"
+# Only project headers. Matches <repo>/include/goddard/ but not the pixi environment's include directories.
+HeaderFilterRegex: "include/goddard/.*"
 FormatStyle: none
 CheckOptions:
   readability-identifier-naming.ClassCase: CamelCase
-  readability-identifier-naming.EnumCase: CamelCase
-  readability-identifier-naming.EnumConstantCase: CamelCase
-  readability-identifier-naming.FunctionCase: lower_case
-  readability-identifier-naming.GlobalFunctionCase: lower_case
-  readability-identifier-naming.LocalVariableCase: lower_case
-  readability-identifier-naming.MemberCase: lower_case
-  readability-identifier-naming.PrivateMemberPrefix: m_
-  readability-identifier-naming.ParameterCase: lower_case
   readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE
   readability-identifier-naming.TypeAliasCase: CamelCase
-  readability-identifier-naming.TypedefCase: CamelCase
-  readability-identifier-naming.VariableCase: lower_case
-  readability-identifier-length.MinimumParameterNameLength: 1
+  readability-identifier-naming.PrivateMemberPrefix: m_
+  readability-identifier-naming.PrivateMemberCase: aNy_CasE

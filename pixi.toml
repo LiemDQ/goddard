@@ -36,6 +36,16 @@ cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type 
 args = [{arg="build_type", default = "Release"}]
 cmd="mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE={{ build_type }} -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF"
 
+# Static analysis (clang-tidy + cppcheck). Needs a configured build/ directory.
+# `lint` reports findings across all sources; `lint-changed` fails on findings in code changed
+# relative to a git ref, which is what CI runs on pull requests.
+[tasks.lint]
+cmd = "bash scripts/static_analysis.sh"
+
+[tasks.lint-changed]
+args = [{arg = "base", default = "origin/main"}]
+cmd = "bash scripts/static_analysis.sh --changed {{ base }}"
+
 [tasks.parse-cea]
 cmd="bash scripts/cea_to_json.sh --pretty"
 
@@ -43,7 +53,9 @@ cmd="bash scripts/cea_to_json.sh --pretty"
 # cantera = "3.2.*"
 libcantera-devel = "3.2.*"
 cmake = ">=3.25"
-clang-tools = "*"
+# clang-tidy needs the Clang resource headers (stddef.h, intrinsics), which clang-tools does not ship.
+clang-tools = "22.*"
+clang-22 = "*"
 cppcheck = "*"
 ninja = ">=1.11"
 scons = "*"

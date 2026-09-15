@@ -34,6 +34,7 @@ add_executable(
     test_kinetic_nozzle.cpp
     test_shocks.cpp
     test_gas.cpp
+    asan_options.cpp
 )
 
 target_include_directories(goddardTests      
@@ -48,9 +49,10 @@ target_link_libraries(goddardTests PRIVATE goddard_lib)
 target_link_libraries(goddardTests PRIVATE GTest::gtest_main)
 target_link_libraries(goddardTests PRIVATE GTest::gmock)
 target_link_libraries(goddardTests PRIVATE nlohmann_json::nlohmann_json)
-gtest_add_tests(TARGET goddardTests 
+# gtest_discover_tests lists tests by running the binary, so parameterized (TEST_P) instantiations are
+# registered too; gtest_add_tests scans sources and misses them. The binary sets its own ASan options
+# (asan_options.cpp) because discovery does not use the test ENVIRONMENT property.
+gtest_discover_tests(goddardTests
     TEST_PREFIX "goddard"
-    EXTRA_ARGS ""
-    TEST_LIST test_list
+    DISCOVERY_TIMEOUT 60
 )
-set_tests_properties(${test_list} PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_odr_violation=0")

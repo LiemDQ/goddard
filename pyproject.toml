@@ -24,8 +24,11 @@ dev = ["pytest"]
 [tool.scikit-build]
 cmake.build-type = "Release"
 wheel.packages = ["python/goddard"]
+# Package builds must not fail on compiler warnings introduced by a newer toolchain; the C++ CI job
+# builds with warnings as errors instead.
 cmake.args = [
     "-Dgoddard_BUILD_PYTHON=ON",
     "-Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF",
     "-Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF",
+    "-Dgoddard_WARNINGS_AS_ERRORS=OFF",
 ]

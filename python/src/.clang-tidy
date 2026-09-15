@@ -1,0 +1,7 @@
+---
+InheritParentConfig: true
+# nanobind registers types and exceptions through temporaries (nb::class_<...>(m, ...),
+# nb::exception<...>(m, ...)) whose constructors have the side effect; they are not unused objects.
+Checks: >
+  -bugprone-unused-raii,
+  -bugprone-throw-keyword-missing

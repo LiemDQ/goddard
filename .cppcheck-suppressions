@@ -1,0 +1,32 @@
+// cppcheck suppressions for `scripts/static_analysis.sh`.
+// Style checks that conflict with the codebase conventions in CLAUDE.md or are too noisy to act on.
+funcArgNamesDifferent
+useStlAlgorithm
+functionConst
+functionStatic
+useInitializationList
+noExplicitConstructor
+unusedStructMember
+uninitStructMember
+variableScope
+shadowFunction
+shadowVariable
+constVariable
+constVariableReference
+constVariablePointer
+constParameter
+constParameterReference
+constParameterPointer
+passedByValue
+returnByReference
+// Tool limitations.
+missingIncludeSystem
+unmatchedSuppression
+unknownMacro
+internalAstError
+syntaxError
+normalCheckLevelMaxBranches
+checkersReport
+// Third-party and generated code.
+*:*/.pixi/*
+*:*/build/*

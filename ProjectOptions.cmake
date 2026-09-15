@@ -55,8 +55,10 @@ macro(goddard_setup_options)
     option(goddard_ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
     option(goddard_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
     option(goddard_ENABLE_UNITY_BUILD "Enable unity builds" OFF)
-    option(goddard_ENABLE_CLANG_TIDY "Enable clang-tidy" ON)
-    option(goddard_ENABLE_CPPCHECK "Enable cpp-check analysis" ON)
+    # Static analysis runs separately from the build (`pixi run lint`, `pixi run cppcheck`, and the
+    # CI static-analysis job), so a finding never blocks compiling or testing.
+    option(goddard_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
+    option(goddard_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
     option(goddard_ENABLE_PCH "Enable precompiled headers" OFF)
     option(goddard_ENABLE_CACHE "Enable ccache" ON)
     option(PREFIX_SYSTEM_CANTERA "Use system-wide Cantera installation" OFF)
