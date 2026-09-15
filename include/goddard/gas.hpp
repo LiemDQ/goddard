@@ -48,13 +48,13 @@ public:
      */
     Gas(double gamma);
 
-    Gas(const Gas& gas);
-    Gas operator=(const Gas& gas);
-
     /**
-     * Create a new Gas class with a deep copy of the underlying Solution object.
+     * Create a new Gas with a deep copy of the underlying Solution object. The chemistry mode
+     * and stored reference stagnation enthalpy and entropy are preserved.
+     *
+     * @note Copying a `Gas` normally is shallow: the copy references the same `Solution`.
      */
-    Gas clone();
+    Gas clone() const;
 
     static Gas create(const std::string& infile, 
         const std::string& phase_name,
@@ -294,9 +294,9 @@ public:
 
 private:
     std::shared_ptr<Cantera::Solution> m_sol;
-    double m_H_stagnation;
-    double m_S0;
-    double m_gamma;
+    double m_H_stagnation = 0.0;
+    double m_S0 = 0.0;
+    double m_gamma = 0.0;
 
     inline void check_for_valid_cantera() const {
         if (!has_cantera_sln()) throw std::runtime_error("No Cantera Solution owned by this Gas object.");

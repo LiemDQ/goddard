@@ -37,28 +37,13 @@ Gas::Gas(double gamma) : m_gamma(gamma)
     set_current_state_as_reference();
 }
 
-Gas::Gas(const Gas& gas) 
-    : chemistry(gas.chemistry), m_sol(gas.m_sol), 
-      m_H_stagnation(gas.m_H_stagnation), m_S0(gas.m_S0) 
-{}
-
-// copy assignment constructor
-Gas Gas::operator=(const Gas& gas) {
-    this->chemistry = gas.chemistry;
-    this->m_H_stagnation = gas.m_H_stagnation;
-    this->m_S0 = gas.m_S0;
-    this->m_gamma = gas.m_gamma;
-    this->m_sol = gas.m_sol;
-
-    return *this;
-}
-
-// deep copy of underlying solution object
-Gas Gas::clone() {
-    if (m_sol) 
-        return Gas(*m_sol, chemistry);
-    else 
-        return Gas(m_gamma);
+Gas Gas::clone() const {
+    Gas copy = *this;
+    if (m_sol) {
+        copy.m_sol = m_sol->clone();
+        copy.restore_state(save_state());
+    }
+    return copy;
 }
 
 Gas Gas::create(const std::string& filename, const std::string& phase_name, GasChemistry chemistry) {

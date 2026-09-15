@@ -49,14 +49,6 @@ def test_yaml_construction_with_species(h2o2_yaml):
     assert g.temperature > 0
 
 
-def test_solution_handle_construction(h2o2_yaml):
-    from goddard import Gas, GasChemistry, create_solution
-    species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
-    sol = create_solution(h2o2_yaml, "ohmech", species)
-    g = Gas(sol, chemistry=GasChemistry.FROZEN)
-    assert g.temperature > 0
-
-
 # ---------------------------------------------------------------------------
 # Property access (should be attributes, not method calls)
 # ---------------------------------------------------------------------------

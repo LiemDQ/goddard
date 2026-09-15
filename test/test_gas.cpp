@@ -196,3 +196,56 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
     gas.restore_state(state);
     EXPECT_DOUBLE_EQ(gas.temperature(), T_original);
 }
+
+// Copy semantics
+
+TEST_F(GasTests, PerfectGasCopyPreservesGamma) {
+    Gas gas(1.4);
+    Gas copied(gas);
+    EXPECT_DOUBLE_EQ(copied.gamma_s(), 1.4);
+
+    Gas assigned(1.2);
+    assigned = gas;
+    EXPECT_DOUBLE_EQ(assigned.gamma_s(), 1.4);
+    EXPECT_EQ(assigned.chemistry, GasChemistry::PERFECT_GAS);
+}
+
+TEST_F(GasTests, CopySharesSolution) {
+    Gas gas(sol, GasChemistry::FROZEN);
+    Gas copied = gas;
+    EXPECT_EQ(copied.solution(), gas.solution());
+
+    copied.set_state_TP(2000.0, 1e5);
+    EXPECT_DOUBLE_EQ(gas.temperature(), 2000.0);
+}
+
+TEST_F(GasTests, CloneIsIndependentDeepCopy) {
+    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    gas.set_stagnation_enthalpy(1.234e6);
+    gas.set_reference_entropy(5.678e3);
+
+    Gas cloned = gas.clone();
+    EXPECT_NE(cloned.solution(), gas.solution());
+    EXPECT_EQ(cloned.chemistry, GasChemistry::EQUILIBRIUM);
+    EXPECT_DOUBLE_EQ(cloned.temperature(), gas.temperature());
+    EXPECT_DOUBLE_EQ(cloned.pressure(), gas.pressure());
+    std::vector<double> X_original = gas.mole_fractions();
+    std::vector<double> X_cloned = cloned.mole_fractions();
+    ASSERT_EQ(X_cloned.size(), X_original.size());
+    for (size_t i = 0; i < X_original.size(); i++) {
+        EXPECT_DOUBLE_EQ(X_cloned[i], X_original[i]);
+    }
+    EXPECT_DOUBLE_EQ(cloned.get_stagnation_enthalpy(), 1.234e6);
+    EXPECT_DOUBLE_EQ(cloned.get_reference_entropy(), 5.678e3);
+
+    double T_original = gas.temperature();
+    cloned.set_state_TP(1000.0, 1e5);
+    EXPECT_DOUBLE_EQ(gas.temperature(), T_original);
+}
+
+TEST_F(GasTests, ClonePerfectGas) {
+    Gas gas(1.3);
+    Gas cloned = gas.clone();
+    EXPECT_FALSE(cloned.has_cantera_sln());
+    EXPECT_DOUBLE_EQ(cloned.gamma_s(), 1.3);
+}
