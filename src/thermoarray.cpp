@@ -12,6 +12,7 @@
 #include <string>
 #include <cassert>
 #include <iostream>
+#include <stdexcept>
 namespace Goddard {
 
 using Cantera::SolutionArray;
@@ -21,35 +22,77 @@ using Eigen::ArrayXd;
 using Eigen::ArrayXXd;
 
 
-ThermoArray::ThermoArray(std::shared_ptr<Solution> sol, int len, const Cantera::AnyMap& meta) : 
-	m_solution(sol), 
-	m_states(SolutionArray::create(sol, len, meta)),
-	m_orig_solution_state(m_solution->thermo()->stateSize()) {
+namespace {
 
-	m_solution->thermo()->saveState(m_orig_solution_state);
+// Copy of `sol` holding only its thermodynamic model, in the same state as `sol`.
+std::shared_ptr<Solution> private_copy(Solution& sol) {
+	std::shared_ptr<Solution> copy = sol.clone({}, false, false);
+	std::vector<double> state(sol.thermo()->stateSize());
+	sol.thermo()->saveState(state);
+	copy->thermo()->restoreState(state);
+	return copy;
 }
 
-ThermoArray::ThermoArray(std::shared_ptr<Solution> sol, const std::vector<long>& shape) : 
-	m_solution(sol), 
-	m_states(SolutionArray::create(std::move(sol), static_cast<int>(shape.size()), {})),
-	m_orig_solution_state(m_solution->thermo()->stateSize()) {
+long shape_size(const std::vector<long>& shape) {
+	long array_size = 1;
+	for (long dim : shape) {
+		if (dim < 0) {
+			throw std::invalid_argument("ThermoArray shape dimensions must be non-negative.");
+		}
+		array_size *= dim;
+	}
+	return array_size;
+}
+
+}
+
+// SolutionArray::create fills every entry with the current Solution state, so each entry starts valid.
+ThermoArray::ThermoArray(const std::shared_ptr<Solution>& sol, int len, const Cantera::AnyMap& meta) : 
+	m_solution(private_copy(*sol)), 
+	m_states(SolutionArray::create(m_solution, len, meta)) {}
+
+ThermoArray::ThermoArray(const std::shared_ptr<Solution>& sol, const std::vector<long>& shape) : 
+	m_solution(private_copy(*sol)), 
+	m_states(SolutionArray::create(m_solution, static_cast<int>(shape_size(shape)), {})) {
 	
-	m_solution->thermo()->saveState(m_orig_solution_state);
-	m_states->setApiShape(shape);
-	m_shape_is_set = true;
+	if (!shape.empty()) {
+		m_states->setApiShape(shape);
+		m_shape_is_set = true;
+	}
 }
 
 void ThermoArray::reshape(const std::vector<long>& shape) {
-	long array_size = 1;
-	for (long val: shape) {
-		array_size *= val;
-	}
-	m_states->resize(static_cast<int>(array_size));
+	// setApiShape resizes the storage. Entries that remain keep their data, so the buffered
+	// location still matches the Solution state if it is in range; new entries are zero-filled.
+	shape_size(shape);
 	m_states->setApiShape(shape);
+	m_shape_is_set = !shape.empty();
 }
 
-std::vector<double> ThermoArray::get_state(int loc) {
+int ThermoArray::flat_index(long i, long j, long k) const {
+	const std::vector<long> data_shape = shape();
+	const std::vector<long> indices = {i, j, k};
+	long loc = 0;
+	long stride = 1;
+	for (size_t dim = 0; dim < indices.size(); dim++) {
+		long extent = dim < data_shape.size() ? data_shape[dim] : 1;
+		if (indices[dim] < 0 || indices[dim] >= extent) {
+			throw std::out_of_range("ThermoArray index " + std::to_string(indices[dim])
+				+ " out of range for dimension " + std::to_string(dim)
+				+ " of extent " + std::to_string(extent));
+		}
+		loc += indices[dim] * stride;
+		stride *= extent;
+	}
+	return static_cast<int>(loc);
+}
+
+std::vector<double> ThermoArray::get_state(int loc) const {
 	return m_states->getState(loc);
+}
+
+void ThermoArray::set_state(int loc, const std::vector<double>& state) {
+	m_states->setState(loc, state);
 }
 
 ArrayXXd ThermoArray::temperature(int slice) const {
@@ -92,14 +135,10 @@ ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
 
 	for (int loc = 0; loc < size(); loc++){
-		m_states->thermo()->restoreState(m_states->getState(loc));
-		m_states->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
+		m_states->setLoc(loc);
+		m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
 		m_states->updateState(loc);
 	}
-
-	if (size() > 1) //TODO: this is needed to work around a bug in the Cantera SolutionArray implementation of getState.
-		m_states->thermo()->restoreState(m_orig_solution_state);
-
 }
 
 void ThermoArray::TD(const ArrayXd& Ts, const ArrayXd& Ds) {
@@ -155,6 +194,13 @@ void ThermoArray::UV(const ArrayXd& Us, const ArrayXd& Vs) {
 	update_states(&ThermoPhase::setState_UV, Us, Vs);
 }
 	
+void ThermoArray::check_ndim(int expected_ndim) {
+	if (ndim() != expected_ndim) {
+		throw std::length_error("Operation requires a " + std::to_string(expected_ndim)
+			+ "-D ThermoArray but the array has " + std::to_string(ndim()) + " dimensions.");
+	}
+}
+
 void ThermoArray::check_dimensionality(size_t len, size_t dim){
 	const auto& shape = m_states->apiShape();
 	if (len != static_cast<size_t>(shape[dim])){
@@ -164,51 +210,28 @@ void ThermoArray::check_dimensionality(size_t len, size_t dim){
 }
 
 ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice) const {
-	std::vector<double> old_state(m_solution->thermo()->stateSize());
-	m_solution->thermo()->saveState(old_state);
-
-	auto fn = std::mem_fn(f);
-	
-	long data_size = 0;
-	int initial_index = 0;
-
-	//determine the slice of data to extract, if the array is 3D.
-	if (ndim() > 2) {
-		const auto& data_shape = shape();
-		data_size = data_shape[0]*data_shape[1];
-		initial_index = static_cast<int>(data_size * slice);
-	} else {
-		data_size = size();
-	}
-
-	std::vector<double> retrieved_data(data_size); //TODO: use an XXd array directly?
-	for (int loc = initial_index; loc <= data_size+initial_index; loc++) {
-		m_solution->thermo()->restoreState(m_states->getState(loc));
-		retrieved_data.push_back(fn(m_solution->thermo()));
-	}
-	return reshape_thermo_data(retrieved_data);
-}
-
-ArrayXXd ThermoArray::reshape_thermo_data(const std::vector<double>& vec) const {
 	if (!m_shape_is_set) {
 		throw std::runtime_error("Attempted to retrieve data from ThermoArray before setting its shape.");
 	}
-	const auto& data_shape = shape();
-	
-	long rows = data_shape[0];
-	long cols = 0;
-
-	if (ndim() == 1) {
-		cols = 1;
-	} else if (ndim() >= 2) {
-		cols = data_shape[1];
+	const std::vector<long> data_shape = shape();
+	const long rows = data_shape[0];
+	const long cols = ndim() >= 2 ? data_shape[1] : 1;
+	const long slices = ndim() >= 3 ? data_shape[2] : 1;
+	if (slice < 0 || slice >= slices) {
+		throw std::out_of_range("ThermoArray slice " + std::to_string(slice)
+			+ " out of range for " + std::to_string(slices) + " slices.");
 	}
 
-	assert(static_cast<size_t>(cols*rows) == vec.size() && "Data vector and Eigen matrix sizes do not match.");
-
-	ArrayXXd data_array = Eigen::Map<const ArrayXXd>(vec.data(), rows, cols);
-	
-	return data_array;
+	auto fn = std::mem_fn(f);
+	ArrayXXd data(rows, cols);
+	for (long j = 0; j < cols; j++) {
+		for (long i = 0; i < rows; i++) {
+			// Loading an entry leaves the private Solution equal to the buffered entry.
+			m_states->setLoc(flat_index(i, j, slice));
+			data(i, j) = fn(m_solution->thermo());
+		}
+	}
+	return data;
 }
 
 void ThermoArray::update_states(void (ThermoPhase::*f)(double, double), const ArrayXd& var1, const ArrayXd& var2){
@@ -258,6 +281,7 @@ void ThermoArray::_update_states(Func&& f, const ArrayXd& arr1, const ArrayXd& a
 		m_states->setApiShape({static_cast<long>(len1), static_cast<long>(len2)});
 		m_shape_is_set = true;
 	} else{
+		check_ndim(2);
 		check_dimensionality(len1, 0);
 		check_dimensionality(len2, 1);
 	}
@@ -291,6 +315,7 @@ void ThermoArray::_update_states_with_composition(
 		m_states->setApiShape({static_cast<long>(len1), static_cast<long>(len2), static_cast<long>(len3)});
 		m_shape_is_set = true;
 	} else {
+		check_ndim(3);
 		check_dimensionality(len1, 0);
 		check_dimensionality(len2, 1);
 		check_dimensionality(len3, 2);

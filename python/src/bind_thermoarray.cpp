@@ -3,6 +3,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/eigen/dense.h>
 #include "goddard/thermoarray.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 
@@ -12,7 +13,11 @@ void bind_thermoarray(nb::module_& m) {
         .def("ndim", &Goddard::ThermoArray::ndim)
         .def("shape", &Goddard::ThermoArray::shape)
         .def("is_shape_set", &Goddard::ThermoArray::is_shape_set)
-        .def("get_state", &Goddard::ThermoArray::get_state, nb::arg("loc"))
+        .def("flat_index", &Goddard::ThermoArray::flat_index,
+             nb::arg("i"), nb::arg("j") = 0, nb::arg("k") = 0,
+             DOC(Goddard, ThermoArray, flat_index))
+        .def("get_state", &Goddard::ThermoArray::get_state, nb::arg("loc"),
+             DOC(Goddard, ThermoArray, get_state))
         .def("temperature", &Goddard::ThermoArray::temperature, nb::arg("slice") = 0)
         .def("pressure", &Goddard::ThermoArray::pressure, nb::arg("slice") = 0)
         .def("enthalpy_mass", &Goddard::ThermoArray::enthalpy_mass, nb::arg("slice") = 0)

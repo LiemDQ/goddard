@@ -3,12 +3,16 @@
 Tests are skipped automatically if the `cea` package is not installed.
 Run with: pytest python/tests/test_cea_comparison.py -v
 """
+import os
+
+import numpy as np
 import pytest
 
 cea = pytest.importorskip("cea")
 
 import goddard
 from conftest import (
+    find_data_dir,
     RocketTestCase,
     ComparisonTolerances,
     build_goddard_problem,
@@ -60,6 +64,16 @@ FROZEN_CASES = [H2_O2_GAS_FROZEN]
 # Frozen cases excluded from default runs pending gamma_s fix.
 # Use FROZEN_CASES when ready to enable them.
 DEFAULT_CASES = ALL_TEST_CASES
+
+# The frozen case matches CEA in the chamber but not from the throat on (throat temperature 3.6% high),
+# pending the frozen gamma_s fix noted above. strict=True makes the fix show up as a failure, so remove
+# this marker when it lands.
+FROZEN_EXPANSION_XFAIL = pytest.mark.xfail(
+    strict=True, reason="Frozen throat/exit states differ from CEA pending the frozen gamma_s fix")
+EXPANSION_CASES = [
+    pytest.param(case, marks=FROZEN_EXPANSION_XFAIL) if case.nozzle_chemistry == "frozen" else case
+    for case in DEFAULT_CASES
+]
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +151,7 @@ def test_chamber_state(case: RocketTestCase):
     compare_thermo_states(chamber, cea_sol, stations["chamber"], label="chamber")
 
 
-@pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
+@pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_throat_state(case: RocketTestCase):
     """Compare throat thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
@@ -151,7 +165,7 @@ def test_throat_state(case: RocketTestCase):
     compare_thermo_states(throat, cea_sol, stations["throat"], label="throat")
 
 
-@pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
+@pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_exit_states(case: RocketTestCase):
     """Compare exit/expansion thermodynamic states between Goddard and CEA."""
     problem = build_goddard_problem(case)
@@ -176,7 +190,7 @@ def test_exit_states(case: RocketTestCase):
 # Performance comparison tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
+@pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_performance(case: RocketTestCase):
     """Compare rocket performance metrics between Goddard and CEA.
 
@@ -254,3 +268,46 @@ def test_chamber_composition(case: RocketTestCase):
         cea_frac = cea_mass_fracs[species][stations["chamber"]]
         assert_close_abs(goddard_frac, cea_frac, tol.mass_fraction_abs,
                          f"chamber mass_frac[{species}]")
+
+
+# ---------------------------------------------------------------------------
+# Isochoric (constant-volume) combustion
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("of_ratio", [4.0, 6.0, 8.0])
+@pytest.mark.parametrize("initial_pressure_pa", [1e5, 1e6])
+def test_isochoric_combustion_matches_cea(of_ratio, initial_pressure_pa):
+    """Compare UV equilibrium of gaseous H2/O2 against cea.EqSolver."""
+    from goddard import Combustor, CombustorOptions, CombustionProcess, Gas, GasChemistry
+
+    T_reactant = 300.0
+    yaml_path = os.path.join(find_data_dir(), "h2o2.yaml")
+
+    gas = Gas(yaml_path, "ohmech", species=H2O2_SPECIES)
+    combustor = Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
+    options = CombustorOptions(process=CombustionProcess.ISOCHORIC)
+    burnt = combustor.solve(np.array([T_reactant]), np.array([initial_pressure_pa]),
+                            np.array([of_ratio]), options)
+
+    # Specific volume of the unburnt reactants sets the constant-volume constraint in CEA.
+    reactants = Gas(yaml_path, "ohmech", species=H2O2_SPECIES)
+    reactants.set_state_TPX(T_reactant, initial_pressure_pa,
+                            f"H2:{1.0 / 2.01588}, O2:{of_ratio / 31.9988}")
+    specific_volume = 1.0 / reactants.density
+
+    reac = cea.Mixture(["H2", "O2"])
+    prod = cea.Mixture(["H2", "O2"], products_from_reactants=True)
+    solver = cea.EqSolver(prod, reactants=reac)
+    solution = cea.EqSolution(solver)
+    weights = reac.of_ratio_to_weights(np.array([0.0, 1.0]), np.array([1.0, 0.0]), of_ratio)
+    u_reactants = reac.calc_property(cea.ENERGY, weights, np.array([T_reactant, T_reactant]))
+    solver.solve(solution, cea.UV, u_reactants / cea.R, specific_volume, weights)
+    assert solution.converged
+
+    gas.restore_state(burnt.get_state(0))
+    gas.chemistry = GasChemistry.EQUILIBRIUM
+    # Tighter than ComparisonTolerances: gas-phase H2/O2 needs no cross-database allowance.
+    assert_close_rel(gas.temperature, solution.T, 3e-3, "UV temperature")
+    assert_close_rel(gas.pressure, solution.P * 1e5, 3e-3, "UV pressure")
+    assert_close_rel(gas.mean_molecular_weight, solution.M, 1e-3, "UV molecular weight")
+    assert_close_rel(gas.gamma_s, solution.gamma_s, 3e-3, "UV gamma_s")

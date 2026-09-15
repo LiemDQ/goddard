@@ -28,9 +28,20 @@ class ThermoArray {
 	 * inherit from. The only way to construct a `SolutionArray` class is to call the `create` method.
 	 * 
 	 * The alternative for now is to implement `ThermoArray` as a wrapper class that contains a pointer to a `SolutionArray`.
+	 *
+	 * Entries are stored with the first dimension varying fastest: the entry at indices (i, j, k) of an array with
+	 * shape (n0, n1, n2) is at flat location `i + j*n0 + k*n0*n1` (see `flat_index`).
+	 *
+	 * The array holds its own copy of the `Solution` passed to the constructor, so changes to that `Solution` made
+	 * elsewhere (e.g. through a `Gas` or `Nozzle` sharing it) do not affect the stored states. Copies of a
+	 * `ThermoArray` share the same storage.
 	 */
-	ThermoArray(std::shared_ptr<Cantera::Solution> sol, int len, const Cantera::AnyMap& meta={});
-	ThermoArray(std::shared_ptr<Cantera::Solution> sol, const std::vector<long>& shape);
+	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, int len, const Cantera::AnyMap& meta={});
+	/**
+	 * Create an array with the given shape. Every entry is initialized to the current state of `sol`.
+	 * An empty `shape` leaves the shape unset; the first setter call then sets it.
+	 */
+	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, const std::vector<long>& shape);
 	
 	static std::shared_ptr<ThermoArray> create(const std::shared_ptr<Cantera::Solution>& sol, int size=0, const Cantera::AnyMap& meta={}) {
 		return std::shared_ptr<ThermoArray>(new ThermoArray(sol, size, meta));
@@ -44,18 +55,23 @@ class ThermoArray {
 	inline int ndim() const {return m_states->apiNdim();}
 	inline bool is_shape_set() const {return m_shape_is_set;}
 
-	std::vector<double> get_state(int loc);
+	/**
+	 * Flat storage location of the entry at indices (i, j, k). Indices beyond the array's number of
+	 * dimensions must be zero.
+	 */
+	int flat_index(long i, long j = 0, long k = 0) const;
+
+	/** Cantera state vector of the entry at flat location `loc`. */
+	std::vector<double> get_state(int loc) const;
+
+	/** Set the entry at flat location `loc` from a Cantera state vector of the same phase. */
+	void set_state(int loc, const std::vector<double>& state);
 
 	/**
-	 * @brief Get a pointer to the underlying `SolutionArray` object. 
+	 * Property getters. The result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D arrays,
+	 * where element (i, j) is the entry at `flat_index(i, j, slice)`. `slice` selects the index along the third
+	 * dimension and must be 0 for arrays with fewer than 3 dimensions.
 	 */
-	inline std::shared_ptr<Cantera::SolutionArray> solutionarray() {return m_states;}
-	
-	/**
-	 * @brief Get a pointer to the underlying `Solution` object.
-	 */
-	inline std::shared_ptr<Cantera::Solution> solution() {return m_solution;}
-	
 	Eigen::ArrayXXd temperature(int slice = 0) const;
 	Eigen::ArrayXXd pressure(int slice = 0) const;
 	Eigen::ArrayXXd internal_energy_mass(int slice = 0) const;
@@ -141,16 +157,13 @@ class ThermoArray {
 
 	private:
 	void check_dimensionality(size_t len, size_t dim);
+	void check_ndim(int expected_ndim);
 
 	/**
 	 * @brief retrieve thermodynamic state values from SolutionArray.
 	 */
 	Eigen::ArrayXXd retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice = 0) const;
 	
-	/**
-	 * @brief Format data vector into 2D matrix based on underlying shape
-	 */
-	Eigen::ArrayXXd reshape_thermo_data(const std::vector<double>& vec) const;
 	
 	void update_states(void (Cantera::ThermoPhase::*f)(double, double), 
 		const Eigen::ArrayXd& var1,
@@ -199,9 +212,16 @@ class ThermoArray {
 	std::shared_ptr<Cantera::Solution> copy_original_solution();
 	
 
-	std::shared_ptr<Cantera::Solution> m_solution; //Underlying solution that SolutionArray is derived from.
+	// Private copy of the constructor's Solution, used by `m_states` as its working state.
+	//
+	// Invariant: the state of `m_solution` always equals the stored state at the SolutionArray's buffered
+	// location. Cantera 3.2's `SolutionArray::getState`/`setLoc` skip restoring the stored state when asked for
+	// the buffered location (Cantera issue #2067, fixed after 3.2.0), so they return whatever state the Solution
+	// holds. Keeping the Solution private and leaving it equal to the buffered entry after every operation makes
+	// those calls correct. Every method that changes the Solution's state must write it back with
+	// `updateState` at the location it loaded.
+	std::shared_ptr<Cantera::Solution> m_solution;
 	std::shared_ptr<Cantera::SolutionArray> m_states;
-	std::vector<double> m_orig_solution_state;
 	bool m_shape_is_set = false;
 };
 

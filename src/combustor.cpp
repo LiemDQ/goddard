@@ -108,14 +108,12 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
 
     ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
 
-    int loc = 0;
     for (long i = 0; i < n_compositions; i++) {
         Eigen::ArrayXd row = mass_fracs.row(i);
         for (long j = 0; j < n_pressures; j++) {
             thermo->setMassFractions(row.data());
             thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.solutionarray()->updateState(loc);
-            loc++;
+            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
         }
     }
 
@@ -236,14 +234,12 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
 
     ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
 
-    int loc = 0;
     for (long i = 0; i < n_compositions; i++) {
         Eigen::ArrayXd row = mass_fracs.row(i);
         for (long j = 0; j < n_pressures; j++) {
             thermo->setMassFractions(row.data());
             thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.solutionarray()->updateState(loc);
-            loc++;
+            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
         }
     }
 
