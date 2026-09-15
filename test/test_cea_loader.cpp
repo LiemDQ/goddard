@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <stdexcept>
 
 double FLOAT_ABSTOL = 1e-5;
 double FLOAT_RELTOL = 1e-5;
@@ -23,11 +24,19 @@ std::string CEA_directory() {
     return path;
 }
 
+/**
+ * Load a CEA result JSON file from the CEA results directory.
+ * @throws std::runtime_error if the file cannot be opened or parsed, so the result is never null.
+ */
 std::unique_ptr<CEAResult> load_CEA(const std::string& filename) {
     CEADataLoader loader{};
     std::string path = CEA_directory() + filename;
 
-    return loader.load_from_file(path);
+    std::unique_ptr<CEAResult> result = loader.load_from_file(path);
+    if (!result) {
+        throw std::runtime_error("Failed to load CEA JSON file: " + path);
+    }
+    return result;
 }
 
 template<typename K, typename V>
@@ -48,6 +57,10 @@ std::vector<V> get_map_values(const std::unordered_map<K, V>& map) {
         keys.push_back(kv.second);
     }
     return keys;
+}
+
+TEST(CEALoading, MissingFileThrows) {
+    EXPECT_THROW(load_CEA("does_not_exist.json"), std::runtime_error);
 }
 
 TEST(CEALoading, JSONRead) {
