@@ -4,6 +4,7 @@ import math
 import os
 
 from goddard._core import (
+    CombustionProcess,
     CombustorType,
     CombustorOptions,
     Gas,
@@ -59,15 +60,18 @@ def pressure_ratio(*ratios):
     return opts
 
 
-def infinite_area_combustor(pressures=None):
+def infinite_area_combustor(pressures=None, process=CombustionProcess.ISOBARIC):
     """Create CombustorOptions for infinite area combustor.
 
     Args:
-        pressures: List of chamber pressures. Defaults to empty list.
+        pressures: List of pressures [Pa]. Chamber pressures for isobaric combustion,
+            initial reactant pressures for isochoric combustion. Defaults to empty list.
+        process: CombustionProcess, isobaric (HP) or isochoric (UV). Defaults to ISOBARIC.
     """
     opts = CombustorOptions()
     opts.type = CombustorType.INFINITE_AREA
     opts.pressures = pressures or []
+    opts.process = process
     return opts
 
 

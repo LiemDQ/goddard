@@ -1,6 +1,7 @@
 from goddard._core import (
     # Enums
     CombustorType,
+    CombustionProcess,
     GasChemistry,
     ExpansionType,
     StationType,

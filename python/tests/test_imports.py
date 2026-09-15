@@ -105,6 +105,16 @@ def test_combustor_options_construction():
     assert opts.pressures == [1e6, 2e6]
 
 
+def test_combustor_options_process():
+    from goddard import CombustorOptions, CombustionProcess
+
+    opts = CombustorOptions()
+    assert opts.process == CombustionProcess.ISOBARIC
+    opts.process = CombustionProcess.ISOCHORIC
+    assert opts.process == CombustionProcess.ISOCHORIC
+    assert CombustorOptions(process=CombustionProcess.ISOCHORIC).process == CombustionProcess.ISOCHORIC
+
+
 def test_nozzle_options_construction():
     from goddard import NozzleOptions, GasChemistry, ExpansionType
 

@@ -15,6 +15,10 @@ void bind_enums(nb::module_& m) {
         .value("FINITE_CONTRACTION_RATIO", Goddard::CombustorType::FINITE_CONTRACTION_RATIO)
         .value("NONE", Goddard::CombustorType::NONE);
 
+    nb::enum_<Goddard::CombustionProcess>(m, "CombustionProcess", DOC(Goddard, CombustionProcess))
+        .value("ISOBARIC", Goddard::CombustionProcess::ISOBARIC)
+        .value("ISOCHORIC", Goddard::CombustionProcess::ISOCHORIC);
+
     nb::enum_<Goddard::MixtureRatioType>(m, "MixtureRatioType")
         .value("FUEL_FRAC", Goddard::MixtureRatioType::FUEL_FRAC)
         .value("OF_RATIO", Goddard::MixtureRatioType::OF_RATIO)

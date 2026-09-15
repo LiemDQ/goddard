@@ -24,23 +24,27 @@ void bind_structs(nb::module_& m) {
                             Goddard::MixtureRatioType mixture_type,
                             std::vector<double> pressures,
                             double mass_flux,
-                            double contraction_ratio) {
+                            double contraction_ratio,
+                            Goddard::CombustionProcess process) {
             new (self) Goddard::CombustorOptions();
             self->type = type;
             self->mixture_type = mixture_type;
             self->pressures = std::move(pressures);
             self->mass_flux = mass_flux;
             self->contraction_ratio = contraction_ratio;
+            self->process = process;
         },  "type"_a = Goddard::CombustorType::INFINITE_AREA,
             "mixture_type"_a = Goddard::MixtureRatioType::OF_RATIO,
             "pressures"_a = std::vector<double>(),
             "mass_flux"_a = 0.0,
-            "contraction_ratio"_a = 0.0)
+            "contraction_ratio"_a = 0.0,
+            "process"_a = Goddard::CombustionProcess::ISOBARIC)
         .def_rw("type", &Goddard::CombustorOptions::type)
         .def_rw("mixture_type", &Goddard::CombustorOptions::mixture_type)
         .def_rw("pressures", &Goddard::CombustorOptions::pressures)
         .def_rw("mass_flux", &Goddard::CombustorOptions::mass_flux)
-        .def_rw("contraction_ratio", &Goddard::CombustorOptions::contraction_ratio);
+        .def_rw("contraction_ratio", &Goddard::CombustorOptions::contraction_ratio)
+        .def_rw("process", &Goddard::CombustorOptions::process);
 
     // NozzleOptions
     nb::class_<Goddard::NozzleOptions>(m, "NozzleOptions")
