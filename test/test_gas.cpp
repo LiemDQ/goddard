@@ -201,7 +201,7 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
 
 TEST_F(GasTests, PerfectGasCopyPreservesGamma) {
     Gas gas(1.4);
-    Gas copied(gas);
+    Gas copied(gas); // NOLINT(performance-unnecessary-copy-initialization): the copy is under test
     EXPECT_DOUBLE_EQ(copied.gamma_s(), 1.4);
 
     Gas assigned(1.2);

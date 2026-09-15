@@ -122,8 +122,8 @@ TEST_P(InverseMarchUniformFlow, StaysUniform) {
 
 INSTANTIATE_TEST_SUITE_P(PlanarAndAxisymmetric, InverseMarchUniformFlow,
     ::testing::Values(MocFlowKind::PLANAR, MocFlowKind::AXISYMMETRIC),
-    [](const ::testing::TestParamInfo<MocFlowKind>& info) {
-        return info.param == MocFlowKind::PLANAR ? "Planar" : "Axisymmetric";
+    [](const ::testing::TestParamInfo<MocFlowKind>& param_info) {
+        return param_info.param == MocFlowKind::PLANAR ? "Planar" : "Axisymmetric";
     });
 
 // ============================================================
@@ -232,8 +232,8 @@ TEST_P(InverseMarchSourceFlow, SecondOrderConvergence) {
 
 INSTANTIATE_TEST_SUITE_P(PlanarAndAxisymmetric, InverseMarchSourceFlow,
     ::testing::Values(MocFlowKind::PLANAR, MocFlowKind::AXISYMMETRIC),
-    [](const ::testing::TestParamInfo<MocFlowKind>& info) {
-        return info.param == MocFlowKind::PLANAR ? "Planar" : "Axisymmetric";
+    [](const ::testing::TestParamInfo<MocFlowKind>& param_info) {
+        return param_info.param == MocFlowKind::PLANAR ? "Planar" : "Axisymmetric";
     });
 
 // ============================================================

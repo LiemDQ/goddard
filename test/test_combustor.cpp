@@ -221,10 +221,8 @@ TEST_F(H2O2CombustorTests, stringCompositionConstructorParsesSpecies) {
 TEST_F(H2O2CombustorTests, isochoricConservesInternalEnergyAndVolume) {
     Eigen::ArrayXd temperatures(1);
     temperatures << 300.0;
-    // Two identical pressures keep the ThermoArray size above one, so the results do not
-    // depend on the Cantera SolutionArray workaround.
-    Eigen::ArrayXd pressures(2);
-    pressures << 1.0 * Cantera::OneBar, 1.0 * Cantera::OneBar;
+    Eigen::ArrayXd pressures(1);
+    pressures << 1.0 * Cantera::OneBar;
     Eigen::ArrayXd mixture_ratios(1);
     mixture_ratios << 8.0;
 
@@ -253,8 +251,8 @@ TEST_F(H2O2CombustorTests, isochoricConservesInternalEnergyAndVolume) {
 TEST_F(H2O2CombustorTests, isochoricIsHotterThanIsobaric) {
     Eigen::ArrayXd temperatures(1);
     temperatures << 300.0;
-    Eigen::ArrayXd pressures(2);
-    pressures << 1.0 * Cantera::OneBar, 1.0 * Cantera::OneBar;
+    Eigen::ArrayXd pressures(1);
+    pressures << 1.0 * Cantera::OneBar;
     Eigen::ArrayXd mixture_ratios(1);
     mixture_ratios << 8.0;
 
@@ -305,8 +303,8 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     // Reference: the same constant-volume combustion computed directly with the combustor.
     Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
     Combustor combustor(gas, Composition{{"H2", 1.0}}, Composition{{"O2", 1.0}});
-    Eigen::ArrayXd pressures(2);
-    pressures << initial_pressure, initial_pressure;
+    Eigen::ArrayXd pressures(1);
+    pressures << initial_pressure;
     Eigen::ArrayXd mixture_ratios(1);
     mixture_ratios << of_ratio;
     ThermoArray reference = combustor.solve(fuel_temperature, oxidizer_temperature,
@@ -330,4 +328,87 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     std::string report = results.report("isochoric");
     EXPECT_NE(report.find("CONSTANT-VOLUME COMBUSTOR"), std::string::npos);
     EXPECT_NE(report.find("Pinitial"), std::string::npos);
+}
+
+
+// ---- Storage order of combustor results ----
+
+TEST_F(H2O2CombustorTests, adiabaticSolveStoresEntriesByIndex) {
+    const double reactant_temperature = 300.0;
+    Eigen::ArrayXd pressures(3);
+    pressures << 10.0 * Cantera::OneBar, 20.0 * Cantera::OneBar, 30.0 * Cantera::OneBar;
+    // Kept below O/F 8: Cantera's "gibbs" HP solver fails to converge for hotter H2/O2 flames here.
+    Eigen::ArrayXd mixture_ratios(3);
+    mixture_ratios << 4.0, 5.0, 6.0;
+
+    ThermoArray states = combustor->solve(reactant_temperature, reactant_temperature,
+        pressures, mixture_ratios, options);
+    ASSERT_EQ(states.shape(), (std::vector<long>{mixture_ratios.size(), pressures.size()}));
+
+    Eigen::ArrayXXd T = states.temperature();
+    Eigen::ArrayXXd P = states.pressure();
+    auto thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    for (long i = 0; i < mixture_ratios.size(); i++) {
+        for (long j = 0; j < pressures.size(); j++) {
+            Eigen::ArrayXd single_pressure(1);
+            single_pressure << pressures(j);
+            Eigen::ArrayXd single_ratio(1);
+            single_ratio << mixture_ratios(i);
+            ThermoArray single = combustor->solve(reactant_temperature, reactant_temperature,
+                single_pressure, single_ratio, options);
+            thermo->restoreState(single.get_state(0));
+
+            EXPECT_NEAR(P(i, j), pressures(j), 1e-9 * pressures(j)) << "i = " << i << ", j = " << j;
+            EXPECT_NEAR(T(i, j), thermo->temperature(), 1e-9 * thermo->temperature())
+                << "i = " << i << ", j = " << j;
+            EXPECT_EQ(states.get_state(states.flat_index(i, j)), single.get_state(0))
+                << "i = " << i << ", j = " << j;
+        }
+    }
+}
+
+TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
+    const double reactant_temperature = 300.0;
+    const std::vector<double> pressures = {20.0 * Cantera::OneBar, 50.0 * Cantera::OneBar};
+    const std::vector<double> of_ratios = {4.0, 8.0};
+
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = of_ratios;
+
+    RocketCaseParameters case_params;
+    case_params.name = "sweep";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.pressures = pressures;
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = {5.0};
+
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    RocketProblemResults results = problem.solve();
+
+    std::vector<RocketStation> chambers = results.stations_of_type(StationType::CHAMBER, "sweep");
+    ASSERT_EQ(chambers.size(), of_ratios.size() * pressures.size());
+
+    Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor combustor(gas, Composition{{"H2", 1.0}}, Composition{{"O2", 1.0}});
+    auto thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    for (const RocketStation& chamber : chambers) {
+        Eigen::ArrayXd single_pressure(1);
+        single_pressure << pressures[chamber.pressure_index];
+        Eigen::ArrayXd single_ratio(1);
+        single_ratio << of_ratios[chamber.of_index];
+        ThermoArray reference = combustor.solve(reactant_temperature, reactant_temperature,
+            single_pressure, single_ratio, case_params.combustor_options);
+        thermo->restoreState(reference.get_state(0));
+
+        EXPECT_NEAR(chamber.thermo.pressure, thermo->pressure(), 1e-9 * thermo->pressure())
+            << "of_index = " << chamber.of_index << ", pressure_index = " << chamber.pressure_index;
+        EXPECT_NEAR(chamber.thermo.temperature, thermo->temperature(), 1e-9 * thermo->temperature())
+            << "of_index = " << chamber.of_index << ", pressure_index = " << chamber.pressure_index;
+    }
 }

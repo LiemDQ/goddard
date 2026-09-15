@@ -120,7 +120,7 @@ TEST(MocPhase2, CsvRoundTrip) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
     auto result = solver.solve();
 
-    std::string tmp_file = "/tmp/goddard_test_profile.csv";
+    std::string tmp_file = (std::filesystem::temp_directory_path() / "goddard_test_profile.csv").string();
 
     // Save
     result.profile.save_profile_csv(tmp_file);
