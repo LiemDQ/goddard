@@ -95,9 +95,7 @@ double cstar(double gamma, double temperature, double molecular_weight) {
 }
 
 double isp(const Cantera::ThermoPhase& gas, double gamma, double enthalpy) {
-    double velocity = gas_isenthalpic_velocity(gas, enthalpy);
-    double cs = cstar(gamma, gas.temperature(), gas.meanMolecularWeight());
-    return velocity/cs;
+    return gas_isenthalpic_velocity(gas, enthalpy);
 }
 
 double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy) {

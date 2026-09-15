@@ -266,7 +266,7 @@ double Gas::cstar() const {
 }
 
 double Gas::isp() const {
-    return isenthalpic_velocity()/cstar();
+    return isenthalpic_velocity();
 }
 
 double Gas::ivac() const {

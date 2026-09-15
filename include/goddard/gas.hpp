@@ -51,6 +51,9 @@ public:
     Gas(const Gas& gas);
     Gas operator=(const Gas& gas);
 
+    /**
+     * Create a new Gas class with a deep copy of the underlying Solution object.
+     */
     Gas clone();
 
     static Gas create(const std::string& infile, 
