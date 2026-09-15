@@ -15,8 +15,11 @@ from goddard._core import CharacteristicFamily, CharacteristicNet
 
 
 __all__ = [
+    "fan_apex_index",
     "mesh_node_mask",
+    "trace_characteristics",
     "plot_characteristic_net",
+    "plot_traced_characteristics",
     "plot_fronts",
     "plot_field",
     "plot_profile",
@@ -44,9 +47,62 @@ def _as_net(result_or_net):
     return result_or_net.net
 
 
+def fan_apex_index(net):
+    """Index of the throat lip a minimum-length design's expansion fan is centered on.
+
+    Minimum-length design seeds every characteristic of the fan at one point -- the sharp
+    throat lip -- and records each C- chain only from where it crosses the start line, so
+    the segment of each ray between the lip and the start line belongs to the solution but
+    is in no chain. That segment is what :func:`plot_characteristic_net` restores, and this
+    is the point it draws back to.
+
+    The lip is the net's first wall point. It is the bootstrap anchor rather than a solved
+    node (see :func:`mesh_node_mask`), which is what distinguishes it here: a net whose
+    first wall point carries a real Mach number was not built this way and has no fan apex.
+
+    Args:
+        net: A CharacteristicNet.
+
+    Returns:
+        The point index of the fan apex, or None if the net has no such point.
+    """
+    indices = np.asarray(net.wall_point_indices)
+    if len(indices) == 0 or len(net.chains) == 0:
+        return None
+    apex = int(indices[0])
+    return apex if net.points[apex].mach <= 0.0 else None
+
+
+def _fan_ray_origins(net, apex):
+    """Point indices where the fan's rays first meet the start line, one per ray.
+
+    The start line is the first C+ chain the kernel creates. Every fan ray but the leading
+    one goes on to spawn a C- chain from the point where it crosses that line, so those
+    crossings are the C- chain origins lying on it; C- chains born later start at a wall
+    reflection instead and are excluded. The leading ray spawns no C- chain -- it runs from
+    the lip to the axis, where it reflects into the start line's own C+ -- so its crossing
+    is the start line's axis end, taken here as the first point of that chain.
+
+    Each origin is collinear with the apex along its own characteristic direction to
+    machine precision, so a segment drawn to it is the ray itself, not an interpolation.
+    """
+    chain = [int(i) for i in net.chains[0]]
+    start_line = set(chain)
+    origins = {
+        int(meta.origin_point_idx)
+        for meta in net.chain_metadata
+        if meta.family == CharacteristicFamily.MINUS
+        and int(meta.origin_point_idx) in start_line
+    }
+    if chain:
+        origins.add(chain[0])
+    origins.discard(apex)
+    return sorted(origins)
+
+
 def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
                             axis=True, linewidth=0.5, plus_color="tab:blue",
-                            minus_color="tab:red", wall_color="k"):
+                            minus_color="tab:red", wall_color="k", fan_rays=True):
     """Draw the characteristic mesh: every C+ and C- line in the net.
 
     Analysis and Rao-design solves (the reference-plane march) prescribe a
@@ -54,7 +110,9 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
     CharacteristicNet.chains is empty for them; this draws CharacteristicNet.fronts
     (one polyline each) in that case instead of drawing nothing. Use
     :func:`plot_fronts` directly for more control over that drawing (e.g. thinning
-    a fine march with ``every``).
+    a fine march with ``every``). Fronts are near-vertical reference planes and show no
+    wave structure; :func:`plot_traced_characteristics` reconstructs the characteristics
+    themselves from such a net.
 
     Args:
         result_or_net: A MocResult or a CharacteristicNet.
@@ -68,6 +126,11 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
             net has no chains).
         minus_color: Colour for the C- family.
         wall_color: Colour for the wall contour.
+        fan_rays: Extend a minimum-length design's fan characteristics back to the
+            throat lip they are centered on. Without this the fan appears to emanate
+            from the start line -- the locus where its rays first cross the leading
+            C+ characteristic -- rather than from the lip. See :func:`fan_apex_index`.
+            Ignored for nets that carry no such fan.
 
     Returns:
         The matplotlib Axes.
@@ -100,6 +163,7 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
             CharacteristicFamily.PLUS: plus_color,
             CharacteristicFamily.MINUS: minus_color,
         }
+
         for chain, meta in zip(chains, metadata):
             if meta.family not in families or len(chain) < 2:
                 continue
@@ -109,6 +173,203 @@ def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
                 label = "C+" if meta.family == CharacteristicFamily.PLUS else "C-"
                 labelled.add(meta.family)
             ax.plot(x[chain], y[chain], color=color, linewidth=linewidth, label=label)
+
+        # The fan's rays run from the throat lip, but the net records each only from the
+        # start line onward, so without this the fan appears to emanate from that line.
+        # These segments are the missing upstream piece of rays already drawn above (and,
+        # for the leading ray, the whole of it) -- each origin is collinear with the apex
+        # along the ray, so this draws the characteristic rather than inventing geometry.
+        apex = fan_apex_index(net) if fan_rays else None
+        if apex is not None and CharacteristicFamily.MINUS in families:
+            for origin in _fan_ray_origins(net, apex):
+                label = None
+                if CharacteristicFamily.MINUS not in labelled:
+                    label = "C-"
+                    labelled.add(CharacteristicFamily.MINUS)
+                ax.plot(x[[apex, origin]], y[[apex, origin]], color=minus_color,
+                        linewidth=linewidth, label=label)
+
+    if wall and len(net.wall_x) > 0:
+        ax.plot(net.wall_x, net.wall_y, color=wall_color, linewidth=1.5, label="wall")
+    if axis:
+        ax.axhline(0.0, color="0.6", linewidth=0.8, linestyle="--")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("r")
+    ax.set_aspect("equal", adjustable="datalim")
+    if labelled or wall:
+        ax.legend(loc="upper left", fontsize="small")
+    return ax
+
+
+def _ray_front_intersection(px, py, angle, fx, fy):
+    """First forward intersection of a ray with a front polyline.
+
+    Returns (x, y, segment, u) with u the position within that segment, or None when the
+    ray misses -- which is how a traced characteristic learns it has left the domain
+    through the wall or the axis rather than reaching the next front.
+    """
+    dx, dy = np.cos(angle), np.sin(angle)
+    ax_, ay_ = fx[:-1], fy[:-1]
+    ex, ey = fx[1:] - ax_, fy[1:] - ay_
+    det = ex * dy - dx * ey
+    usable = np.abs(det) > 1e-14
+    wx, wy = ax_ - px, ay_ - py
+    s = np.full(ax_.shape, -1.0)
+    u = np.full(ax_.shape, -1.0)
+    s[usable] = (-wx[usable] * ey[usable] + ex[usable] * wy[usable]) / det[usable]
+    u[usable] = (dx * wy[usable] - dy * wx[usable]) / det[usable]
+    hit = usable & (s > 1e-12) & (u >= -1e-9) & (u <= 1.0 + 1e-9)
+    if not hit.any():
+        return None
+    # Nearest forward crossing: a characteristic that grazes a folded front must take the
+    # first one, not whichever segment happens to come first in the array.
+    i = int(np.argmin(np.where(hit, s, np.inf)))
+    ui = min(max(u[i], 0.0), 1.0)
+    return ax_[i] + ui * ex[i], ay_[i] + ui * ey[i], i, ui
+
+
+def trace_characteristics(result_or_net, *, families=None, every=1, seed_start_front=True):
+    """Reconstruct characteristic lines from an inverse-march net.
+
+    Analysis and Rao-design solves march reference planes rather than pairing
+    characteristics, so their mesh topology is the sequence of fronts in
+    CharacteristicNet.fronts and CharacteristicNet.chains is empty. The fronts are very
+    nearly vertical, which makes the wave structure invisible in them. This integrates the
+    characteristic directions through the solved field to recover it: from a seed point it
+    steps front to front along dy/dx = tan(theta +/- mu), taking theta and mu by linear
+    interpolation along each front it crosses, with one corrector pass per step (which is
+    enough -- the angle iteration converges immediately; the accuracy limit is the
+    interpolation along the front).
+
+    These curves are reconstructed after the fact, not the mesh the solver used, so treat
+    them as a visual check on the field rather than as solution data. The reconstruction is
+    convergent but only first order in the front count: in planar flow, where theta -/+ nu
+    is exactly conserved along a C+/C- line, the drift along a traced line runs about 1.8,
+    0.9, 0.43 and 0.18 degrees for 45, 97, 205 and 430 fronts.
+
+    Args:
+        result_or_net: A MocResult or a CharacteristicNet, from an inverse-march solve.
+        families: Iterable of CharacteristicFamily to trace. Defaults to both.
+        every: Seed from every Nth front. Raise it to thin a fine march.
+        seed_start_front: Also seed every point of the first front, which fills in the
+            throat region that the axis and wall seeds reach only further downstream.
+
+    Returns:
+        List of ``(family, points)`` pairs, each ``points`` an ``(n, 2)`` array of x, y.
+
+    Raises:
+        ValueError: If the net carries no fronts.
+    """
+    net = _as_net(result_or_net)
+    fronts = net.fronts
+    if len(fronts) == 0:
+        raise ValueError(
+            "net carries no fronts to trace through; a minimum-length design net already "
+            "holds its characteristics in net.chains, so plot them with "
+            "plot_characteristic_net instead"
+        )
+    if families is None:
+        families = (CharacteristicFamily.PLUS, CharacteristicFamily.MINUS)
+    families = set(families)
+
+    # Snapshot the columnar properties once, then slice per front: each access rebuilds a
+    # whole-net array, so reading them inside the trace loop would be quadratic.
+    def by_front(field):
+        values = np.asarray(getattr(net, field))
+        return [values[np.asarray(f)] for f in fronts]
+
+    X, Y = by_front("x"), by_front("y")
+    TH, MU = by_front("theta"), by_front("mu")
+
+    def trace(sign, k0, j):
+        px, py = X[k0][j], Y[k0][j]
+        theta, mu = TH[k0][j], MU[k0][j]
+        points = [(px, py)]
+        for k in range(k0 + 1, len(fronts)):
+            angle = theta + sign * mu
+            hit = _ray_front_intersection(px, py, angle, X[k], Y[k])
+            if hit is None:
+                break
+            _, _, i, u = hit
+            theta_q = TH[k][i] * (1 - u) + TH[k][i + 1] * u
+            mu_q = MU[k][i] * (1 - u) + MU[k][i + 1] * u
+            hit = _ray_front_intersection(
+                px, py, 0.5 * (angle + theta_q + sign * mu_q), X[k], Y[k])
+            if hit is None:
+                break
+            px, py, i, u = hit
+            theta = TH[k][i] * (1 - u) + TH[k][i + 1] * u
+            mu = MU[k][i] * (1 - u) + MU[k][i + 1] * u
+            points.append((px, py))
+        return np.asarray(points)
+
+    # A C+ climbs away from the axis and a C- descends from the wall, so each family is
+    # seeded on the boundary it leaves, and both on the first front to fill the throat.
+    seeds = []
+    for k in range(0, len(fronts) - 1, max(1, every)):
+        seeds.append((CharacteristicFamily.PLUS, k, 0))
+        seeds.append((CharacteristicFamily.MINUS, k, len(fronts[k]) - 1))
+    if seed_start_front:
+        for j in range(len(fronts[0])):
+            seeds.append((CharacteristicFamily.PLUS, 0, j))
+            seeds.append((CharacteristicFamily.MINUS, 0, j))
+
+    traced = []
+    for family, k, j in seeds:
+        if family not in families:
+            continue
+        points = trace(+1 if family == CharacteristicFamily.PLUS else -1, k, j)
+        if len(points) > 1:
+            traced.append((family, points))
+    return traced
+
+
+def plot_traced_characteristics(result_or_net, ax=None, *, families=None, every=1,
+                                seed_start_front=True, linewidth=0.5,
+                                plus_color="tab:blue", minus_color="tab:red",
+                                wall=True, axis=True, wall_color="k"):
+    """Draw characteristic lines reconstructed from an inverse-march net.
+
+    The counterpart of :func:`plot_characteristic_net` for analysis and Rao-design solves,
+    whose nets hold fronts rather than chains. See :func:`trace_characteristics` for how
+    the curves are recovered and how far to trust them.
+
+    Args:
+        result_or_net: A MocResult or a CharacteristicNet, from an inverse-march solve.
+        ax: Axes to draw on. A new figure is created when omitted.
+        families: Iterable of CharacteristicFamily to draw. Defaults to both.
+        every: Seed from every Nth front.
+        seed_start_front: Also seed every point of the first front.
+        linewidth: Line width for the characteristics.
+        plus_color: Colour for the C+ family.
+        minus_color: Colour for the C- family.
+        wall: Draw the wall contour.
+        axis: Draw the centerline.
+        wall_color: Colour for the wall contour.
+
+    Returns:
+        The matplotlib Axes.
+    """
+    plt = _pyplot()
+    net = _as_net(result_or_net)
+    if ax is None:
+        _, ax = plt.subplots()
+
+    colors = {
+        CharacteristicFamily.PLUS: plus_color,
+        CharacteristicFamily.MINUS: minus_color,
+    }
+    labels = {CharacteristicFamily.PLUS: "C+", CharacteristicFamily.MINUS: "C-"}
+    labelled = set()
+    for family, points in trace_characteristics(
+            net, families=families, every=every, seed_start_front=seed_start_front):
+        label = None
+        if family not in labelled:
+            label = labels[family]
+            labelled.add(family)
+        ax.plot(points[:, 0], points[:, 1], color=colors.get(family, "0.5"),
+                linewidth=linewidth, label=label)
 
     if wall and len(net.wall_x) > 0:
         ax.plot(net.wall_x, net.wall_y, color=wall_color, linewidth=1.5, label="wall")

@@ -16,17 +16,28 @@ void bind_gas_properties(nb::module_& m) {
 
         // ---- Constructors ----
 
-        // YAML-based constructor
+        // YAML-based constructor. An empty `species` set takes the phase as the file
+        // defines it; a non-empty one restricts the phase to those species via
+        // Gas::create_from_species. `species` follows `chemistry` so that existing
+        // positional calls of the form Gas(file, phase, chemistry) keep working.
         .def("__init__",
              [](Goddard::Gas* self,
                 const std::string& yaml_file,
                 const std::string& phase_name,
-                Goddard::GasChemistry chemistry) {
-                 new (self) Goddard::Gas(yaml_file, phase_name, chemistry);
+                Goddard::GasChemistry chemistry,
+                const std::unordered_set<std::string>& species) {
+                 if (species.empty()) {
+                     new (self) Goddard::Gas(yaml_file, phase_name, chemistry);
+                 } else {
+                     const std::vector<std::string> species_list(species.begin(), species.end());
+                     new (self) Goddard::Gas(Goddard::Gas::create_from_species(
+                         yaml_file, phase_name, species_list, chemistry));
+                 }
              },
              "yaml_file"_a, "phase_name"_a, "chemistry"_a = Goddard::GasChemistry::FROZEN,
+             "species"_a = std::unordered_set<std::string>{},
              DOC(Goddard, Gas, Gas, 4))
-
+         .def("clone", &Goddard::Gas::clone, DOC(Goddard, Gas, clone))
         // ---- Read-only thermodynamic properties ----
 
         .def_prop_ro("temperature", &Goddard::Gas::temperature, DOC(Goddard, Gas, temperature))

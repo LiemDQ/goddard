@@ -57,6 +57,23 @@ Eigen::VectorXd gather(
     return out;
 }
 
+// Enforce the "idx must be at least 1" precondition of NozzleProfile's finite-difference
+// accessors. They difference against x[idx-1], so idx 0 underflows size_t into an
+// out-of-bounds read; a Python caller must get an exception, not an aborted interpreter.
+void check_facet_index(const Goddard::NozzleProfile& profile, size_t idx) {
+    if (profile.size() < 2) {
+        throw nb::index_error(
+            "NozzleProfile needs at least two points for a finite-difference slope");
+    }
+    if (idx == 0) {
+        throw nb::index_error(
+            "NozzleProfile index 0 has no upstream neighbour; the first valid index is 1");
+    }
+    if (idx >= profile.size()) {
+        throw nb::index_error("NozzleProfile index out of range");
+    }
+}
+
 std::string_view flow_kind_name(Goddard::MocFlowKind kind) {
     switch (kind) {
         case Goddard::MocFlowKind::PLANAR: return "PLANAR";
@@ -194,10 +211,19 @@ void bind_moc(nb::module_& m) {
              DOC(Goddard, NozzleProfile, radius_at))
         .def("area_at", &Goddard::NozzleProfile::area_at, "x_query"_a,
              DOC(Goddard, NozzleProfile, area_at))
-        .def("slope_at_idx", &Goddard::NozzleProfile::slope_at_idx, "idx"_a,
-             DOC(Goddard, NozzleProfile, slope_at_idx))
-        .def("theta_at_idx", &Goddard::NozzleProfile::theta_at_idx, "idx"_a,
-             DOC(Goddard, NozzleProfile, theta_at_idx))
+        // slope_at_idx/theta_at_idx difference against the upstream neighbour x[idx-1], so
+        // idx 0 has no facet and is a precondition violation -- in C++ it underflows size_t
+        // and reads out of bounds. Python callers reach these directly and idx 0 is the
+        // obvious thing to try (it is the throat point), so the precondition is enforced
+        // here rather than left to abort the interpreter.
+        .def("slope_at_idx", [](const Goddard::NozzleProfile& self, size_t idx) {
+            check_facet_index(self, idx);
+            return self.slope_at_idx(idx);
+        }, "idx"_a, DOC(Goddard, NozzleProfile, slope_at_idx))
+        .def("theta_at_idx", [](const Goddard::NozzleProfile& self, size_t idx) {
+            check_facet_index(self, idx);
+            return self.theta_at_idx(idx);
+        }, "idx"_a, DOC(Goddard, NozzleProfile, theta_at_idx))
         .def("max_theta", &Goddard::NozzleProfile::max_theta,
              DOC(Goddard, NozzleProfile, max_theta))
         .def("x_min", &Goddard::NozzleProfile::x_min, DOC(Goddard, NozzleProfile, x_min))
@@ -208,7 +234,14 @@ void bind_moc(nb::module_& m) {
 
         // ---- Container protocol ----
 
-        .def("at", &Goddard::NozzleProfile::at, "idx"_a, DOC(Goddard, NozzleProfile, at))
+        // at() indexes its backing vectors unchecked, so the bound overload range-checks
+        // for the same reason __getitem__ below does.
+        .def("at", [](const Goddard::NozzleProfile& self, size_t idx) {
+            if (idx >= self.size()) {
+                throw nb::index_error("NozzleProfile index out of range");
+            }
+            return self.at(idx);
+        }, "idx"_a, DOC(Goddard, NozzleProfile, at))
         .def("size", &Goddard::NozzleProfile::size, DOC(Goddard, NozzleProfile, size))
         .def("push_back", [](Goddard::NozzleProfile& self, double x, double y) {
             self.push_back({x, y});
