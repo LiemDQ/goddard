@@ -59,7 +59,8 @@ RocketProblemResults::RocketProblemResults(
             case_result.pressures,
             case_result.expansion_ratios,
             case_result.chemistry,
-            case_result.expansion_type
+            case_result.expansion_type,
+            case_result.process
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
@@ -288,24 +289,42 @@ constexpr double J_TO_KJ    = 1e-3;
 
 std::string build_report_page(
     GasChemistry chemistry,
+    CombustionProcess process,
     const std::vector<ThermodynamicState>& states,
     double of_ratio,
-    double chamber_pressure_pa)
+    double chamber_pressure_pa,
+    double initial_pressure_pa)
 {
     std::string page;
+
+    std::string combustor_description;
+    switch (process) {
+        case CombustionProcess::ISOBARIC:
+            combustor_description = "INFINITE AREA COMBUSTOR";
+            break;
+        case CombustionProcess::ISOCHORIC:
+            combustor_description = "CONSTANT-VOLUME COMBUSTOR";
+            break;
+    }
 
     switch (chemistry) {
         case GasChemistry::EQUILIBRIUM:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM\n\n";
-            page += "      COMPOSITION DURING EXPANSION FROM INFINITE AREA COMBUSTOR\n\n";
+            page += "      COMPOSITION DURING EXPANSION FROM " + combustor_description + "\n\n";
             break;
         case GasChemistry::FROZEN:
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n\n";
+            if (process == CombustionProcess::ISOCHORIC) {
+                page += "      EXPANSION FROM " + combustor_description + "\n\n";
+            }
             break;
         default: break;
     }
 
     page += "Pin = " + format_fixed(chamber_pressure_pa * PA_TO_PSIA, 7, 1) + " PSIA\n";
+    if (process == CombustionProcess::ISOCHORIC) {
+        page += "Pinitial = " + format_fixed(initial_pressure_pa * PA_TO_PSIA, 7, 1) + " PSIA\n";
+    }
     page += "O/F=" + format_fixed(of_ratio, 11, 5) + "\n\n";
 
     TextTable table(18, 10);
@@ -542,9 +561,11 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
 
                 result += build_report_page(
                     meta.chemistry,
+                    meta.process,
                     thermo_states,
                     meta.of_ratios[of_idx],
-                    thermo_states[0].pressure);
+                    thermo_states[0].pressure,
+                    meta.pressures[p_idx]);
             }
         }
     }

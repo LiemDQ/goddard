@@ -2,6 +2,8 @@
 #include "goddard/gas.hpp"
 #include "goddard/numerics.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/problem.hpp"
+#include "goddard/config.h"
 #include <memory>
 #include <iostream>
 #include "eigen3/Eigen/Dense"
@@ -193,4 +195,139 @@ TEST_F(H2O2RecirculatingCombustorTests, solveProducesValidEquilibriumStates) {
         EXPECT_GT(temp, 300.0)
             << "Equilibrated state should be hotter than initial 300K at index " << i;
     }
+}
+
+TEST_F(H2O2CombustorTests, stringCompositionConstructorParsesSpecies) {
+    // The Gas argument is moved into the combustor before the compositions are parsed.
+    Gas string_gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor string_combustor(string_gas, "H2:1.0", "O2:1.0");
+
+    Eigen::ArrayXXd from_strings = string_combustor.generate_mole_fraction_matrix(
+        OF_ratios, MixtureRatioType::OF_RATIO);
+    Eigen::ArrayXXd from_maps = combustor->generate_mole_fraction_matrix(
+        OF_ratios, MixtureRatioType::OF_RATIO);
+
+    ASSERT_EQ(from_strings.rows(), from_maps.rows());
+    ASSERT_EQ(from_strings.cols(), from_maps.cols());
+    for (long i = 0; i < from_maps.rows(); i++) {
+        for (long j = 0; j < from_maps.cols(); j++) {
+            EXPECT_NEAR(from_strings(i, j), from_maps(i, j), 1e-12);
+        }
+    }
+}
+
+// ---- Isochoric combustion ----
+
+TEST_F(H2O2CombustorTests, isochoricConservesInternalEnergyAndVolume) {
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    // Two identical pressures keep the ThermoArray size above one, so the results do not
+    // depend on the Cantera SolutionArray workaround.
+    Eigen::ArrayXd pressures(2);
+    pressures << 1.0 * Cantera::OneBar, 1.0 * Cantera::OneBar;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << 8.0;
+
+    CombustorOptions isochoric = options;
+    isochoric.process = CombustionProcess::ISOCHORIC;
+    ThermoArray burnt = combustor->solve(temperatures, pressures, mixture_ratios, isochoric);
+
+    auto reactants = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    Eigen::ArrayXXd mole_fracs = combustor->generate_mole_fraction_matrix(
+        mixture_ratios, MixtureRatioType::OF_RATIO);
+    Eigen::ArrayXd reactant_mole_fracs = mole_fracs.row(0);
+    reactants->setMoleFractions(reactant_mole_fracs.data());
+    reactants->setState_TP(temperatures(0), pressures(0));
+    const double u_reactants = reactants->intEnergy_mass();
+    const double v_reactants = 1.0 / reactants->density();
+
+    auto products = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    for (int i = 0; i < burnt.size(); i++) {
+        products->restoreState(burnt.get_state(i));
+        EXPECT_NEAR(products->intEnergy_mass(), u_reactants, 1e-6 * std::abs(u_reactants)) << "i = " << i;
+        EXPECT_NEAR(1.0 / products->density(), v_reactants, 1e-6 * v_reactants) << "i = " << i;
+        EXPECT_GT(products->temperature(), 3000.0) << "i = " << i;
+    }
+}
+
+TEST_F(H2O2CombustorTests, isochoricIsHotterThanIsobaric) {
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    Eigen::ArrayXd pressures(2);
+    pressures << 1.0 * Cantera::OneBar, 1.0 * Cantera::OneBar;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << 8.0;
+
+    CombustorOptions isochoric = options;
+    isochoric.process = CombustionProcess::ISOCHORIC;
+    ThermoArray burnt_uv = combustor->solve(temperatures, pressures, mixture_ratios, isochoric);
+    ThermoArray burnt_hp = combustor->solve(temperatures, pressures, mixture_ratios, options);
+
+    auto thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    thermo->restoreState(burnt_uv.get_state(0));
+    const double T_uv = thermo->temperature();
+    const double P_uv = thermo->pressure();
+    thermo->restoreState(burnt_hp.get_state(0));
+    const double T_hp = thermo->temperature();
+
+    // With no expansion work done, constant-volume combustion reaches a higher temperature.
+    EXPECT_GT(T_uv, T_hp);
+    EXPECT_GT(P_uv, pressures(0));
+}
+
+TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
+    const double fuel_temperature = 300.0;
+    const double oxidizer_temperature = 300.0;
+    const double initial_pressure = 10.0 * Cantera::OneBar;
+    const double of_ratio = 6.0;
+
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(fuel_temperature, initial_pressure, "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(oxidizer_temperature, initial_pressure, "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {of_ratio};
+
+    RocketCaseParameters case_params;
+    case_params.name = "isochoric";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.type = CombustorType::INFINITE_AREA;
+    case_params.combustor_options.process = CombustionProcess::ISOCHORIC;
+    case_params.combustor_options.pressures = {initial_pressure};
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = {10.0};
+
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    RocketProblemResults results = problem.solve();
+
+    // Reference: the same constant-volume combustion computed directly with the combustor.
+    Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor combustor(gas, Composition{{"H2", 1.0}}, Composition{{"O2", 1.0}});
+    Eigen::ArrayXd pressures(2);
+    pressures << initial_pressure, initial_pressure;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << of_ratio;
+    ThermoArray reference = combustor.solve(fuel_temperature, oxidizer_temperature,
+        pressures, mixture_ratios, case_params.combustor_options);
+    auto thermo = gas.thermo();
+    thermo->restoreState(reference.get_state(0));
+
+    const RocketStation& chamber = results.chamber(0, "isochoric");
+    EXPECT_NEAR(chamber.thermo.pressure, thermo->pressure(), 1e-6 * thermo->pressure());
+    EXPECT_NEAR(chamber.thermo.temperature, thermo->temperature(), 1e-6 * thermo->temperature());
+    EXPECT_GT(chamber.thermo.pressure, 5.0 * initial_pressure);
+
+    const RocketStation& throat = results.throat(0, "isochoric");
+    EXPECT_TRUE(throat.converged);
+    EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
+
+    std::vector<RocketStation> exits = results.exits(0, "isochoric");
+    ASSERT_EQ(exits.size(), 1u);
+    EXPECT_LT(exits[0].thermo.pressure, throat.thermo.pressure);
+
+    std::string report = results.report("isochoric");
+    EXPECT_NE(report.find("CONSTANT-VOLUME COMBUSTOR"), std::string::npos);
+    EXPECT_NE(report.find("Pinitial"), std::string::npos);
 }

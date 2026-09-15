@@ -3,6 +3,7 @@
 #include "goddard/combustor.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/numerics.hpp"
+#include "goddard/error.hpp"
 
 #include <stdexcept>
 #include <memory>
@@ -111,6 +112,11 @@ TEST_F(NozzleTests, EqThroatConditionsConverge) {
     gas->thermo()->restoreState(inlet_state);
     EXPECT_DOUBLE_EQ(conditions.P_inlet, gas->thermo()->pressure()) << "Inlet pressure should be equal";
     EXPECT_DOUBLE_EQ(conditions.S_inlet, gas->thermo()->entropy_mass()) << "Inlet pressure should remain equal";
+}
+
+TEST_F(NozzleTests, ThroatNonConvergenceThrows) {
+    Nozzle nozzle(*gas, options);
+    EXPECT_THROW(nozzle.solve_throat_conditions(1e-14), ConvergenceError);
 }
 
 // Test throat condition calculation

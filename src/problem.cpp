@@ -117,7 +117,8 @@ RocketProblemResults RocketProblem::solve() {
             chemical_params.OF_ratios,
             params.combustor_options.pressures,
             params.nozzle_options.expansion_ratios,
-            params.nozzle_options.expansion_type
+            params.nozzle_options.expansion_type,
+            params.combustor_options.process
         });
     }
     

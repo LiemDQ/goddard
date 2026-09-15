@@ -26,12 +26,32 @@ enum class MixtureRatioType {
     PHI_RATIO, // equivalence ratio
 };
 
+/**
+ * Thermodynamic constraint held fixed while the reactants burn to equilibrium.
+ */
+enum class CombustionProcess {
+    ISOBARIC,  ///< Constant enthalpy and pressure (HP).
+    ISOCHORIC, ///< Constant internal energy and specific volume (UV).
+};
+
 struct CombustorOptions {
     CombustorType type = CombustorType::INFINITE_AREA;
     MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
+    /**
+     * Pressures [Pa]. For `CombustionProcess::ISOBARIC` these are the chamber pressures. For
+     * `CombustionProcess::ISOCHORIC` they are the initial pressures of the unburnt reactants;
+     * the chamber pressure is the result of the constant-volume combustion.
+     */
     std::vector<double> pressures;
     double mass_flux = 0.0;
     double contraction_ratio = 0.0;
+    /**
+     * Combustion constraint. With `ISOCHORIC` in a `RocketProblem`, the constant-volume
+     * equilibrium state is used as the stagnation state of a steady isentropic nozzle
+     * expansion, so the reported performance is that idealization. It is not a
+     * Chapman-Jouguet detonation model.
+     */
+    CombustionProcess process = CombustionProcess::ISOBARIC;
 };
 
 /**

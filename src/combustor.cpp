@@ -17,7 +17,17 @@ BaseCombustor::BaseCombustor(Gas gas)
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
     switch (options.type) {
         case CombustorType::INFINITE_AREA: {
-            states.equilibrate("HP", "gibbs");
+            switch (options.process) {
+                case CombustionProcess::ISOBARIC:
+                    states.equilibrate("HP", "gibbs");
+                    break;
+                case CombustionProcess::ISOCHORIC:
+                    // Cantera's "gibbs" (MultiPhaseEquil) solver does not support UV, and
+                    // "element_potential" fails to converge for H2/O2 at initial pressures of
+                    // ~10 bar and above. "vcs" converges across O/F 1-32 and 1e3-1e7 Pa.
+                    states.equilibrate("UV", "vcs");
+                    break;
+            }
             break;
         }
         default: throw NotImplementedError("Finite area combustors are not implemented.");
@@ -45,8 +55,8 @@ void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
 Combustor::Combustor(Gas gas, const std::string& fuel_comp, const std::string& ox_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
 }
 
 Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer)
@@ -162,9 +172,9 @@ DilutedCombustor::DilutedCombustor(Gas gas, const std::string& fuel_comp,
     const std::string& ox_comp, const std::string& dilute_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, gas.species_names());
-    m_flue_composition = Cantera::parseCompString(dilute_comp, gas.species_names());
+    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+    m_flue_composition = Cantera::parseCompString(dilute_comp, m_gas.species_names());
 }
 
 DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,

@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "cantera/core.h"
+#include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/thermoarray.hpp"
@@ -50,6 +51,7 @@ struct RocketProblemCaseResult {
     std::vector<double> pressures;
     std::vector<double> expansion_ratios;
     ExpansionType expansion_type;
+    CombustionProcess process;
 };
 
 class RocketProblemResults {
@@ -102,6 +104,7 @@ private:
         std::vector<double> expansion_ratios;
         GasChemistry chemistry;
         ExpansionType expansion_type;
+        CombustionProcess process;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     std::shared_ptr<Cantera::Solution> m_sln;

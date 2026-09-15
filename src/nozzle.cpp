@@ -135,7 +135,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
 
     while (residual > abstol){
         if (iter >= max_iters){
-            return {};
+            throw ConvergenceError("Throat conditions failed to converge.", iter, abstol, residual);
         }
         P_throat = P_throat * (1 + gamma_s * Mach* Mach)/(1+ gamma_s);
 
