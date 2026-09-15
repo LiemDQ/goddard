@@ -20,12 +20,9 @@ Goddard performs 5 main types of computations:
 ### C++ Core Components
 - **Gas** (`gas.hpp/cpp`): Core primitive for querying thermodynamic properties. Building block for the main solvers. 
 - **Equilibrium** (`equilibrium.hpp/cpp`): Chemical equilibrium calculations and thermodynamic derivatives
-- **Combustor** (`combustor.hpp/cpp`): Isobaric combustion reaction handling with support for infinite area, finite mass flux, and finite contraction ratio modes
-- **Nozzle** (`nozzle.hpp/cpp`): Nozzle flow calculations with inheritance hierarchy:
-  - `NozzleBase`: Abstract base class
-  - `EquilibriumNozzle`: Chemical equilibrium nozzle flow
-  - `FrozenNozzle`: Frozen composition nozzle flow
-- **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations
+- **Combustor** (`combustor.hpp/cpp`): Combustion of fuel/oxidizer streams (`Combustor`) and streams diluted with recirculated flue gas (`DilutedCombustor`). `CombustionProcess` selects isobaric (HP) or isochoric (UV) equilibrium. Only `CombustorType::INFINITE_AREA` is implemented; the finite mass flux and finite contraction ratio types throw `NotImplementedError`.
+- **Nozzle** (`nozzle.hpp/cpp`): 1D isentropic nozzle expansion. A single `Nozzle` class dispatches on `NozzleOptions::chemistry` (EQUILIBRIUM, or FROZEN with `frozen_NFZ` giving the freezing station). Solves throat conditions, then supersonic/subsonic area-ratio or pressure-ratio stations, or stations along a `NozzleProfile`.
+- **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations over up to 3-D grids, wrapping `Cantera::SolutionArray`. Entries are stored first-dimension-fastest; always convert indices with `flat_index(i, j, k)`. Each array owns a private clone of its `Solution`: Cantera 3.2's `SolutionArray::getState` returns the live `Solution` state for the most recently accessed location (Cantera #2067, unreleased fix), so the private `Solution` must always equal the stored entry at that location. Write states with `set_state`, never through a shared `Solution`.
 - **MoC**: 2D supersonic nozzle flow via Method of Characteristics, one concern per header:
   - `moc.hpp`: Public options/results/error types (`MocOptions`, `MocResult`, `MocFailure`, `MocErrorCode`, diagnostics structs)
   - `moc_nozzle.hpp` (`MocNozzle`): Orchestrator. `solve()` validates options, resolves the throat and thermo model, builds the start line, then dispatches to a kernel chosen from `MocMode` and assembles the result
@@ -40,7 +37,7 @@ Goddard performs 5 main types of computations:
   - `profile.hpp` (`NozzleProfile`): Wall contour representation with CSV I/O
   - `compute_thrust_coefficient()`: Exit plane integration for thrust performance
   - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
-- **KineticNozzle** (`kinetic_nozzle.hpp/cpp`): 1D supersonic nozzle with finite-rate chemistry via Cantera's `IdealGasMoleReactor`. Standalone class — does not inherit `NozzleBase` because its spatially-resolved output is incompatible with the discrete area-ratio interface. Instead uses composition: owns a `NozzleBase`-derived object internally for throat conditions only. Output is `KineticNozzleResults` containing a `ThroatCondition` and a vector of `KineticNozzleStation` (x, velocity, Mach, area_ratio, thermo state, per-species Damköhler numbers). The `NozzleChemistryType` constructor parameter selects the throat model (EQUILIBRIUM or FROZEN); KINETIC is not valid as a throat model.
+- **KineticNozzle** (`kinetic_nozzle.hpp/cpp`): 1D supersonic nozzle with finite-rate chemistry via Cantera's `IdealGasMoleReactor`. Standalone class, because its spatially-resolved output is incompatible with the discrete area-ratio interface of `Nozzle`. Instead uses composition: owns a `Nozzle` for throat conditions only. Output is `KineticNozzleResults` containing a `ThroatCondition` and a vector of `KineticNozzleStation` (x, velocity, Mach, area_ratio, thermo state, per-species Damköhler numbers). The `NozzleChemistryType` constructor parameter selects the throat model (EQUILIBRIUM or FROZEN); KINETIC is not valid as a throat model.
 - **Shocks** (`shocks.hpp/cpp`): Normal shock relations (Rankine-Hugoniot) with perfect-gas and Cantera-state variants. `ShockResult` and `ObliqueShockResult` structs. Oblique shock API is declared but not yet fully implemented.
 
 ### Python Bindings (`python/`)
@@ -81,7 +78,11 @@ pixi run configure-quick
 pixi run compile
 # test project
 pixi run ctest
+# static analysis (clang-tidy + cppcheck; needs a configured build/, not a compiled one)
+pixi run lint                   # full report, never fails
+pixi run lint-changed origin/main   # fails on findings in lines changed since the ref (CI runs this on PRs)
 ```
+clang-tidy and cppcheck are not part of the build (`goddard_ENABLE_CLANG_TIDY`/`goddard_ENABLE_CPPCHECK` default OFF). Their configuration is `.clang-tidy`, `python/src/.clang-tidy` and `.cppcheck-suppressions`.
 Alternatively, CLI tools can be used directly as long as the correct environment is active.
 ```bash
 pixi shell -e default
