@@ -228,11 +228,8 @@ RocketPerformance RocketProblemResults::calculate_performance(
 
     // Pressure ratios
     double pressure_ratio = chamber.pressure / exit.pressure;
-    double throat_pressure_ratio = chamber.pressure / throat.pressure;
-
     
     // Characteristic velocity c* = P_c * A_t / m_dot
-    double gamma = throat.gamma_s;
     double c_star = chamber.pressure / (throat.density * throat.speed_of_sound);
     
     // Exit velocity from energy conservation: v_e = sqrt(2*(h_c - h_e))
