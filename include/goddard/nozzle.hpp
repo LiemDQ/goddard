@@ -44,6 +44,13 @@ struct ThroatCondition {
     double dlV_dlP_T;
     double dlV_dlT_P;
     std::vector<double> state;
+    /**
+     * True when the throat sits exactly at a condensed phase transition, so its temperature is
+     * pinned at the transition temperature [K] and both polymorphs coexist. The equilibrium
+     * specific heat is then infinite and `gamma_s` is -1 / `dlV_dlP_T`; `dlV_dlT_P` is infinite.
+     * Always false for a mixture without condensed phases.
+     */
+    bool pinned_transition = false;
 };
 
 struct NozzleStation {
@@ -52,6 +59,8 @@ struct NozzleStation {
     double dlV_dlP_T;
     double dlV_dlT_P;
     std::vector<double> state;
+    /** True when the station sits at a condensed phase transition; see `ThroatCondition`. */
+    bool pinned_transition = false;
 };
 
 struct NozzleResults {
@@ -87,7 +96,6 @@ class Nozzle {
     NozzleOptions m_opts;
     int m_current_station = 0;
 
-    void solve_chemistry();
     NozzleStation solve_supersonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
     NozzleStation solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol = 4.5e-5);
     NozzleStation solve_pressure_ratio(const ThroatCondition& throat_condition, double pressure_ratio, double abstol = 0.5e-5);
@@ -96,6 +104,22 @@ class Nozzle {
         const ThroatCondition& throat_condition,
         double expansion_ratio, double pressure_ratio_guess, double abstol);
 
+    /**
+     * Temperature [K] of a frozen station: the isentrope at fixed composition.
+     *
+     * With condensed products the amounts of the condensed species are frozen too, so the
+     * temperature cannot leave the data range of any species that is present.
+     *
+     * @param throat_condition Throat state the expansion starts from.
+     * @param pressure_ratio Chamber pressure divided by the station pressure [-].
+     * @param T_guess Starting temperature [K].
+     * @param composition Gas-phase mole fractions held fixed [-].
+     * @param abstol Convergence tolerance on d(log T) [-].
+     * @return Station temperature [K].
+     *
+     * @throws FmtError if a present condensed species leaves its temperature range, as CEA
+     * reports for a frozen expansion carried too far.
+     */
     double iterate_temperature(
         const ThroatCondition& throat_condition,
         double pressure_ratio, double T_guess,

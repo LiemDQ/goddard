@@ -1,5 +1,6 @@
 #include <cmath>
 #include <stdexcept>
+#include "goddard/error.hpp"
 #include "goddard/moc_thermo.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/gas.hpp"
@@ -20,6 +21,11 @@ MocThermo MocThermo::tabulated(Gas& gas, GasChemistry chemistry, const ThroatCon
     MocThermo thermo;
     thermo.m_chemistry = chemistry;
     gas.restore_state(throat.state);
+    if (gas.has_condensed_phases()) {
+        // `PrandtlMeyerTable` tabulates the gas phase alone, so a condensate would be dropped.
+        throw NotImplementedError(
+            "MocThermo: method of characteristics with condensed species is not implemented.");
+    }
     thermo.m_T_ref = gas.temperature();
     thermo.m_P_ref = throat.P_inlet;
     double a_throat = gas.speed_of_sound();

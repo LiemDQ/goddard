@@ -14,43 +14,30 @@ namespace Goddard {
 
 RocketProblemResults::RocketProblemResults(
     std::unordered_map<std::string, RocketProblemCaseResult>&& case_results,
-    std::shared_ptr<Cantera::Solution> sln)
-    : m_sln(std::move(sln))
+    Gas gas)
+    : m_gas(std::move(gas))
 {
-    auto tmo = m_sln->thermo();
-    const std::vector<std::string> species_names = tmo->speciesNames();
-    const std::size_t n_species = tmo->nSpecies();
-
-    // Extract species mass fractions from a raw Cantera state vector.
-    auto make_composition = [&](const std::vector<double>& state) {
-        std::map<std::string, double> comp;
-        for (std::size_t i = 0; i < n_species; i++) {
-            comp[species_names[i]] = state[i + 2];
-        }
-        return comp;
+    // Restore a stored station state and read every mixture property from it. The condensed
+    // amounts travel in the state vector, so the snapshot covers them.
+    auto read_thermo = [&](const std::vector<double>& state, GasChemistry chemistry) {
+        m_gas.chemistry = chemistry;
+        m_gas.restore_state(state);
+        return m_gas.snapshot();
     };
 
-    // Restore Cantera state, then read all thermodynamic quantities.
-    auto read_thermo = [&](const std::vector<double>& state,
-                           double gamma, double dlV_dlP_T, double dlV_dlT_P) {
-        tmo->restoreState(state);
-        return ThermodynamicState{
-            tmo->pressure(),
-            tmo->temperature(),
-            tmo->density(),
-            tmo->enthalpy_mass(),
-            tmo->intEnergy_mass(),
-            tmo->gibbs_mass(),
-            tmo->entropy_mass(),
-            tmo->meanMolecularWeight(),
-            tmo->cp_mass(),
-            gamma,
-            dlV_dlP_T,
-            dlV_dlT_P,
-            gas_sonic_velocity(*tmo, gamma),
-            0.0,
-            make_composition(state)
-        };
+    // A station whose expansion derivatives the nozzle already solved for: take the rest of the
+    // state from a frozen snapshot, which is the same arithmetic but without a second solve of
+    // the equilibrium derivative system, and overwrite the derivatives with the stored ones.
+    auto read_station = [&](const std::vector<double>& state, double gamma,
+                            double dlV_dlP_T, double dlV_dlT_P, bool pinned) {
+        ThermodynamicState thermo_state = read_thermo(state, GasChemistry::FROZEN);
+        thermo_state.gamma_s = gamma;
+        thermo_state.dlV_dlP_T = dlV_dlP_T;
+        thermo_state.dlV_dlT_P = dlV_dlT_P;
+        thermo_state.pinned_transition = pinned;
+        thermo_state.speed_of_sound = gas_sonic_velocity(
+            thermo_state.temperature, thermo_state.molecular_weight, gamma);
+        return thermo_state;
     };
 
     for (auto& [name, case_result] : case_results) {
@@ -74,24 +61,12 @@ RocketProblemResults::RocketProblemResults(
                 std::vector<double> inlet_state = case_result.inlet_states.get_state(state_idx);
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
 
-                // Chamber gamma must be computed (not stored like throat/exit).
-                double inlet_gamma, inlet_dlP, inlet_dlT;
+                // Chamber derivatives must be computed (not stored like throat/exit), so the
+                // chamber snapshot is taken in the chemistry mode of the case.
                 switch (case_result.chemistry) {
-                    case GasChemistry::EQUILIBRIUM: {
-                        tmo->restoreState(inlet_state);
-                        auto props = get_thermo_equilibrium_properties(*tmo);
-                        inlet_gamma = props.gamma_s;
-                        inlet_dlP   = props.dlogV_dlogP_T;
-                        inlet_dlT   = props.dlogV_dlogT_P;
+                    case GasChemistry::EQUILIBRIUM:
+                    case GasChemistry::FROZEN:
                         break;
-                    }
-                    case GasChemistry::FROZEN: {
-                        tmo->restoreState(inlet_state);
-                        inlet_gamma = tmo->cp_mass() / tmo->cv_mass();
-                        inlet_dlP   = -1.0;
-                        inlet_dlT   =  1.0;
-                        break;
-                    }
                     default:
                         throw NotImplementedError("Chemistry type not implemented.");
                 }
@@ -106,7 +81,7 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
                     s.converged       = true;
-                    s.thermo          = read_thermo(inlet_state, inlet_gamma, inlet_dlP, inlet_dlT);
+                    s.thermo          = read_thermo(inlet_state, case_result.chemistry);
                     m_stations.push_back(std::move(s));
                 }
 
@@ -121,7 +96,8 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 1.0;
                     s.converged       = tc.converged;
-                    s.thermo          = read_thermo(tc.state, tc.gamma_s, tc.dlV_dlP_T, tc.dlV_dlT_P);
+                    s.thermo          = read_station(tc.state, tc.gamma_s, tc.dlV_dlP_T,
+                                                     tc.dlV_dlT_P, tc.pinned_transition);
                     m_stations.push_back(std::move(s));
                 }
 
@@ -137,7 +113,8 @@ RocketProblemResults::RocketProblemResults(
                     s.area_ratio      = (exp_idx < case_result.expansion_ratios.size())
                                         ? case_result.expansion_ratios[exp_idx] : 0.0;
                     s.converged       = exp.converged;
-                    s.thermo          = read_thermo(exp.state, exp.gamma_s, exp.dlV_dlP_T, exp.dlV_dlT_P);
+                    s.thermo          = read_station(exp.state, exp.gamma_s, exp.dlV_dlP_T,
+                                                     exp.dlV_dlT_P, exp.pinned_transition);
                     m_stations.push_back(std::move(s));
                 }
             }
@@ -356,12 +333,23 @@ std::string build_report_page(
     table.add_blank_line();
     table.add_row("M, (1/n)", row_vals([](const ThermodynamicState& s){ return format_fixed(s.molecular_weight, 10, 3); }));
 
+    // CEA reports the mixture molecular weight, which counts the condensed moles as well, only
+    // when a condensed phase is present. "M, (1/n)" above counts the gas alone.
+    const bool has_condensed = std::any_of(states.begin(), states.end(),
+        [](const ThermodynamicState& s){ return s.gas_mass_fraction < 1.0; });
+    if (has_condensed) {
+        table.add_row("MW, MOL WT", row_vals([](const ThermodynamicState& s){
+            return format_fixed(s.mixture_molecular_weight, 10, 3); }));
+    }
+
     if (chemistry == GasChemistry::EQUILIBRIUM) {
         table.add_row("(dLV/dLP)t", row_vals([](const ThermodynamicState& s){ return format_fixed(s.dlV_dlP_T, 10, 5); }));
         table.add_row("(dLV/dLT)p", row_vals([](const ThermodynamicState& s){ return format_fixed(s.dlV_dlT_P, 10, 4); }));
     }
 
-    table.add_row("Cp, KJ/(KG)(K)", row_vals([](const ThermodynamicState& s){ return format_fixed(s.cp * J_TO_KJ, 10, 4); }));
+    // The equilibrium specific heat is infinite at a pinned phase transition; CEA prints zero.
+    table.add_row("Cp, KJ/(KG)(K)", row_vals([](const ThermodynamicState& s){
+        return format_fixed(s.pinned_transition ? 0.0 : s.cp * J_TO_KJ, 10, 4); }));
     table.add_row("GAMMAs",          row_vals([](const ThermodynamicState& s){ return format_fixed(s.gamma_s, 10, 4); }));
     table.add_row("SON VEL,M/SEC",   row_vals([](const ThermodynamicState& s){ return format_fixed(s.speed_of_sound, 10, 1); }));
 

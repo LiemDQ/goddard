@@ -474,6 +474,22 @@ ObliqueShockResult oblique_shock_from_deflection_frozen(
     return result;
 }
 
+/**
+ * Reject a mixture carrying condensed products.
+ *
+ * The frozen shock relations below read the gas phase alone, so a solid or liquid product would
+ * be left out of the mass, momentum and energy jump conditions.
+ *
+ * @param gas Mixture held by the solver.
+ * @throws NotImplementedError if any condensed species is present in a nonzero amount.
+ */
+void check_no_condensed_phases(const Gas& gas) {
+    if (gas.has_condensed_phases()) {
+        throw NotImplementedError(
+            "ShockSolver: shock relations with condensed species are not implemented.");
+    }
+}
+
 } // anonymous namespace
 
 
@@ -493,6 +509,7 @@ ShockResult ShockSolver::normal_shock(double mach) {
             result = Goddard::normal_shock(mach, m_gas.gamma_s());
             break;
         case GasChemistry::FROZEN:
+            check_no_condensed_phases(m_gas);
             result = normal_shock_frozen(*m_gas.thermo(), mach, m_options);
             break;
         case GasChemistry::EQUILIBRIUM:
@@ -511,6 +528,7 @@ ShockResult ShockSolver::reflected_shock(double mach) {
             result = Goddard::reflected_shock(mach, m_gas.gamma_s());
             break;
         case GasChemistry::FROZEN:
+            check_no_condensed_phases(m_gas);
             result = reflected_shock_frozen(*m_gas.thermo(), mach, m_options);
             break;
         case GasChemistry::EQUILIBRIUM:
@@ -529,6 +547,7 @@ ObliqueShockResult ShockSolver::oblique_shock_from_wave_angle(double mach, doubl
             result = Goddard::oblique_shock_from_wave_angle(mach, wave_angle, m_gas.gamma_s());
             break;
         case GasChemistry::FROZEN:
+            check_no_condensed_phases(m_gas);
             result = oblique_shock_from_wave_angle_frozen(*m_gas.thermo(), mach, wave_angle, m_options);
             break;
         case GasChemistry::EQUILIBRIUM:
@@ -547,6 +566,7 @@ ObliqueShockResult ShockSolver::oblique_shock_from_deflection(double mach, doubl
             result = Goddard::oblique_shock_from_deflection(mach, deflection, m_gas.gamma_s(), weak);
             break;
         case GasChemistry::FROZEN:
+            check_no_condensed_phases(m_gas);
             result = oblique_shock_from_deflection_frozen(*m_gas.thermo(), mach, deflection, weak, m_options);
             break;
         case GasChemistry::EQUILIBRIUM:

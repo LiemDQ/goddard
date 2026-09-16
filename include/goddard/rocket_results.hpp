@@ -6,6 +6,7 @@
 
 #include "cantera/core.h"
 #include "goddard/combustor.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/thermoarray.hpp"
@@ -57,8 +58,16 @@ struct RocketProblemCaseResult {
 class RocketProblemResults {
 
 public:
+    /**
+     * Build the flat station list from the results of every case.
+     *
+     * @param case_results Per-case combustion and nozzle states, consumed by this call.
+     * @param gas Product mixture the states were computed with. It carries the candidate
+     *            condensed species, so each station's state vector is read back with the
+     *            condensed amounts it was saved with.
+     */
     RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results,
-                         std::shared_ptr<Cantera::Solution> sln);
+                         Gas gas);
 
     // Direct access to the flat station list.
     const std::vector<RocketStation>& stations() const { return m_stations; }
@@ -107,9 +116,12 @@ private:
         CombustionProcess process;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
-    std::shared_ptr<Cantera::Solution> m_sln;
+    /** Product mixture used to read the stored station states back. */
+    Gas m_gas;
 
-    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_sln->thermo(); }
+    /** Underlying Cantera handles of the product mixture. */
+    inline std::shared_ptr<Cantera::Solution> solution() { return m_gas.solution(); }
+    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_gas.thermo(); }
 
     // Resolve case_name: if empty, returns the single case name; throws if ambiguous.
     std::string resolve_case(const std::string& case_name) const;

@@ -54,6 +54,20 @@ public:
     double speed_of_sound;
     double stagnation_enthalpy;
     Composition composition; // stored as mass fractions
+    /**
+     * Mixture molecular weight [kg/kmol], CEA's "MW": one kg of mixture divided by the moles of
+     * gas *plus* condensed species it holds. Equal to `molecular_weight` (CEA's "M" = 1/n, which
+     * counts the gas alone) when no condensed phase is present.
+     */
+    double mixture_molecular_weight = 0.0;
+    /** Mass fraction of the gas phase in the mixture [-]. 1 with no condensed phase present. */
+    double gas_mass_fraction = 1.0;
+    /**
+     * True when the state sits exactly at a condensed phase transition with both polymorphs
+     * present and the chemistry is shifting, so the equilibrium specific heat is infinite. CEA
+     * prints a specific heat of zero for such a station.
+     */
+    bool pinned_transition = false;
 
     size_t state_size() const;
     /**
