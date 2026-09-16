@@ -10,7 +10,30 @@
 #include <vector>
 #include <functional>
 #include <format>
+#include <string>
 namespace Goddard {
+
+namespace {
+
+/**
+ * Re-throw a frozen temperature-range failure, naming the station it happened at.
+ *
+ * A frozen expansion holds the condensed amounts fixed, so it cannot be carried past the
+ * temperature range of a condensed species that is present. `Gas` reports that as a `FmtError`;
+ * the nozzle adds the station index and the temperature [K] it stopped at, as CEA does.
+ *
+ * @param error Range error raised by `Gas`.
+ * @param station Index of the station being solved [-].
+ * @param temperature Temperature the frozen iteration stopped at [K].
+ */
+[[noreturn]] void rethrow_frozen_range_error(const FmtError& error, int station,
+                                             double temperature)
+{
+    std::string message = error.what();
+    throw FmtError("Frozen expansion: {} at station {} (T = {} K)", message, station, temperature);
+}
+
+} // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
     : inlet_state(gas.save_state()), m_gas(gas), m_opts(options) {
@@ -109,7 +132,7 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
 }
 
 void Nozzle::reset_state(){
-    m_gas.thermo()->restoreState(inlet_state);
+    m_gas.restore_state(inlet_state);
     m_current_station = 0;
 }
 
@@ -121,7 +144,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     double P_inlet = m_gas.pressure();
     double S_inlet = m_gas.entropy_mass();
     double H_inlet = m_gas.enthalpy_mass();
-    (void)determine_equilibrium_condition();
+    const bool is_equilibrium = determine_equilibrium_condition();
     
     std::vector<double> X_inlet = m_gas.mole_fractions(); 
 
@@ -139,11 +162,17 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
         }
         P_throat = P_throat * (1 + gamma_s * Mach* Mach)/(1+ gamma_s);
 
-        m_gas.set_state_SP(S_inlet,P_throat);
-
         //if equilibrium conditions are selected, the composition must reach chemical
         //equilibrium in the throat.
-        solve_chemistry();
+        if (is_equilibrium) {
+            m_gas.equilibrate_SP(S_inlet, P_throat);
+        } else {
+            try {
+                m_gas.set_state_SP(S_inlet, P_throat);
+            } catch (const FmtError& error) {
+                rethrow_frozen_range_error(error, m_current_station, m_gas.temperature());
+            }
+        }
         gamma_s = m_gas.gamma_s();
 
         double velocity = m_gas.isenthalpic_velocity();
@@ -167,27 +196,19 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
         gamma_s,
         final_props.dlogV_dlogP_T,
         final_props.dlogV_dlogT_P,
-        m_gas.save_state()};
+        m_gas.save_state(),
+        final_props.pinned_transition};
 }
 
 double Nozzle::get_gamma_s() {
     return m_gas.gamma_s();
 }
 
-void Nozzle::solve_chemistry() {
-    if (determine_equilibrium_condition()) 
-    {
-        m_gas.thermo()->equilibrate("SP", "gibbs");
-    }
-    //for frozen chemistry, this is a no-op
-}
-
 NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
-    std::shared_ptr<Cantera::ThermoPhase> gas_thermo = m_gas.thermo();
     m_gas.restore_state(throat_condition.state);
 
     double ln_pressure_ratio = 0;
-    double throat_pressure_ratio = throat_condition.P_inlet/gas_thermo->pressure();
+    double throat_pressure_ratio = throat_condition.P_inlet/m_gas.pressure();
     double ln_throat_ratio = std::log(throat_pressure_ratio);
     double ln_Ae_At = std::log(expansion_ratio);
 
@@ -248,8 +269,7 @@ NozzleStation Nozzle::iterate_area_expansion(
     bool is_equilibrium = determine_equilibrium_condition();
 
     if (is_equilibrium) {
-        m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
-        m_gas.equilibrate("SP");
+        m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
         gamma_s = m_gas.gamma_s();
     } 
     
@@ -269,8 +289,7 @@ NozzleStation Nozzle::iterate_area_expansion(
 
         if (is_equilibrium) {
             P_exit = throat_condition.P_inlet / pressure_ratio;
-            m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
-            m_gas.equilibrate("SP", "gibbs");
+            m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
         } else {
             T_exit = iterate_temperature(throat_condition, pressure_ratio, T_exit, composition);
             if (T_exit < 0) {
@@ -295,7 +314,8 @@ NozzleStation Nozzle::iterate_area_expansion(
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
             final_props.dlogV_dlogT_P,
-            m_gas.save_state()};
+            m_gas.save_state(),
+            final_props.pinned_transition};
 }
 
 NozzleStation Nozzle::solve_pressure_ratio(
@@ -307,8 +327,7 @@ NozzleStation Nozzle::solve_pressure_ratio(
 
     if (determine_equilibrium_condition()) {
         double P_exit = throat_condition.P_inlet/pressure_ratio;
-        m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
-        m_gas.equilibrate("SP", "gibbs");
+        m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
 
         //pressure ratio for equilibrium nozzle does not require iteration
         ExpansionProperties final_props = m_gas.expansion_properties();
@@ -316,7 +335,8 @@ NozzleStation Nozzle::solve_pressure_ratio(
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
             final_props.dlogV_dlogT_P,
-            m_gas.save_state()};
+            m_gas.save_state(),
+            final_props.pinned_transition};
     } else {
         std::vector<double> composition = m_gas.mole_fractions();
 
@@ -326,7 +346,8 @@ NozzleStation Nozzle::solve_pressure_ratio(
             throw std::runtime_error("Negative temperature returned in pressure ratio loop. This branch should be unreachable.");
         } else {
             ExpansionProperties props = m_gas.expansion_properties();
-            return {true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P, m_gas.save_state()};
+            return {true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
+                    m_gas.save_state(), props.pinned_transition};
         }
     }
 }
@@ -337,9 +358,24 @@ double Nozzle::iterate_temperature(
     const std::vector<double>& composition,
     double abstol) {
 
+    const double P_exit = throat_condition.P_inlet/pressure_ratio;
+
+    if (m_gas.has_condensed_candidates()) {
+        // The condensed amounts are frozen along with the gas composition, so the isentrope is
+        // the range-checked Newton iteration of `Gas::set_state_SP`, which stops where CEA stops
+        // when a condensed species leaves its data range.
+        m_gas.set_state_TPX(T_guess, P_exit, composition.data());
+        try {
+            m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
+        } catch (const FmtError& error) {
+            rethrow_frozen_range_error(error, m_current_station, m_gas.temperature());
+        }
+        return m_gas.temperature();
+    }
+
     double T_exit = T_guess;
 
-    m_gas.set_state_TPX(T_exit, throat_condition.P_inlet/pressure_ratio, composition.data());
+    m_gas.set_state_TPX(T_exit, P_exit, composition.data());
 
     double Cp = m_gas.cp_mass();
     double dlnT = (throat_condition.S_inlet - m_gas.entropy_mass())/Cp;
@@ -356,7 +392,7 @@ double Nozzle::iterate_temperature(
         double lnT_exit = std::log(T_exit) + dlnT;
         T_exit = std::exp(lnT_exit);
 
-        m_gas.set_state_TPX(T_exit, throat_condition.P_inlet/pressure_ratio, composition.data());
+        m_gas.set_state_TPX(T_exit, P_exit, composition.data());
         Cp = m_gas.cp_mass();
         dlnT = (throat_condition.S_inlet - m_gas.entropy_mass())/Cp;
     }

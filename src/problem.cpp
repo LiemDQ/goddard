@@ -156,7 +156,7 @@ RocketProblemResults RocketProblem::solve() {
         });
     }
     
-    return {std::move(case_results), m_sln};
+    return {std::move(case_results), product_gas(GasChemistry::FROZEN)};
 }
 
 

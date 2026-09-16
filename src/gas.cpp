@@ -245,6 +245,11 @@ ThermodynamicState Gas::snapshot() const {
     info.dlV_dlP_T = props.dlogV_dlogP_T;
     info.dlV_dlT_P = props.dlogV_dlogT_P;
     info.speed_of_sound = speed_of_sound();
+    info.mixture_molecular_weight = mixture_molecular_weight();
+    info.gas_mass_fraction = gas_mass_fraction();
+    // A frozen composition cannot shift across a transition, so the flag follows the chemistry
+    // mode rather than the bare state.
+    info.pinned_transition = props.pinned_transition;
 
     // Composition: mass fractions of the whole mixture, gas species first.
     const std::vector<double> fractions = mixture_mass_fractions();
@@ -969,8 +974,10 @@ double Gas::get_reference_entropy() const { return m_S0; }
 
 void Gas::set_current_state_as_reference() {
     if (m_sol) {
-        m_H_stagnation = thermo()->enthalpy_mass();
-        m_S0 = thermo()->entropy_mass();
+        // Mixture values: a stagnation enthalpy taken from the gas phase alone would leave the
+        // condensed products out of the energy balance of every expansion that uses it.
+        m_H_stagnation = enthalpy_mass();
+        m_S0 = entropy_mass();
     }
     else {
         m_H_stagnation = 1.0;
