@@ -90,6 +90,7 @@ void bind_structs(nb::module_& m) {
         .def(nb::init<>())
         .def("__init__", [](Goddard::ThroatCondition* self,
                             bool converged,
+                            double speed_of_sound,
                             double H_stagnation,
                             double P_inlet,
                             double S_inlet,
@@ -100,6 +101,7 @@ void bind_structs(nb::module_& m) {
                             bool pinned_transition) {
             new (self) Goddard::ThroatCondition();
             self->converged = converged;
+            self->speed_of_sound = speed_of_sound;
             self->H_stagnation = H_stagnation;
             self->P_inlet = P_inlet;
             self->S_inlet = S_inlet;
@@ -109,6 +111,7 @@ void bind_structs(nb::module_& m) {
             self->state = std::move(state);
             self->pinned_transition = pinned_transition;
         },  "converged"_a = false,
+            "speed_of_sound"_a = 0.0,
             "H_stagnation"_a = 0.0,
             "P_inlet"_a = 0.0,
             "S_inlet"_a = 0.0,
@@ -118,6 +121,7 @@ void bind_structs(nb::module_& m) {
             "state"_a = std::vector<double>(),
             "pinned_transition"_a = false)
         .def_ro("converged", &Goddard::ThroatCondition::converged)
+        .def_ro("speed_of_sound", &Goddard::ThroatCondition::speed_of_sound)
         .def_ro("H_stagnation", &Goddard::ThroatCondition::H_stagnation)
         .def_ro("P_inlet", &Goddard::ThroatCondition::P_inlet)
         .def_ro("S_inlet", &Goddard::ThroatCondition::S_inlet)

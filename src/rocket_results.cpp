@@ -230,26 +230,24 @@ RocketPerformance RocketProblemResults::calculate_performance(
     double pressure_ratio = chamber.pressure / exit.pressure;
     double throat_pressure_ratio = chamber.pressure / throat.pressure;
 
-    // Area ratio from mass flux continuity: (rho*v) is constant at throat and exit
-    double area_ratio = (throat.density * throat.speed_of_sound) /
-                        (exit.density * exit.speed_of_sound) *
-                        (throat_pressure_ratio / pressure_ratio);
-
+    
     // Characteristic velocity c* = P_c * A_t / m_dot
     double gamma = throat.gamma_s;
-    double c_star = throat.speed_of_sound * std::sqrt(
-        std::pow(2.0 / (gamma + 1.0), (gamma + 1.0) / (gamma - 1.0)) / gamma
-    );
-
+    double c_star = chamber.pressure / (throat.density * throat.speed_of_sound);
+    
     // Exit velocity from energy conservation: v_e = sqrt(2*(h_c - h_e))
     double exit_velocity = std::sqrt(2.0 * (chamber.enthalpy - exit.enthalpy));
+    
+    // Area ratio from mass flux continuity: (rho*v) is constant at throat and exit
+    double area_ratio = (throat.density * throat.speed_of_sound) /
+                        (exit.density * exit_velocity);
 
     // Thrust coefficient: CF = v_e / c*  (matched nozzle approximation)
     double CF = exit_velocity / c_star;
 
-    constexpr double g0 = 9.80665;
-    double isp  = exit_velocity / g0;
-    double ivac = isp + (exit.pressure / chamber.pressure) * area_ratio * c_star / g0;
+    // constexpr double g0 = 9.80665;
+    double isp  = exit_velocity;
+    double ivac = isp + (exit.pressure / chamber.pressure) * area_ratio * c_star;
 
     double mach_number = exit_velocity / exit.speed_of_sound;
 
