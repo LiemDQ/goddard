@@ -67,14 +67,39 @@ Gas Gas::create(const std::string& filename, const std::string& phase_name, GasC
     return Gas(filename, phase_name, chemistry);
 }
 
+namespace {
+
+/**
+ * Drop the kinetics and transport entries of a generated phase node when the data file cannot
+ * support them: thermodynamic databases such as the NASA9 files have no `reactions` section and
+ * no species transport data, and Cantera refuses to build the phase otherwise.
+ */
+void adapt_phase_node_to_data(Cantera::AnyMap& phase_node, const Cantera::AnyMap& root_node) {
+    if (!root_node.hasKey("reactions")) {
+        phase_node.erase("kinetics");
+        phase_node.erase("reactions");
+    }
+    if (root_node.hasKey("species")) {
+        for (const auto& species_node : root_node.at("species").asVector<Cantera::AnyMap>()) {
+            if (!species_node.hasKey("transport")) {
+                phase_node.erase("transport");
+                break;
+            }
+        }
+    }
+}
+
+} // namespace
+
 Gas Gas::create_from_elements(
     const std::string& infile,
-    const std::string& name, 
+    const std::string& name,
     const std::vector<std::string>& elements,
     GasChemistry chemistry)
 {
     Cantera::AnyMap root_node = load_root_node(infile);
     Cantera::AnyMap phase_node = create_speciated_phase_node(name, elements);
+    adapt_phase_node_to_data(phase_node, root_node);
     return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
 }
 
@@ -86,6 +111,7 @@ Gas Gas::create_from_species(
 {
     Cantera::AnyMap root_node = load_root_node(infile);
     Cantera::AnyMap phase_node = create_phase_node(name, species);
+    adapt_phase_node_to_data(phase_node, root_node);
     return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
 }
 
