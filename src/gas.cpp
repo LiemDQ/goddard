@@ -13,7 +13,7 @@
 namespace Goddard {
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas, GasChemistry chem)
-    : chemistry(chem), m_sol(gas)
+    : chemistry(chem), m_sol(std::move(gas))
 {
     set_current_state_as_reference();
 }

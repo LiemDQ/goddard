@@ -428,8 +428,8 @@ std::unordered_set<std::string> species_set(const Gas& gas) {
     return {names.begin(), names.end()};
 }
 
-const std::string REACTANT_FILE = std::string(DATA_DIR) + "/nasa9_reactants.yaml";
-const std::string NASA9_GAS_FILE = std::string(DATA_DIR) + "/nasa9_gas.yaml";
+std::string reactant_file() { return std::string(DATA_DIR) + "/nasa9_reactants.yaml"; }
+std::string nasa9_gas_file() { return std::string(DATA_DIR) + "/nasa9_gas.yaml"; }
 
 } // namespace
 
@@ -529,7 +529,7 @@ TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
     EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, finite_area), NotImplementedError);
 
     // The product species carry no carbon, so a hydrocarbon fuel cannot be burnt in this phase.
-    Gas methane = Gas::create_from_species(REACTANT_FILE, "reactants", {"CH4"});
+    Gas methane = Gas::create_from_species(reactant_file(), "reactants", {"CH4"});
     methane.set_state_TPX(300.0, pressures(0), "CH4:1");
     Combustor carbon_combustor(products, methane, oxidizer);
     EXPECT_THROW(carbon_combustor.solve(pressures, OF_ratios, options), FmtError);
@@ -549,17 +549,17 @@ protected:
     static constexpr double CEA_CHAMBER_MOLECULAR_WEIGHT = 12.7157;  // kg/kmol
 
     static Gas make_products() {
-        return Gas::create_from_elements(NASA9_GAS_FILE, "gas", {"H", "O"});
+        return Gas::create_from_elements(nasa9_gas_file(), "gas", {"H", "O"});
     }
 
     static Gas make_fuel() {
-        Gas fuel = Gas::create_from_species(REACTANT_FILE, "reactants", {"H2(L)"});
+        Gas fuel = Gas::create_from_species(reactant_file(), "reactants", {"H2(L)"});
         fuel.set_state_TPX(H2_BOILING_POINT, CHAMBER_PRESSURE, "H2(L):1");
         return fuel;
     }
 
     static Gas make_oxidizer() {
-        Gas oxidizer = Gas::create_from_species(REACTANT_FILE, "reactants", {"O2(L)"});
+        Gas oxidizer = Gas::create_from_species(reactant_file(), "reactants", {"O2(L)"});
         oxidizer.set_state_TPX(O2_BOILING_POINT, CHAMBER_PRESSURE, "O2(L):1");
         return oxidizer;
     }
@@ -588,9 +588,9 @@ TEST_F(CryogenicRocketTests, ChamberMatchesCEAExampleEight) {
 
 TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     ChemicalParameters chem_params;
-    chem_params.thermo_file = NASA9_GAS_FILE;
+    chem_params.thermo_file = nasa9_gas_file();
     chem_params.species = species_set(make_products());
-    chem_params.reactant_file = REACTANT_FILE;
+    chem_params.reactant_file = reactant_file();
     chem_params.cantera_fuel_state =
         PhaseSpecification(H2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"H2(L)", 1.0}});
     chem_params.cantera_oxidizer_state =
