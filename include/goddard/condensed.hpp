@@ -114,6 +114,21 @@ public:
      */
     std::vector<size_t> offered_at(double T) const;
 
+    /**
+     * The member of group `group_index` that `offered_at()` would offer at temperature `T`: the
+     * first member whose data range contains `T`, or `Cantera::npos` if none does.
+     */
+    size_t offered_member(size_t group_index, double T) const;
+
+    /**
+     * Re-derive `pinned_group` from the current amounts.
+     *
+     * A group is pinned exactly when two of its polymorphs are simultaneously present, which can
+     * only happen at a phase-transition temperature. This is how the pinned flag is recovered by
+     * `Gas::restore_state()`, so it is never stored in the state vector.
+     */
+    void update_pinned_group();
+
     /** Reference-state molar enthalpy of candidate `k` divided by R*T [-]. */
     double enthalpy_RT(size_t k, double T) const;
     /** Reference-state molar entropy of candidate `k` divided by R [-]. */
