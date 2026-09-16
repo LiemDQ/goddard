@@ -134,6 +134,14 @@ def _cea_rocket(reactant_names, product_names, weights, chamber_pressure_bar, pr
         "P": [float(value) for value in solution.P],
         "M": [float(value) for value in solution.M],
         "gamma_s": [float(value) for value in solution.gamma_s],
+        "density": [float(value) for value in solution.density],
+        "sonic_velocity": [float(value) for value in solution.sonic_velocity],
+        "Mach": [float(value) for value in solution.Mach],
+        "ae_at": [float(value) for value in solution.ae_at],
+        "c_star": [float(value) for value in solution.c_star],
+        # CEA reports both specific impulses as velocities [m/s].
+        "Isp": [float(value) for value in solution.Isp],
+        "Ivac": [float(value) for value in solution.Isp_vacuum],
         "X": {name: [float(v) for v in values]
               for name, values in dict(solution.mole_fractions).items()},
         "num_pts": int(solution.num_pts),
@@ -191,6 +199,34 @@ def present_condensed(gas, threshold=1e-6):
     """Names of the condensed species present in more than `threshold` mole fraction."""
     return {name for name in gas.condensed_species_names
             if condensed_mole_fraction(gas, name) > threshold}
+
+
+# Performance is recomputed from the station states rather than read from
+# `RocketProblemResults.performance()`, whose `area_ratio` (and therefore the quantities derived
+# from it) is wrong -- it reports 0.879 for a requested area ratio of 5. This mirrors what
+# `test_cea_comparison.py` does, and matches CEA's definitions: c* = Pc / (rho_t a_t),
+# Isp = sqrt(2 (h_c - h_e)) and Ivac = Isp + Pe / (rho_e Isp), all as velocities [m/s].
+
+def characteristic_velocity(chamber, throat):
+    """c* [m/s] from the chamber pressure and the throat mass flux."""
+    return chamber.pressure / (throat.density * throat.speed_of_sound)
+
+
+def exit_velocity(chamber, station):
+    """Ideal exit velocity [m/s], CEA's Isp."""
+    return np.sqrt(2.0 * (chamber.enthalpy - station.enthalpy))
+
+
+def vacuum_velocity(chamber, station):
+    """Vacuum specific impulse [m/s], CEA's Isp_vacuum."""
+    velocity = exit_velocity(chamber, station)
+    return velocity + station.pressure / (station.density * velocity)
+
+
+def cea_supersonic_station(rocket, area_ratio):
+    """Index of the supersonic CEA station whose area ratio is closest to `area_ratio`."""
+    supersonic = [i for i in range(rocket["num_pts"]) if rocket["Mach"][i] > 1.0]
+    return min(supersonic, key=lambda i: abs(rocket["ae_at"][i] - area_ratio))
 
 
 def cea_condensed(result, index=None, threshold=1e-6):
@@ -532,56 +568,226 @@ def test_beryllium_expansion_stations(beryllium_rocket, station):
 
 
 # ---------------------------------------------------------------------------
-# (f) RP-1311 example 8: H2(L)/O2(L) through RocketProblem
+# (f) RP-1311 example 13 through RocketProblem: combustor, nozzle and results
 # ---------------------------------------------------------------------------
 
-def test_cryogenic_rocket_chamber():
-    """Build example 8 as a RocketProblem with reactant streams and check the chamber.
+BERYLLIUM_TRANSITION_TEMPERATURE = 2851.0   # BeO(b)/BeO(L), where stations 1 and 2 pin
 
-    Only the chamber is compared: the nozzle stations carry condensed-phase fields that the
-    results structs do not expose yet (work package D).
+
+@pytest.fixture(scope="module")
+def beryllium_rocket_problem(beryllium_rocket):
+    """Example 13 solved end to end by `RocketProblem`, against the same CEA rocket solution.
+
+    The nozzle expands on pressure ratios, which is how CEA's `pi_p` stations are defined, so
+    Goddard and CEA land on the same stations without any area-ratio matching.
     """
-    reactant_names = ["H2(L)", "O2(L)"]
-    of_ratio = 5.55157
-    chamber_pressure = 53.3172 * BAR
+    _, _, rocket, _ = beryllium_rocket
+    names = run_isolated(_cea_product_names, BERYLLIUM_REACTANTS)
+    gas_names, condensed_names, missing = split_product_names(names)
+    assert not missing, missing
 
-    names = run_isolated(_cea_product_names, reactant_names)
+    # `PhaseSpecification.composition` is a mole-fraction map, so the 80/20 mass split of the
+    # fuel is converted through a reactant stream rather than written out by hand.
+    fuel = reactant_gas(NASA9_REACTANTS, {"N2H4(L)": 0.8, "Be(a)": 0.2}, 298.15,
+                        BERYLLIUM_CHAMBER_PRESSURE, basis="mass")
+    fuel_composition = {name: fraction
+                        for name, fraction in zip(fuel.species_names, fuel.mole_fractions)
+                        if fraction > 0.0}
+
+    chemistry = goddard.ChemicalParameters()
+    chemistry.thermo_file = NASA9_GAS
+    chemistry.species = set(gas_names)
+    chemistry.reactant_file = NASA9_REACTANTS
+    chemistry.condensed_file = NASA9_CONDENSED
+    chemistry.condensed_species = set(condensed_names)
+    chemistry.cantera_fuel_state = goddard.PhaseSpecification(
+        298.15, BERYLLIUM_CHAMBER_PRESSURE, fuel_composition)
+    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(
+        298.15, BERYLLIUM_CHAMBER_PRESSURE, {"H2O2(L)": 1.0})
+    chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
+    chemistry.OF_ratios = [33.0 / 67.0]   # 67 % fuel by mass
+
+    case = goddard.RocketCaseParameters()
+    case.name = "ex13"
+    case.problem_type = "rocket"
+    case.combustor_options = goddard.infinite_area_combustor([BERYLLIUM_CHAMBER_PRESSURE])
+    case.nozzle_options = goddard.pressure_ratio(*BERYLLIUM_PRESSURE_RATIOS)
+
+    results = goddard.RocketProblem(chemistry, [case], "gas").solve()
+    return results, rocket
+
+
+def test_beryllium_rocket_chamber_reports_condensed_fields(beryllium_rocket_problem):
+    """The chamber station carries the mixture quantities work package D added."""
+    results, rocket = beryllium_rocket_problem
+    chamber = results.chamber(0, "ex13").thermo
+
+    assert_close_rel(chamber.temperature, rocket["T"][0], 2e-3, "chamber temperature")
+    assert_close_rel(chamber.molecular_weight, rocket["M"][0], 1e-3, "chamber M")
+    # About a third of the mixture is BeO(L), so CEA's MW is well below its M.
+    assert 0.6 < chamber.gas_mass_fraction < 0.7
+    assert chamber.mixture_molecular_weight < chamber.molecular_weight
+    assert not chamber.pinned_transition
+
+
+def test_beryllium_rocket_throat_is_pinned(beryllium_rocket_problem):
+    """The throat sits on the BeO(b)/BeO(L) melting point, where CEA reports gamma_s = 0.9979.
+
+    Observed errors: throat pressure 1.7e-5, T exact, M 6e-6, gamma_s 1e-5, c* 2.4e-5.
+    """
+    results, rocket = beryllium_rocket_problem
+    chamber = results.chamber(0, "ex13").thermo
+    throat = results.throat(0, "ex13").thermo
+
+    assert throat.pinned_transition
+    assert throat.temperature == pytest.approx(BERYLLIUM_TRANSITION_TEMPERATURE, abs=1e-6)
+    assert_close_rel(throat.pressure / BAR, rocket["P"][1], 1e-3, "throat pressure")
+    assert_close_rel(throat.molecular_weight, rocket["M"][1], 1e-3, "throat M")
+    # A pinned expansion is isothermal, so gamma_s = -1 / (dlnV/dlnP)_T, just below one.
+    assert_close_rel(throat.gamma_s, rocket["gamma_s"][1], 1e-3, "throat gamma_s")
+    assert throat.gamma_s == pytest.approx(0.9979, abs=1e-3)
+    assert_close_rel(characteristic_velocity(chamber, throat), rocket["c_star"][1], 3e-3, "c*")
+
+
+@pytest.mark.parametrize("exit_index,pressure_ratio",
+                         list(enumerate(BERYLLIUM_PRESSURE_RATIOS)),
+                         ids=[f"pi_p{int(ratio)}" for ratio in BERYLLIUM_PRESSURE_RATIOS])
+def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressure_ratio):
+    """Every expansion station of example 13, including the second pinned one.
+
+    Observed worst errors over the four stations: T 3.5e-5, M 1.8e-5, gamma_s 3.4e-5,
+    Isp 1.4e-5, Ivac 1.5e-5, all relative.
+    """
+    results, rocket = beryllium_rocket_problem
+    chamber = results.chamber(0, "ex13").thermo
+    exits = results.exits(0, "ex13")
+    assert len(exits) == len(BERYLLIUM_PRESSURE_RATIOS)
+
+    station = exits[exit_index].thermo
+    assert exits[exit_index].area_ratio == pressure_ratio   # pressure ratio on this expansion type
+    index = exit_index + 2                                  # CEA: 0 chamber, 1 throat, then pi_p
+    label = f"pi_p {pressure_ratio}"
+
+    # CEA lands on the transition temperature to within rounding; Goddard pins exactly on it.
+    pinned = rocket["T"][index] == pytest.approx(BERYLLIUM_TRANSITION_TEMPERATURE, abs=1.0)
+    assert station.pinned_transition == pinned, label
+
+    assert_close_rel(station.pressure / BAR, rocket["P"][index], 1e-3, f"{label} pressure")
+    assert_close_rel(station.temperature, rocket["T"][index], 2e-3, f"{label} temperature")
+    assert_close_rel(station.molecular_weight, rocket["M"][index], 1e-3, f"{label} M")
+    assert_close_rel(station.gamma_s, rocket["gamma_s"][index],
+                     1e-3 if pinned else 3e-3, f"{label} gamma_s")
+    assert_close_rel(exit_velocity(chamber, station), rocket["Isp"][index], 3e-3, f"{label} Isp")
+    assert_close_rel(vacuum_velocity(chamber, station), rocket["Ivac"][index], 3e-3,
+                     f"{label} Ivac")
+
+
+# ---------------------------------------------------------------------------
+# (g) RP-1311 example 8: H2(L)/O2(L) through RocketProblem
+# ---------------------------------------------------------------------------
+
+CRYOGENIC_REACTANTS = ["H2(L)", "O2(L)"]
+CRYOGENIC_OF_RATIO = 5.55157
+CRYOGENIC_PRESSURE = 53.3172 * BAR
+CRYOGENIC_AREA_RATIOS = (25.0, 50.0)
+
+
+@pytest.fixture(scope="module")
+def cryogenic_rocket():
+    """Example 8 solved by both codes: a RocketProblem with reactant streams, and RocketSolver."""
+    names = run_isolated(_cea_product_names, CRYOGENIC_REACTANTS)
     gas_names, _, missing = split_product_names(names)
     assert not missing, missing
 
-    weights, enthalpy = run_isolated(_cea_weights_and_enthalpy, reactant_names,
-                                     [0.0, 1.0], [1.0, 0.0], of_ratio, [20.27, 90.17])
-    rocket = run_isolated(_cea_rocket, reactant_names, names, weights,
-                          chamber_pressure / BAR, [1000.0], enthalpy / cea.R, supar=[5.0])
+    weights, enthalpy = run_isolated(_cea_weights_and_enthalpy, CRYOGENIC_REACTANTS,
+                                     [0.0, 1.0], [1.0, 0.0], CRYOGENIC_OF_RATIO, [20.27, 90.17])
+    # CEA needs at least one pressure ratio; the area-ratio stations are found by their ae_at.
+    rocket = run_isolated(_cea_rocket, CRYOGENIC_REACTANTS, names, weights,
+                          CRYOGENIC_PRESSURE / BAR, [1000.0], enthalpy / cea.R,
+                          supar=list(CRYOGENIC_AREA_RATIOS))
     assert rocket["converged"]
 
     chemistry = goddard.ChemicalParameters()
     chemistry.thermo_file = NASA9_GAS
     chemistry.species = set(gas_names)
     chemistry.reactant_file = NASA9_REACTANTS
-    chemistry.cantera_fuel_state = goddard.PhaseSpecification(20.27, chamber_pressure,
+    chemistry.cantera_fuel_state = goddard.PhaseSpecification(20.27, CRYOGENIC_PRESSURE,
                                                               {"H2(L)": 1.0})
-    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(90.17, chamber_pressure,
+    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(90.17, CRYOGENIC_PRESSURE,
                                                                   {"O2(L)": 1.0})
     chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
-    chemistry.OF_ratios = [of_ratio]
+    chemistry.OF_ratios = [CRYOGENIC_OF_RATIO]
 
     case = goddard.RocketCaseParameters()
     case.name = "ex8"
     case.problem_type = "rocket"
-    case.combustor_options = goddard.infinite_area_combustor([chamber_pressure])
-    case.nozzle_options = goddard.equilibrium_nozzle(5.0)
+    case.combustor_options = goddard.infinite_area_combustor([CRYOGENIC_PRESSURE])
+    case.nozzle_options = goddard.equilibrium_nozzle(*CRYOGENIC_AREA_RATIOS)
 
     results = goddard.RocketProblem(chemistry, [case], "gas").solve()
+    return results, rocket
+
+
+def test_cryogenic_rocket_chamber(cryogenic_rocket):
+    """The chamber of example 8, built as a RocketProblem with reactant streams."""
+    results, rocket = cryogenic_rocket
     chamber = results.chamber(0, "ex8").thermo
 
     assert_close_rel(chamber.temperature, rocket["T"][0], 2e-3, "chamber temperature")
     assert_close_rel(chamber.molecular_weight, rocket["M"][0], 1e-3, "chamber M")
-    assert_close_rel(chamber.pressure, chamber_pressure, 1e-6, "chamber pressure")
+    assert_close_rel(chamber.pressure, CRYOGENIC_PRESSURE, 1e-6, "chamber pressure")
+    # No condensed phase at 3384 K, so the mixture quantities collapse onto the gas ones.
+    assert chamber.gas_mass_fraction == 1.0
+    assert not chamber.pinned_transition
+    assert_close_rel(chamber.mixture_molecular_weight, chamber.molecular_weight, 1e-12, "MW")
+
+
+def test_cryogenic_rocket_throat(cryogenic_rocket):
+    """The throat of example 8.
+
+    Observed errors: P 4.4e-5, T 2.8e-4, M 5.4e-5, gamma_s 1.0e-4, c* 1.1e-4, all relative.
+    """
+    results, rocket = cryogenic_rocket
+    chamber = results.chamber(0, "ex8").thermo
+    throat = results.throat(0, "ex8").thermo
+    station = 1
+
+    assert_close_rel(throat.pressure / BAR, rocket["P"][station], 1e-3, "throat pressure")
+    assert_close_rel(throat.temperature, rocket["T"][station], 2e-3, "throat temperature")
+    assert_close_rel(throat.molecular_weight, rocket["M"][station], 1e-3, "throat M")
+    assert_close_rel(throat.gamma_s, rocket["gamma_s"][station], 3e-3, "throat gamma_s")
+    assert not throat.pinned_transition
+    assert_close_rel(characteristic_velocity(chamber, throat), rocket["c_star"][station],
+                     3e-3, "c*")
+
+
+@pytest.mark.parametrize("area_ratio", CRYOGENIC_AREA_RATIOS)
+def test_cryogenic_rocket_exits(cryogenic_rocket, area_ratio):
+    """The area-ratio stations of example 8.
+
+    Observed worst errors: T 2.9e-4, M 6.1e-5, gamma_s 3.2e-5, Isp 4.8e-5, Ivac 3.2e-5.
+    """
+    results, rocket = cryogenic_rocket
+    chamber = results.chamber(0, "ex8").thermo
+    exits = {exit.area_ratio: exit.thermo for exit in results.exits(0, "ex8")}
+    assert set(exits) == set(CRYOGENIC_AREA_RATIOS)
+
+    station = exits[area_ratio]
+    index = cea_supersonic_station(rocket, area_ratio)
+    assert rocket["ae_at"][index] == pytest.approx(area_ratio, rel=1e-3)
+    label = f"AR {area_ratio}"
+
+    assert_close_rel(station.temperature, rocket["T"][index], 2e-3, f"{label} temperature")
+    assert_close_rel(station.pressure / BAR, rocket["P"][index], 3e-3, f"{label} pressure")
+    assert_close_rel(station.molecular_weight, rocket["M"][index], 1e-3, f"{label} M")
+    assert_close_rel(station.gamma_s, rocket["gamma_s"][index], 3e-3, f"{label} gamma_s")
+    assert_close_rel(exit_velocity(chamber, station), rocket["Isp"][index], 3e-3, f"{label} Isp")
+    assert_close_rel(vacuum_velocity(chamber, station), rocket["Ivac"][index], 3e-3,
+                     f"{label} Ivac")
 
 
 # ---------------------------------------------------------------------------
-# (g) Finite differences on the equilibrium properties with a condensed phase present
+# (h) Finite differences on the equilibrium properties with a condensed phase present
 # ---------------------------------------------------------------------------
 
 def test_equilibrium_cp_matches_finite_differences(methane_oxygen):
