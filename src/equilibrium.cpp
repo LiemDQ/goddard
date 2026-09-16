@@ -2,7 +2,10 @@
 #include "eigen3/Eigen/Dense"
 
 #include "goddard/equilibrium.hpp"
+#include "goddard/error.hpp"
+#include "goddard/gas.hpp"
 
+#include <cmath>
 #include <iostream>
 
 using Eigen::MatrixXd;
@@ -136,7 +139,12 @@ EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoP
     ArrayXd dpi_dlogP_T = derivs(Eigen::seq(idx_dpi_dlogP_T, idx_dpi_dlogP_T + n_elements-1));
     double dlogn_dlogP_T = derivs(idx_dlogn_dlogP_T);
     
-    return {dpi_dlogT_P, dlogn_dlogT_P, dpi_dlogP_T, dlogn_dlogP_T};
+    EquilibriumDerivatives result;
+    result.dpi_dlogT_P = dpi_dlogT_P;
+    result.dlogn_dlogT_P = dlogn_dlogT_P;
+    result.dpi_dlogP_T = dpi_dlogP_T;
+    result.dlogn_dlogP_T = dlogn_dlogP_T;
+    return result;
 }
 
 /**
@@ -185,6 +193,85 @@ ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase
 }
 
 double get_equilibrium_gamma(const Cantera::ThermoPhase& gas) {
+    return get_thermo_equilibrium_properties(gas).gamma_s;
+}
+
+// ---- Mixture-aware overloads ----
+
+namespace {
+
+/**
+ * Throw if a `Gas` carries condensed phases. The condensed rows of the Gordon & McBride system
+ * are work package A; until then the mixture overloads only handle gas-only states.
+ */
+void reject_condensed(const Gas& gas, const char* function) {
+    if (gas.has_condensed_phases()) {
+        throw NotImplementedError(std::string(function)
+            + ": condensed phases are not supported yet (WP-A).");
+    }
+}
+
+/** Fill the mixture fields of a gas-only result from the gas state and its gamma_s. */
+void fill_gas_only_mixture_fields(const Cantera::ThermoPhase& gas, ExpansionProperties& props) {
+    const double T = gas.temperature();
+    const double P = gas.pressure();
+    const double gas_moles = 1.0 / gas.meanMolecularWeight();
+
+    props.gas_moles = gas_moles;
+    props.total_moles = gas_moles;
+    props.density = P / (gas_moles * Cantera::GasConstant * T);
+    props.speed_of_sound = std::sqrt(gas_moles * Cantera::GasConstant * T * props.gamma_s);
+    props.frozen_spec_heat_p = gas.cp_mass();
+    props.frozen_gamma = gas.cp_mass() / gas.cv_mass();
+    props.pinned_transition = false;
+}
+
+} // namespace
+
+EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Gas& gas) {
+    reject_condensed(gas, "get_thermo_equilibrium_derivatives");
+    return get_thermo_equilibrium_derivatives(*gas.thermo());
+}
+
+ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas, const EquilibriumDerivatives& derivs) {
+    reject_condensed(gas, "get_thermo_equilibrium_properties");
+    const Cantera::ThermoPhase& thermo = *gas.thermo();
+
+    ExpansionProperties props = get_thermo_equilibrium_properties(thermo, derivs);
+
+    // The ThermoPhase overload computes cv internally but does not report it.
+    const double mass_volume = thermo.molarVolume() / thermo.meanMolecularWeight();
+    props.spec_heat_v = props.spec_heat_p
+        + thermo.pressure() * mass_volume / thermo.temperature()
+          * props.dlogV_dlogT_P * props.dlogV_dlogT_P / props.dlogV_dlogP_T;
+
+    fill_gas_only_mixture_fields(thermo, props);
+    return props;
+}
+
+ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas) {
+    return get_thermo_equilibrium_properties(gas, get_thermo_equilibrium_derivatives(gas));
+}
+
+ExpansionProperties get_frozen_properties(const Gas& gas) {
+    reject_condensed(gas, "get_frozen_properties");
+    const Cantera::ThermoPhase& thermo = *gas.thermo();
+
+    const double cp = thermo.cp_mass();
+    const double cv = thermo.cv_mass();
+
+    ExpansionProperties props;
+    props.dlogV_dlogT_P = 1.0;
+    props.dlogV_dlogP_T = -1.0;
+    props.spec_heat_p = cp;
+    props.spec_heat_v = cv;
+    props.gamma_s = cp / cv;
+
+    fill_gas_only_mixture_fields(thermo, props);
+    return props;
+}
+
+double get_equilibrium_gamma(const Gas& gas) {
     return get_thermo_equilibrium_properties(gas).gamma_s;
 }
 

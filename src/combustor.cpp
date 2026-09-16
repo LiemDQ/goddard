@@ -64,6 +64,21 @@ Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidiz
       m_fuel_composition(fuel), m_oxidizer_composition(oxidizer)
 {}
 
+Combustor::Combustor(Gas products, Gas fuel, Gas oxidizer)
+    : BaseCombustor(std::move(products)),
+      m_fuel_gas(std::move(fuel)), m_oxidizer_gas(std::move(oxidizer)),
+      m_use_reactant_gases(true)
+{}
+
+ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
+    const CombustorOptions& options) {
+    (void)pressures;
+    (void)mixture_ratios;
+    (void)options;
+    throw NotImplementedError(
+        "Combustor::solve from reactant Gas streams is not implemented yet (WP-C).");
+}
+
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options) {
 

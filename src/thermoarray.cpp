@@ -3,6 +3,9 @@
 #include "cantera/base/SolutionArray.h"
 
 #include "goddard/thermoarray.hpp"
+#include "goddard/condensed.hpp"
+#include "goddard/error.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/utils.hpp"
 
 #include <vector>
@@ -61,6 +64,23 @@ ThermoArray::ThermoArray(const std::shared_ptr<Solution>& sol, const std::vector
 	}
 }
 
+ThermoArray::ThermoArray(const Gas& gas, const std::vector<long>& shape) :
+	ThermoArray(gas.solution(), shape) {
+
+	if (gas.m_condensed) {
+		m_condensed = gas.m_condensed->clone();
+	}
+}
+
+size_t ThermoArray::num_condensed() const {
+	return m_condensed ? m_condensed->size() : 0;
+}
+
+std::vector<std::string> ThermoArray::condensed_species_names() const {
+	if (!m_condensed) return {};
+	return m_condensed->names();
+}
+
 void ThermoArray::reshape(const std::vector<long>& shape) {
 	// setApiShape resizes the storage. Entries that remain keep their data, so the buffered
 	// location still matches the Solution state if it is in range; new entries are zero-filled.
@@ -88,10 +108,20 @@ int ThermoArray::flat_index(long i, long j, long k) const {
 }
 
 std::vector<double> ThermoArray::get_state(int loc) const {
+	// TODO(WP-B): return the extended state vector (Cantera state ++ condensed moles).
+	if (num_condensed() > 0) {
+		throw NotImplementedError(
+			"ThermoArray::get_state: arrays carrying condensed species are not implemented yet (WP-B).");
+	}
 	return m_states->getState(loc);
 }
 
 void ThermoArray::set_state(int loc, const std::vector<double>& state) {
+	// TODO(WP-B): accept the extended state vector (Cantera state ++ condensed moles).
+	if (num_condensed() > 0) {
+		throw NotImplementedError(
+			"ThermoArray::set_state: arrays carrying condensed species are not implemented yet (WP-B).");
+	}
 	m_states->setState(loc, state);
 }
 

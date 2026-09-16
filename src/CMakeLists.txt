@@ -9,6 +9,7 @@ add_library(
   thermo.cpp
   gas.cpp
   combustor.cpp
+  condensed.cpp
   error.cpp
   utils.cpp
   global.cpp

@@ -11,6 +11,9 @@
 // NOLINTBEGIN(readability-identifier-naming)
 namespace Goddard {
 
+class Gas;
+class CondensedPhaseSet;
+
 /**
  * @brief Wrapper around `Cantera::SolutionArray` with a higher-level API for 
  * broadcasting thermodynamic operations.
@@ -42,7 +45,18 @@ class ThermoArray {
 	 * An empty `shape` leaves the shape unset; the first setter call then sets it.
 	 */
 	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, const std::vector<long>& shape);
-	
+
+	/**
+	 * Create an array from a `Gas`, carrying over its candidate condensed species.
+	 *
+	 * The array stores its own clone of the gas's condensed species set, so the candidate list and
+	 * the phase objects are independent of the `Gas` it was built from.
+	 *
+	 * @note The per-entry condensed amounts are not stored yet (work package B). Until then
+	 * `get_state`/`set_state` throw `NotImplementedError` when `num_condensed() > 0`.
+	 */
+	ThermoArray(const Gas& gas, const std::vector<long>& shape);
+
 	static std::shared_ptr<ThermoArray> create(const std::shared_ptr<Cantera::Solution>& sol, int size=0, const Cantera::AnyMap& meta={}) {
 		return std::shared_ptr<ThermoArray>(new ThermoArray(sol, size, meta));
 	}
@@ -60,6 +74,12 @@ class ThermoArray {
 	 * dimensions must be zero.
 	 */
 	int flat_index(long i, long j = 0, long k = 0) const;
+
+	/** Number of candidate condensed species carried by the array. Zero for a gas-only array. */
+	size_t num_condensed() const;
+
+	/** Names of the candidate condensed species, in candidate order. */
+	std::vector<std::string> condensed_species_names() const;
 
 	/** Cantera state vector of the entry at flat location `loc`. */
 	std::vector<double> get_state(int loc) const;
@@ -222,6 +242,12 @@ class ThermoArray {
 	// `updateState` at the location it loaded.
 	std::shared_ptr<Cantera::Solution> m_solution;
 	std::shared_ptr<Cantera::SolutionArray> m_states;
+	// Candidate condensed species carried over from the `Gas` the array was built from; null for a
+	// gas-only array.
+	// TODO(WP-B): add the per-location condensed mole side table (`m_condensed_moles`, location
+	// major), extend `get_state`/`set_state` to the extended state vector, and route `equilibrate`
+	// through a private `Gas`.
+	std::shared_ptr<CondensedPhaseSet> m_condensed;
 	bool m_shape_is_set = false;
 };
 

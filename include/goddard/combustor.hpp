@@ -82,10 +82,40 @@ class Combustor : public BaseCombustor {
     Combustor(Gas gas, const std::string& fuel, const std::string& oxidizer);
     Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer);
 
+    /**
+     * Construct from reactant streams given as `Gas` objects.
+     *
+     * The fuel and oxidizer streams carry their own temperature, pressure and composition, set
+     * beforehand with `Gas::set_state_TPX`/`set_state_TPY`. Their species need not be product
+     * species: element amounts and enthalpies are transferred to `products` by element name.
+     *
+     * @param products Product gas, which also defines the element set of the problem.
+     * @param fuel Fuel stream at its own state.
+     * @param oxidizer Oxidizer stream at its own state.
+     *
+     * @note Not implemented yet (work package C); `solve(pressures, mixture_ratios, options)`
+     * throws `NotImplementedError`.
+     */
+    Combustor(Gas products, Gas fuel, Gas oxidizer);
+
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
         const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options = {});
     ThermoArray solve(double fuel_temperature, double oxidizer_temperature,
         const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
+        const CombustorOptions& options = {});
+
+    /**
+     * Burn the reactant streams given to the `Gas`-stream constructor over a grid of pressures
+     * and mixture ratios.
+     *
+     * @param pressures Chamber pressures [Pa].
+     * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
+     * @param options Combustor settings.
+     * @return Array of combustion states with shape (mixture ratios, pressures).
+     *
+     * @note Not implemented yet (work package C).
+     */
+    ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});
 
     Eigen::ArrayXXd generate_mole_fraction_matrix(
@@ -96,6 +126,12 @@ class Combustor : public BaseCombustor {
     private:
     Composition m_fuel_composition;
     Composition m_oxidizer_composition;
+    // Reactant streams of the `Gas`-stream constructor. `Gas` has no default constructor, so the
+    // placeholder perfect-gas value is what the other constructors leave here; `m_use_reactant_gases`
+    // says whether the streams are meaningful.
+    Gas m_fuel_gas{1.4};
+    Gas m_oxidizer_gas{1.4};
+    bool m_use_reactant_gases = false;
 };
 
 /**

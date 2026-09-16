@@ -1,13 +1,18 @@
 #pragma once
 #include <memory>
+#include <utility>
 #include <vector>
 #include <string>
 #include "cantera/core.h"
+#include "eigen3/Eigen/Dense"
 #include "goddard/chemistry.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/thermo.hpp"
 
 namespace Goddard {
+
+/** Candidate condensed species of a `Gas`. Implementation detail; see `condensed.hpp`. */
+class CondensedPhaseSet;
 
 /**
  * Main Goddard class for querying thermodynamic information. `Gas` wraps Cantera's `Solution`
@@ -23,7 +28,18 @@ public:
      */
     explicit Gas(std::shared_ptr<Cantera::Solution> gas,
                  GasChemistry chemistry = GasChemistry::FROZEN);
-    
+
+    /**
+     * Create a `Gas` that carries a set of candidate condensed species.
+     *
+     * @note Both the `Solution` and the condensed set are referenced, not copied. Copies of the
+     * resulting `Gas` share both; `clone()` deep-copies both.
+     */
+    Gas(std::shared_ptr<Cantera::Solution> gas,
+        std::shared_ptr<CondensedPhaseSet> condensed,
+        GasChemistry chemistry = GasChemistry::FROZEN);
+
+
     /**
      * @note This constructor copies the `Solution` object. 
      */
@@ -49,10 +65,12 @@ public:
     Gas(double gamma);
 
     /**
-     * Create a new Gas with a deep copy of the underlying Solution object. The chemistry mode
-     * and stored reference stagnation enthalpy and entropy are preserved.
+     * Create a new Gas with a deep copy of the underlying Solution object and of the condensed
+     * species set, if any. The chemistry mode and stored reference stagnation enthalpy and
+     * entropy are preserved.
      *
-     * @note Copying a `Gas` normally is shallow: the copy references the same `Solution`.
+     * @note Copying a `Gas` normally is shallow: the copy references the same `Solution` and the
+     * same condensed species set.
      */
     Gas clone() const;
 
@@ -94,10 +112,24 @@ public:
 
     // Saving/loading state
 
-    /** Snapshot the current thermodynamic state into an opaque vector that can later be passed to restore_state(). */
+    /**
+     * Snapshot the current thermodynamic state into an opaque vector that can later be passed to
+     * restore_state().
+     *
+     * The vector is the Cantera state of the gas phase followed by one entry per candidate
+     * condensed species (its amount in kmol per kg of mixture). With no candidates attached it is
+     * the Cantera state alone, exactly as before.
+     */
     std::vector<double> save_state() const;
     void copy_state(std::vector<double>& state) const;
-    /** Restore a thermodynamic state previously captured by save_state(). */
+    /**
+     * Restore a thermodynamic state previously captured by save_state().
+     *
+     * Accepts either the extended length described in `save_state()` or the bare Cantera state
+     * length, in which case all condensed amounts are set to zero.
+     *
+     * @throws std::invalid_argument if the vector has neither length.
+     */
     void restore_state(const std::vector<double>& state);
     /** Return a ThermodynamicState struct containing all current properties. */
     ThermodynamicState snapshot() const;
@@ -246,7 +278,131 @@ public:
      * @param solver Cantera equilibrium solver name (default "gibbs").
      */
     void equilibrate(const std::string& XY, const std::string& solver = "gibbs");
-    
+
+    /**
+     * Equilibrate at fixed temperature [K] and pressure [Pa].
+     * @note With condensed candidates attached this throws `NotImplementedError` until the
+     * multiphase solver lands (work package B).
+     */
+    void equilibrate_TP(double T, double P);
+    /**
+     * Equilibrate at fixed specific enthalpy [J/kg] and pressure [Pa].
+     * @note See `equilibrate_TP()` for the condensed-phase restriction.
+     */
+    void equilibrate_HP(double H, double P);
+    /**
+     * Equilibrate at fixed specific entropy [J/(kg.K)] and pressure [Pa].
+     * @note See `equilibrate_TP()` for the condensed-phase restriction.
+     */
+    void equilibrate_SP(double S, double P);
+
+    /**
+     * Set the composition from elemental amounts, without equilibrating.
+     *
+     * The state becomes a "basis" composition holding the requested elements: each element is
+     * assigned to a single single-element species (the homonuclear diatomic if the phase has one,
+     * otherwise the monatomic, otherwise any species made of that element alone). This is the
+     * starting point a subsequent `equilibrate_*` call refines.
+     *
+     * @param element_moles Amount of each element [kmol per kg of mixture], in the element order
+     *                      of `element_names()`.
+     * @param T Temperature [K] of the resulting state.
+     * @param P Pressure [Pa] of the resulting state.
+     *
+     * @throws FmtError if the phase contains no single-element species for one of the requested
+     * elements.
+     * @note See `equilibrate_TP()` for the condensed-phase restriction.
+     */
+    void set_element_moles(const Eigen::ArrayXd& element_moles, double T, double P);
+
+    // Condensed species
+    /**
+     * @name Condensed species
+     *
+     * A `Gas` optionally carries a set of candidate condensed (solid or liquid) product species
+     * and the current amount of each. The set is shared by copies of the `Gas` exactly as the
+     * underlying `Solution` is, and deep-copied by `clone()`.
+     *
+     * @warning Until the multiphase solver lands (work package B) the property getters above
+     * (`density()`, `enthalpy_mass()`, `entropy_mass()`, `cp_mass()`, `molecular_weight()`,
+     * `mole_fractions()`, `mass_fractions()`, `gamma_s()`, ...) report **gas-phase** values even
+     * when condensed phases are present. Use `gas_mass_fraction()`,
+     * `mixture_molecular_weight()` and `mixture_mass_fractions()` for mixture quantities.
+     * @{
+     */
+    /**
+     * Add named condensed species from a data file as candidates.
+     *
+     * @param infile Cantera YAML data file containing the species.
+     * @param names Species names, matching the data file exactly.
+     * @throws FmtError if a name is absent from the file, or if a species contains an element
+     * the gas phase does not have.
+     */
+    void add_condensed_species(const std::string& infile, const std::vector<std::string>& names);
+    /** Add every species of `infile` whose elements are a subset of this phase's elements. */
+    void add_all_condensed_species(const std::string& infile);
+    /** True if any candidate condensed species is attached. */
+    bool has_condensed_candidates() const;
+    /** True if any candidate condensed species is present in a nonzero amount. */
+    bool has_condensed_phases() const;
+    /** Names of all candidate condensed species, in candidate order. */
+    std::vector<std::string> condensed_species_names() const;
+
+    /** Amount of each candidate condensed species [kmol per kg of mixture], in candidate order. */
+    std::vector<double> condensed_moles() const;
+    /**
+     * Set the amount of each candidate condensed species [kmol per kg of mixture].
+     * @throws std::invalid_argument if `moles` does not have one entry per candidate.
+     */
+    void set_condensed_moles(const std::vector<double>& moles);
+
+    /** Gas mass fraction w_g = 1 - sum_k n_k M_k [-]. 1 for a gas-only mixture. */
+    double gas_mass_fraction() const;
+    /**
+     * Mixture molecular weight [kg/kmol], CEA's "MW": 1 / (n + sum_k n_k) with n the moles of
+     * gas per kg of mixture. `molecular_weight()` remains CEA's "M" = 1/n, the gas-phase value.
+     */
+    double mixture_molecular_weight() const;
+
+    /** True if the mixture sits exactly at a condensed phase transition (a pinned state). */
+    bool at_phase_transition() const;
+    /**
+     * Indices of the two coexisting polymorphs at a pinned phase transition, lower-temperature
+     * polymorph first. The indices refer to the condensed species that are currently *present*
+     * (nonzero moles), in candidate order. `{-1, -1}` when no group is pinned.
+     */
+    std::pair<long, long> pinned_polymorphs() const;
+    /**
+     * Mass fractions of the whole mixture [-]: the gas-phase mass fractions scaled by
+     * `gas_mass_fraction()`, followed by n_k M_k for every candidate condensed species in
+     * candidate order. Sums to 1.
+     */
+    std::vector<double> mixture_mass_fractions() const;
+
+    /** Reference-state molar enthalpy divided by R*T [-] of each *present* condensed species. */
+    Eigen::ArrayXd condensed_enthalpy_RT() const;
+    /** Reference-state molar heat capacity divided by R [-] of each *present* condensed species. */
+    Eigen::ArrayXd condensed_cp_R() const;
+    /** Molar mass [kg/kmol] of each *present* condensed species. */
+    Eigen::ArrayXd condensed_molar_masses() const;
+    /**
+     * Stoichiometric coefficients of the *present* condensed species: a |C| x l array whose
+     * rows are species and columns are elements, in the element order of `element_names()`.
+     */
+    Eigen::ArrayXXd condensed_stoich_coeffs() const;
+    /** @} */
+
+    /** Element names of the gas phase, in the phase's element order. */
+    std::vector<std::string> element_names() const;
+    /**
+     * Amount of each element [kmol per kg of mixture], gas plus condensed, in the element order
+     * of `element_names()`.
+     */
+    Eigen::ArrayXd element_moles() const;
+
+    /** Settings for the equilibrium solvers used by `equilibrate_TP/HP/SP`. */
+    EquilibriumOptions equilibrium_options;
+
 
     // Reference state
     /**
@@ -293,7 +449,14 @@ public:
     GasChemistry chemistry;
 
 private:
+    // `ThermoArray` stores a clone of the condensed species set of the `Gas` it is built from.
+    // `CondensedPhaseSet` is an implementation detail, so it is reached through friendship rather
+    // than through a public accessor.
+    friend class ThermoArray;
+
     std::shared_ptr<Cantera::Solution> m_sol;
+    /** Candidate condensed species and their amounts. Null means the `Gas` is gas-only. */
+    std::shared_ptr<CondensedPhaseSet> m_condensed;
     double m_H_stagnation = 0.0;
     double m_S0 = 0.0;
     double m_gamma = 0.0;
