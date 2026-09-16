@@ -192,53 +192,59 @@ def test_exit_states(case: RocketTestCase):
 
 @pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_performance(case: RocketTestCase):
-    """Compare rocket performance metrics between Goddard and CEA.
+    """Compare every field of RocketProblemResults.performance() against CEA.
 
-    Note: calculate_performance() uses an ideal-gas c* approximation.
-    We compute c* = Pc / (rho_t * a_t) directly for a fair comparison.
-    Isp is computed from enthalpy difference and does not depend on c*.
+    Both specific impulses are velocities [m/s] in both codes. CEA's
+    `coefficient_of_thrust` is exactly `Isp / c_star` at every station (checked below), the
+    same matched-nozzle definition Goddard uses, so CF compares directly with no pressure term
+    to account for.
     """
-    import math
-
     problem = build_goddard_problem(case)
     results = problem.solve()
-
-    chamber = results.chamber(0, case.name).thermo
-    throat = results.throat(0, case.name).thermo
-    exits = [s.thermo for s in results.exits(0, case.name)]
-    assert len(exits) > 0
+    assert len(results.exits(0, case.name)) == len(case.area_ratios)
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
     tol = ComparisonTolerances()
 
-    # c* from first principles: c* = Pc / (rho_t * a_t)
-    goddard_cstar = chamber.pressure / (throat.density * throat.speed_of_sound)
-    g0 = 9.80665
+    chamber_pressure_bar = cea_sol.P[stations["chamber"]]
 
-    for i, exit_state in enumerate(exits):
+    for i, requested_area_ratio in enumerate(case.area_ratios):
         cea_idx = stations["exits"][i]
-        label = f"exit[{i}] AR={case.area_ratios[i]}"
+        label = f"exit[{i}] AR={requested_area_ratio}"
+        performance = results.performance(0, i, case.name)
 
-        # c* (both in m/s)
-        assert_close_rel(goddard_cstar, cea_sol.c_star[cea_idx],
+        # CEA's own CF definition, confirmed station by station.
+        cea_cf = cea_sol.coefficient_of_thrust[cea_idx]
+        assert cea_cf == pytest.approx(
+            cea_sol.Isp[cea_idx] / cea_sol.c_star[cea_idx], rel=1e-6)
+
+        assert_close_rel(performance.area_ratio, requested_area_ratio,
+                         tol.area_ratio_rel, f"{label} area_ratio (requested)")
+        assert_close_rel(performance.area_ratio, cea_sol.ae_at[cea_idx],
+                         tol.area_ratio_rel, f"{label} area_ratio (CEA ae_at)")
+        assert_close_rel(performance.pressure_ratio,
+                         chamber_pressure_bar / cea_sol.P[cea_idx],
+                         tol.pressure_ratio_rel, f"{label} pressure_ratio")
+        assert_close_rel(performance.cstar, cea_sol.c_star[cea_idx],
                          tol.cstar_rel, f"{label} c_star")
-
-        # Isp from enthalpy difference: v_e = sqrt(2*(h_c - h_e)), Isp = v_e / g0
-        exit_velocity = math.sqrt(2.0 * (chamber.enthalpy - exit_state.enthalpy))
-        goddard_isp_m_s = exit_velocity
-        assert_close_rel(goddard_isp_m_s, cea_sol.Isp[cea_idx],
+        assert_close_rel(performance.isp, cea_sol.Isp[cea_idx],
                          tol.isp_rel, f"{label} Isp")
-
-        # Ivac = v_e + Pe*Ae/(mdot) = v_e + Pe/(rho_t*a_t)*(Ae/At)
-        # Using c* = Pc/(rho_t*a_t) and Ae/At from throat/exit density/velocity:
-        area_ratio = (throat.density * throat.speed_of_sound) / \
-                     (exit_state.density * exit_velocity)
-        goddard_ivac_m_s = exit_velocity + \
-            (exit_state.pressure * area_ratio) / \
-            (throat.density * throat.speed_of_sound)
-        assert_close_rel(goddard_ivac_m_s, cea_sol.Isp_vacuum[cea_idx],
+        assert_close_rel(performance.ivac, cea_sol.Isp_vacuum[cea_idx],
                          tol.ivac_rel, f"{label} Ivac")
+        assert_close_rel(performance.mach_number, cea_sol.Mach[cea_idx],
+                         tol.mach_rel, f"{label} Mach")
+        assert_close_rel(performance.CF, cea_cf, tol.cf_rel, f"{label} CF")
+
+        # The static entry point, fed the station states directly, must give the same numbers.
+        direct = goddard.RocketProblemResults.calculate_performance(
+            results.chamber(0, case.name).thermo,
+            results.throat(0, case.name).thermo,
+            results.exits(0, case.name)[i].thermo)
+        for field in ("pressure_ratio", "area_ratio", "mach_number", "cstar", "CF",
+                      "isp", "ivac"):
+            assert getattr(direct, field) == pytest.approx(
+                getattr(performance, field), rel=1e-12), f"{label} {field}"
 
 
 # ---------------------------------------------------------------------------
