@@ -60,6 +60,52 @@ void bind_enums(nb::module_& m) {
         .value("KLIEGEL_LEVINE", Goddard::MocStartLine::KLIEGEL_LEVINE)
         .value("CENTERED_FAN", Goddard::MocStartLine::CENTERED_FAN);
 
+    nb::enum_<Goddard::EquilibriumProperty>(m, "EquilibriumProperty",
+            DOC(Goddard, EquilibriumProperty))
+        .value("ENTHALPY", Goddard::EquilibriumProperty::ENTHALPY)
+        .value("ENTROPY", Goddard::EquilibriumProperty::ENTROPY);
+
+    nb::class_<Goddard::EquilibriumOptions>(m, "EquilibriumOptions",
+            DOC(Goddard, EquilibriumOptions))
+        .def(nb::init<>())
+        .def("__init__", [](Goddard::EquilibriumOptions* self,
+                            double rtol,
+                            int max_steps,
+                            int max_bracket_steps,
+                            double T_rel_tol,
+                            double T_default,
+                            double T_min,
+                            double T_max) {
+            new (self) Goddard::EquilibriumOptions();
+            self->rtol = rtol;
+            self->max_steps = max_steps;
+            self->max_bracket_steps = max_bracket_steps;
+            self->T_rel_tol = T_rel_tol;
+            self->T_default = T_default;
+            self->T_min = T_min;
+            self->T_max = T_max;
+        },  "rtol"_a = 1e-9,
+            "max_steps"_a = 20000,
+            "max_bracket_steps"_a = 40,
+            "T_rel_tol"_a = 1e-9,
+            "T_default"_a = 3000.0,
+            "T_min"_a = 200.0,
+            "T_max"_a = 6000.0)
+        .def_rw("rtol", &Goddard::EquilibriumOptions::rtol,
+             DOC(Goddard, EquilibriumOptions, rtol))
+        .def_rw("max_steps", &Goddard::EquilibriumOptions::max_steps,
+             DOC(Goddard, EquilibriumOptions, max_steps))
+        .def_rw("max_bracket_steps", &Goddard::EquilibriumOptions::max_bracket_steps,
+             DOC(Goddard, EquilibriumOptions, max_bracket_steps))
+        .def_rw("T_rel_tol", &Goddard::EquilibriumOptions::T_rel_tol,
+             DOC(Goddard, EquilibriumOptions, T_rel_tol))
+        .def_rw("T_default", &Goddard::EquilibriumOptions::T_default,
+             DOC(Goddard, EquilibriumOptions, T_default))
+        .def_rw("T_min", &Goddard::EquilibriumOptions::T_min,
+             DOC(Goddard, EquilibriumOptions, T_min))
+        .def_rw("T_max", &Goddard::EquilibriumOptions::T_max,
+             DOC(Goddard, EquilibriumOptions, T_max));
+
     nb::class_<Goddard::SolverOptions>(m, "SolverOptions")
         .def("__init__", [](Goddard::SolverOptions* self,
                             double abstol,
