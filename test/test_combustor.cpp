@@ -3,9 +3,14 @@
 #include "goddard/numerics.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/problem.hpp"
+#include "goddard/error.hpp"
 #include "goddard/config.h"
+#include <algorithm>
 #include <memory>
 #include <iostream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
 #include "gtest/gtest.h"
@@ -412,3 +417,201 @@ TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
             << "of_index = " << chamber.of_index << ", pressure_index = " << chamber.pressure_index;
     }
 }
+
+// ---- Reactant streams given as Gas objects ----
+
+namespace {
+
+/** Species names of a phase, for reuse as a `ChemicalParameters::species` set. */
+std::unordered_set<std::string> species_set(const Gas& gas) {
+    std::vector<std::string> names = gas.species_names();
+    return {names.begin(), names.end()};
+}
+
+const std::string REACTANT_FILE = std::string(DATA_DIR) + "/nasa9_reactants.yaml";
+const std::string NASA9_GAS_FILE = std::string(DATA_DIR) + "/nasa9_gas.yaml";
+
+} // namespace
+
+TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsobaricPath) {
+    const double reactant_temperature = 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 70.0 * Cantera::OneBar;
+    // Both paths call Cantera's "gibbs" HP solver, which fails to converge on `h2o2.yaml` above
+    // O/F 7 at this pressure, on the legacy path as well as on this one.
+    Eigen::ArrayXd of_ratios(4);
+    of_ratios << 4.0, 5.0, 6.0, 7.0;
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(reactant_temperature, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(reactant_temperature, pressures(0), "O2:1");
+
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    ThermoArray from_streams = stream_combustor.solve(pressures, of_ratios, options);
+    ThermoArray from_legacy = combustor->solve(reactant_temperature, reactant_temperature,
+        pressures, of_ratios, options);
+
+    ASSERT_EQ(from_streams.shape(), from_legacy.shape());
+    auto stream_thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    auto legacy_thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    for (int i = 0; i < from_legacy.size(); i++) {
+        stream_thermo->restoreState(from_streams.get_state(i));
+        legacy_thermo->restoreState(from_legacy.get_state(i));
+
+        EXPECT_NEAR(stream_thermo->temperature(), legacy_thermo->temperature(),
+            1e-6 * legacy_thermo->temperature()) << "i = " << i;
+        EXPECT_NEAR(stream_thermo->pressure(), legacy_thermo->pressure(),
+            1e-6 * legacy_thermo->pressure()) << "i = " << i;
+
+        std::vector<double> Y_streams(stream_thermo->nSpecies());
+        std::vector<double> Y_legacy(legacy_thermo->nSpecies());
+        stream_thermo->getMassFractions(Y_streams.data());
+        legacy_thermo->getMassFractions(Y_legacy.data());
+        for (size_t k = 0; k < Y_legacy.size(); k++) {
+            EXPECT_NEAR(Y_streams[k], Y_legacy[k], 1e-6 * std::max(Y_legacy[k], 1e-6))
+                << "i = " << i << ", species " << legacy_thermo->speciesName(k);
+        }
+    }
+}
+
+TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsochoricPath) {
+    const double reactant_temperature = 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 1.0 * Cantera::OneBar;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << 8.0;
+
+    CombustorOptions isochoric = options;
+    isochoric.process = CombustionProcess::ISOCHORIC;
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(reactant_temperature, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(reactant_temperature, pressures(0), "O2:1");
+
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    ThermoArray from_streams = stream_combustor.solve(pressures, mixture_ratios, isochoric);
+    ThermoArray from_legacy = combustor->solve(reactant_temperature, reactant_temperature,
+        pressures, mixture_ratios, isochoric);
+
+    auto stream_thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    auto legacy_thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    stream_thermo->restoreState(from_streams.get_state(0));
+    legacy_thermo->restoreState(from_legacy.get_state(0));
+
+    EXPECT_NEAR(stream_thermo->temperature(), legacy_thermo->temperature(),
+        1e-6 * legacy_thermo->temperature());
+    EXPECT_NEAR(stream_thermo->pressure(), legacy_thermo->pressure(),
+        1e-6 * legacy_thermo->pressure());
+    EXPECT_GT(stream_thermo->pressure(), pressures(0));
+}
+
+TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
+    Eigen::ArrayXd pressures(1);
+    pressures << 70.0 * Cantera::OneBar;
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+
+    CombustorOptions phi = options;
+    phi.mixture_type = MixtureRatioType::PHI_RATIO;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, phi), NotImplementedError);
+
+    CombustorOptions finite_area = options;
+    finite_area.type = CombustorType::FINITE_MASS_FLUX;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, finite_area), NotImplementedError);
+
+    // The product species carry no carbon, so a hydrocarbon fuel cannot be burnt in this phase.
+    Gas methane = Gas::create_from_species(REACTANT_FILE, "reactants", {"CH4"});
+    methane.set_state_TPX(300.0, pressures(0), "CH4:1");
+    Combustor carbon_combustor(products, methane, oxidizer);
+    EXPECT_THROW(carbon_combustor.solve(pressures, OF_ratios, options), FmtError);
+
+    // The product-species constructors do not accept the reactant-stream solve overload.
+    EXPECT_THROW(combustor->solve(pressures, OF_ratios, options), NotImplementedError);
+}
+
+// RP-1311 example 8: H2(L)/O2(L) at O/F 5.55157 and 53.3172 bar, on the NASA9 data CEA itself uses.
+class CryogenicRocketTests : public ::testing::Test {
+protected:
+    static constexpr double H2_BOILING_POINT = 20.27;      // K
+    static constexpr double O2_BOILING_POINT = 90.17;      // K
+    static constexpr double OF_RATIO = 5.55157;
+    static constexpr double CHAMBER_PRESSURE = 53.3172e5;   // Pa
+    static constexpr double CEA_CHAMBER_TEMPERATURE = 3383.84;  // K
+    static constexpr double CEA_CHAMBER_MOLECULAR_WEIGHT = 12.7157;  // kg/kmol
+
+    static Gas make_products() {
+        return Gas::create_from_elements(NASA9_GAS_FILE, "gas", {"H", "O"});
+    }
+
+    static Gas make_fuel() {
+        Gas fuel = Gas::create_from_species(REACTANT_FILE, "reactants", {"H2(L)"});
+        fuel.set_state_TPX(H2_BOILING_POINT, CHAMBER_PRESSURE, "H2(L):1");
+        return fuel;
+    }
+
+    static Gas make_oxidizer() {
+        Gas oxidizer = Gas::create_from_species(REACTANT_FILE, "reactants", {"O2(L)"});
+        oxidizer.set_state_TPX(O2_BOILING_POINT, CHAMBER_PRESSURE, "O2(L):1");
+        return oxidizer;
+    }
+
+    CombustorOptions options{CombustorType::INFINITE_AREA, MixtureRatioType::OF_RATIO,
+        {CHAMBER_PRESSURE}, 0.0, 0.0};
+};
+
+TEST_F(CryogenicRocketTests, ChamberMatchesCEAExampleEight) {
+    Gas products = make_products();
+    Combustor combustor(products, make_fuel(), make_oxidizer());
+
+    Eigen::ArrayXd pressures(1);
+    pressures << CHAMBER_PRESSURE;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << OF_RATIO;
+
+    ThermoArray states = combustor.solve(pressures, mixture_ratios, options);
+    ASSERT_EQ(states.size(), 1);
+
+    products.restore_state(states.get_state(0));
+    EXPECT_NEAR(products.temperature(), CEA_CHAMBER_TEMPERATURE, 3.0);
+    EXPECT_NEAR(products.molecular_weight(), CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
+    EXPECT_NEAR(products.pressure(), CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
+}
+
+TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = NASA9_GAS_FILE;
+    chem_params.species = species_set(make_products());
+    chem_params.reactant_file = REACTANT_FILE;
+    chem_params.cantera_fuel_state =
+        PhaseSpecification(H2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"H2(L)", 1.0}});
+    chem_params.cantera_oxidizer_state =
+        PhaseSpecification(O2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"O2(L)", 1.0}});
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {OF_RATIO};
+
+    RocketCaseParameters case_params;
+    case_params.name = "ex8";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options = options;
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = {5.0};
+
+    RocketProblem problem(chem_params, {case_params}, "gas");
+    RocketProblemResults results = problem.solve();
+
+    const RocketStation& chamber = results.chamber(0, "ex8");
+    EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 3.0);
+    EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
+    EXPECT_NEAR(chamber.thermo.pressure, CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
+}
+

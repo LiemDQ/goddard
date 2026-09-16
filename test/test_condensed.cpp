@@ -657,9 +657,15 @@ TEST_F(CondensedGasTests, ThermoArrayFromGasWithoutCandidatesBehavesAsBefore) {
     EXPECT_NO_THROW(states.get_state(0));
 }
 
-TEST_F(CondensedGasTests, CombustorFromReactantGasesThrows) {
+TEST_F(CondensedGasTests, CombustorFromReactantGasesWaitsOnTheMultiphaseSolver) {
+    // The reactant-stream path itself is implemented (work package C), but it equilibrates through
+    // `Gas`, which cannot yet handle candidate condensed species.
+    gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)"});
+
     Gas fuel = make_gas("fuel", {"H2"});
+    fuel.set_state_TPX(300.0, Cantera::OneAtm, "H2:1");
     Gas oxidizer = make_gas("oxidizer", {"O2"});
+    oxidizer.set_state_TPX(300.0, Cantera::OneAtm, "O2:1");
     Combustor combustor(gas, fuel, oxidizer);
 
     Eigen::ArrayXd pressures(1);
@@ -668,4 +674,8 @@ TEST_F(CondensedGasTests, CombustorFromReactantGasesThrows) {
     ratios << 8.0;
 
     EXPECT_THROW(combustor.solve(pressures, ratios), NotImplementedError);
+
+    CombustorOptions isochoric;
+    isochoric.process = CombustionProcess::ISOCHORIC;
+    EXPECT_THROW(combustor.solve(pressures, ratios, isochoric), NotImplementedError);
 }
