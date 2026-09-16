@@ -442,3 +442,51 @@ def gas_from_yaml(yaml_file, phase_name="", species=None,
     """
     return Gas(yaml_file, phase_name=phase_name,
                species=species or set(), chemistry=chemistry)
+
+
+def reactant_gas(file, composition, T, P=101325.0, basis="mole"):
+    """Create a reactant stream Gas from a reactant data file.
+
+    A reactant stream is an ordinary Gas built from the species of a reactant database
+    (e.g. ``data/nasa9_reactants.yaml``) and set to the state of the stream. Only its
+    enthalpy and element amounts are used by Combustor; its density and entropy are
+    meaningless for a condensed reactant such as ``H2(L)``.
+
+    Args:
+        file: Path to a Cantera YAML file holding the reactant species.
+        composition: Mapping of species name to amount, e.g. ``{"H2(L)": 1.0}``.
+        T: Stream temperature [K].
+        P: Stream pressure [Pa].
+        basis: ``"mole"`` if ``composition`` is mole fractions, ``"mass"`` for mass
+            fractions. Amounts need not be normalized.
+
+    Returns:
+        Gas holding the reactant stream at the requested state.
+    """
+    composition = dict(composition)
+    gas = Gas(file, phase_name="reactants", species=set(composition))
+    if basis == "mole":
+        gas.set_state_TPX(T, P, composition)
+    elif basis == "mass":
+        gas.set_state_TPY(T, P, composition)
+    else:
+        raise ValueError(f"basis must be 'mole' or 'mass', got {basis!r}")
+    return gas
+
+
+def condensed_species(file, names=None):
+    """Build the Gas keyword arguments that attach candidate condensed species.
+
+    Args:
+        file: Path to a Cantera YAML file holding the condensed species, e.g.
+            ``data/nasa9_condensed.yaml``.
+        names: Species names to offer as candidates. ``None`` offers every species of
+            the file whose elements the gas phase has.
+
+    Returns:
+        dict of keyword arguments for the Gas constructor, e.g.
+        ``Gas(thermo_file, "gas", **condensed_species(file, ["C(gr)"]))``.
+    """
+    if names is None:
+        return {"condensed_file": file, "all_condensed": True}
+    return {"condensed_file": file, "condensed_species": set(names)}

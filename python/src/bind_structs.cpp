@@ -196,17 +196,26 @@ void bind_structs(nb::module_& m) {
                             std::vector<double> mixtures,
                             std::vector<double> OF_ratios,
                             std::vector<double> phi_ratios,
-                            std::vector<double> fuel_weight_percentages)
+                            std::vector<double> fuel_weight_percentages,
+                            std::string reactant_file,
+                            std::string condensed_file,
+                            std::unordered_set<std::string> condensed_species,
+                            bool all_condensed_species)
                             {
             new (self) Goddard::ChemicalParameters();
             self->thermo_file = std::move(thermo_file);
             self->species = std::move(species);
             self->cantera_fuel_state = std::move(cantera_fuel_state);
             self->cantera_oxidizer_state = std::move(cantera_oxidizer_state);
+            self->mixture_type = mixture_type;
             self->mixtures = std::move(mixtures);
             self->OF_ratios = std::move(OF_ratios);
             self->phi_ratios = std::move(phi_ratios);
             self->fuel_weight_percentages = std::move(fuel_weight_percentages);
+            self->reactant_file = std::move(reactant_file);
+            self->condensed_file = std::move(condensed_file);
+            self->condensed_species = std::move(condensed_species);
+            self->all_condensed_species = all_condensed_species;
         },  "thermo_file"_a = "",
             "species"_a = std::unordered_set<std::string>(),
             "cantera_fuel_state"_a = Goddard::PhaseSpecification(),
@@ -215,7 +224,11 @@ void bind_structs(nb::module_& m) {
             "mixtures"_a = std::vector<double>(),
             "OF_ratios"_a = std::vector<double>(),
             "phi_ratios"_a = std::vector<double>(),
-            "fuel_weight_percentages"_a = std::vector<double>())
+            "fuel_weight_percentages"_a = std::vector<double>(),
+            "reactant_file"_a = "",
+            "condensed_file"_a = "",
+            "condensed_species"_a = std::unordered_set<std::string>(),
+            "all_condensed_species"_a = false)
         .def_rw("thermo_file", &Goddard::ChemicalParameters::thermo_file)
         .def_rw("species", &Goddard::ChemicalParameters::species)
         .def_rw("cantera_fuel_state", &Goddard::ChemicalParameters::cantera_fuel_state)
@@ -224,7 +237,11 @@ void bind_structs(nb::module_& m) {
         .def_rw("mixtures", &Goddard::ChemicalParameters::mixtures)
         .def_rw("OF_ratios", &Goddard::ChemicalParameters::OF_ratios)
         .def_rw("phi_ratios", &Goddard::ChemicalParameters::phi_ratios)
-        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages);
+        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages)
+        .def_rw("reactant_file", &Goddard::ChemicalParameters::reactant_file)
+        .def_rw("condensed_file", &Goddard::ChemicalParameters::condensed_file)
+        .def_rw("condensed_species", &Goddard::ChemicalParameters::condensed_species)
+        .def_rw("all_condensed_species", &Goddard::ChemicalParameters::all_condensed_species);
 
     // ThermoStateInfo
     nb::class_<Goddard::ThermodynamicState>(m, "ThermodynamicState")

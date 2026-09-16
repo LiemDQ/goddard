@@ -1,8 +1,11 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/eigen/dense.h>
 #include "goddard/equilibrium.hpp"
+#include "goddard/gas.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
+using namespace nb::literals;
 
 void bind_equilibrium(nb::module_& m) {
     // ExpansionProperties
@@ -31,4 +34,14 @@ void bind_equilibrium(nb::module_& m) {
         .def_ro("dn_condensed_dlogT_P", &Goddard::EquilibriumDerivatives::dn_condensed_dlogT_P)
         .def_ro("dn_condensed_dlogP_T", &Goddard::EquilibriumDerivatives::dn_condensed_dlogP_T)
         .def_ro("pinned_transition", &Goddard::EquilibriumDerivatives::pinned_transition);
+
+    // Mixture-aware free functions. They take a Gas, so they account for condensed products.
+    m.def("equilibrium_derivatives",
+          nb::overload_cast<const Goddard::Gas&>(&Goddard::get_thermo_equilibrium_derivatives),
+          "gas"_a, DOC(Goddard, get_thermo_equilibrium_derivatives, 2));
+    m.def("equilibrium_properties",
+          nb::overload_cast<const Goddard::Gas&>(&Goddard::get_thermo_equilibrium_properties),
+          "gas"_a, DOC(Goddard, get_thermo_equilibrium_properties, 4));
+    m.def("frozen_properties", &Goddard::get_frozen_properties,
+          "gas"_a, DOC(Goddard, get_frozen_properties));
 }

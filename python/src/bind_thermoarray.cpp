@@ -18,6 +18,12 @@ void bind_thermoarray(nb::module_& m) {
              DOC(Goddard, ThermoArray, flat_index))
         .def("get_state", &Goddard::ThermoArray::get_state, nb::arg("loc"),
              DOC(Goddard, ThermoArray, get_state))
+        .def("num_condensed", &Goddard::ThermoArray::num_condensed,
+             DOC(Goddard, ThermoArray, num_condensed))
+        .def("condensed_species_names", &Goddard::ThermoArray::condensed_species_names,
+             DOC(Goddard, ThermoArray, condensed_species_names))
+        .def("get_condensed_moles", &Goddard::ThermoArray::get_condensed_moles, nb::arg("loc"),
+             DOC(Goddard, ThermoArray, get_condensed_moles))
         .def("temperature", &Goddard::ThermoArray::temperature, nb::arg("slice") = 0)
         .def("pressure", &Goddard::ThermoArray::pressure, nb::arg("slice") = 0)
         .def("enthalpy_mass", &Goddard::ThermoArray::enthalpy_mass, nb::arg("slice") = 0)

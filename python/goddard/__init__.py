@@ -2,6 +2,7 @@ from goddard._core import (
     # Enums
     CombustorType,
     CombustionProcess,
+    MixtureRatioType,
     GasChemistry,
     ExpansionType,
     StationType,
@@ -30,6 +31,8 @@ from goddard._core import (
     RocketState,
     ExpansionProperties,
     EquilibriumDerivatives,
+    EquilibriumOptions,
+    EquilibriumProperty,
     # MoC structs
     NozzleGeometry,
     NozzleProfile,
@@ -64,6 +67,9 @@ from goddard._core import (
     ConvergenceError,
     # Functions
     create_solution,
+    equilibrium_derivatives,
+    equilibrium_properties,
+    frozen_properties,
     # Kinetic nozzle
     KineticNozzle,
     KineticNozzleStation,
@@ -94,6 +100,8 @@ from goddard.convenience import (
     frozen_nozzle,
     from_cantera,
     gas_from_yaml,
+    reactant_gas,
+    condensed_species,
     moc_design,
     moc_rao_design,
     moc_analysis,
