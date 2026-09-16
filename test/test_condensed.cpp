@@ -689,9 +689,10 @@ TEST_F(CondensedGasTests, ThermoArrayFromGasWithoutCandidatesBehavesAsBefore) {
     EXPECT_NO_THROW(states.get_state(0));
 }
 
-TEST_F(CondensedGasTests, CombustorFromReactantGasesWaitsOnTheMultiphaseSolver) {
-    // The reactant-stream path itself is implemented (work package C), but it equilibrates through
-    // `Gas`, which cannot yet handle candidate condensed species.
+TEST_F(CondensedGasTests, CombustorFromReactantGasesSolvesWithCandidatesAttached) {
+    // The reactant-stream path (work package C) equilibrates through `Gas`, which offers the
+    // candidate condensed species to the multiphase solver (work package B). A hot H2/O2 flame
+    // must converge with H2O(L) offered but absent, and conserve the elements of the streams.
     gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)"});
 
     Gas fuel = make_gas("fuel", {"H2"});
@@ -705,8 +706,31 @@ TEST_F(CondensedGasTests, CombustorFromReactantGasesWaitsOnTheMultiphaseSolver) 
     Eigen::ArrayXd ratios(1);
     ratios << 8.0;
 
-    EXPECT_THROW(combustor.solve(pressures, ratios), NotImplementedError);
+    ThermoArray states = combustor.solve(pressures, ratios);
+    ASSERT_EQ(states.num_condensed(), 1u);
+    gas.restore_state(states.get_state(0));
+    EXPECT_GT(gas.temperature(), 2500.0);
+    EXPECT_FALSE(gas.has_condensed_phases());
 
+    // Element amounts per kg of mixture, mapped by name (each stream has its own element order).
+    const double fuel_fraction = 1.0 / 9.0;
+    const std::vector<std::string> product_elements = gas.element_names();
+    const Eigen::ArrayXd elements = gas.element_moles();
+    auto amount = [&](const Gas& stream, const std::string& element) {
+        const std::vector<std::string> names = stream.element_names();
+        const Eigen::ArrayXd moles = stream.element_moles();
+        for (size_t m = 0; m < names.size(); m++) {
+            if (names[m] == element) return moles(static_cast<long>(m));
+        }
+        return 0.0;
+    };
+    for (size_t m = 0; m < product_elements.size(); m++) {
+        const double expected = fuel_fraction * amount(fuel, product_elements[m])
+            + (1.0 - fuel_fraction) * amount(oxidizer, product_elements[m]);
+        EXPECT_NEAR(elements(static_cast<long>(m)), expected, 1e-7 * elements.maxCoeff());
+    }
+
+    // Constant-volume combustion with candidates attached is out of scope.
     CombustorOptions isochoric;
     isochoric.process = CombustionProcess::ISOCHORIC;
     EXPECT_THROW(combustor.solve(pressures, ratios, isochoric), NotImplementedError);
