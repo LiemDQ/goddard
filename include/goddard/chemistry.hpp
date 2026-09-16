@@ -11,6 +11,18 @@ enum class GasChemistry {
     KINETIC         // finite-rate chemistry via Cantera kinetics
 };
 
+/**
+ * @brief Property held constant together with pressure by the multiphase equilibrium solver.
+ *
+ * Cantera cannot solve the HP and SP problems once the set of condensed phases depends on
+ * temperature, so `Gas` solves them as a one-dimensional root find on temperature over
+ * constant-temperature, constant-pressure solves. This enum selects which of the two.
+ */
+enum class EquilibriumProperty {
+    ENTHALPY,   //!< Specific enthalpy [J/kg of mixture] is held fixed (the HP problem).
+    ENTROPY     //!< Specific entropy [J/(kg.K) of mixture] is held fixed (the SP problem).
+};
+
 struct SolverOptions {
     double abstol = 1e-6;
     double reltol = 1e-5;

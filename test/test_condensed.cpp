@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -350,14 +351,15 @@ TEST_F(CondensedGasTests, GasMassFractionAndMixtureMolecularWeight) {
     const double n_liquid = 0.01; // kmol per kg of mixture
     gas.set_condensed_moles({n_liquid});
 
-    const double molar_mass = gas.molecular_weight(); // pure H2O gas
-    const double w_gas = 1.0 - n_liquid * molar_mass;
+    const double gas_molar_mass = gas.thermo()->meanMolecularWeight(); // pure H2O gas
+    const double w_gas = 1.0 - n_liquid * gas_molar_mass;
     EXPECT_DOUBLE_EQ(gas.gas_mass_fraction(), w_gas);
 
-    const double total_moles = w_gas / molar_mass + n_liquid;
-    EXPECT_DOUBLE_EQ(gas.mixture_molecular_weight(), 1.0 / total_moles);
-    // The gas-phase molecular weight is untouched.
-    EXPECT_DOUBLE_EQ(gas.molecular_weight(), molar_mass);
+    const double gas_moles = w_gas / gas_molar_mass;
+    EXPECT_DOUBLE_EQ(gas.mixture_molecular_weight(), 1.0 / (gas_moles + n_liquid));
+    // CEA's "M" counts the gas moles against the whole kg of mixture.
+    EXPECT_DOUBLE_EQ(gas.molecular_weight(), 1.0 / gas_moles);
+    EXPECT_GT(gas.molecular_weight(), gas_molar_mass);
 }
 
 TEST_F(CondensedGasTests, MixtureMassFractionsSumToOne) {
@@ -609,15 +611,25 @@ TEST_F(GasOnlyEquilibriumTests, DerivativesMatchTheThermoPhaseOverload) {
 
 // ---- Paths that wait on later work packages ----
 
-TEST_F(CondensedGasTests, EquilibriumEntryPointsThrowWithCandidates) {
+TEST_F(CondensedGasTests, UnsupportedEquilibriumRequestsAreRejected) {
     gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)"});
 
-    EXPECT_THROW(gas.equilibrate_TP(400.0, Cantera::OneAtm), NotImplementedError);
-    EXPECT_THROW(gas.equilibrate_HP(gas.enthalpy_mass(), Cantera::OneAtm), NotImplementedError);
-    EXPECT_THROW(gas.equilibrate_SP(gas.entropy_mass(), Cantera::OneAtm), NotImplementedError);
+    EXPECT_THROW(gas.equilibrate("TP", "vcs"), std::invalid_argument);
+    EXPECT_THROW(gas.equilibrate("UV"), NotImplementedError);
+    EXPECT_THROW(gas.equilibrate("TV"), std::invalid_argument);
+    EXPECT_THROW(gas.set_state_UV(1.0e6, 1.0), NotImplementedError);
+}
 
-    Eigen::ArrayXd amounts = gas.element_moles();
-    EXPECT_THROW(gas.set_element_moles(amounts, 400.0, Cantera::OneAtm), NotImplementedError);
+TEST_F(CondensedGasTests, SetElementMolesClearsTheCondensedState) {
+    gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)"});
+    gas.set_condensed_moles({0.01});
+
+    const Eigen::ArrayXd amounts = gas.element_moles();
+    gas.set_element_moles(amounts, 400.0, Cantera::OneAtm);
+
+    EXPECT_EQ(gas.condensed_moles(), std::vector<double>({0.0}));
+    EXPECT_FALSE(gas.at_phase_transition());
+    EXPECT_DOUBLE_EQ(gas.temperature(), 400.0);
 }
 
 TEST_F(CondensedGasTests, EquilibriumPropertyOverloadsAcceptCondensedPhases) {
@@ -638,16 +650,36 @@ TEST_F(CondensedGasTests, EquilibriumPropertyOverloadsAcceptCondensedPhases) {
     EXPECT_NO_THROW(get_equilibrium_gamma(gas));
 }
 
-TEST_F(CondensedGasTests, ThermoArrayCarriesTheCandidatesButCannotStoreThem) {
+TEST_F(CondensedGasTests, ThermoArrayStoresCondensedAmountsPerLocation) {
     gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)", "C(gr)"});
+    gas.set_condensed_moles({0.004, 0.001});
 
     ThermoArray states(gas, {2, 3});
     EXPECT_EQ(states.size(), 6);
     EXPECT_EQ(states.num_condensed(), 2u);
     EXPECT_EQ(states.condensed_species_names(), std::vector<std::string>({"H2O(L)", "C(gr)"}));
 
-    EXPECT_THROW(states.get_state(0), NotImplementedError);
-    EXPECT_THROW(states.set_state(0, std::vector<double>{}), NotImplementedError);
+    // Every entry starts from the amounts of the Gas it was built from.
+    const size_t cantera_size = gas.thermo()->stateSize();
+    for (int loc = 0; loc < states.size(); loc++) {
+        EXPECT_EQ(states.get_condensed_moles(loc), std::vector<double>({0.004, 0.001}));
+        EXPECT_EQ(states.get_state(loc).size(), cantera_size + 2);
+    }
+
+    std::vector<double> state = states.get_state(3);
+    state[cantera_size] = 0.02;
+    state[cantera_size + 1] = 0.0;
+    states.set_state(3, state);
+    EXPECT_EQ(states.get_condensed_moles(3), std::vector<double>({0.02, 0.0}));
+    EXPECT_EQ(states.get_condensed_moles(2), std::vector<double>({0.004, 0.001}));
+    EXPECT_EQ(states.get_state(3), state);
+
+    // A bare Cantera state vector empties that entry.
+    states.set_state(3, std::vector<double>(state.begin(), state.begin() + static_cast<long>(cantera_size)));
+    EXPECT_EQ(states.get_condensed_moles(3), std::vector<double>({0.0, 0.0}));
+
+    EXPECT_THROW(states.set_state(0, std::vector<double>(cantera_size + 1)), std::invalid_argument);
+    EXPECT_THROW(states.set_condensed_moles(0, {0.1}), std::invalid_argument);
 }
 
 TEST_F(CondensedGasTests, ThermoArrayFromGasWithoutCandidatesBehavesAsBefore) {
@@ -678,4 +710,664 @@ TEST_F(CondensedGasTests, CombustorFromReactantGasesWaitsOnTheMultiphaseSolver) 
     CombustorOptions isochoric;
     isochoric.process = CombustionProcess::ISOCHORIC;
     EXPECT_THROW(combustor.solve(pressures, ratios, isochoric), NotImplementedError);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Multiphase equilibrium against CEA (RP-1311) on the NASA9 data Goddard and CEA share.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/** CEA-derived NASA9 data converted to Cantera YAML (work package E). */
+constexpr const char* NASA9_GAS = "nasa9_gas.yaml";
+constexpr const char* NASA9_CONDENSED = "nasa9_condensed.yaml";
+constexpr const char* NASA9_REACTANTS = "nasa9_reactants.yaml";
+
+constexpr double BAR = 1.0e5;
+
+/** Product gas spanning `elements`, frozen so no accidental call needs the WP-A derivatives. */
+Gas make_products(const std::vector<std::string>& elements) {
+    setup_defaults();
+    return Gas::create_from_elements(NASA9_GAS, "products", elements, GasChemistry::FROZEN);
+}
+
+/** Reactant stream: a phase of the named species from the reactant database at 298.15 K. */
+Gas make_reactants(const std::vector<std::string>& species, const std::string& mass_fractions) {
+    setup_defaults();
+    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", species,
+                                             GasChemistry::FROZEN);
+    reactants.set_state_TPY(298.15, Cantera::OneAtm, mass_fractions);
+    return reactants;
+}
+
+/** Element amounts of `from` [kmol/kg] re-indexed onto the element order of `to`. */
+Eigen::ArrayXd map_elements(const Gas& from, const Gas& to) {
+    const Eigen::ArrayXd source = from.element_moles();
+    const std::vector<std::string> source_names = from.element_names();
+    const std::vector<std::string> target_names = to.element_names();
+
+    Eigen::ArrayXd target = Eigen::ArrayXd::Zero(static_cast<long>(target_names.size()));
+    for (size_t m = 0; m < source_names.size(); m++) {
+        if (source(static_cast<long>(m)) == 0.0) continue;
+        auto found = std::find(target_names.begin(), target_names.end(), source_names[m]);
+        EXPECT_NE(found, target_names.end()) << "element " << source_names[m] << " missing";
+        if (found == target_names.end()) continue;
+        target(found - target_names.begin()) += source(static_cast<long>(m));
+    }
+    return target;
+}
+
+/** Mole fraction of a condensed species among *all* species, CEA's convention. */
+double condensed_mole_fraction(const Gas& gas, const std::string& name) {
+    const std::vector<std::string> names = gas.condensed_species_names();
+    auto found = std::find(names.begin(), names.end(), name);
+    if (found == names.end()) return 0.0;
+    return gas.condensed_moles()[static_cast<size_t>(found - names.begin())]
+        * gas.mixture_molecular_weight();
+}
+
+/** Mass and element balances of a converged multiphase state. */
+void expect_balances(const Gas& gas, const Eigen::ArrayXd& elements_before) {
+    double mixture_mass = 0.0;
+    for (double y : gas.mixture_mass_fractions()) mixture_mass += y;
+    EXPECT_NEAR(mixture_mass, 1.0, 1e-10);
+    EXPECT_GT(gas.gas_mass_fraction(), 0.0);
+    EXPECT_LE(gas.gas_mass_fraction(), 1.0);
+
+    const Eigen::ArrayXd elements_after = gas.element_moles();
+    ASSERT_EQ(elements_after.size(), elements_before.size());
+    for (long m = 0; m < elements_before.size(); m++) {
+        EXPECT_NEAR(elements_after(m), elements_before(m),
+                    1e-7 * std::abs(elements_before(m)) + 1e-14)
+            << "element index " << m;
+    }
+}
+
+/** CH4/O2 products with every compatible condensed candidate attached. */
+Gas make_methane_oxygen_products() {
+    Gas products = make_products({"C", "H", "O"});
+    products.add_all_condensed_species(NASA9_CONDENSED);
+    return products;
+}
+
+/** Element amounts per kg for a CH4/O2 mixture at the given oxidizer-to-fuel mass ratio. */
+Eigen::ArrayXd methane_oxygen_elements(const Gas& products, double OF_ratio) {
+    const double fuel_fraction = 1.0 / (1.0 + OF_ratio);
+    Gas reactants = make_reactants({"CH4", "O2"},
+        "CH4:" + std::to_string(fuel_fraction) + ", O2:" + std::to_string(1.0 - fuel_fraction));
+    return map_elements(reactants, products);
+}
+
+} // namespace
+
+class MultiphaseTPTests : public ::testing::Test {};
+
+TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAt1000K) {
+    Gas products = make_methane_oxygen_products();
+    const Eigen::ArrayXd elements = methane_oxygen_elements(products, 0.5);
+
+    products.set_element_moles(elements, 1000.0, BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_TP(1000.0, BAR);
+
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.18459, 5e-3);
+    EXPECT_NEAR(products.molecular_weight(), 10.676, 0.05);
+    EXPECT_DOUBLE_EQ(products.temperature(), 1000.0);
+    EXPECT_NEAR(products.pressure(), BAR, 1e-6 * BAR);
+    expect_balances(products, before);
+}
+
+TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAt1500K) {
+    Gas products = make_methane_oxygen_products();
+    const Eigen::ArrayXd elements = methane_oxygen_elements(products, 0.5);
+
+    products.set_element_moles(elements, 1500.0, BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_TP(1500.0, BAR);
+
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.16554, 5e-3);
+    EXPECT_NEAR(products.molecular_weight(), 9.639, 0.05);
+    expect_balances(products, before);
+}
+
+TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAtFiftyBar) {
+    Gas products = make_methane_oxygen_products();
+    const Eigen::ArrayXd elements = methane_oxygen_elements(products, 1.0);
+
+    products.set_element_moles(elements, 1000.0, 50.0 * BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_TP(1000.0, 50.0 * BAR);
+
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.09619, 5e-3);
+    EXPECT_NEAR(products.molecular_weight(), 18.087, 0.05);
+    expect_balances(products, before);
+}
+
+TEST_F(MultiphaseTPTests, MethaneOxygenHasNoGraphiteWhenOxygenRich) {
+    Gas products = make_methane_oxygen_products();
+    const Eigen::ArrayXd elements = methane_oxygen_elements(products, 2.0);
+
+    products.set_element_moles(elements, 1500.0, BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_TP(1500.0, BAR);
+
+    EXPECT_DOUBLE_EQ(condensed_mole_fraction(products, "C(gr)"), 0.0);
+    EXPECT_FALSE(products.has_condensed_phases());
+    EXPECT_DOUBLE_EQ(products.gas_mass_fraction(), 1.0);
+    expect_balances(products, before);
+}
+
+// ---- HP: constant enthalpy and pressure ----
+
+class MultiphaseHPTests : public ::testing::Test {};
+
+TEST_F(MultiphaseHPTests, MethaneOxygenAtUnitMixtureRatioDepositsGraphite) {
+    Gas products = make_methane_oxygen_products();
+    Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.5, O2:0.5");
+    const Eigen::ArrayXd elements = map_elements(reactants, products);
+    const double enthalpy = reactants.enthalpy_mass();
+
+    products.set_element_moles(elements, 2000.0, BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_HP(enthalpy, BAR);
+
+    EXPECT_NEAR(products.temperature(), 1039.24, 2.0);
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.03137, 3e-3);
+    EXPECT_NEAR(products.enthalpy_mass(), enthalpy, 1e-6 * std::abs(enthalpy));
+    EXPECT_FALSE(products.at_phase_transition());
+    EXPECT_GT(products.last_equilibrium_solve_count(), 0);
+    expect_balances(products, before);
+}
+
+TEST_F(MultiphaseHPTests, MethaneOxygenAtMixtureRatioThreeHasNoGraphite) {
+    Gas products = make_methane_oxygen_products();
+    Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.25, O2:0.75");
+    const Eigen::ArrayXd elements = map_elements(reactants, products);
+    const double enthalpy = reactants.enthalpy_mass();
+
+    products.set_element_moles(elements, 2000.0, BAR);
+    const Eigen::ArrayXd before = products.element_moles();
+    products.equilibrate_HP(enthalpy, BAR);
+
+    EXPECT_NEAR(products.temperature(), 3025.45, 3.0);
+    EXPECT_FALSE(products.has_condensed_phases());
+    expect_balances(products, before);
+}
+
+TEST_F(MultiphaseHPTests, MethaneOxygenAtTwentyBar) {
+    Gas products = make_methane_oxygen_products();
+    Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.25, O2:0.75");
+    const Eigen::ArrayXd elements = map_elements(reactants, products);
+
+    products.set_element_moles(elements, 2000.0, 20.0 * BAR);
+    products.equilibrate_HP(reactants.enthalpy_mass(), 20.0 * BAR);
+
+    EXPECT_NEAR(products.temperature(), 3398.53, 3.0);
+}
+
+// ---- The water dew point (RP-1311 example 14 style) ----
+
+namespace {
+
+/** H2/O2 products at 100 : 60 moles with the water candidates attached. */
+Gas make_hydrogen_oxygen_products() {
+    Gas products = make_products({"H", "O"});
+    products.add_all_condensed_species(NASA9_CONDENSED);
+    return products;
+}
+
+Eigen::ArrayXd hydrogen_oxygen_elements(const Gas& products) {
+    setup_defaults();
+    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", {"H2", "O2"},
+                                             GasChemistry::FROZEN);
+    reactants.set_state_TPX(298.15, Cantera::OneAtm, "H2:100, O2:60");
+    return map_elements(reactants, products);
+}
+
+} // namespace
+
+class DewPointTests : public ::testing::Test {
+protected:
+    DewPointTests() : products(make_hydrogen_oxygen_products()),
+                      elements(hydrogen_oxygen_elements(products)),
+                      pressure(0.05 * Cantera::OneAtm) {}
+
+    /** Solve at `T` from a cold start and return the mole fraction of `name` among all species. */
+    double solve(double T, const std::string& name) {
+        products.set_element_moles(elements, T, pressure);
+        const Eigen::ArrayXd before = products.element_moles();
+        products.equilibrate_TP(T, pressure);
+        expect_balances(products, before);
+        return condensed_mole_fraction(products, name);
+    }
+
+    Gas products;
+    Eigen::ArrayXd elements;
+    double pressure;
+};
+
+TEST_F(DewPointTests, NothingCondensesAboveTheDewPoint) {
+    products.set_element_moles(elements, 305.0, pressure);
+    products.equilibrate_TP(305.0, pressure);
+    EXPECT_FALSE(products.has_condensed_phases());
+}
+
+TEST_F(DewPointTests, LiquidWaterJustBelowTheDewPoint) {
+    // Within about a degree of the dew point the liquid fraction climbs by roughly 0.25 per kelvin,
+    // so this station is far more sensitive to the thermodynamic data than any other; CEA reports
+    // 0.2488 here. What it really exercises is convergence, see `NearTheDewPointNeedsManySteps`.
+    const double liquid = solve(304.0, "H2O(L)");
+    EXPECT_GT(liquid, 0.1);
+    EXPECT_LT(liquid, 0.5);
+}
+
+TEST_F(DewPointTests, NearTheDewPointTheStepLimitDoesNotChangeTheAnswer) {
+    // A barely-present condensed phase converges slowly, and Cantera's default step limit of 1000
+    // is not enough from every starting guess. The restart ladder covers that: the answer is the
+    // same with either limit, it just takes another rung.
+    const double reference = solve(304.0, "H2O(L)");
+
+    products.equilibrium_options.max_steps = 1000;
+    const double restricted = solve(304.0, "H2O(L)");
+    EXPECT_NEAR(restricted, reference, 1e-6);
+}
+
+TEST_F(DewPointTests, LiquidWaterAt300K) {
+    EXPECT_NEAR(solve(300.0, "H2O(L)"), 0.6995, 0.01);
+}
+
+TEST_F(DewPointTests, IceBelowFreezing) {
+    EXPECT_NEAR(solve(270.0, "H2O(cr)"), 0.8998, 5e-3);
+    EXPECT_NEAR(solve(250.0, "H2O(cr)"), 0.9077, 5e-3);
+}
+
+TEST_F(DewPointTests, ExactlyAtTheFreezingPointEitherPolymorphIsAccepted) {
+    products.set_element_moles(elements, 273.15, pressure);
+    ASSERT_NO_THROW(products.equilibrate_TP(273.15, pressure));
+
+    const double water = condensed_mole_fraction(products, "H2O(cr)")
+        + condensed_mole_fraction(products, "H2O(L)");
+    EXPECT_GT(water, 0.85);
+}
+
+// ---- Aluminized ammonium perchlorate: the Al2O3 melting transition ----
+
+namespace {
+
+/** Products of an ammonium-perchlorate / aluminium propellant, with the alumina candidates. */
+Gas make_propellant_products() {
+    Gas products = make_products({"N", "H", "Cl", "O", "Al"});
+    products.add_condensed_species(NASA9_CONDENSED, {"AL2O3(a)", "AL2O3(L)"});
+    return products;
+}
+
+/**
+ * Solve the propellant at constant enthalpy and pressure for a given aluminium mass fraction.
+ * @return the reactant enthalpy [J/kg] the products were equilibrated to.
+ */
+double solve_propellant(Gas& products, double aluminium_fraction, double P, double T_guess) {
+    Gas reactants = make_reactants({"NH4CLO4(I)", "AL(cr)"},
+        std::format("NH4CLO4(I):{:.12g}, AL(cr):{:.12g}", 1.0 - aluminium_fraction,
+                    aluminium_fraction));
+
+    const double enthalpy = reactants.enthalpy_mass();
+    products.set_element_moles(map_elements(reactants, products), T_guess, P);
+    products.equilibrate_HP(enthalpy, P);
+    return enthalpy;
+}
+
+} // namespace
+
+class PropellantTests : public ::testing::Test {};
+
+TEST_F(PropellantTests, MoltenAluminaAtThreePressures) {
+    Gas products = make_propellant_products();
+
+    double previous_temperature = 1e9;
+    for (double P : {34.47 * BAR, 3.447 * BAR, 0.3447 * BAR}) {
+        solve_propellant(products, 0.2, P, 3000.0);
+
+        EXPECT_GT(condensed_mole_fraction(products, "AL2O3(L)"), 0.0) << "P = " << P;
+        EXPECT_DOUBLE_EQ(condensed_mole_fraction(products, "AL2O3(a)"), 0.0) << "P = " << P;
+        EXPECT_GT(products.temperature(), 2327.0) << "P = " << P;
+        // Dropping the pressure shifts the equilibrium towards dissociation, cooling the flame.
+        EXPECT_LT(products.temperature(), previous_temperature);
+        previous_temperature = products.temperature();
+    }
+}
+
+TEST_F(PropellantTests, ColdAndWarmStartsAgree) {
+    Gas warm = make_propellant_products();
+    solve_propellant(warm, 0.2, 34.47 * BAR, 3000.0);
+    const double from_warm = warm.temperature();
+
+    Gas cold = make_propellant_products();
+    solve_propellant(cold, 0.2, 34.47 * BAR, 1200.0);
+
+    EXPECT_NEAR(cold.temperature(), from_warm, 1.0);
+    EXPECT_NEAR(cold.gas_mass_fraction(), warm.gas_mass_fraction(), 1e-4);
+}
+
+TEST_F(PropellantTests, LittleAluminiumLeavesSolidAlumina) {
+    Gas products = make_propellant_products();
+    solve_propellant(products, 0.05, 34.47 * BAR, 3000.0);
+
+    EXPECT_LT(products.temperature(), 2327.0);
+    EXPECT_GT(condensed_mole_fraction(products, "AL2O3(a)"), 0.0);
+    EXPECT_DOUBLE_EQ(condensed_mole_fraction(products, "AL2O3(L)"), 0.0);
+    EXPECT_FALSE(products.at_phase_transition());
+}
+
+TEST_F(PropellantTests, PinnedAtTheAluminaMeltingPoint) {
+    // Between the two cases above lies a band of aluminium fractions whose flame enthalpy falls
+    // inside the heat of fusion of alumina. Bisect on the aluminium fraction to land in it.
+    Gas products = make_propellant_products();
+    const double P = 34.47 * BAR;
+
+    double solid_side = 0.05;   // ends below the melting point
+    double liquid_side = 0.2;   // ends above it
+    double target_enthalpy = 0.0;
+    for (int iteration = 0; iteration < 40 && !products.at_phase_transition(); iteration++) {
+        const double fraction = 0.5 * (solid_side + liquid_side);
+        target_enthalpy = solve_propellant(products, fraction, P, 2500.0);
+        if (products.at_phase_transition()) break;
+        if (products.temperature() < 2327.0) {
+            solid_side = fraction;
+        } else {
+            liquid_side = fraction;
+        }
+    }
+
+    ASSERT_TRUE(products.at_phase_transition())
+        << "no aluminium fraction in [" << solid_side << ", " << liquid_side << "] pinned the melt";
+    EXPECT_DOUBLE_EQ(products.temperature(), 2327.0);
+
+    const std::vector<std::string> names = products.condensed_species_names();
+    const std::vector<double> moles = products.condensed_moles();
+    const size_t solid = static_cast<size_t>(
+        std::find(names.begin(), names.end(), "AL2O3(a)") - names.begin());
+    const size_t liquid = static_cast<size_t>(
+        std::find(names.begin(), names.end(), "AL2O3(L)") - names.begin());
+    EXPECT_GT(moles[solid], 0.0);
+    EXPECT_GT(moles[liquid], 0.0);
+
+    // Both polymorphs are reported as the pinned pair, lower-temperature one first.
+    const std::pair<long, long> pinned = products.pinned_polymorphs();
+    EXPECT_GE(pinned.first, 0);
+    EXPECT_GE(pinned.second, 0);
+
+    // The split is what makes the mixture enthalpy match the target exactly.
+    EXPECT_NEAR(products.enthalpy_mass(), target_enthalpy, 1e-9 * std::abs(target_enthalpy));
+}
+
+// ---- RP-1311 example 13: N2H4/Be with H2O2, whose beryllia passes two transitions ----
+
+namespace {
+
+/**
+ * Products of the RP-1311 example 13 propellant.
+ *
+ * Every N/H/Be/O species of the database except gaseous Be(OH)2, which CEA's product list for this
+ * example does not contain. Including it moves 3.8 % of the beryllium out of the condensate and
+ * costs 16 K of flame temperature, which would swamp the solver differences this case measures.
+ */
+Gas make_beryllium_products() {
+    const Gas all = make_products({"N", "H", "Be", "O"});
+    std::vector<std::string> species;
+    for (const std::string& name : all.species_names()) {
+        if (name != "Be(OH)2") species.push_back(name);
+    }
+
+    setup_defaults();
+    Gas products = Gas::create_from_species(NASA9_GAS, "products", species, GasChemistry::FROZEN);
+    products.add_all_condensed_species(NASA9_CONDENSED);
+    return products;
+}
+
+/** 67 % fuel (80 % N2H4(L), 20 % Be(a)) and 33 % H2O2(L) by mass, all at 298.15 K. */
+Gas make_beryllium_reactants() {
+    return make_reactants({"N2H4(L)", "Be(a)", "H2O2(L)"},
+                          "N2H4(L):0.536, Be(a):0.134, H2O2(L):0.33");
+}
+
+} // namespace
+
+class BerylliumRocketTests : public ::testing::Test {
+protected:
+    BerylliumRocketTests()
+        : products(make_beryllium_products()), reactants(make_beryllium_reactants()) {}
+
+    /** Equilibrate the chamber at constant enthalpy and return its entropy [J/(kg.K)]. */
+    double solve_chamber() {
+        const double P = 206.8419 * BAR;
+        products.set_element_moles(map_elements(reactants, products), 3000.0, P);
+        products.equilibrate_HP(reactants.enthalpy_mass(), P);
+        return products.entropy_mass();
+    }
+
+    Gas products;
+    Gas reactants;
+};
+
+TEST_F(BerylliumRocketTests, ChamberMatchesCea) {
+    const Eigen::ArrayXd before = [&] {
+        const double P = 206.8419 * BAR;
+        products.set_element_moles(map_elements(reactants, products), 3000.0, P);
+        return products.element_moles();
+    }();
+
+    products.equilibrate_HP(reactants.enthalpy_mass(), 206.8419 * BAR);
+
+    EXPECT_NEAR(products.temperature(), 3018.89, 2.0);
+    EXPECT_NEAR(products.molecular_weight(), 16.6222, 5e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.19796, 2e-3);
+    EXPECT_FALSE(products.at_phase_transition());
+    expect_balances(products, before);
+}
+
+TEST_F(BerylliumRocketTests, ExpansionFollowsTheBerylliaPolymorphs) {
+    const double entropy = solve_chamber();
+
+    struct Station {
+        double pressure_bar;
+        double temperature;
+        const char* species;
+        double mole_fraction;
+        bool pinned;
+    };
+    // CEA's stations for this expansion. The first two sit exactly on the BeO(b)/BeO(L) melting
+    // point, where the entropy falls inside the latent heat and the temperature stops moving.
+    const Station stations[] = {
+        {127.2265, 2851.0,  "BeO(L)", 0.18656, true},
+        {68.9473,  2851.0,  "BeO(L)", 0.04510, true},
+        {20.6842,  2453.58, "BeO(b)", 0.19862, false},
+        {6.8947,   2066.65, "BeO(a)", 0.19886, false},
+    };
+
+    for (const Station& station : stations) {
+        products.equilibrate_SP(entropy, station.pressure_bar * BAR);
+
+        EXPECT_NEAR(products.temperature(), station.temperature, 2.0)
+            << "at " << station.pressure_bar << " bar";
+        EXPECT_NEAR(condensed_mole_fraction(products, station.species), station.mole_fraction, 2e-3)
+            << "at " << station.pressure_bar << " bar";
+        EXPECT_EQ(products.at_phase_transition(), station.pinned)
+            << "at " << station.pressure_bar << " bar";
+        EXPECT_NEAR(products.entropy_mass(), entropy, 1e-8 * std::abs(entropy));
+    }
+}
+
+TEST_F(BerylliumRocketTests, PinnedStationsSplitTheBerylliaGroup) {
+    const double entropy = solve_chamber();
+    products.equilibrate_SP(entropy, 127.2265 * BAR);
+
+    ASSERT_TRUE(products.at_phase_transition());
+    EXPECT_NEAR(products.temperature(), 2851.0, 1e-6);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.18656, 2e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.01170, 2e-3);
+    EXPECT_NEAR(products.molecular_weight(), 16.6427, 5e-3);
+
+    products.equilibrate_SP(entropy, 68.9473 * BAR);
+    EXPECT_NEAR(products.temperature(), 2851.0, 1e-6);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.04510, 2e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.15288, 2e-3);
+}
+
+TEST_F(BerylliumRocketTests, DeepExpansionStations) {
+    const double entropy = solve_chamber();
+
+    products.equilibrate_SP(entropy, 0.6895 * BAR);
+    EXPECT_NEAR(products.temperature(), 1395.67, 2.0);
+
+    products.equilibrate_SP(entropy, 0.2068 * BAR);
+    EXPECT_NEAR(products.temperature(), 1119.74, 2.0);
+}
+
+TEST_F(BerylliumRocketTests, WarmStartsCostFewerSolvesThanColdStarts) {
+    const double entropy = solve_chamber();
+    const std::vector<double> pressures = {127.2265, 68.9473, 20.6842, 6.8947, 0.6895, 0.2068};
+
+    int warm_total = 0;
+    for (double pressure_bar : pressures) {
+        products.equilibrate_SP(entropy, pressure_bar * BAR);   // continues from the last station
+        warm_total += products.last_equilibrium_solve_count();
+    }
+
+    int cold_total = 0;
+    for (double pressure_bar : pressures) {
+        // Reset the temperature guess to the default the solver falls back on.
+        products.set_state_TP(products.equilibrium_options.T_default, pressure_bar * BAR);
+        products.equilibrate_SP(entropy, pressure_bar * BAR);
+        cold_total += products.last_equilibrium_solve_count();
+    }
+
+    EXPECT_LT(warm_total, cold_total);
+}
+
+// ---- State round trips, frozen expansion and batch operations ----
+
+class CondensedStateTests : public ::testing::Test {};
+
+TEST_F(CondensedStateTests, PinnedStateSurvivesSaveRestoreAndClone) {
+    Gas products = make_propellant_products();
+    const double P = 34.47 * BAR;
+
+    double solid_side = 0.05;
+    double liquid_side = 0.2;
+    for (int iteration = 0; iteration < 40 && !products.at_phase_transition(); iteration++) {
+        const double fraction = 0.5 * (solid_side + liquid_side);
+        solve_propellant(products, fraction, P, 2500.0);
+        if (products.at_phase_transition()) break;
+        (products.temperature() < 2327.0 ? solid_side : liquid_side) = fraction;
+    }
+    ASSERT_TRUE(products.at_phase_transition());
+
+    const std::vector<double> state = products.save_state();
+    const std::vector<double> moles = products.condensed_moles();
+    const std::pair<long, long> pinned = products.pinned_polymorphs();
+    EXPECT_EQ(state.size(), products.thermo()->stateSize() + moles.size());
+
+    // The pinned flag is not in the state vector; it is re-derived from the two coexisting
+    // polymorphs, so a round trip restores it.
+    products.set_state_TP(3000.0, P);
+    products.set_condensed_moles(std::vector<double>(moles.size(), 0.0));
+    products.clear_phase_transition();
+    ASSERT_FALSE(products.at_phase_transition());
+
+    products.restore_state(state);
+    EXPECT_EQ(products.condensed_moles(), moles);
+    EXPECT_TRUE(products.at_phase_transition());
+    EXPECT_EQ(products.pinned_polymorphs(), pinned);
+
+    Gas copy = products.clone();
+    EXPECT_EQ(copy.condensed_moles(), moles);
+    EXPECT_TRUE(copy.at_phase_transition());
+    EXPECT_EQ(copy.pinned_polymorphs(), pinned);
+    EXPECT_NEAR(copy.enthalpy_mass(), products.enthalpy_mass(),
+                1e-12 * std::abs(products.enthalpy_mass()));
+
+    copy.set_condensed_moles(std::vector<double>(moles.size(), 0.0));
+    EXPECT_EQ(products.condensed_moles(), moles);
+}
+
+TEST_F(CondensedStateTests, PhaseTransitionCanBeSetByName) {
+    Gas products = make_propellant_products();
+    products.set_state_TP(2327.0, 34.47 * BAR);
+    products.set_condensed_moles({0.004, 0.002});
+
+    EXPECT_FALSE(products.at_phase_transition());
+    products.set_phase_transition("AL2O3(a)", "AL2O3(L)");
+    EXPECT_TRUE(products.at_phase_transition());
+    EXPECT_EQ(products.pinned_polymorphs(), std::make_pair(0L, 1L));
+
+    products.clear_phase_transition();
+    EXPECT_FALSE(products.at_phase_transition());
+    products.set_phase_transition(0L, 1L);
+    EXPECT_TRUE(products.at_phase_transition());
+
+    EXPECT_THROW(products.set_phase_transition("AL2O3(a)", "C(gr)"), std::invalid_argument);
+    EXPECT_THROW(products.set_phase_transition(0L, 0L), std::invalid_argument);
+}
+
+TEST_F(CondensedStateTests, FrozenExpansionKeepsTheMixtureEnthalpy) {
+    Gas products = make_propellant_products();
+    solve_propellant(products, 0.2, 34.47 * BAR, 3000.0);
+    ASSERT_TRUE(products.has_condensed_phases());
+
+    const std::vector<double> moles = products.condensed_moles();
+    const double entropy = products.entropy_mass();
+    const double chamber_temperature = products.temperature();
+
+    products.set_state_SP(entropy, 20.0 * BAR);
+    EXPECT_NEAR(products.entropy_mass(), entropy, 1e-9 * std::abs(entropy));
+    EXPECT_LT(products.temperature(), chamber_temperature);
+    // Frozen: neither the gas composition nor the condensed amounts move.
+    EXPECT_EQ(products.condensed_moles(), moles);
+
+    const double enthalpy = products.enthalpy_mass();
+    products.set_state_TP(2500.0, 20.0 * BAR);
+    products.set_state_HP(enthalpy, 20.0 * BAR);
+    EXPECT_NEAR(products.enthalpy_mass(), enthalpy, 1e-9 * std::abs(enthalpy));
+}
+
+TEST_F(CondensedStateTests, FrozenExpansionStopsAtACondensedTemperatureRange) {
+    Gas products = make_propellant_products();
+    solve_propellant(products, 0.2, 34.47 * BAR, 3000.0);
+    ASSERT_GT(products.condensed_moles()[1], 0.0); // AL2O3(L), whose data starts at 2327 K
+
+    // Expanding far enough drives the frozen temperature below the melting point of alumina, which
+    // a frozen expansion cannot represent because the liquid is not allowed to solidify.
+    EXPECT_THROW(products.set_state_SP(products.entropy_mass(), 0.001 * BAR), FmtError);
+}
+
+TEST_F(CondensedStateTests, ThermoArrayEquilibratesEachLocationLikeGas) {
+    Gas gas = make_methane_oxygen_products();
+    Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.5, O2:0.5");
+    gas.set_element_moles(map_elements(reactants, gas), 2000.0, BAR);
+
+    ThermoArray states(gas, {2});
+    ASSERT_EQ(states.num_condensed(), 3u);
+    states.equilibrate("HP", "gibbs", 1e-9, 20000);
+
+    Gas reference = gas.clone();
+    reference.equilibrate_HP(reference.enthalpy_mass(), reference.pressure());
+
+    for (int loc = 0; loc < states.size(); loc++) {
+        EXPECT_NEAR(states.temperature()(loc, 0), reference.temperature(), 1e-9)
+            << "location " << loc;
+        const std::vector<double> moles = states.get_condensed_moles(loc);
+        ASSERT_EQ(moles.size(), reference.condensed_moles().size());
+        for (size_t k = 0; k < moles.size(); k++) {
+            EXPECT_NEAR(moles[k], reference.condensed_moles()[k], 1e-12) << "location " << loc;
+        }
+    }
+}
+
+TEST_F(CondensedStateTests, ThermoArrayRejectsTheVcsSolverWithCondensedSpecies) {
+    Gas gas = make_methane_oxygen_products();
+    Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.5, O2:0.5");
+    gas.set_element_moles(map_elements(reactants, gas), 2000.0, BAR);
+
+    ThermoArray states(gas, {1});
+    EXPECT_THROW(states.equilibrate("TP", "vcs"), std::invalid_argument);
 }
