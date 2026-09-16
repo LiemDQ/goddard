@@ -620,17 +620,22 @@ TEST_F(CondensedGasTests, EquilibriumEntryPointsThrowWithCandidates) {
     EXPECT_THROW(gas.set_element_moles(amounts, 400.0, Cantera::OneAtm), NotImplementedError);
 }
 
-TEST_F(CondensedGasTests, EquilibriumPropertyOverloadsThrowWithCondensedPhasesPresent) {
+TEST_F(CondensedGasTests, EquilibriumPropertyOverloadsAcceptCondensedPhases) {
     gas.add_condensed_species(CONDENSED_FILE, {"H2O(L)"});
 
     // Candidates alone are harmless: the state is still a gas.
     EXPECT_NO_THROW(get_thermo_equilibrium_derivatives(gas));
 
+    // With condensed phases present the system grows one unknown and one row per species (WP-A).
     gas.set_condensed_moles({0.01});
-    EXPECT_THROW(get_thermo_equilibrium_derivatives(gas), NotImplementedError);
-    EXPECT_THROW(get_thermo_equilibrium_properties(gas), NotImplementedError);
-    EXPECT_THROW(get_frozen_properties(gas), NotImplementedError);
-    EXPECT_THROW(get_equilibrium_gamma(gas), NotImplementedError);
+    const EquilibriumDerivatives derivs = get_thermo_equilibrium_derivatives(gas);
+    EXPECT_EQ(derivs.dn_condensed_dlogT_P.size(), 1);
+    EXPECT_EQ(derivs.dn_condensed_dlogP_T.size(), 1);
+    EXPECT_FALSE(derivs.pinned_transition);
+
+    EXPECT_NO_THROW(get_thermo_equilibrium_properties(gas));
+    EXPECT_NO_THROW(get_frozen_properties(gas));
+    EXPECT_NO_THROW(get_equilibrium_gamma(gas));
 }
 
 TEST_F(CondensedGasTests, ThermoArrayCarriesTheCandidatesButCannotStoreThem) {

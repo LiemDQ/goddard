@@ -27,9 +27,18 @@ struct EquilibriumDerivatives {
      * Empty for a gas-only mixture.
      */
     Eigen::ArrayXd dn_condensed_dlogT_P;
-    /** (d n_k / d log P)_T [kmol per kg of mixture], same ordering as `dn_condensed_dlogT_P`. */
+    /**
+     * (d n_k / d log P)_T [kmol per kg of mixture], same ordering as `dn_condensed_dlogT_P`.
+     *
+     * At a pinned phase transition only the sum over the two coexisting polymorphs is determined:
+     * it is reported on the lower-temperature polymorph and the higher-temperature one is 0.
+     */
     Eigen::ArrayXd dn_condensed_dlogP_T;
-    /** True when the mixture sits exactly at a condensed phase transition (see `Gas::at_phase_transition()`). */
+    /**
+     * True when the mixture sits exactly at a condensed phase transition with both polymorphs
+     * present (see `Gas::at_phase_transition()`). The temperature derivatives `dpi_dlogT_P`,
+     * `dlogn_dlogT_P` and `dn_condensed_dlogT_P` are then NaN.
+     */
     bool pinned_transition = false;
 };
 
@@ -61,37 +70,58 @@ struct ExpansionProperties {
 };
 
 /**
+ * @name Gas-only helpers
+ *
+ * These read the gas phase alone. Amounts are per kg of *gas*, so a mixture carrying condensed
+ * products must scale them by `Gas::gas_mass_fraction()` to reach a per kg of mixture basis.
+ * @{
+ */
+/**
  * @brief Get matrix of stoichiometric coefficients of the species contained in the `ThermoPhase` object.
- * 
+ *
  * @return 2D Eigen array of stoichiometric coefficients. Rows represent species, while columns represent elements.
- * Ordering is the same as the data file used to generated the `ThermoPhase` object. 
+ * Ordering is the same as the data file used to generated the `ThermoPhase` object.
  */
 Eigen::ArrayXXd get_stoichiometric_coeffs(const Cantera::ThermoPhase& gas);
+/** Amount of each gas species [kmol per kg of gas]. */
 Eigen::ArrayXd get_mole_vector(const Cantera::ThermoPhase& gas);
+/** Standard-state molar enthalpy of each gas species divided by R*T [-]. */
 Eigen::ArrayXd get_enthalpyRT_vector(const Cantera::ThermoPhase& gas);
+/** Standard-state molar heat capacity of each gas species divided by R [-]. */
 Eigen::ArrayXd get_cpR_vector(const Cantera::ThermoPhase& gas);
 
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Cantera::ThermoPhase& gas);
 ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas, const EquilibriumDerivatives& derivatives);
 ExpansionProperties get_thermo_equilibrium_properties(const Cantera::ThermoPhase& gas);
+/** Isentropic exponent -(d log P / d log V)_s [-] of the gas phase at equilibrium. */
 double get_equilibrium_gamma(const Cantera::ThermoPhase& gas);
+/** @} */
 
 /**
  * @name Mixture-aware overloads
  *
- * These take a `Gas`, so they can account for condensed products. For a `Gas` without condensed
- * phases they reduce exactly to the `Cantera::ThermoPhase` overloads above and additionally fill
- * the mixture fields of the result structs.
+ * These take a `Gas`, so they account for condensed products: amounts are per kg of mixture and
+ * the Gordon & McBride system carries one extra unknown and one extra row per condensed species
+ * that is present. For a `Gas` without condensed phases they reduce exactly to the
+ * `Cantera::ThermoPhase` overloads above.
  *
- * @note The condensed contributions are not implemented yet (work package A); calling these on a
- * `Gas` with condensed phases present throws `NotImplementedError`.
+ * At a pinned phase transition (`Gas::at_phase_transition()` with both polymorphs present) the
+ * two polymorphs share one element row, so they are merged into a single condensed unknown and
+ * only the pressure block is solved. The temperature derivatives are then undefined and are
+ * reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlogV_dlogT_P` are infinite, and
+ * `gamma_s = -1 / dlogV_dlogP_T`.
  * @{
  */
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Gas& gas);
 ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas, const EquilibriumDerivatives& derivatives);
 ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas);
-/** Frozen-composition expansion properties: composition is held fixed, so dlogV terms are +/-1. */
+/**
+ * Frozen-composition expansion properties: gas composition and condensed amounts are held fixed,
+ * so the volume derivatives are +/-1 and the specific heats are the mixture's frozen ones.
+ * Condensed species are incompressible and so contribute equally to cp and cv.
+ */
 ExpansionProperties get_frozen_properties(const Gas& gas);
+/** Isentropic exponent -(d log P / d log V)_s [-] of the mixture at equilibrium. */
 double get_equilibrium_gamma(const Gas& gas);
 /** @} */
 
