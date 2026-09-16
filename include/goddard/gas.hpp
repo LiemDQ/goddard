@@ -373,6 +373,24 @@ public:
      */
     std::pair<long, long> pinned_polymorphs() const;
     /**
+     * Mark the polymorph group of two named candidate condensed species as pinned at their shared
+     * phase-transition temperature.
+     *
+     * This is the hook the multiphase equilibrium solver uses to record that it held the
+     * temperature at a transition and split the group's moles between the two polymorphs. The
+     * equilibrium derivatives then merge the pair into a single unknown, because the two share one
+     * element row (see `get_thermo_equilibrium_derivatives(const Gas&)`).
+     *
+     * @param low_temperature_species Candidate name of the lower-temperature polymorph.
+     * @param high_temperature_species Candidate name of the higher-temperature polymorph.
+     * @throws FmtError if either name is not a candidate, or if the two are not polymorphs of one
+     * another.
+     */
+    void set_phase_transition(const std::string& low_temperature_species,
+                              const std::string& high_temperature_species);
+    /** Clear a pinned phase transition set by `set_phase_transition()`. */
+    void clear_phase_transition();
+    /**
      * Mass fractions of the whole mixture [-]: the gas-phase mass fractions scaled by
      * `gas_mass_fraction()`, followed by n_k M_k for every candidate condensed species in
      * candidate order. Sums to 1.

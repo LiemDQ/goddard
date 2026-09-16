@@ -679,6 +679,32 @@ std::pair<long, long> Gas::pinned_polymorphs() const {
     return pair;
 }
 
+void Gas::set_phase_transition(const std::string& low_temperature_species,
+                               const std::string& high_temperature_species)
+{
+    if (!m_condensed) {
+        throw FmtError("Gas::set_phase_transition: no condensed species are attached.");
+    }
+    const size_t low = m_condensed->species_index(low_temperature_species);
+    const size_t high = m_condensed->species_index(high_temperature_species);
+    if (low == Cantera::npos || high == Cantera::npos) {
+        throw FmtError("Gas::set_phase_transition: '{}' and '{}' must both be candidate condensed "
+                       "species.", low_temperature_species, high_temperature_species);
+    }
+    const int group = m_condensed->species[low].group;
+    if (group != m_condensed->species[high].group) {
+        throw FmtError("Gas::set_phase_transition: '{}' and '{}' are not polymorphs of one "
+                       "another.", low_temperature_species, high_temperature_species);
+    }
+    m_condensed->pinned_group = group;
+}
+
+void Gas::clear_phase_transition() {
+    if (m_condensed) {
+        m_condensed->pinned_group = -1;
+    }
+}
+
 std::vector<double> Gas::mixture_mass_fractions() const {
     const double w_gas = gas_mass_fraction();
     std::vector<double> fractions = mass_fractions();
