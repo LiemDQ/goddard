@@ -656,8 +656,17 @@ void Gas::equilibrate_HP(double H, double P) {
         return;
     }
     m_equilibrium_solve_count = 0;
+    const std::vector<double> start_state = save_state();
     thermo()->setState_HP(H, P);
-    thermo()->equilibrate("HP", "gibbs");
+    try {
+        thermo()->equilibrate("HP", "gibbs");
+    } catch (const Cantera::CanteraError&) {
+        // "gibbs" tests its enthalpy residual relative to H, so it fails when the target enthalpy
+        // is close to zero, e.g. gaseous H2/O2 reactants at 298.15 K. "vcs" does not.
+        restore_state(start_state);
+        thermo()->setState_HP(H, P);
+        thermo()->equilibrate("HP", "vcs");
+    }
 }
 
 void Gas::equilibrate_SP(double S, double P) {

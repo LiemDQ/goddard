@@ -49,7 +49,18 @@ ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& 
     validate_options(options);
     switch (options.process) {
         case CombustionProcess::ISOBARIC:
-            states.equilibrate("HP", "gibbs");
+            try {
+                states.equilibrate("HP", "gibbs");
+            } catch (const Cantera::CanteraError&) {
+                if (states.num_condensed() > 0) {
+                    throw;
+                }
+                // "gibbs" tests its enthalpy residual relative to H and fails when the target
+                // enthalpy is close to zero (e.g. gaseous H2/O2 at 298.15 K); see
+                // `Gas::equilibrate_HP`. Locations already solved are HP equilibria, so
+                // re-solving them with "vcs" leaves them unchanged.
+                states.equilibrate("HP", "vcs");
+            }
             break;
         case CombustionProcess::ISOCHORIC:
             // Cantera's "gibbs" (MultiPhaseEquil) solver does not support UV, and

@@ -34,27 +34,6 @@ namespace {
     throw FmtError("Frozen expansion: {} at station {} (T = {} K)", message, station, temperature);
 }
 
-/**
- * Equilibrate `gas` at enthalpy `H` [J/kg] and pressure `P` [Pa].
- *
- * Cantera's "gibbs" HP solver tests enthalpy convergence relative to the target, so it cannot
- * converge when the target is close to zero, as it is for gaseous H2/O2 at 298.15 K. For a gas
- * without condensed candidates the "vcs" solver is used as a fallback.
- */
-void equilibrate_HP_robust(Gas& gas, double H, double P) {
-    const std::vector<double> start_state = gas.save_state();
-    try {
-        gas.equilibrate_HP(H, P);
-    } catch (const Cantera::CanteraError&) {
-        if (gas.has_condensed_candidates()) {
-            throw;
-        }
-        gas.restore_state(start_state);
-        gas.set_state_HP(H, P);
-        gas.equilibrate("HP", "vcs");
-    }
-}
-
 } // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
@@ -239,7 +218,7 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
         for (int backtrack = 0; ; backtrack++) {
             P_stagnation = std::exp(ln_P);
             m_gas.restore_state(injector_state);
-            equilibrate_HP_robust(m_gas, h_injector, P_stagnation);
+            m_gas.equilibrate_HP(h_injector, P_stagnation);
             set_inlet_state(m_gas.save_state());
             throat = solve_throat_conditions();
             if (contraction_mode) {
