@@ -51,6 +51,8 @@ plugins:
   - mkdocs-jupyter:
       execute: false
       include_source: true
+      # Without this the plugin runs jupytext on every Markdown page and hangs on docs/api/*.md.
+      ignore: ["*.md"]
   - mike:
       alias_type: symlink
       canonical_version: latest
