@@ -47,7 +47,8 @@ RocketProblemResults::RocketProblemResults(
             case_result.expansion_ratios,
             case_result.chemistry,
             case_result.expansion_type,
-            case_result.process
+            case_result.process,
+            case_result.combustor_type
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
@@ -206,6 +207,18 @@ RocketPerformance RocketProblemResults::performance(
             " out of range (" + std::to_string(exit_stations.size()) + " exits available)");
     }
     return calculate_performance(c.thermo, t.thermo, exit_stations[exit_index].thermo);
+}
+
+const RocketStation& RocketProblemResults::stagnation(
+    std::size_t /*of_index*/, const std::string& /*case_name*/) const
+{
+    throw NotImplementedError("RocketProblemResults::stagnation is not implemented.");
+}
+
+const RocketStation& RocketProblemResults::combustion_end(
+    std::size_t /*of_index*/, const std::string& /*case_name*/) const
+{
+    throw NotImplementedError("RocketProblemResults::combustion_end is not implemented.");
 }
 
 std::vector<std::string> RocketProblemResults::case_names() const {

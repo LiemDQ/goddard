@@ -16,14 +16,14 @@ BaseCombustor::BaseCombustor(Gas gas)
     : m_gas(std::move(gas))
 {}
 
-void BaseCombustor::check_combustor_type(const CombustorOptions& options) {
+void BaseCombustor::validate_options(const CombustorOptions& options) {
     if (options.type != CombustorType::INFINITE_AREA) {
         throw NotImplementedError("Finite area combustors are not implemented.");
     }
 }
 
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
-    check_combustor_type(options);
+    validate_options(options);
     switch (options.process) {
         case CombustionProcess::ISOBARIC:
             states.equilibrate("HP", "gibbs");
@@ -126,7 +126,7 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
             "reactant Gas streams. Use solve(fuel_T, oxidizer_T, pressures, mixture_ratios) for "
             "reactants given as product-species compositions.");
     }
-    check_combustor_type(options);
+    validate_options(options);
     if (options.process == CombustionProcess::ISOCHORIC && m_gas.has_condensed_candidates()) {
         throw NotImplementedError(
             "Constant-volume combustion with candidate condensed species is not implemented.");

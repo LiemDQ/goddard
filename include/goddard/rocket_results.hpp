@@ -25,7 +25,9 @@ struct RocketPerformance {
 };
 
 enum class StationType {
-    CHAMBER,
+    CHAMBER,        ///< Chamber state. For a finite-area combustor, the injector face.
+    STAGNATION,     ///< Finite-area combustor only: stagnation state "inf" at P_inf.
+    COMBUSTION_END, ///< Finite-area combustor only: end of the constant-area chamber.
     THROAT,
     EXIT
 };
@@ -36,7 +38,7 @@ struct RocketStation {
     std::size_t of_index;        // index into the case's OF_ratios vector
     std::size_t pressure_index;  // index into the case's pressures vector
     std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
-    double area_ratio;           // 0.0 for CHAMBER, 1.0 for THROAT, >1 for EXIT
+    double area_ratio;           // 0.0 for CHAMBER/STAGNATION, A_c/A_t for COMBUSTION_END, 1.0 for THROAT, >1 for EXIT
     ThermodynamicState thermo;
     bool converged;
 };
@@ -53,6 +55,9 @@ struct RocketProblemCaseResult {
     std::vector<double> expansion_ratios;
     ExpansionType expansion_type;
     CombustionProcess process;
+    CombustorType combustor_type = CombustorType::INFINITE_AREA;
+    /** Finite-area chambers, indexed like `nozzle_states`; empty for `INFINITE_AREA`. */
+    std::vector<FiniteAreaChamber> finite_area_chambers;
 };
 
 class RocketProblemResults {
@@ -81,6 +86,19 @@ public:
     const RocketStation& chamber(std::size_t of_index = 0, const std::string& case_name = "") const;
     const RocketStation& throat(std::size_t of_index = 0, const std::string& case_name = "") const;
     std::vector<RocketStation> exits(std::size_t of_index = 0, const std::string& case_name = "") const;
+
+    /**
+     * Stagnation state that the nozzle expands from: the "inf" state of a finite-area combustor,
+     * or the chamber state of an infinite-area combustor.
+     */
+    const RocketStation& stagnation(std::size_t of_index = 0, const std::string& case_name = "") const;
+
+    /**
+     * Combustion-end station of a finite-area combustor.
+     *
+     * @throws std::runtime_error if the case uses an infinite-area combustor.
+     */
+    const RocketStation& combustion_end(std::size_t of_index = 0, const std::string& case_name = "") const;
 
     // Compute rocket performance for a given operating point and exit station.
     // If case_name is empty and there is exactly one case, that case is used.
@@ -114,6 +132,7 @@ private:
         GasChemistry chemistry;
         ExpansionType expansion_type;
         CombustionProcess process;
+        CombustorType combustor_type;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     /** Product mixture used to read the stored station states back. */

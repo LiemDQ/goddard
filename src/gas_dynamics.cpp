@@ -125,4 +125,13 @@ double C_F(double gamma, double pressure_ratio, double) {
     return std::sqrt(term1*term2*term3);
 }
 
+
+double mach_from_area_ratio(double /*area_ratio*/, double /*gamma*/, bool /*supersonic*/) {
+    throw NotImplementedError("mach_from_area_ratio is not implemented.");
+}
+
+double finite_area_pressure_loss(double /*mach*/, double /*gamma*/) {
+    throw NotImplementedError("finite_area_pressure_loss is not implemented.");
+}
+
 }

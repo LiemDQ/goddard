@@ -44,7 +44,9 @@ struct CombustorOptions {
      * the chamber pressure is the result of the constant-volume combustion.
      */
     std::vector<double> pressures;
+    /** Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)]. */
     double mass_flux = 0.0;
+    /** Contraction ratio A_c/A_t [-] of a `FINITE_CONTRACTION_RATIO` chamber. */
     double contraction_ratio = 0.0;
     /**
      * Combustion constraint. With `ISOCHORIC` in a `RocketProblem`, the constant-volume
@@ -72,10 +74,17 @@ class BaseCombustor {
     ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
 
     /**
-     * @throws NotImplementedError if `options.type` is anything other than
-     * `CombustorType::INFINITE_AREA`.
+     * Check that the combustor options describe a supported combustor.
+     *
+     * The combustor itself is the same for every `CombustorType`: for `FINITE_MASS_FLUX` and
+     * `FINITE_CONTRACTION_RATIO` it produces the injector-face state, and the finite-area chamber
+     * is solved afterwards by `Nozzle::solve_finite_area_chamber`.
+     *
+     * @throws NotImplementedError if `options.type` is `CombustorType::NONE`.
+     * @throws std::invalid_argument for a finite-area type with `contraction_ratio` <= 1 or
+     * `mass_flux` <= 0, or combined with `CombustionProcess::ISOCHORIC`.
      */
-    static void check_combustor_type(const CombustorOptions& options);
+    static void validate_options(const CombustorOptions& options);
 
     void set_mixture_composition(double value, MixtureRatioType type,
         const Composition& fuel, const Composition& oxidizer) const;
@@ -133,7 +142,7 @@ class Combustor : public BaseCombustor {
      *
      * @throws NotImplementedError if the combustor was not built from reactant `Gas` streams, if
      * `options.mixture_type` is `PHI_RATIO` (CEA's valence rule is not implemented on this path),
-     * if `options.type` is not `INFINITE_AREA`, or if the process is `ISOCHORIC` while the
+     * if `options.type` is `NONE`, or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
      * @throws FmtError if a reactant contains an element the product gas does not have.
      */

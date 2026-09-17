@@ -131,6 +131,16 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
     return {throat_condition, results};
 }
 
+std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& /*throat_condition*/,
+    ExpansionType /*expansion_type*/, const std::vector<double>& /*ratios*/) {
+    throw NotImplementedError("Nozzle::solve_stations is not implemented.");
+}
+
+FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& /*injector_state*/,
+    CombustorType /*type*/, double /*value*/, double /*reltol*/) {
+    throw NotImplementedError("Nozzle::solve_finite_area_chamber is not implemented.");
+}
+
 void Nozzle::reset_state(){
     m_gas.restore_state(inlet_state);
     m_current_station = 0;

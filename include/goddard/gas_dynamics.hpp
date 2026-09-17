@@ -98,6 +98,30 @@ double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
  * using the Area-Mach number relation. 
  */
 double area_mach_relation(double mach, double gamma);
+
+/**
+ * Perfect-gas Mach number for an area ratio, inverting `area_mach_relation` by bisection.
+ *
+ * @param area_ratio A/A* [-], at least 1.
+ * @param gamma Ratio of specific heats [-].
+ * @param supersonic Selects the supersonic root when true, the subsonic root otherwise.
+ * @return Mach number [-].
+ *
+ * @throws std::invalid_argument if `area_ratio` is below 1.
+ */
+double mach_from_area_ratio(double area_ratio, double gamma, bool supersonic);
+
+/**
+ * Perfect-gas injector-to-stagnation pressure ratio of a finite-area combustor.
+ *
+ * phi = P_inj / P_inf = (1 + gamma M^2) / (1 + (gamma-1)/2 M^2)^(gamma/(gamma-1)), with M the
+ * Mach number at the end of the constant-area chamber. phi(0) = 1 and phi > 1 for 0 < M <= 1.
+ *
+ * @param mach Mach number at the combustion end [-].
+ * @param gamma Ratio of specific heats [-].
+ * @return P_inj / P_inf [-].
+ */
+double finite_area_pressure_loss(double mach, double gamma);
 /**
  * @brief Calculate thrust coefficient.
  */
