@@ -1,4 +1,5 @@
 #include "goddard/condensed.hpp"
+#include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
 #include "goddard/gas.hpp"
 
@@ -436,27 +437,26 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
     thermo()->saveState(gas_state_before);
     const std::vector<double> moles_before = set.moles;
 
-    // Restart ladder, in increasing order of desperation. `estimate` is Cantera's
-    // `estimate_equil`: 0 keeps the incoming composition as the initial guess, -1 discards it.
-    struct Restart { int guess; int estimate; };
-    const Restart restarts[] = {
-        {0, 0},   // the incoming state, warm-started from the previous solve
-        {0, -1},  // let Cantera formulate its own estimate
-        {1, 0},   // free atoms, no condensed phase
-        {1, -1},
-        {2, 0},   // gas-only equilibrium holding the same elements
+    // Restart ladder of starting compositions, in increasing order of desperation. There is no
+    // rung varying Cantera's `estimate_equil`: MultiPhaseEquil ignores it (checked against
+    // Cantera 3.2), so such a rung would repeat the previous solve step for step.
+    enum class StartingGuess { INCOMING, FREE_ATOMS, GAS_EQUILIBRIUM };
+    const StartingGuess restarts[] = {
+        StartingGuess::INCOMING,         // warm-started from the previous solve
+        StartingGuess::FREE_ATOMS,       // no condensed phase
+        StartingGuess::GAS_EQUILIBRIUM,  // gas-only equilibrium holding the same elements
     };
 
     std::string last_failure;
-    for (const Restart& restart : restarts) {
+    for (const StartingGuess restart : restarts) {
         thermo()->restoreState(gas_state_before);
         set.moles = moles_before;
         set.pinned_group = -1;
 
         try {
-            if (restart.guess > 0) {
+            if (restart != StartingGuess::INCOMING) {
                 std::fill(set.moles.begin(), set.moles.end(), 0.0);
-                if (restart.guess == 1) {
+                if (restart == StartingGuess::FREE_ATOMS) {
                     set_monatomic_basis(*thermo(), elements_before, T, P);
                 } else {
                     set_element_moles(elements_before, T, P);
@@ -486,9 +486,9 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
             mixture.init();
             mixture.setState_TP(T, P);
             // "vcs" returns wrong answers with condensed phases, so the Gibbs solver is the only
-            // one used here. estimate_equil = -1 makes it discard the initial composition.
+            // one used here.
             mixture.equilibrate("TP", "gibbs", equilibrium_options.rtol,
-                                equilibrium_options.max_steps, 100, restart.estimate, 0);
+                                equilibrium_options.max_steps, 100, 0, 0);
 
             std::fill(set.moles.begin(), set.moles.end(), 0.0);
             for (size_t i = 0; i < offered.size(); i++) {
@@ -541,6 +541,24 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
         return mixture_value(*this, property) - target;
     };
 
+    // Newton step in ln T from the state just solved, using the equilibrium heat capacity:
+    // (dH/d ln T)_P = cp T and (dS/d ln T)_P = cp. NaN when that heat capacity is unusable.
+    auto newton_log_T_step = [&](double residual) {
+        double heat_capacity = 0.0;
+        try {
+            heat_capacity = get_thermo_equilibrium_properties(*this).spec_heat_p;
+        } catch (const std::exception&) {
+            // A singular derivative system leaves only the bracketing steps.
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        if (!(std::isfinite(heat_capacity) && heat_capacity > 0.0)) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        return property == EquilibriumProperty::ENTHALPY
+            ? -residual / (heat_capacity * temperature())
+            : -residual / heat_capacity;
+    };
+
     const double log_T_min = std::log(options.T_min);
     const double log_T_max = std::log(options.T_max);
 
@@ -557,10 +575,22 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
 
     if (residual_a != 0.0) {
         const double direction = residual_a < 0.0 ? 1.0 : -1.0;
-        double step = 0.05;
+        // Each probe marches on from the previous one by an overshot Newton step, so a probe that
+        // falls short of the root tightens the bracket for the next. The smallest step doubles
+        // with every probe, so a Newton step that keeps falling short cannot stall the march;
+        // without a usable heat capacity the step is that doubling one.
+        double min_step = 1e-3;
         bool bracketed = false;
         for (int i = 0; i < options.max_bracket_steps; i++) {
-            log_T_b = std::clamp(log_T_start + direction * step, log_T_min, log_T_max);
+            const double newton_step = newton_log_T_step(residual_b);
+            double step = std::isfinite(newton_step)
+                ? std::clamp(1.5 * std::abs(newton_step), min_step, std::max(min_step, 0.5))
+                : 50.0 * min_step;
+            min_step *= 2.0;
+
+            log_T_a = log_T_b;
+            residual_a = residual_b;
+            log_T_b = std::clamp(log_T_a + direction * step, log_T_min, log_T_max);
             residual_b = residual_at(std::exp(log_T_b), {});
             if (residual_a * residual_b <= 0.0) {
                 bracketed = true;
@@ -569,7 +599,6 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
             if (log_T_b <= log_T_min || log_T_b >= log_T_max) {
                 break;
             }
-            step *= 2.0;
         }
         if (!bracketed) {
             const double T_end = std::exp(log_T_b);
@@ -605,6 +634,20 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
         const double residual_below = residual_at(transition.temperature, {});
         const double group_moles = set.moles[transition.low];
 
+        if (group_moles <= 0.0) {
+            // The polymorphs have equal chemical potentials at the transition, so a group absent
+            // just below it is absent just above it too: the residual does not jump there.
+            if (residual_below < 0.0) {
+                log_T_lo = log_T_tr;
+                residual_lo = residual_below;
+            } else {
+                log_T_hi = log_T_tr;
+                residual_hi = residual_below;
+            }
+            continue;
+        }
+        const std::vector<double> state_below = save_state();
+
         std::vector<size_t> offer_above = set.offered_at(transition.temperature);
         for (size_t& k : offer_above) {
             if (set.species[k].group == set.species[transition.high].group) {
@@ -617,10 +660,9 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
             // Pinned: both polymorphs coexist at the transition. The gas composition is the one of
             // the lower-polymorph solve (their chemical potentials are equal there), and the split
             // follows from the linear enthalpy (entropy) balance across the latent heat.
-            residual_at(transition.temperature, {});
-            // Re-read the state that is being kept rather than the cached probe: the two solves are
-            // warm-started differently and agree only to the solver's tolerance, and the split has
-            // to reproduce the target property exactly.
+            // Keep the lower-polymorph state itself and re-read its property: the split has to
+            // reproduce the target property exactly.
+            restore_state(state_below);
             const double value_low_only = mixture_value(*this, property);
             const double value_low = condensed_molar_value(set, property, transition.low,
                                                            transition.temperature);
@@ -650,7 +692,14 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
         }
     }
 
-    // Illinois-modified regula falsi on ln T.
+    // Newton on ln T, safeguarded by the bracket: a Newton step that leaves the bracket, or follows
+    // one that did not halve the residual, is replaced by an Illinois-modified regula falsi step.
+    // The latter happens once the residual reaches the noise of the inner solves, where Newton steps
+    // no longer shrink the bracket. The first Newton step starts from whatever state was solved
+    // last, whose residual needs no further solve.
+    double previous_residual = mixture_value(*this, property) - target;
+    double predicted_log_T = std::log(temperature()) + newton_log_T_step(previous_residual);
+    bool newton_productive = true;
     const int max_iterations = 200;
     int side = 0;
     for (int iteration = 0; iteration < max_iterations; iteration++) {
@@ -658,6 +707,12 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
             / (residual_hi - residual_lo);
         if (!(log_T > std::min(log_T_lo, log_T_hi) && log_T < std::max(log_T_lo, log_T_hi))) {
             log_T = 0.5 * (log_T_lo + log_T_hi);
+        }
+        const bool newton = newton_productive
+            && predicted_log_T > std::min(log_T_lo, log_T_hi)
+            && predicted_log_T < std::max(log_T_lo, log_T_hi);
+        if (newton) {
+            log_T = predicted_log_T;
         }
 
         const double T = std::exp(log_T);
@@ -668,15 +723,19 @@ int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double
             return m_equilibrium_solve_count;
         }
 
+        predicted_log_T = log_T + newton_log_T_step(residual);
+        newton_productive = !newton || std::abs(residual) <= 0.5 * std::abs(previous_residual);
+        previous_residual = residual;
+
         if (residual < 0.0) {
             log_T_lo = log_T;
             residual_lo = residual;
-            if (side == -1) residual_hi *= 0.5;
+            if (!newton && side == -1) residual_hi *= 0.5;
             side = -1;
         } else {
             log_T_hi = log_T;
             residual_hi = residual;
-            if (side == 1) residual_lo *= 0.5;
+            if (!newton && side == 1) residual_lo *= 0.5;
             side = 1;
         }
 
