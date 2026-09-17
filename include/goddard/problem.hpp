@@ -24,13 +24,35 @@ struct RocketCaseParameters {
 struct ChemicalParameters {
     std::string thermo_file;
     std::unordered_set<std::string> species;
+    /**
+     * Fuel stream state. `composition` is always a **mole-fraction** map. Its keys are product
+     * species names when `reactant_file` is empty, and species of `reactant_file` otherwise
+     * (e.g. `H2(L)`, `RP-1`). CEA-style weight percentages must be converted to mole fractions
+     * by the caller.
+     */
     PhaseSpecification cantera_fuel_state;
+    /** Oxidizer stream state; see `cantera_fuel_state` for how `composition` is interpreted. */
     PhaseSpecification cantera_oxidizer_state;
     MixtureRatioType mixture_type;
     std::vector<double> mixtures;
     std::vector<double> OF_ratios;
     std::vector<double> phi_ratios;
     std::vector<double> fuel_weight_percentages;
+    /**
+     * Cantera YAML file holding the reactant species, e.g. `data/nasa9_reactants.yaml`.
+     *
+     * When set, the fuel and oxidizer are built as separate `Gas` streams from this file and
+     * their element amounts and enthalpies are transferred to the products, so reactants need not
+     * be product species. When empty, the reactant compositions refer to product species and the
+     * combustor blends them in the product phase, as before.
+     */
+    std::string reactant_file;
+    /** Cantera YAML file holding candidate condensed product species, e.g. `data/nasa9_condensed.yaml`. */
+    std::string condensed_file;
+    /** Condensed species of `condensed_file` to offer as candidates. Ignored if `all_condensed_species`. */
+    std::unordered_set<std::string> condensed_species;
+    /** Offer every species of `condensed_file` whose elements the product phase has. */
+    bool all_condensed_species = false;
 };
 
 struct RocketState {
@@ -75,7 +97,24 @@ class RocketProblem {
     ChemicalParameters chemical_params;
     
     private:
+    /**
+     * Product `Gas` for one solver stage. Every returned `Gas` references the same `Solution` and
+     * the same candidate condensed species set, so attaching candidates once in the constructor is
+     * enough for the combustor and the nozzle to see them.
+     *
+     * @param chemistry Chemistry mode of the returned `Gas`.
+     */
+    Gas product_gas(GasChemistry chemistry) const;
+
+    /** Reactant stream `Gas` built from `ChemicalParameters::reactant_file` and set to `state`. */
+    Gas reactant_gas(const PhaseSpecification& state) const;
+
     std::shared_ptr<Cantera::Solution> m_sln;
+    /**
+     * Product gas carrying the candidate condensed species, built once so that every `Gas` handed
+     * to a solver shares the same set. Empty when no `condensed_file` was given.
+     */
+    std::optional<Gas> m_condensed_prototype;
 
 };
 

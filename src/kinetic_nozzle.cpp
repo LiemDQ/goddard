@@ -10,6 +10,26 @@
 
 namespace Goddard {
 
+namespace {
+
+/**
+ * Reject a mixture carrying condensed products.
+ *
+ * The finite-rate reactor network integrates the gas phase alone, so a solid or liquid product
+ * would silently be dropped from the mass and energy balance.
+ *
+ * @param gas Mixture handed to the kinetic nozzle.
+ * @throws NotImplementedError if any condensed species is present in a nonzero amount.
+ */
+void check_no_condensed_phases(const Gas& gas) {
+    if (gas.has_condensed_phases()) {
+        throw NotImplementedError(
+            "KineticNozzle: finite-rate chemistry with condensed species is not implemented.");
+    }
+}
+
+} // namespace
+
 class VelocityFunc: public Cantera::Func1 {
 public:
     double& m_velocity;
@@ -51,6 +71,7 @@ KineticNozzle::KineticNozzle(
   m_throat_solver(gas),
   m_gas(gas)
 {
+    check_no_condensed_phases(m_gas);
     m_gas.chemistry = GasChemistry::FROZEN;
     m_inlet_state.resize(m_gas.thermo()->stateSize());
     m_gas.thermo()->saveState(m_inlet_state);
@@ -69,6 +90,7 @@ KineticNozzle::KineticNozzle(
 {
     m_gas.chemistry = GasChemistry::FROZEN;
     m_gas.restore_state(m_inlet_state);
+    check_no_condensed_phases(m_gas);
     m_gas.set_current_state_as_reference();
 }
 
@@ -102,7 +124,12 @@ static std::string diagnose_cvodes_failure(
 KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_steps) {
     ThroatCondition throat = m_throat_solver.solve_throat_conditions();
     auto thermo = m_gas.thermo();
-    thermo->restoreState(throat.state);
+    if (throat.state.size() > thermo->stateSize()) {
+        // An extended state vector carries condensed amounts the reactor network cannot follow.
+        m_gas.restore_state(throat.state);
+        check_no_condensed_phases(m_gas);
+    }
+    thermo->restoreState(thermo->stateSize(), throat.state.data());
 
     double H0 = throat.H_stagnation;
     double x = profile.x_min();

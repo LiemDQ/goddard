@@ -34,6 +34,8 @@ add_executable(
     test_kinetic_nozzle.cpp
     test_shocks.cpp
     test_gas.cpp
+    test_condensed.cpp
+    test_nozzle_condensed.cpp
     asan_options.cpp
 )
 

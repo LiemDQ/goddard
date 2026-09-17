@@ -5,6 +5,7 @@
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/eigen/dense.h>
 #include "goddard/combustor.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -33,6 +34,18 @@ void bind_combustor(nb::module_& m) {
              "fuel_temperature"_a, "oxidizer_temperature"_a,
              "pressures"_a, "mixture_ratios"_a,
              "options"_a = Goddard::CombustorOptions{})
+        // Reactant-stream constructor and its solve overload. The fuel and oxidizer carry their
+        // own state, so no reactant temperatures are passed to solve().
+        .def(nb::init<Goddard::Gas, Goddard::Gas, Goddard::Gas>(),
+             "products"_a, "fuel"_a, "oxidizer"_a, DOC(Goddard, Combustor, Combustor, 3))
+        .def("solve",
+             nb::overload_cast<const Eigen::ArrayXd&,
+                               const Eigen::ArrayXd&,
+                               const Goddard::CombustorOptions&>(
+                 &Goddard::Combustor::solve),
+             "pressures"_a, "mixture_ratios"_a,
+             "options"_a = Goddard::CombustorOptions{},
+             DOC(Goddard, Combustor, solve, 3))
         .def("generate_mole_fraction_matrix",
              &Goddard::Combustor::generate_mole_fraction_matrix,
              "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO)

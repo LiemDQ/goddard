@@ -11,6 +11,9 @@
 // NOLINTBEGIN(readability-identifier-naming)
 namespace Goddard {
 
+class Gas;
+class CondensedPhaseSet;
+
 /**
  * @brief Wrapper around `Cantera::SolutionArray` with a higher-level API for 
  * broadcasting thermodynamic operations.
@@ -42,7 +45,16 @@ class ThermoArray {
 	 * An empty `shape` leaves the shape unset; the first setter call then sets it.
 	 */
 	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, const std::vector<long>& shape);
-	
+
+	/**
+	 * Create an array from a `Gas`, carrying over its candidate condensed species.
+	 *
+	 * The array stores its own clone of the gas's condensed species set, so the candidate list and
+	 * the phase objects are independent of the `Gas` it was built from. Every entry additionally
+	 * carries its own amount of each candidate, initialized to the amounts of `gas`.
+	 */
+	ThermoArray(const Gas& gas, const std::vector<long>& shape);
+
 	static std::shared_ptr<ThermoArray> create(const std::shared_ptr<Cantera::Solution>& sol, int size=0, const Cantera::AnyMap& meta={}) {
 		return std::shared_ptr<ThermoArray>(new ThermoArray(sol, size, meta));
 	}
@@ -61,11 +73,42 @@ class ThermoArray {
 	 */
 	int flat_index(long i, long j = 0, long k = 0) const;
 
-	/** Cantera state vector of the entry at flat location `loc`. */
+	/** Number of candidate condensed species carried by the array. Zero for a gas-only array. */
+	size_t num_condensed() const;
+
+	/** Names of the candidate condensed species, in candidate order. */
+	std::vector<std::string> condensed_species_names() const;
+
+	/**
+	 * State vector of the entry at flat location `loc`: the Cantera state of the gas phase followed
+	 * by one entry per candidate condensed species (kmol per kg of mixture), exactly as
+	 * `Gas::save_state()` lays it out.
+	 */
 	std::vector<double> get_state(int loc) const;
 
-	/** Set the entry at flat location `loc` from a Cantera state vector of the same phase. */
+	/**
+	 * Set the entry at flat location `loc` from a state vector of the same phase.
+	 *
+	 * Accepts either the extended length returned by `get_state()` or the bare Cantera state
+	 * length, in which case the condensed amounts of that entry are set to zero.
+	 *
+	 * @throws std::invalid_argument if the vector has neither length.
+	 */
 	void set_state(int loc, const std::vector<double>& state);
+
+	/**
+	 * Amounts of the candidate condensed species at flat location `loc` [kmol per kg of mixture],
+	 * in candidate order. Empty for a gas-only array.
+	 */
+	std::vector<double> get_condensed_moles(int loc) const;
+
+	/**
+	 * Set the amounts of the candidate condensed species at flat location `loc`
+	 * [kmol per kg of mixture].
+	 *
+	 * @throws std::invalid_argument if `moles` does not have one entry per candidate.
+	 */
+	void set_condensed_moles(int loc, const std::vector<double>& moles);
 
 	/**
 	 * Property getters. The result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D arrays,
@@ -83,6 +126,16 @@ class ThermoArray {
 	Eigen::ArrayXXd mean_molecular_weight(int slice = 0) const;
 
 
+	/**
+	 * Equilibrate every entry, holding the two properties named by `XY` constant.
+	 *
+	 * When the array carries condensed species each location is equilibrated through a `Gas` built
+	 * on the array's phase and candidate set, so the condensed amounts take part and are written
+	 * back; `rtol` and `max_steps` are forwarded to the Gibbs solver and the remaining arguments
+	 * are ignored.
+	 *
+	 * @throws std::invalid_argument if `solver` is "vcs" and the array carries condensed species.
+	 */
 	void equilibrate(const std::string& XY, 
 		const std::string& solver="auto", 
 		double rtol=1e-6,
@@ -222,6 +275,12 @@ class ThermoArray {
 	// `updateState` at the location it loaded.
 	std::shared_ptr<Cantera::Solution> m_solution;
 	std::shared_ptr<Cantera::SolutionArray> m_states;
+	// Candidate condensed species carried over from the `Gas` the array was built from; null for a
+	// gas-only array. `Cantera::SolutionArray` has no room for them, so the amounts live in a side
+	// table of `size() * num_condensed()` entries, location major: the amount of candidate `k` at
+	// flat location `loc` is `m_condensed_moles[loc * num_condensed() + k]`.
+	std::shared_ptr<CondensedPhaseSet> m_condensed;
+	std::vector<double> m_condensed_moles;
 	bool m_shape_is_set = false;
 };
 

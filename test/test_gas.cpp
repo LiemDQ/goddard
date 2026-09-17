@@ -2,8 +2,12 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/numerics.hpp"
+#include "goddard/config.h"
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <vector>
 #include "cantera/core.h"
 #include "gtest/gtest.h"
 
@@ -248,4 +252,79 @@ TEST_F(GasTests, ClonePerfectGas) {
     Gas cloned = gas.clone();
     EXPECT_FALSE(cloned.has_cantera_sln());
     EXPECT_DOUBLE_EQ(cloned.gamma_s(), 1.3);
+}
+
+// Element bookkeeping and reactant streams
+
+TEST(GasElementTests, ElementMolesMatchElementalMassFractions) {
+    Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    gas.set_state_TPX(1200.0, 3.0 * Cantera::OneAtm, "H2:2, O2:1");
+
+    auto thermo = gas.thermo();
+    Eigen::ArrayXd moles = gas.element_moles();
+    std::vector<std::string> names = gas.element_names();
+    ASSERT_EQ(names.size(), thermo->nElements());
+    ASSERT_EQ(static_cast<size_t>(moles.size()), thermo->nElements());
+
+    for (size_t m = 0; m < thermo->nElements(); m++) {
+        // kmol of element m per kg of mixture.
+        const double expected =
+            thermo->elementalMassFraction(m) / thermo->atomicWeight(m);
+        EXPECT_NEAR(moles(static_cast<long>(m)), expected, 1e-12 * std::max(expected, 1e-3))
+            << "element " << names[m];
+    }
+}
+
+// The NASA9 reactant database holds condensed reactants such as H2(L) as ordinary species. Their
+// polynomials are evaluated in an ideal-gas phase, which gives the right enthalpy and element
+// amounts; density and entropy of such a stream are meaningless.
+class ReactantGasTests : public ::testing::Test {
+protected:
+    static double species_enthalpy_mass(const Gas& gas, const std::string& name, double T) {
+        auto thermo = gas.thermo();
+        thermo->setState_TP(T, Cantera::OneAtm);
+        std::vector<double> h_RT(thermo->nSpecies());
+        thermo->getEnthalpy_RT_ref(h_RT.data());
+        const size_t k = thermo->speciesIndex(name);
+        return h_RT[k] * Cantera::GasConstant * T / thermo->molecularWeight(k);
+    }
+
+    std::string reactant_file = std::string(DATA_DIR) + "/nasa9_reactants.yaml";
+};
+
+TEST_F(ReactantGasTests, CryogenicStreamsCarryEnthalpyAndElements) {
+    const double H2_boiling_point = 20.27;
+    const double O2_boiling_point = 90.17;
+
+    Gas fuel = Gas::create_from_species(reactant_file, "reactants", {"H2(L)"});
+    fuel.set_state_TPX(H2_boiling_point, Cantera::OneAtm, "H2(L):1");
+    Gas oxidizer = Gas::create_from_species(reactant_file, "reactants", {"O2(L)"});
+    oxidizer.set_state_TPX(O2_boiling_point, Cantera::OneAtm, "O2(L):1");
+
+    EXPECT_NEAR(fuel.enthalpy_mass(),
+        species_enthalpy_mass(fuel, "H2(L)", H2_boiling_point), 1e-9 * 1e6);
+    EXPECT_NEAR(oxidizer.enthalpy_mass(),
+        species_enthalpy_mass(oxidizer, "O2(L)", O2_boiling_point), 1e-9 * 1e6);
+    // Liquid hydrogen and oxygen have negative formation enthalpies.
+    EXPECT_LT(fuel.enthalpy_mass(), 0.0);
+    EXPECT_LT(oxidizer.enthalpy_mass(), 0.0);
+
+    // 2 kmol of H per kmol of H2(L), i.e. 2/M kmol per kg.
+    fuel.set_state_TPX(H2_boiling_point, Cantera::OneAtm, "H2(L):1");
+    ASSERT_EQ(fuel.element_names(), (std::vector<std::string>{"H"}));
+    EXPECT_NEAR(fuel.element_moles()(0), 2.0 / fuel.molecular_weight(), 1e-12);
+
+    oxidizer.set_state_TPX(O2_boiling_point, Cantera::OneAtm, "O2(L):1");
+    ASSERT_EQ(oxidizer.element_names(), (std::vector<std::string>{"O"}));
+    EXPECT_NEAR(oxidizer.element_moles()(0), 2.0 / oxidizer.molecular_weight(), 1e-12);
+}
+
+TEST_F(ReactantGasTests, AssignedEnthalpyReactantIsTemperatureIndependent) {
+    // CEA gives reactants such as RP-1 an assigned enthalpy: constant-cp species with cp0 = 0,
+    // so h(T) is the formation enthalpy at every temperature.
+    Gas fuel = Gas::create_from_species(reactant_file, "reactants", {"RP-1"});
+    fuel.set_state_TPX(298.15, Cantera::OneAtm, "RP-1:1");
+    const double h_reference = fuel.enthalpy_mass();
+    fuel.set_state_TPX(500.0, Cantera::OneAtm, "RP-1:1");
+    EXPECT_NEAR(fuel.enthalpy_mass(), h_reference, 1e-9 * std::abs(h_reference));
 }

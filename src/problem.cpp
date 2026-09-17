@@ -59,6 +59,40 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
     const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", name);
     m_sln = Cantera::newSolution(phase_node, root_node);
     m_sln->setSource(chemical_params.thermo_file);
+
+    if (!chemical_params.condensed_file.empty()) {
+        Gas prototype(m_sln);
+        if (chemical_params.all_condensed_species) {
+            prototype.add_all_condensed_species(chemical_params.condensed_file);
+        } else {
+            std::vector<std::string> names(chemical_params.condensed_species.begin(),
+                chemical_params.condensed_species.end());
+            std::sort(names.begin(), names.end());
+            prototype.add_condensed_species(chemical_params.condensed_file, names);
+        }
+        m_condensed_prototype = std::move(prototype);
+    }
+}
+
+Gas RocketProblem::product_gas(GasChemistry chemistry) const {
+    if (m_condensed_prototype) {
+        // A copy shares the `Solution` and the candidate condensed species set of the prototype.
+        Gas gas = *m_condensed_prototype;
+        gas.chemistry = chemistry;
+        return gas;
+    }
+    return Gas(m_sln, chemistry);
+}
+
+Gas RocketProblem::reactant_gas(const PhaseSpecification& state) const {
+    std::vector<std::string> species;
+    species.reserve(state.composition.size());
+    for (const auto& entry : state.composition) {
+        species.push_back(entry.first);
+    }
+    Gas stream = Gas::create_from_species(chemical_params.reactant_file, "reactants", species);
+    stream.set_state_TPX(state.T, state.P, state.composition);
+    return stream;
 }
 
 RocketProblemResults RocketProblem::solve() {
@@ -70,28 +104,36 @@ RocketProblemResults RocketProblem::solve() {
 
     const auto& fuel_input = chemical_params.cantera_fuel_state;
     const auto& ox_input = chemical_params.cantera_oxidizer_state;
+    const bool reactant_streams = !chemical_params.reactant_file.empty();
 
-    // Parse fuel and oxidizer compositions into Cantera Composition maps
-    thermo->setState_TPX(fuel_input.T, fuel_input.P, fuel_input.composition);
-    Cantera::Composition fuel_comp = thermo->getMoleFractionsByName();
+    Cantera::Composition fuel_comp;
+    Cantera::Composition ox_comp;
+    if (!reactant_streams) {
+        // Parse fuel and oxidizer compositions into Cantera Composition maps
+        thermo->setState_TPX(fuel_input.T, fuel_input.P, fuel_input.composition);
+        fuel_comp = thermo->getMoleFractionsByName();
+
+        thermo->setState_TPX(ox_input.T, ox_input.P, ox_input.composition);
+        ox_comp = thermo->getMoleFractionsByName();
+    }
     double fuel_T = fuel_input.T;
-
-    thermo->setState_TPX(ox_input.T, ox_input.P, ox_input.composition);
-    Cantera::Composition ox_comp = thermo->getMoleFractionsByName();
     double ox_T = ox_input.T;
 
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
 
-        Gas combustor_gas(m_sln);
-        Combustor combustor(combustor_gas, fuel_comp, ox_comp);
+        Gas combustor_gas = product_gas(GasChemistry::FROZEN);
 
-        ThermoArray combustion_states = combustor.solve(fuel_T, ox_T, pressures, OFs, params.combustor_options);
+        ThermoArray combustion_states = reactant_streams
+            ? Combustor(combustor_gas, reactant_gas(fuel_input), reactant_gas(ox_input))
+                  .solve(pressures, OFs, params.combustor_options)
+            : Combustor(combustor_gas, fuel_comp, ox_comp)
+                  .solve(fuel_T, ox_T, pressures, OFs, params.combustor_options);
 
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
 
-        Gas gas(m_sln, params.nozzle_options.chemistry);
+        Gas gas = product_gas(params.nozzle_options.chemistry);
         Nozzle nozzle(gas, params.nozzle_options);
 
         for (int i = 0; i < combustion_states.size(); i++) {
@@ -114,7 +156,7 @@ RocketProblemResults RocketProblem::solve() {
         });
     }
     
-    return {std::move(case_results), m_sln};
+    return {std::move(case_results), product_gas(GasChemistry::FROZEN)};
 }
 
 
