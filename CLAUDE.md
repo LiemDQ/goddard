@@ -59,6 +59,7 @@ Goddard performs 5 main types of computations:
 
 ## Build System
 
+Before building, testing, or briefing an agent that will, load the `build-and-test` skill (`.claude/skills/build-and-test/SKILL.md`). It covers the resource rule (one build or test run at a time), worktrees, the docs build, and the sandbox.
 
 ### Build Commands
 This project uses the Pixi package manager to manage dependencies. The goddard conda environment needs to be active before building the project. It can be activated with `pixi shell`. There are also pixi tasks that implement basic functionality (consult `pixi.toml` for details.)
