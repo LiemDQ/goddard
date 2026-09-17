@@ -133,6 +133,12 @@ private:
         ExpansionType expansion_type;
         CombustionProcess process;
         CombustorType combustor_type;
+        /**
+         * Mass flux mdot/Ac [kg/(m^2 s)] of each operating point, row-major over
+         * (of_index, pressure_index); empty for `CombustorType::INFINITE_AREA`. Not derivable
+         * from a station's `ThermodynamicState`, so it is captured here for the report.
+         */
+        std::vector<double> mass_flux;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     /** Product mixture used to read the stored station states back. */

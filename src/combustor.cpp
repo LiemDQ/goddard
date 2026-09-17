@@ -17,8 +17,31 @@ BaseCombustor::BaseCombustor(Gas gas)
 {}
 
 void BaseCombustor::validate_options(const CombustorOptions& options) {
-    if (options.type != CombustorType::INFINITE_AREA) {
-        throw NotImplementedError("Finite area combustors are not implemented.");
+    switch (options.type) {
+        case CombustorType::INFINITE_AREA:
+            break;
+        case CombustorType::FINITE_MASS_FLUX:
+            if (options.mass_flux <= 0.0) {
+                throw std::invalid_argument(
+                    "BaseCombustor: FINITE_MASS_FLUX requires mass_flux > 0.");
+            }
+            if (options.process == CombustionProcess::ISOCHORIC) {
+                throw std::invalid_argument(
+                    "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
+            }
+            break;
+        case CombustorType::FINITE_CONTRACTION_RATIO:
+            if (options.contraction_ratio <= 1.0) {
+                throw std::invalid_argument(
+                    "BaseCombustor: FINITE_CONTRACTION_RATIO requires contraction_ratio > 1.");
+            }
+            if (options.process == CombustionProcess::ISOCHORIC) {
+                throw std::invalid_argument(
+                    "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
+            }
+            break;
+        case CombustorType::NONE:
+            throw NotImplementedError("CombustorType::NONE is not implemented.");
     }
 }
 
