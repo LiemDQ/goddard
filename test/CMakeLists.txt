@@ -54,7 +54,23 @@ target_link_libraries(goddardTests PRIVATE nlohmann_json::nlohmann_json)
 # gtest_discover_tests lists tests by running the binary, so parameterized (TEST_P) instantiations are
 # registered too; gtest_add_tests scans sources and misses them. The binary sets its own ASan options
 # (asan_options.cpp) because discovery does not use the test ENVIRONMENT property.
+#
+# The condensed-phase suites (test_condensed.cpp, test_nozzle_condensed.cpp) take a large share of the
+# run time, so they are discovered separately and labelled "slow": `ctest -LE slow` skips them.
+set(GODDARD_SLOW_TEST_SUITES
+    "BerylliumNozzleTests.*:BerylliumRocketTests.*:CondensedGasTests.*:CondensedGuardTests.*"
+    ":CondensedSetTests.*:CondensedStateTests.*:DewPointTests.*:GasOnlyEquilibriumTests.*"
+    ":MultiphaseHPTests.*:MultiphaseTPTests.*:PropellantNozzleTests.*:PropellantTests.*"
+    ":RocketProblemCondensedTests.*")
+string(JOIN "" GODDARD_SLOW_TEST_FILTER ${GODDARD_SLOW_TEST_SUITES})
 gtest_discover_tests(goddardTests
     TEST_PREFIX "goddard"
+    TEST_FILTER "-${GODDARD_SLOW_TEST_FILTER}"
+    DISCOVERY_TIMEOUT 60
+)
+gtest_discover_tests(goddardTests
+    TEST_PREFIX "goddard"
+    TEST_FILTER "${GODDARD_SLOW_TEST_FILTER}"
+    PROPERTIES LABELS slow
     DISCOVERY_TIMEOUT 60
 )

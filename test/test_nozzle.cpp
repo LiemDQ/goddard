@@ -8,13 +8,16 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/config.h"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <memory>
 #include <iostream>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
+#include "cantera/base/logger.h"
 #include "gtest/gtest.h"
 
 using namespace Goddard;
@@ -794,6 +797,60 @@ TEST_F(FiniteAreaCombustorTests, LargeContractionRatioRecoversInfiniteArea) {
         1e-5 * pressure_of(infinite.expansions[0].state));
     EXPECT_NEAR(temperature_of(exits[0].state), temperature_of(infinite.expansions[0].state),
         1e-5 * temperature_of(infinite.expansions[0].state));
+}
+
+namespace {
+
+/** Cantera logger that records warning messages instead of printing them. */
+class WarningRecorder : public Cantera::Logger {
+public:
+    explicit WarningRecorder(std::vector<std::string>* messages) : m_messages(messages) {}
+    void warn(const std::string& /*warning*/, const std::string& msg) override {
+        m_messages->push_back(msg);
+    }
+
+private:
+    std::vector<std::string>* m_messages;
+};
+
+/** Warnings emitted by Cantera::warn_user while `action` runs. */
+std::vector<std::string> recorded_warnings(const std::function<void()>& action) {
+    std::vector<std::string> messages;
+    Cantera::setLogger(std::make_unique<WarningRecorder>(&messages));
+    try {
+        action();
+    } catch (...) {
+        Cantera::setLogger(std::make_unique<Cantera::Logger>());
+        throw;
+    }
+    Cantera::setLogger(std::make_unique<Cantera::Logger>());
+    return messages;
+}
+
+bool any_contains(const std::vector<std::string>& messages, const std::string& text) {
+    return std::any_of(messages.begin(), messages.end(),
+        [&](const std::string& message) { return message.find(text) != std::string::npos; });
+}
+
+} // namespace
+
+TEST_F(FiniteAreaCombustorTests, UnresolvedCombustionEndVelocityWarns) {
+    const std::string warning = "below the solver's resolution";
+
+    Nozzle realistic_nozzle(products, injector_state, options);
+    const std::vector<std::string> realistic = recorded_warnings([&] {
+        realistic_nozzle.solve_finite_area_chamber(
+            injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1.58);
+    });
+    EXPECT_FALSE(any_contains(realistic, warning));
+
+    // M_c ~ 6e-4: the kinetic energy is comparable to the station solve's enthalpy error.
+    Nozzle huge_nozzle(products, injector_state, options);
+    const std::vector<std::string> huge = recorded_warnings([&] {
+        huge_nozzle.solve_finite_area_chamber(
+            injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1000.0);
+    });
+    EXPECT_TRUE(any_contains(huge, warning));
 }
 
 TEST_F(FiniteAreaCombustorTests, FrozenExpansionContinuesFromEquilibriumChamber) {

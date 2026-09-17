@@ -10,6 +10,12 @@ import numpy as np
 import pytest
 import goddard
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "slow: long-running test (condensed-phase CEA comparisons); deselect with -m 'not slow'")
+
 # ---------------------------------------------------------------------------
 # Data directory
 # ---------------------------------------------------------------------------
