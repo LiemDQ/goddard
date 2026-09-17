@@ -172,7 +172,12 @@ cython_debug/
 !.pixi/config.toml
 
 # AI tools
-.claude/
+CLAUDE.local.md
+.claude/worktrees/
+.claude/plans/
+.claude/debug/
+.claude/logs/
+
 instructions/
 *.mcp.json
 debug_probes/
