@@ -22,6 +22,7 @@ from goddard._core import (
     ThroatCondition,
     NozzleResult,
     NozzleResults,
+    FiniteAreaChamber,
     RocketCaseParameters,
     ChemicalParameters,
     ThermodynamicState,

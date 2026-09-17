@@ -177,6 +177,53 @@ void bind_structs(nb::module_& m) {
         .def_ro("throat", &Goddard::NozzleResults::throat)
         .def_ro("expansions", &Goddard::NozzleResults::expansions);
 
+    // FiniteAreaChamber
+    nb::class_<Goddard::FiniteAreaChamber>(m, "FiniteAreaChamber",
+            DOC(Goddard, FiniteAreaChamber))
+        .def(nb::init<>())
+        .def("__init__", [](Goddard::FiniteAreaChamber* self,
+                            std::vector<double> stagnation_state,
+                            Goddard::NozzleStation combustion_end,
+                            Goddard::ThroatCondition throat,
+                            double injector_pressure,
+                            double stagnation_pressure,
+                            double contraction_ratio,
+                            double mass_flux,
+                            int iterations) {
+            new (self) Goddard::FiniteAreaChamber();
+            self->stagnation_state = std::move(stagnation_state);
+            self->combustion_end = std::move(combustion_end);
+            self->throat = std::move(throat);
+            self->injector_pressure = injector_pressure;
+            self->stagnation_pressure = stagnation_pressure;
+            self->contraction_ratio = contraction_ratio;
+            self->mass_flux = mass_flux;
+            self->iterations = iterations;
+        },  "stagnation_state"_a = std::vector<double>(),
+            "combustion_end"_a = Goddard::NozzleStation(),
+            "throat"_a = Goddard::ThroatCondition(),
+            "injector_pressure"_a = 0.0,
+            "stagnation_pressure"_a = 0.0,
+            "contraction_ratio"_a = 0.0,
+            "mass_flux"_a = 0.0,
+            "iterations"_a = 0)
+        .def_ro("stagnation_state", &Goddard::FiniteAreaChamber::stagnation_state,
+             DOC(Goddard, FiniteAreaChamber, stagnation_state))
+        .def_ro("combustion_end", &Goddard::FiniteAreaChamber::combustion_end,
+             DOC(Goddard, FiniteAreaChamber, combustion_end))
+        .def_ro("throat", &Goddard::FiniteAreaChamber::throat,
+             DOC(Goddard, FiniteAreaChamber, throat))
+        .def_ro("injector_pressure", &Goddard::FiniteAreaChamber::injector_pressure,
+             DOC(Goddard, FiniteAreaChamber, injector_pressure))
+        .def_ro("stagnation_pressure", &Goddard::FiniteAreaChamber::stagnation_pressure,
+             DOC(Goddard, FiniteAreaChamber, stagnation_pressure))
+        .def_ro("contraction_ratio", &Goddard::FiniteAreaChamber::contraction_ratio,
+             DOC(Goddard, FiniteAreaChamber, contraction_ratio))
+        .def_ro("mass_flux", &Goddard::FiniteAreaChamber::mass_flux,
+             DOC(Goddard, FiniteAreaChamber, mass_flux))
+        .def_ro("iterations", &Goddard::FiniteAreaChamber::iterations,
+             DOC(Goddard, FiniteAreaChamber, iterations));
+
     // RocketCaseParameters
     nb::class_<Goddard::RocketCaseParameters>(m, "RocketCaseParameters")
         .def(nb::init<>())
@@ -342,9 +389,11 @@ void bind_structs(nb::module_& m) {
 
     // StationType
     nb::enum_<Goddard::StationType>(m, "StationType")
-        .value("CHAMBER", Goddard::StationType::CHAMBER)
-        .value("THROAT",  Goddard::StationType::THROAT)
-        .value("EXIT",    Goddard::StationType::EXIT);
+        .value("CHAMBER",        Goddard::StationType::CHAMBER)
+        .value("STAGNATION",     Goddard::StationType::STAGNATION)
+        .value("COMBUSTION_END", Goddard::StationType::COMBUSTION_END)
+        .value("THROAT",         Goddard::StationType::THROAT)
+        .value("EXIT",           Goddard::StationType::EXIT);
 
     // RocketStation
     nb::class_<Goddard::RocketStation>(m, "RocketStation")

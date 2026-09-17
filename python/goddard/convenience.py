@@ -76,11 +76,14 @@ def infinite_area_combustor(pressures=None, process=CombustionProcess.ISOBARIC):
 
 
 def finite_mass_flux_combustor(mass_flux, pressures=None):
-    """Create CombustorOptions for finite mass flux combustor.
+    """Create CombustorOptions for a finite-area combustor driven by mass flux.
+
+    The chamber area follows from the requested mass flux through the momentum balance
+    P_inj = P_c + rho_c u_c^2. Isobaric combustion only (`CombustionProcess.ISOBARIC`).
 
     Args:
-        mass_flux: Mass flux value.
-        pressures: List of chamber pressures.
+        mass_flux: Mass flux through the chamber, mdot/A_c [kg/(m^2 s)].
+        pressures: List of injector-face pressures [Pa].
     """
     opts = CombustorOptions()
     opts.type = CombustorType.FINITE_MASS_FLUX
@@ -90,11 +93,13 @@ def finite_mass_flux_combustor(mass_flux, pressures=None):
 
 
 def finite_contraction_ratio_combustor(contraction_ratio, pressures=None):
-    """Create CombustorOptions for finite contraction ratio combustor.
+    """Create CombustorOptions for a finite-area combustor driven by contraction ratio.
+
+    Isobaric combustion only (`CombustionProcess.ISOBARIC`).
 
     Args:
-        contraction_ratio: Contraction ratio value.
-        pressures: List of chamber pressures.
+        contraction_ratio: Chamber contraction ratio, A_c/A_t [-], greater than 1.
+        pressures: List of injector-face pressures [Pa].
     """
     opts = CombustorOptions()
     opts.type = CombustorType.FINITE_CONTRACTION_RATIO
