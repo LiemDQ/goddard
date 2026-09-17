@@ -524,9 +524,38 @@ TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
     phi.mixture_type = MixtureRatioType::PHI_RATIO;
     EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, phi), NotImplementedError);
 
+    // A finite-area combustor with a valid mass flux is accepted: the combustor itself just
+    // produces the ordinary injector-face HP state (the finite-area chamber solve happens on
+    // the nozzle side, not here). A single, convergence-safe O/F ratio is used here: `OF_ratios`
+    // spans 6-10, and Cantera's "gibbs" HP solver fails to converge on `h2o2.yaml` above O/F 7 at
+    // this pressure (see `reactantGasPathMatchesLegacyIsobaricPath`).
+    Eigen::ArrayXd single_of_ratio(1);
+    single_of_ratio << 6.0;
     CombustorOptions finite_area = options;
     finite_area.type = CombustorType::FINITE_MASS_FLUX;
-    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, finite_area), NotImplementedError);
+    finite_area.mass_flux = 1000.0;
+    EXPECT_NO_THROW(stream_combustor.solve(pressures, single_of_ratio, finite_area));
+
+    // mass_flux <= 0 is rejected.
+    CombustorOptions zero_mass_flux = finite_area;
+    zero_mass_flux.mass_flux = 0.0;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, zero_mass_flux), std::invalid_argument);
+
+    // contraction_ratio <= 1 is rejected.
+    CombustorOptions invalid_contraction = options;
+    invalid_contraction.type = CombustorType::FINITE_CONTRACTION_RATIO;
+    invalid_contraction.contraction_ratio = 1.0;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, invalid_contraction), std::invalid_argument);
+
+    // ISOCHORIC combined with a finite-area type is rejected.
+    CombustorOptions isochoric_finite = finite_area;
+    isochoric_finite.process = CombustionProcess::ISOCHORIC;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, isochoric_finite), std::invalid_argument);
+
+    // CombustorType::NONE is not implemented.
+    CombustorOptions none_type = options;
+    none_type.type = CombustorType::NONE;
+    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, none_type), NotImplementedError);
 
     // The product species carry no carbon, so a hydrocarbon fuel cannot be burnt in this phase.
     Gas methane = Gas::create_from_species(reactant_file(), "reactants", {"CH4"});
@@ -613,5 +642,163 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 3.0);
     EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
     EXPECT_NEAR(chamber.thermo.pressure, CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
+}
+
+// ---- RocketProblemResults for a finite-area combustor ----
+//
+// Nozzle::solve_finite_area_chamber() and Nozzle::solve_stations() are throwing stubs in this
+// worktree (implemented on the nozzle-numerics side), so these tests build a
+// RocketProblemCaseResult by hand: real infinite-area combustion solves stand in for the
+// injector face and the "inf" stagnation state, and a real Nozzle solve from the stagnation
+// state provides the combustion-end, throat and exit stations.
+
+TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
+    const double injector_pressure = 50.0 * Cantera::OneBar;
+    // P_inf < P_inj, as the finite-area chamber momentum balance requires.
+    const double stagnation_pressure = 47.8 * Cantera::OneBar;
+    const double of_ratio = 6.0;
+    const double reactant_temperature = 300.0;
+
+    Eigen::ArrayXd of_ratios(1);
+    of_ratios << of_ratio;
+
+    Gas combustor_gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor infinite_combustor(combustor_gas, Composition{{"H2", 1.0}}, Composition{{"O2", 1.0}});
+    CombustorOptions infinite_area_options{CombustorType::INFINITE_AREA, MixtureRatioType::OF_RATIO,
+        {}, 0.0, 0.0};
+
+    Eigen::ArrayXd injector_pressures(1);
+    injector_pressures << injector_pressure;
+    ThermoArray injector_states = infinite_combustor.solve(
+        reactant_temperature, reactant_temperature, injector_pressures, of_ratios, infinite_area_options);
+
+    Eigen::ArrayXd stagnation_pressures(1);
+    stagnation_pressures << stagnation_pressure;
+    ThermoArray stagnation_states = infinite_combustor.solve(
+        reactant_temperature, reactant_temperature, stagnation_pressures, of_ratios, infinite_area_options);
+
+    std::vector<double> stagnation_state = stagnation_states.get_state(0);
+
+    Gas nozzle_gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    NozzleOptions nozzle_opts;
+    nozzle_opts.chemistry = GasChemistry::EQUILIBRIUM;
+    nozzle_opts.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    nozzle_opts.expansion_ratios = {5.0};
+
+    Nozzle nozzle(nozzle_gas, stagnation_state, nozzle_opts);
+    NozzleResults exits = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, nozzle_opts.expansion_ratios);
+    NozzleResults comb_end_result = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 2.0);
+
+    FiniteAreaChamber fac{
+        stagnation_state,
+        comb_end_result.expansions[0],
+        exits.throat,
+        injector_pressure,
+        stagnation_pressure,
+        /*contraction_ratio=*/2.0,
+        /*mass_flux=*/500.0,
+        /*iterations=*/1
+    };
+
+    RocketProblemCaseResult case_result{
+        "rocket",
+        injector_states,
+        GasChemistry::EQUILIBRIUM,
+        {NozzleResults{fac.throat, exits.expansions}},
+        {of_ratio},
+        {injector_pressure},
+        {5.0},
+        ExpansionType::SUPERSONIC_AREA_RATIO,
+        CombustionProcess::ISOBARIC,
+        CombustorType::FINITE_CONTRACTION_RATIO,
+        {fac}
+    };
+
+    std::unordered_map<std::string, RocketProblemCaseResult> case_results;
+    case_results.emplace("fac_case", std::move(case_result));
+
+    Gas results_gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    RocketProblemResults results(std::move(case_results), results_gas);
+
+    // Station order and types for the single operating point: chamber (injector), stagnation,
+    // combustion end, throat, one exit.
+    const std::vector<RocketStation>& stations = results.stations();
+    ASSERT_EQ(stations.size(), 5u);
+    EXPECT_EQ(stations[0].type, StationType::CHAMBER);
+    EXPECT_EQ(stations[1].type, StationType::STAGNATION);
+    EXPECT_EQ(stations[2].type, StationType::COMBUSTION_END);
+    EXPECT_EQ(stations[3].type, StationType::THROAT);
+    EXPECT_EQ(stations[4].type, StationType::EXIT);
+
+    // Accessors.
+    const RocketStation& chamber_station = results.chamber(0, "fac_case");
+    EXPECT_EQ(chamber_station.type, StationType::CHAMBER);
+    EXPECT_NEAR(chamber_station.thermo.pressure, injector_pressure, 1e-6 * injector_pressure);
+
+    const RocketStation& stagnation_station = results.stagnation(0, "fac_case");
+    EXPECT_EQ(stagnation_station.type, StationType::STAGNATION);
+    EXPECT_NEAR(stagnation_station.thermo.pressure, stagnation_pressure, 1e-6 * stagnation_pressure);
+
+    const RocketStation& comb_end_station = results.combustion_end(0, "fac_case");
+    EXPECT_EQ(comb_end_station.type, StationType::COMBUSTION_END);
+    EXPECT_DOUBLE_EQ(comb_end_station.area_ratio, 2.0);
+
+    // performance() must use the stagnation station, not the chamber/injector one: the two
+    // differ here, since P_inf != P_inj.
+    const RocketStation& throat_station = results.throat(0, "fac_case");
+    std::vector<RocketStation> exit_stations = results.exits(0, "fac_case");
+    ASSERT_EQ(exit_stations.size(), 1u);
+
+    RocketPerformance expected = RocketProblemResults::calculate_performance(
+        stagnation_station.thermo, throat_station.thermo, exit_stations[0].thermo);
+    RocketPerformance actual = results.performance(0, 0, "fac_case");
+    EXPECT_DOUBLE_EQ(actual.cstar, expected.cstar);
+    EXPECT_DOUBLE_EQ(actual.CF, expected.CF);
+    EXPECT_DOUBLE_EQ(actual.isp, expected.isp);
+
+    RocketPerformance chamber_based = RocketProblemResults::calculate_performance(
+        chamber_station.thermo, throat_station.thermo, exit_stations[0].thermo);
+    EXPECT_NE(actual.cstar, chamber_based.cstar);
+
+    // Report layout: CEA's finite-area combustor page layout (see data/cea_results/h2gas_fac.output).
+    std::string report = results.report("fac_case");
+    EXPECT_NE(report.find("FINITE AREA COMBUSTOR"), std::string::npos);
+    EXPECT_NE(report.find("INJECTOR"), std::string::npos);
+    EXPECT_NE(report.find("COMB END"), std::string::npos);
+    EXPECT_NE(report.find("Pinj/P"), std::string::npos);
+    EXPECT_NE(report.find("Pinf/P"), std::string::npos);
+}
+
+TEST(FiniteAreaCombustorResults, InfiniteAreaHasNoCombustionEndStation) {
+    const double reactant_temperature = 300.0;
+    const double pressure = 50.0 * Cantera::OneBar;
+    const double of_ratio = 6.0;
+
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressure, "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressure, "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {of_ratio};
+
+    RocketCaseParameters case_params;
+    case_params.name = "infinite";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.type = CombustorType::INFINITE_AREA;
+    case_params.combustor_options.pressures = {pressure};
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = {5.0};
+
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    RocketProblemResults results = problem.solve();
+
+    EXPECT_THROW(results.combustion_end(0, "infinite"), std::runtime_error);
+
+    const RocketStation& stag = results.stagnation(0, "infinite");
+    const RocketStation& chamber = results.chamber(0, "infinite");
+    EXPECT_EQ(stag.type, StationType::CHAMBER);
+    EXPECT_NEAR(stag.thermo.pressure, chamber.thermo.pressure, 1e-9 * chamber.thermo.pressure);
 }
 

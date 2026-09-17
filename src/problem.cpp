@@ -132,15 +132,50 @@ RocketProblemResults RocketProblem::solve() {
 
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
+        std::vector<FiniteAreaChamber> finite_area_chambers;
 
         Gas gas = product_gas(params.nozzle_options.chemistry);
         Nozzle nozzle(gas, params.nozzle_options);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);
-            nozzle.set_inlet_state(state);
-            NozzleResults expansions = nozzle.solve(params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
-            expansion_results.push_back(expansions);
+
+            switch (params.combustor_options.type) {
+                case CombustorType::INFINITE_AREA: {
+                    nozzle.set_inlet_state(state);
+                    NozzleResults expansions = nozzle.solve(
+                        params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
+                    expansion_results.push_back(std::move(expansions));
+                    break;
+                }
+                case CombustorType::FINITE_MASS_FLUX:
+                case CombustorType::FINITE_CONTRACTION_RATIO: {
+                    const double value =
+                        params.combustor_options.type == CombustorType::FINITE_CONTRACTION_RATIO
+                            ? params.combustor_options.contraction_ratio
+                            : params.combustor_options.mass_flux;
+                    FiniteAreaChamber fac = nozzle.solve_finite_area_chamber(
+                        state, params.combustor_options.type, value);
+
+                    // The user's pressure ratios are Pinj/P (CEA convention), but the nozzle
+                    // measures pressure ratios from the stagnation state Pinf = throat.P_inlet.
+                    std::vector<double> ratios = params.nozzle_options.expansion_ratios;
+                    if (params.nozzle_options.expansion_type == ExpansionType::PRESSURE_RATIO) {
+                        const double P_inf_over_P_inj = fac.throat.P_inlet / fac.injector_pressure;
+                        for (double& ratio : ratios) {
+                            ratio *= P_inf_over_P_inj;
+                        }
+                    }
+                    std::vector<NozzleStation> stations = nozzle.solve_stations(
+                        fac.throat, params.nozzle_options.expansion_type, ratios);
+
+                    expansion_results.push_back(NozzleResults{fac.throat, std::move(stations)});
+                    finite_area_chambers.push_back(std::move(fac));
+                    break;
+                }
+                case CombustorType::NONE:
+                    throw NotImplementedError("RocketProblem: CombustorType::NONE is not implemented.");
+            }
         }
 
         case_results.emplace(params.name, RocketProblemCaseResult{
@@ -152,7 +187,9 @@ RocketProblemResults RocketProblem::solve() {
             params.combustor_options.pressures,
             params.nozzle_options.expansion_ratios,
             params.nozzle_options.expansion_type,
-            params.combustor_options.process
+            params.combustor_options.process,
+            params.combustor_options.type,
+            std::move(finite_area_chambers)
         });
     }
     
