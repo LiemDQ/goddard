@@ -9,6 +9,7 @@
 #include "goddard/rocket_results.hpp"
 #include "goddard/speciate.hpp"
 #include "cantera/core.h"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -63,6 +64,14 @@ void bind_problem(nb::module_& m) {
              "of_index"_a = 0, "case_name"_a = "",
              "Throat station for the given O/F index. "
              "case_name may be omitted when there is only one case.",
+             nb::rv_policy::reference_internal)
+        .def("stagnation", &Goddard::RocketProblemResults::stagnation,
+             "of_index"_a = 0, "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, stagnation),
+             nb::rv_policy::reference_internal)
+        .def("combustion_end", &Goddard::RocketProblemResults::combustion_end,
+             "of_index"_a = 0, "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, combustion_end),
              nb::rv_policy::reference_internal)
         .def("exits", &Goddard::RocketProblemResults::exits,
              "of_index"_a = 0, "case_name"_a = "",

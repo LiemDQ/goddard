@@ -4,6 +4,8 @@
 #include "goddard/nozzle.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/combustor.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -37,6 +39,14 @@ void bind_nozzle(nb::module_& m) {
         .def("solve_throat_conditions",
              &Goddard::Nozzle::solve_throat_conditions,
              "abstol"_a = 4e-4)
+        .def("solve_stations",
+             &Goddard::Nozzle::solve_stations,
+             "throat_condition"_a, "expansion_type"_a, "ratios"_a,
+             DOC(Goddard, Nozzle, solve_stations))
+        .def("solve_finite_area_chamber",
+             &Goddard::Nozzle::solve_finite_area_chamber,
+             "injector_state"_a, "type"_a, "value"_a, "reltol"_a = 1e-6,
+             DOC(Goddard, Nozzle, solve_finite_area_chamber))
         .def("reset_state", &Goddard::Nozzle::reset_state)
         .def("set_inlet_state", &Goddard::Nozzle::set_inlet_state, "state"_a)
         .def("get_inlet_state", &Goddard::Nozzle::get_inlet_state)
