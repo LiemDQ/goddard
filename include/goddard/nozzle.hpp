@@ -122,7 +122,8 @@ class Nozzle {
      * Iterates on the stagnation pressure P_inf until the chamber momentum balance
      * P_inj = P_c + rho_c u_c^2 holds, where c is the combustion end. The chamber is always in
      * equilibrium. On return the nozzle inlet state is the stagnation state, so
-     * `solve_stations(result.throat, ...)` continues the expansion.
+     * `solve_stations(result.throat, ...)` continues the expansion, and the gas holds the
+     * stagnation state.
      *
      * @param injector_state Equilibrium state at the injector face (HP at P_inj).
      * @param type `FINITE_CONTRACTION_RATIO` or `FINITE_MASS_FLUX`.
@@ -131,7 +132,8 @@ class Nozzle {
      * @return Converged chamber.
      *
      * @throws std::invalid_argument if `type` is not a finite-area type, if the contraction
-     * ratio is not above 1, or if the mass flux thermally chokes the chamber.
+     * ratio is not above 1, or if the mass flux thermally chokes the chamber: it exceeds the
+     * perfect-gas limit by more than 2 %, or A_c/A_t reaches 1 in the real-gas iteration.
      * @throws NotImplementedError for FROZEN chemistry with `frozen_NFZ` == 0.
      * @throws ConvergenceError if the momentum balance does not converge.
      */

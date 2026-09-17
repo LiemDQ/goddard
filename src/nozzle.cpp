@@ -5,6 +5,7 @@
 #include "goddard/gas_dynamics.hpp"
 
 #include "cantera/core.h"
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <vector>
@@ -33,6 +34,27 @@ namespace {
     throw FmtError("Frozen expansion: {} at station {} (T = {} K)", message, station, temperature);
 }
 
+/**
+ * Equilibrate `gas` at enthalpy `H` [J/kg] and pressure `P` [Pa].
+ *
+ * Cantera's "gibbs" HP solver tests enthalpy convergence relative to the target, so it cannot
+ * converge when the target is close to zero, as it is for gaseous H2/O2 at 298.15 K. For a gas
+ * without condensed candidates the "vcs" solver is used as a fallback.
+ */
+void equilibrate_HP_robust(Gas& gas, double H, double P) {
+    const std::vector<double> start_state = gas.save_state();
+    try {
+        gas.equilibrate_HP(H, P);
+    } catch (const Cantera::CanteraError&) {
+        if (gas.has_condensed_candidates()) {
+            throw;
+        }
+        gas.restore_state(start_state);
+        gas.set_state_HP(H, P);
+        gas.equilibrate("HP", "vcs");
+    }
+}
+
 } // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
@@ -58,54 +80,13 @@ Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
-
     const ThroatCondition throat_condition = solve_throat_conditions();
-    std::vector<NozzleStation> result;
-    switch (expansion_type) {
-        case ExpansionType::SUPERSONIC_AREA_RATIO: {
-            result.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
-            break;
-        }
-        case ExpansionType::SUBSONIC_AREA_RATIO: {
-            result.push_back(solve_subsonic_area_expansion(throat_condition, ratio));
-            break;
-        }
-        case ExpansionType::PRESSURE_RATIO: {
-            result.push_back(solve_pressure_ratio(throat_condition, ratio));
-            break;
-        }
-        default:
-            throw NotImplementedError("Expansion type is not implemented.");
-    }
-    m_current_station++;
-    return {throat_condition, result};
+    return {throat_condition, solve_stations(throat_condition, expansion_type, {ratio})};
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<double>& ratios) {
-
     const ThroatCondition throat_condition = solve_throat_conditions();
-    
-    std::vector<NozzleStation> results;
-
-    for (double ratio: ratios) {
-        switch (expansion_type) {
-            case ExpansionType::SUPERSONIC_AREA_RATIO: {
-                results.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
-                break;
-            }
-            case ExpansionType::SUBSONIC_AREA_RATIO: {
-                results.push_back(solve_subsonic_area_expansion(throat_condition, ratio));
-                break;
-            }
-            case ExpansionType::PRESSURE_RATIO: {
-                results.push_back(solve_pressure_ratio(throat_condition, ratio));
-                break;
-            }
-        }
-        m_current_station++;
-    }
-
-    return {throat_condition, results};
+    return {throat_condition, solve_stations(throat_condition, expansion_type, ratios)};
 }
 
 NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
@@ -131,14 +112,188 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
     return {throat_condition, results};
 }
 
-std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& /*throat_condition*/,
-    ExpansionType /*expansion_type*/, const std::vector<double>& /*ratios*/) {
-    throw NotImplementedError("Nozzle::solve_stations is not implemented.");
+std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_condition,
+    ExpansionType expansion_type, const std::vector<double>& ratios) {
+
+    std::vector<NozzleStation> results;
+    results.reserve(ratios.size());
+    for (double ratio: ratios) {
+        switch (expansion_type) {
+            case ExpansionType::SUPERSONIC_AREA_RATIO: {
+                results.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
+                break;
+            }
+            case ExpansionType::SUBSONIC_AREA_RATIO: {
+                results.push_back(solve_subsonic_area_expansion(throat_condition, ratio));
+                break;
+            }
+            case ExpansionType::PRESSURE_RATIO: {
+                results.push_back(solve_pressure_ratio(throat_condition, ratio));
+                break;
+            }
+            default:
+                throw NotImplementedError("Expansion type is not implemented.");
+        }
+        m_current_station++;
+    }
+    return results;
 }
 
-FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& /*injector_state*/,
-    CombustorType /*type*/, double /*value*/, double /*reltol*/) {
-    throw NotImplementedError("Nozzle::solve_finite_area_chamber is not implemented.");
+FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& injector_state,
+    CombustorType type, double value, double reltol) {
+
+    bool contraction_mode = true;
+    switch (type) {
+        case CombustorType::FINITE_CONTRACTION_RATIO: {
+            if (!(value > 1.0)) {
+                throw std::invalid_argument(std::format(
+                    "Finite-area combustor: contraction ratio must be greater than 1. Actual value: {}",
+                    value));
+            }
+            contraction_mode = true;
+            break;
+        }
+        case CombustorType::FINITE_MASS_FLUX: {
+            if (!(value > 0.0)) {
+                throw std::invalid_argument(std::format(
+                    "Finite-area combustor: mass flux must be positive. Actual value: {} kg/(m^2 s)",
+                    value));
+            }
+            contraction_mode = false;
+            break;
+        }
+        case CombustorType::INFINITE_AREA:
+        case CombustorType::NONE:
+        default:
+            throw std::invalid_argument(
+                "Nozzle::solve_finite_area_chamber requires FINITE_CONTRACTION_RATIO or FINITE_MASS_FLUX.");
+    }
+    if (m_opts.chemistry == GasChemistry::FROZEN && m_opts.frozen_NFZ == 0) {
+        throw NotImplementedError(
+            "Finite-area combustor with flow frozen at the combustion end (frozen_NFZ = 0) is not implemented.");
+    }
+
+    // Injector face: equilibrium at (h_inj, P_inj).
+    m_gas.restore_state(injector_state);
+    m_current_station = 0;
+    determine_equilibrium_condition();
+    const double h_injector = m_gas.enthalpy_mass();
+    const double P_injector = m_gas.pressure();
+    const double T_injector = m_gas.temperature();
+    const double gamma_injector = m_gas.gamma_s();
+    const double R_specific = Cantera::GasConstant / m_gas.molecular_weight();
+
+    // Perfect-gas initial guess for P_inf (see instructions/finite_area_combustor.md, section 3).
+    double mach_guess = 0.0;
+    if (contraction_mode) {
+        mach_guess = mach_from_area_ratio(value, gamma_injector, false);
+    } else {
+        const double g = gamma_injector;
+        // Throat mass flux per unit stagnation pressure [kg/(m^2 s Pa)].
+        const double f = std::sqrt(g / (R_specific * T_injector))
+            * std::pow(2.0 / (g + 1.0), (g + 1.0) / (2.0 * (g - 1.0)));
+        const double G_max = P_injector * f / finite_area_pressure_loss(1.0, g);
+        // The perfect-gas limit is only an estimate of the real-gas one, so the chamber is rejected
+        // here only when clearly choked; closer to the limit the real-gas iteration decides.
+        if (value > 1.02 * G_max) {
+            throw std::invalid_argument(std::format(
+                "Finite-area combustor: mass flux {} kg/(m^2 s) thermally chokes the chamber. "
+                "Maximum mass flux (perfect gas estimate): {} kg/(m^2 s)", value, G_max));
+        }
+        // eps(M) - P_inj f / (phi(M) G) is positive as M -> 0 and negative at M = 1.
+        double lower = 0.0;
+        double upper = 1.0;
+        for (int i = 0; i < 100; i++) {
+            const double mid = 0.5 * (lower + upper);
+            const double excess = area_mach_relation(mid, g)
+                - P_injector * f / (finite_area_pressure_loss(mid, g) * value);
+            if (excess > 0.0) {
+                lower = mid;
+            } else {
+                upper = mid;
+            }
+        }
+        mach_guess = value < G_max ? 0.5 * (lower + upper) : 0.95;
+    }
+    double P_stagnation = P_injector / finite_area_pressure_loss(mach_guess, gamma_injector);
+
+    // The station tolerance must sit below the balance tolerance, or the residual is noisy.
+    const double station_abstol = std::clamp(0.1 * reltol, 1e-7, 4.5e-5);
+
+    const int max_iters = 50;
+    const int max_backtracks = 5;
+    double ln_P = std::log(P_stagnation);
+    double ln_P_previous = 0.0;
+    double residual_previous = 0.0;
+    bool have_previous = false;
+    double residual = 1.0;
+    double contraction_ratio = value;
+
+    ThroatCondition throat;
+    NozzleStation combustion_end;
+    std::vector<double> stagnation_state;
+
+    for (int iter = 1; iter <= max_iters; iter++) {
+        // Stagnation state and throat; in mass-flux mode also the contraction ratio, backtracking
+        // toward the previous iterate if the chamber would be choked.
+        for (int backtrack = 0; ; backtrack++) {
+            P_stagnation = std::exp(ln_P);
+            m_gas.restore_state(injector_state);
+            equilibrate_HP_robust(m_gas, h_injector, P_stagnation);
+            set_inlet_state(m_gas.save_state());
+            throat = solve_throat_conditions();
+            if (contraction_mode) {
+                break;
+            }
+            m_gas.restore_state(throat.state);
+            contraction_ratio = m_gas.density() * throat.speed_of_sound / value;
+            if (contraction_ratio > 1.0001) {
+                break;
+            }
+            if (!have_previous || backtrack >= max_backtracks) {
+                throw std::invalid_argument(std::format(
+                    "Finite-area combustor: mass flux {} kg/(m^2 s) thermally chokes the chamber "
+                    "(A_c/A_t = {} at P_inf = {} Pa).", value, contraction_ratio, P_stagnation));
+            }
+            ln_P = 0.5 * (ln_P + ln_P_previous);
+        }
+
+        // Combustion end is part of the chamber and therefore in equilibrium.
+        m_current_station = 0;
+        combustion_end = solve_subsonic_area_expansion(throat, contraction_ratio, station_abstol);
+        const double velocity = m_gas.isenthalpic_velocity();
+        const double P_injector_calc = m_gas.pressure() + m_gas.density() * velocity * velocity;
+
+        if (std::abs(1.0 - P_injector_calc / P_injector) < reltol) {
+            double mass_flux = value;
+            if (contraction_mode) {
+                m_gas.restore_state(throat.state);
+                mass_flux = m_gas.density() * throat.speed_of_sound / contraction_ratio;
+            }
+            stagnation_state = inlet_state;
+            m_gas.restore_state(inlet_state);
+            m_current_station = 1;
+            return {stagnation_state, combustion_end, throat, P_injector, P_stagnation,
+                contraction_ratio, mass_flux, iter};
+        }
+
+        // Proportional step first, then secant on ln P_inf versus ln(P_inj,calc / P_inj).
+        residual = std::log(P_injector_calc / P_injector);
+        double slope = 1.0;
+        if (have_previous && residual != residual_previous) {
+            slope = (residual - residual_previous) / (ln_P - ln_P_previous);
+        }
+        if (!(slope > 0.1)) {
+            // P_inj,calc grows roughly in proportion to P_inf; fall back to the proportional step.
+            slope = 1.0;
+        }
+        ln_P_previous = ln_P;
+        residual_previous = residual;
+        have_previous = true;
+        ln_P -= residual / slope;
+    }
+    throw ConvergenceError("Finite-area combustor momentum balance failed to converge.",
+        max_iters, reltol, std::abs(residual));
 }
 
 void Nozzle::reset_state(){
@@ -217,22 +372,81 @@ double Nozzle::get_gamma_s() {
 NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
     m_gas.restore_state(throat_condition.state);
 
-    double ln_pressure_ratio = 0;
-    double throat_pressure_ratio = throat_condition.P_inlet/m_gas.pressure();
-    double ln_throat_ratio = std::log(throat_pressure_ratio);
-    double ln_Ae_At = std::log(expansion_ratio);
-
-    if (expansion_ratio >= 1.09) {
-        ln_pressure_ratio = ln_throat_ratio/(expansion_ratio + 10.587*std::pow(ln_Ae_At, 3)+9.454*ln_Ae_At);
-    }
-    else if (expansion_ratio > 1.0001) {
-        ln_pressure_ratio = 0.9* ln_throat_ratio / (expansion_ratio + 10.587*std::pow(ln_Ae_At, 3)+9.454*ln_Ae_At);
-    }
-    else {
-        //invalid expansion ratio
+    if (!(expansion_ratio > 1.0001)) {
         throw_invalid_expansion_ratio(expansion_ratio, 1.0001);
     }
-    return iterate_area_expansion(throat_condition, expansion_ratio, std::exp(ln_pressure_ratio), abstol);
+    // Perfect-gas initial guess with the throat isentropic exponent. Unlike a correlation it stays
+    // accurate as A/A_t grows and the station approaches stagnation.
+    double gamma_s = m_gas.gamma_s();
+    const double mach_guess = mach_from_area_ratio(expansion_ratio, gamma_s, false);
+    double ln_pressure_ratio =
+        gamma_s / (gamma_s - 1.0) * std::log(stagnation_factor(mach_guess, gamma_s));
+
+    // Safeguarded Newton iteration on x = ln(P_inlet/P). On the subsonic branch A/A_t decreases
+    // monotonically from infinity at x = 0 to 1 at the throat, so [0, x_throat] brackets the root.
+    // Pure Newton diverges near the throat, where dlnA/dlnP vanishes, and near stagnation, where
+    // x is tiny; steps leaving the bracket fall back to bisection.
+    double velocity = m_gas.isenthalpic_velocity();
+    const double A_mdot_throat = m_gas.area_per_mdot(velocity);
+    std::vector<double> composition = m_gas.mole_fractions();
+    double temperature = m_gas.temperature();
+    const bool is_equilibrium = determine_equilibrium_condition();
+    const double ln_throat_ratio = std::log(throat_condition.P_inlet / m_gas.pressure());
+    const double ln_expansion_ratio = std::log(expansion_ratio);
+
+    double lower = 0.0;
+    double upper = ln_throat_ratio;
+    if (!(ln_pressure_ratio > lower && ln_pressure_ratio < upper)) {
+        ln_pressure_ratio = 0.5 * (lower + upper);
+    }
+
+    const int max_iters = 60;
+    double step = 1.0;
+    int iters = 0;
+    while (std::abs(step) > abstol) {
+        iters++;
+        if (iters > max_iters) {
+            throw ConvergenceError("Maximum number of iterations exceeded for subsonic area expansion.",
+                iters, abstol, std::abs(step));
+        }
+        const double pressure_ratio = std::exp(ln_pressure_ratio);
+        if (is_equilibrium) {
+            m_gas.equilibrate_SP(throat_condition.S_inlet, throat_condition.P_inlet / pressure_ratio);
+        } else {
+            temperature = iterate_temperature(throat_condition, pressure_ratio, temperature, composition);
+        }
+        gamma_s = m_gas.gamma_s();
+        velocity = m_gas.isenthalpic_velocity();
+        const double sonic_velocity = m_gas.speed_of_sound();
+        const double ln_area_ratio = std::log(m_gas.area_per_mdot(velocity) / A_mdot_throat);
+
+        // Area too small (or not finite) means the station is too close to the throat.
+        if (!(ln_area_ratio > ln_expansion_ratio)) {
+            upper = ln_pressure_ratio;
+        } else {
+            lower = ln_pressure_ratio;
+        }
+
+        const double dlogp_dlogA =
+            gamma_s * velocity * velocity / (velocity * velocity - sonic_velocity * sonic_velocity);
+        double next = ln_pressure_ratio + dlogp_dlogA * (ln_expansion_ratio - ln_area_ratio);
+        if (!std::isfinite(next) || next <= lower || next >= upper) {
+            next = 0.5 * (lower + upper);
+        }
+        step = next - ln_pressure_ratio;
+        if (std::abs(step) <= abstol) {
+            break;
+        }
+        ln_pressure_ratio = next;
+    }
+
+    ExpansionProperties final_props = m_gas.expansion_properties();
+    return {true,
+            final_props.gamma_s,
+            final_props.dlogV_dlogP_T,
+            final_props.dlogV_dlogT_P,
+            m_gas.save_state(),
+            final_props.pinned_transition};
 }
 
 NozzleStation Nozzle::solve_supersonic_area_expansion(

@@ -1,4 +1,6 @@
 #include <cmath>
+#include <format>
+#include <stdexcept>
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/error.hpp"
@@ -126,12 +128,50 @@ double C_F(double gamma, double pressure_ratio, double) {
 }
 
 
-double mach_from_area_ratio(double /*area_ratio*/, double /*gamma*/, bool /*supersonic*/) {
-    throw NotImplementedError("mach_from_area_ratio is not implemented.");
+double mach_from_area_ratio(double area_ratio, double gamma, bool supersonic) {
+    if (!(area_ratio >= 1.0)) {
+        throw std::invalid_argument(std::format(
+            "mach_from_area_ratio: area ratio must be at least 1. Actual value: {}", area_ratio));
+    }
+    if (area_ratio == 1.0) {
+        return 1.0;
+    }
+    // A/A* decreases monotonically on (0, 1] and increases monotonically on [1, inf).
+    double lower = 0.0;
+    double upper = 1.0;
+    if (supersonic) {
+        lower = 1.0;
+        upper = 2.0;
+        while (area_mach_relation(upper, gamma) < area_ratio) {
+            lower = upper;
+            upper *= 2.0;
+            if (upper > 1e8) {
+                throw std::invalid_argument(std::format(
+                    "mach_from_area_ratio: no supersonic root for area ratio {}", area_ratio));
+            }
+        }
+    }
+    const int max_iters = 200;
+    for (int iter = 0; iter < max_iters; iter++) {
+        const double mid = 0.5 * (lower + upper);
+        if (mid <= lower || mid >= upper) {
+            break;
+        }
+        const double excess = area_mach_relation(mid, gamma) - area_ratio;
+        // Subsonic: A/A* too large means M too small. Supersonic: A/A* too large means M too large.
+        const bool mach_too_small = supersonic ? (excess < 0.0) : (excess > 0.0);
+        if (mach_too_small) {
+            lower = mid;
+        } else {
+            upper = mid;
+        }
+    }
+    return 0.5 * (lower + upper);
 }
 
-double finite_area_pressure_loss(double /*mach*/, double /*gamma*/) {
-    throw NotImplementedError("finite_area_pressure_loss is not implemented.");
+double finite_area_pressure_loss(double mach, double gamma) {
+    const double psi = stagnation_factor(mach, gamma);
+    return (1.0 + gamma * mach * mach) / std::pow(psi, gamma / (gamma - 1.0));
 }
 
 }
