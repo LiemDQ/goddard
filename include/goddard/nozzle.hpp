@@ -125,6 +125,11 @@ class Nozzle {
      * `solve_stations(result.throat, ...)` continues the expansion, and the gas holds the
      * stagnation state.
      *
+     * The combustion-end velocity follows from the enthalpy drop h_inj - h_c. At very large
+     * contraction ratios (Mach numbers of order 1e-3 and below) that drop is within the station
+     * solve's error, and a warning says the combustion-end velocity and Mach number are not
+     * resolved. Pressures and the momentum balance are unaffected.
+     *
      * @param injector_state Equilibrium state at the injector face (HP at P_inj).
      * @param type `FINITE_CONTRACTION_RATIO` or `FINITE_MASS_FLUX`.
      * @param value Contraction ratio A_c/A_t [-] or mass flux mdot/A_c [kg/(m^2 s)].

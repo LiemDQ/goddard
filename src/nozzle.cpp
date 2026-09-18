@@ -7,6 +7,7 @@
 #include "cantera/core.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <exception>
 #include <vector>
 #include <functional>
@@ -248,6 +249,18 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
             if (contraction_mode) {
                 m_gas.restore_state(throat.state);
                 mass_flux = m_gas.density() * throat.speed_of_sound / contraction_ratio;
+            }
+            // The combustion-end velocity comes from h_inj - h_c. The station solve leaves an error
+            // of about station_abstol * P_c/rho_c in h_c, and floating point one of about
+            // eps * |h_inj|. When that noise is not small against u_c^2 (a very large contraction
+            // ratio, far beyond any real chamber), u_c and the Mach number are not resolved.
+            // Pressures and the momentum balance are unaffected.
+            const double enthalpy_noise = station_abstol * P_injector_calc / m_gas.density()
+                + std::numeric_limits<double>::epsilon() * std::abs(h_injector);
+            if (enthalpy_noise > 0.01 * velocity * velocity) {
+                Cantera::warn_user("Nozzle::solve_finite_area_chamber",
+                    "Combustion-end velocity ({} m/s) and Mach number are below the solver's "
+                    "resolution at A_c/A_t = {}; treat them as zero.", velocity, contraction_ratio);
             }
             stagnation_state = inlet_state;
             m_gas.restore_state(inlet_state);
