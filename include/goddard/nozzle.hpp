@@ -160,6 +160,7 @@ class Nozzle {
 
     private:
     Gas m_gas;
+    std::vector<double> m_frozen_state;
     NozzleOptions m_opts;
     int m_current_station = 0;
 
@@ -193,7 +194,7 @@ class Nozzle {
         const std::vector<double>& composition,
         double abstol = 0.5e-5);
 
-    bool determine_equilibrium_condition();
+    bool determine_and_set_equilibrium_condition();
 
     void throw_invalid_expansion_ratio(double expansion_ratio, double min_ratio) const;
 };

@@ -322,11 +322,6 @@ def test_fac_frozen_throat_unaffected(fac_frozen_rocket):
                          ids=[f"pi_p{int(ratio)}" for ratio in PI_P])
 def test_fac_frozen_exits(fac_frozen_rocket, exit_index, pressure_ratio):
     frozen_NFZ, results, rocket = fac_frozen_rocket
-    if frozen_NFZ == 2 and exit_index > 0:
-        # Pre-existing Nozzle limitation, not specific to finite-area combustors: a frozen station
-        # takes its composition from the throat, so frozen_NFZ >= 2 freezes at the throat for
-        # every station after the first equilibrium exit. CEA freezes at the first exit.
-        pytest.xfail("Nozzle freezes at the throat composition for frozen_NFZ >= 2")
     cea_index = IDX_PI_P[exit_index]
     exits = results.exits(0, f"fac_frozen_{frozen_NFZ}")
     station = exits[exit_index].thermo
