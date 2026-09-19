@@ -225,6 +225,13 @@ void Gas::restore_state(const std::vector<double>& state) {
     }
 }
 
+size_t Gas::state_size() const {
+    const size_t cantera_size = thermo()->stateSize();
+    const size_t n_condensed = m_condensed ? m_condensed->size() : 0;
+
+    return cantera_size + n_condensed;
+}
+
 ThermodynamicState Gas::snapshot() const {
     auto t = thermo();
 
@@ -349,6 +356,10 @@ std::vector<double> Gas::mass_fractions() const {
 size_t Gas::num_species() const { return thermo()->nSpecies(); }
 std::vector<std::string> Gas::species_names() const { return thermo()->speciesNames(); }
 // Chemistry-aware derived properties
+
+double Gas::gamma() const {
+    return cp_mass() / cv_mass();
+}
 
 double Gas::gamma_s() const {
     switch (chemistry) {
