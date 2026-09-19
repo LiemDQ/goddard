@@ -18,6 +18,7 @@ ctest = "ctest --test-dir build"
 # Skips the tests labelled "slow" (condensed-phase suites)
 ctest-fast = "ctest --test-dir build -LE slow"
 clean = "rm -rf build"
+clean-python = "rm -rf build-python"
 # Refuses to run in a worktree: its .pixi is shared with the main checkout, so installing there would
 # point the shared environment's editable goddard package at the worktree.
 pip-install = "bash scripts/pip_install.sh"
