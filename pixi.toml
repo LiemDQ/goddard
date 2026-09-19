@@ -110,7 +110,7 @@ fortran-compiler = "*"
 cantera = "3.2.*"
 
 [feature.test.pypi-dependencies]
-cea = "*"
+cea = ">=3.3.1"
 
 [feature.test.tasks]
 test-cea = "pytest python/tests/test_cea_comparison.py -v"
