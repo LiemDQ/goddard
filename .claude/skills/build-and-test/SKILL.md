@@ -45,7 +45,7 @@ pixi run -e test test-python-fast   # reinstalls, then skips tests marked "slow"
 
 - Both tasks depend on `pip-install`, so the tests never import a stale `_core`. Run `pip-install` alone after changing bindings if you import `goddard` outside the tests.
 - Mark long-running Python tests with `pytest.mark.slow` (see `test_condensed_cea.py`).
-- Call the `cea` oracle in a forked child process (see `run_isolated` in `test_condensed_cea.py`): a Fortran `STOP` kills the interpreter.
+- Call the `cea` oracle in a forked child process (see `run_isolated` in `test_condensed_cea.py`): a Fortran `STOP` kills the interpreter. Other `cea` gotchas are in `.claude/skills/test-creation/pycea.md`.
 
 ## Before committing
 

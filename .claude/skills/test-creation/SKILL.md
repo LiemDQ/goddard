@@ -216,6 +216,8 @@ RP1_LOX_EQUILIBRIUM = RocketTestCase(
 
 ### Comparing against CEA
 
+Before writing or debugging a comparison, read [pycea.md](pycea.md): call signatures, station order, `n_frz` numbering, and CEA behaviors that look like bugs.
+
 Every numerical comparison needs clear tolerances and labels:
 
 ```python
