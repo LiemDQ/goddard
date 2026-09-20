@@ -56,7 +56,7 @@ struct PolymorphGroup {
  * @brief Candidate condensed species of a mixture, together with their current amounts.
  *
  * `CondensedPhaseSet` is an implementation detail held by `Gas` through a `std::shared_ptr`:
- * a null pointer means the `Gas` is gas-only. It performs no equilibrium calculation; it only
+ * a null pointer means the `Gas` is gas-only. There is no equilibrium calculation; it only
  * owns the candidate phases, their temperature ranges, polymorph grouping and the current
  * number of moles of each candidate.
  */
@@ -161,7 +161,7 @@ private:
 /**
  * @brief Build a single-species `fixed-stoichiometry` (Cantera `StoichSubstance`) phase.
  *
- * Condensed species in the NASA databases carry no equation of state. When `species_node` has
+ * Condensed species in the NASA databases have no equation of state. When `species_node` has
  * no `equation-of-state` entry, a `constant-volume` one with the given density is injected.
  * The density only enters through the neglected `(P - P_ref) V / (R T)` term (~1e-8 at rocket
  * pressures with the default), so its exact value is immaterial.

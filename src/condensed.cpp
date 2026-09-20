@@ -340,7 +340,7 @@ struct GroupTransition {
  *
  * `Gas::set_element_moles` prefers the homonuclear diatomic of an element, which is the better
  * physical guess but makes `MultiPhaseEquil` stall on some carbon-bearing mixtures. Starting from
- * free atoms is the guess the Python study found robust, so it is one rung of the restart ladder.
+ * free atoms is the more robust approach, so it is one rung of the restart ladder.
  */
 void set_monatomic_basis(Cantera::ThermoPhase& gas, const Eigen::ArrayXd& element_moles,
                          double T, double P)
