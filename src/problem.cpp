@@ -74,14 +74,12 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
     }
 }
 
-Gas RocketProblem::product_gas(GasChemistry chemistry) const {
+Gas RocketProblem::product_gas() const {
     if (m_condensed_prototype) {
         // A copy shares the `Solution` and the candidate condensed species set of the prototype.
-        Gas gas = *m_condensed_prototype;
-        gas.chemistry = chemistry;
-        return gas;
+        return *m_condensed_prototype;
     }
-    return Gas(m_sln, chemistry);
+    return Gas(m_sln);
 }
 
 Gas RocketProblem::reactant_gas(const PhaseSpecification& state) const {
@@ -122,7 +120,7 @@ RocketProblemResults RocketProblem::solve() {
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
 
-        Gas combustor_gas = product_gas(GasChemistry::FROZEN);
+        Gas combustor_gas = product_gas();
 
         ThermoArray combustion_states = reactant_streams
             ? Combustor(combustor_gas, reactant_gas(fuel_input), reactant_gas(ox_input))
@@ -134,7 +132,7 @@ RocketProblemResults RocketProblem::solve() {
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
         std::vector<FiniteAreaChamber> finite_area_chambers;
 
-        Gas gas = product_gas(params.nozzle_options.chemistry);
+        Gas gas = product_gas();
         Nozzle nozzle(gas, params.nozzle_options);
 
         for (int i = 0; i < combustion_states.size(); i++) {
@@ -156,20 +154,11 @@ RocketProblemResults RocketProblem::solve() {
                             : params.combustor_options.mass_flux;
                     FiniteAreaChamber fac = nozzle.solve_finite_area_chamber(
                         state, params.combustor_options.type, value);
+                    std::vector<NozzleStation> stations = nozzle.solve_stations(fac,
+                        params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
 
-                    // The user's pressure ratios are Pinj/P (CEA convention), but the nozzle
-                    // measures pressure ratios from the stagnation state Pinf = throat.P_inlet.
-                    std::vector<double> ratios = params.nozzle_options.expansion_ratios;
-                    if (params.nozzle_options.expansion_type == ExpansionType::PRESSURE_RATIO) {
-                        const double P_inf_over_P_inj = fac.throat.P_inlet / fac.injector_pressure;
-                        for (double& ratio : ratios) {
-                            ratio *= P_inf_over_P_inj;
-                        }
-                    }
-                    std::vector<NozzleStation> stations = nozzle.solve_stations(
-                        fac.throat, params.nozzle_options.expansion_type, ratios);
-
-                    expansion_results.push_back(NozzleResults{fac.throat, std::move(stations)});
+                    expansion_results.push_back(
+                        NozzleResults{fac.injector, fac.throat, std::move(stations)});
                     finite_area_chambers.push_back(std::move(fac));
                     break;
                 }
@@ -193,7 +182,7 @@ RocketProblemResults RocketProblem::solve() {
         });
     }
     
-    return {std::move(case_results), product_gas(GasChemistry::FROZEN)};
+    return {std::move(case_results), product_gas()};
 }
 
 

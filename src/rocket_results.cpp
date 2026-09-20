@@ -64,11 +64,8 @@ RocketProblemResults::RocketProblemResults(
                 const std::size_t state_idx = static_cast<std::size_t>(case_result.inlet_states.flat_index(
                     static_cast<long>(of_idx), static_cast<long>(p_idx)));
 
-                std::vector<double> inlet_state = case_result.inlet_states.get_state(state_idx);
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
 
-                // Chamber derivatives must be computed (not stored like throat/exit), so the
-                // chamber snapshot is taken in the chemistry mode of the case.
                 switch (case_result.chemistry) {
                     case GasChemistry::EQUILIBRIUM:
                     case GasChemistry::FROZEN:
@@ -87,7 +84,9 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
                     s.converged       = true;
-                    s.thermo          = read_thermo(inlet_state, case_result.chemistry);
+                    s.thermo          = read_station(nozzle.inlet.state, nozzle.inlet.gamma_s,
+                                                         nozzle.inlet.dlV_dlP_T, nozzle.inlet.dlV_dlT_P,
+                                                         nozzle.inlet.pinned_transition);
                     m_stations.push_back(std::move(s));
                 }
 
@@ -105,7 +104,9 @@ RocketProblemResults::RocketProblemResults(
                         s.expansion_index = 0;
                         s.area_ratio      = 0.0;
                         s.converged       = true;
-                        s.thermo          = read_thermo(fac.stagnation_state, GasChemistry::EQUILIBRIUM);
+                        s.thermo          = read_station(fac.stagnation.state, fac.stagnation.gamma_s,
+                                                         fac.stagnation.dlV_dlP_T, fac.stagnation.dlV_dlT_P,
+                                                         fac.stagnation.pinned_transition);
                         m_stations.push_back(std::move(s));
                     }
 

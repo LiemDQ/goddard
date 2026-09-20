@@ -38,8 +38,8 @@ namespace {
 } // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
-    : inlet_state(gas.save_state()), m_gas(gas), m_frozen_state(gas.state_size()), m_opts(options) {
-    determine_and_set_equilibrium_condition();
+    : inlet_state(gas.save_state()), m_gas(gas), m_opts(options) {
+    set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
@@ -49,8 +49,8 @@ Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
 }
 
 Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
-    : inlet_state(std::move(state)), m_gas(gas),  m_frozen_state(gas.state_size()), m_opts(options) {
-    determine_and_set_equilibrium_condition();
+    : inlet_state(std::move(state)), m_gas(gas), m_opts(options) {
+    set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
@@ -60,16 +60,21 @@ Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
+    NozzleStation inlet = station_at_state(inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
-    return {throat_condition, solve_stations(throat_condition, expansion_type, {ratio})};
+    return {std::move(inlet), throat_condition,
+        solve_stations(throat_condition, expansion_type, {ratio})};
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<double>& ratios) {
+    NozzleStation inlet = station_at_state(inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
-    return {throat_condition, solve_stations(throat_condition, expansion_type, ratios)};
+    return {std::move(inlet), throat_condition,
+        solve_stations(throat_condition, expansion_type, ratios)};
 }
 
 NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
+    NozzleStation inlet = station_at_state(inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
 
     // For a diverging-only profile (starting at throat), x_min is the throat.
@@ -82,14 +87,19 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
     double x_last = x_end - 1e-10 * x_range;
 
     std::vector<NozzleStation> results;
+    std::vector<double> frozen_state = throat_condition.state;
     for (int i = 1; i <= num_stations; i++) {
-        m_current_station = i;
         double x = x_start + (x_last - x_start) * static_cast<double>(i) / num_stations;
         double A = profile.area_at(x);
         double area_ratio = A / A_throat;
-        results.push_back(solve_supersonic_area_expansion(throat_condition, area_ratio));
+        NozzleStation result =
+            solve_supersonic_area_expansion(throat_condition, area_ratio, i + 1, frozen_state);
+        if (is_equilibrium_station(i + 1)) {
+            frozen_state = result.state;
+        }
+        results.push_back(std::move(result));
     }
-    return {throat_condition, results};
+    return {std::move(inlet), throat_condition, results};
 }
 
 std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_condition,
@@ -97,26 +107,52 @@ std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_
 
     std::vector<NozzleStation> results;
     results.reserve(ratios.size());
+    // Stations 0 and 1 are the chamber and the throat. A frozen station keeps the composition of
+    // the last equilibrium station, which is the throat until an equilibrium station follows it.
+    int station = 2;
+    std::vector<double> frozen_state = throat_condition.state;
     for (double ratio: ratios) {
+        NozzleStation result;
         switch (expansion_type) {
             case ExpansionType::SUPERSONIC_AREA_RATIO: {
-                results.push_back(solve_supersonic_area_expansion(throat_condition, ratio));
+                result = solve_supersonic_area_expansion(
+                    throat_condition, ratio, station, frozen_state);
                 break;
             }
             case ExpansionType::SUBSONIC_AREA_RATIO: {
-                results.push_back(solve_subsonic_area_expansion(throat_condition, ratio));
+                result = solve_subsonic_area_expansion(
+                    throat_condition, ratio, station, frozen_state);
                 break;
             }
             case ExpansionType::PRESSURE_RATIO: {
-                results.push_back(solve_pressure_ratio(throat_condition, ratio));
+                result = solve_pressure_ratio(throat_condition, ratio, station, frozen_state);
                 break;
             }
             default:
                 throw NotImplementedError("Expansion type is not implemented.");
         }
-        m_current_station++;
+        if (is_equilibrium_station(station)) {
+            frozen_state = result.state;
+        }
+        results.push_back(std::move(result));
+        station++;
     }
     return results;
+}
+
+std::vector<NozzleStation> Nozzle::solve_stations(const FiniteAreaChamber& chamber,
+    ExpansionType expansion_type, const std::vector<double>& ratios) {
+
+    // The expansion runs from the stagnation state, so pressure ratios are converted from
+    // P_inj/P to P_inf/P.
+    std::vector<double> stagnation_ratios = ratios;
+    if (expansion_type == ExpansionType::PRESSURE_RATIO) {
+        const double P_inf_over_P_inj = chamber.throat.P_inlet / chamber.injector_pressure;
+        for (double& ratio : stagnation_ratios) {
+            ratio *= P_inf_over_P_inj;
+        }
+    }
+    return solve_stations(chamber.throat, expansion_type, stagnation_ratios);
 }
 
 FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& injector_state,
@@ -154,9 +190,7 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
     }
 
     // Injector face: equilibrium at (h_inj, P_inj).
-    m_gas.restore_state(injector_state);
-    m_current_station = 0;
-    determine_and_set_equilibrium_condition();
+    NozzleStation injector = station_at_state(injector_state, 0);
     const double h_injector = m_gas.enthalpy_mass();
     const double P_injector = m_gas.pressure();
     const double T_injector = m_gas.temperature();
@@ -211,7 +245,6 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
 
     ThroatCondition throat;
     NozzleStation combustion_end;
-    std::vector<double> stagnation_state;
 
     for (int iter = 1; iter <= max_iters; iter++) {
         // Stagnation state and throat; in mass-flux mode also the contraction ratio, backtracking
@@ -239,8 +272,8 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
         }
 
         // Combustion end is part of the chamber and therefore in equilibrium.
-        m_current_station = 0;
-        combustion_end = solve_subsonic_area_expansion(throat, contraction_ratio, station_abstol);
+        combustion_end = solve_subsonic_area_expansion(
+            throat, contraction_ratio, 0, throat.state, station_abstol);
         const double velocity = m_gas.isenthalpic_velocity();
         const double P_injector_calc = m_gas.pressure() + m_gas.density() * velocity * velocity;
 
@@ -262,10 +295,8 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
                     "Combustion-end velocity ({} m/s) and Mach number are below the solver's "
                     "resolution at A_c/A_t = {}; treat them as zero.", velocity, contraction_ratio);
             }
-            stagnation_state = inlet_state;
-            m_gas.restore_state(inlet_state);
-            m_current_station = 1;
-            return {stagnation_state, combustion_end, throat, P_injector, P_stagnation,
+            NozzleStation stagnation = station_at_state(inlet_state, 0);
+            return {std::move(injector), std::move(stagnation), combustion_end, throat, P_injector, P_stagnation,
                 contraction_ratio, mass_flux, iter};
         }
 
@@ -290,20 +321,17 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
 
 void Nozzle::reset_state(){
     m_gas.restore_state(inlet_state);
-    m_current_station = 0;
 }
 
 ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     m_gas.restore_state(inlet_state);
     m_gas.set_current_state_as_reference();
-    m_current_station = 0;
-    
+    const int station = 1;
+
     double P_inlet = m_gas.pressure();
     double S_inlet = m_gas.entropy_mass();
     double H_inlet = m_gas.enthalpy_mass();
-    const bool is_equilibrium = determine_and_set_equilibrium_condition();
-    
-    std::vector<double> X_inlet = m_gas.mole_fractions(); 
+    const bool is_equilibrium = set_station_chemistry(station);
 
     double gamma_s = m_gas.gamma_s();
     double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
@@ -327,7 +355,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
             try {
                 m_gas.set_state_SP(S_inlet, P_throat);
             } catch (const FmtError& error) {
-                rethrow_frozen_range_error(error, m_current_station, m_gas.temperature());
+                rethrow_frozen_range_error(error, station, m_gas.temperature());
             }
         }
         gamma_s = m_gas.gamma_s();
@@ -342,11 +370,6 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
-    // regardless of whether the throat is equilibrium or frozen
-    // the first frozen state will be the throat. 
-    m_frozen_state = m_gas.save_state(); 
-
-    m_current_station = 1;
 
     return {true,
         m_gas.speed_of_sound(),
@@ -364,7 +387,8 @@ double Nozzle::get_gamma_s() {
     return m_gas.gamma_s();
 }
 
-NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throat_condition,
+    double expansion_ratio, int station, const std::vector<double>& frozen_state, double abstol) {
     m_gas.restore_state(throat_condition.state);
 
     if (!(expansion_ratio > 1.0001)) {
@@ -383,10 +407,14 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
     // x is tiny; steps leaving the bracket fall back to bisection.
     double velocity = m_gas.isenthalpic_velocity();
     const double A_mdot_throat = m_gas.area_per_mdot(velocity);
-    std::vector<double> composition = m_gas.mole_fractions();
     double temperature = m_gas.temperature();
-    const bool is_equilibrium = determine_and_set_equilibrium_condition();
+    const bool is_equilibrium = set_station_chemistry(station);
     const double ln_throat_ratio = std::log(throat_condition.P_inlet / m_gas.pressure());
+    std::vector<double> composition;
+    if (!is_equilibrium) {
+        m_gas.restore_state(frozen_state);
+        composition = m_gas.mole_fractions();
+    }
     const double ln_expansion_ratio = std::log(expansion_ratio);
 
     double lower = 0.0;
@@ -408,7 +436,8 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
         if (is_equilibrium) {
             m_gas.equilibrate_SP(throat_condition.S_inlet, throat_condition.P_inlet / pressure_ratio);
         } else {
-            temperature = iterate_temperature(throat_condition, pressure_ratio, temperature, m_frozen_state);
+            temperature = iterate_temperature(
+                throat_condition, pressure_ratio, temperature, composition, station);
         }
         gamma_s = m_gas.gamma_s();
         velocity = m_gas.isenthalpic_velocity();
@@ -444,11 +473,11 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
             final_props.pinned_transition};
 }
 
-NozzleStation Nozzle::solve_supersonic_area_expansion(
-    const ThroatCondition& throat_condition, double expansion_ratio, double abstol) {
+NozzleStation Nozzle::solve_supersonic_area_expansion(const ThroatCondition& throat_condition,
+    double expansion_ratio, int station, const std::vector<double>& frozen_state, double abstol) {
     m_gas.restore_state(throat_condition.state);
 
-    determine_and_set_equilibrium_condition();
+    set_station_chemistry(station);
 
     double gamma_s = m_gas.gamma_s();
 
@@ -472,12 +501,15 @@ NozzleStation Nozzle::solve_supersonic_area_expansion(
         throat_condition,
         expansion_ratio,
         std::exp(ln_pressure_ratio),
+        station,
+        frozen_state,
         abstol);
 }
 
 NozzleStation Nozzle::iterate_area_expansion(
     const ThroatCondition& throat_condition,
-    double expansion_ratio, double pressure_ratio_guess, double abstol) {
+    double expansion_ratio, double pressure_ratio_guess, int station,
+    const std::vector<double>& frozen_state, double abstol) {
 
     double pressure_ratio = pressure_ratio_guess;
     double gamma_s = m_gas.gamma_s();
@@ -485,14 +517,14 @@ NozzleStation Nozzle::iterate_area_expansion(
     const double A_mdot_thrt = m_gas.area_per_mdot(velocity);
 
     double P_exit = throat_condition.P_inlet / pressure_ratio;
-    bool is_equilibrium = determine_and_set_equilibrium_condition();
-    
+    const bool is_equilibrium = set_station_chemistry(station);
+
     if (is_equilibrium) {
         m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
         gamma_s = m_gas.gamma_s();
     }
     else {
-        m_gas.restore_state(m_frozen_state);
+        m_gas.restore_state(frozen_state);
     }
     
     double T_exit = m_gas.temperature();
@@ -516,7 +548,8 @@ NozzleStation Nozzle::iterate_area_expansion(
             P_exit = throat_condition.P_inlet / pressure_ratio;
             m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
         } else {
-            T_exit = iterate_temperature(throat_condition, pressure_ratio, T_exit, composition);
+            T_exit = iterate_temperature(
+                throat_condition, pressure_ratio, T_exit, composition, station);
             if (T_exit < 0) {
                 throw std::runtime_error("Negative temperature in area iteration: this branch should be unreachable.");
             }
@@ -534,10 +567,6 @@ NozzleStation Nozzle::iterate_area_expansion(
         pressure_ratio = std::exp(log_pinf_pe);
     }
 
-    if (is_equilibrium) {
-        m_frozen_state = m_gas.save_state();
-    }
-
     ExpansionProperties final_props = m_gas.expansion_properties();
     return {true,
             final_props.gamma_s,
@@ -550,12 +579,13 @@ NozzleStation Nozzle::iterate_area_expansion(
 NozzleStation Nozzle::solve_pressure_ratio(
     const ThroatCondition& throat_condition,
     double pressure_ratio,
+    int station,
+    const std::vector<double>& frozen_state,
     double abstol) {
 
-    if (determine_and_set_equilibrium_condition()) {
+    if (set_station_chemistry(station)) {
         double P_exit = throat_condition.P_inlet/pressure_ratio;
         m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
-        m_frozen_state = m_gas.save_state();
 
         //pressure ratio for equilibrium nozzle does not require iteration
         ExpansionProperties final_props = m_gas.expansion_properties();
@@ -566,10 +596,10 @@ NozzleStation Nozzle::solve_pressure_ratio(
             m_gas.save_state(),
             final_props.pinned_transition};
     } else {
-        m_gas.restore_state(m_frozen_state);
+        m_gas.restore_state(frozen_state);
 
         double T_exit = iterate_temperature(throat_condition, pressure_ratio,
-            m_gas.temperature(), m_gas.mole_fractions(), abstol);
+            m_gas.temperature(), m_gas.mole_fractions(), station, abstol);
 
         if (T_exit < 0) {
             throw std::runtime_error("Negative temperature returned in pressure ratio loop. This branch should be unreachable.");
@@ -585,6 +615,7 @@ double Nozzle::iterate_temperature(
     const ThroatCondition& throat_condition,
     double pressure_ratio, double T_guess,
     const std::vector<double>& composition,
+    int station,
     double abstol) {
 
     const double P_exit = throat_condition.P_inlet/pressure_ratio;
@@ -597,7 +628,7 @@ double Nozzle::iterate_temperature(
         try {
             m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
         } catch (const FmtError& error) {
-            rethrow_frozen_range_error(error, m_current_station, m_gas.temperature());
+            rethrow_frozen_range_error(error, station, m_gas.temperature());
         }
         return m_gas.temperature();
     }
@@ -629,16 +660,27 @@ double Nozzle::iterate_temperature(
     return T_exit;
 }
 
-bool Nozzle::determine_and_set_equilibrium_condition() {
-    bool is_equilibrium = (m_opts.chemistry == GasChemistry::EQUILIBRIUM) 
-        || (m_opts.chemistry == GasChemistry::FROZEN && m_current_station < m_opts.frozen_NFZ);
-    if (is_equilibrium) {
-        m_gas.chemistry = GasChemistry::EQUILIBRIUM;
-    }
-    else {
-        m_gas.chemistry = GasChemistry::FROZEN;
-    }
+bool Nozzle::is_equilibrium_station(int station) const {
+    // A station is reached from the one upstream of it, so it is in equilibrium while the flow
+    // there still is. The chamber has no upstream station and takes the chemistry of the flow
+    // leaving it: frozen only when the flow freezes at the chamber.
+    const int upstream = std::max(station - 1, 0);
+    return (m_opts.chemistry == GasChemistry::EQUILIBRIUM)
+        || (m_opts.chemistry == GasChemistry::FROZEN && upstream < m_opts.frozen_NFZ);
+}
+
+bool Nozzle::set_station_chemistry(int station) {
+    const bool is_equilibrium = is_equilibrium_station(station);
+    m_gas.chemistry = is_equilibrium ? GasChemistry::EQUILIBRIUM : GasChemistry::FROZEN;
     return is_equilibrium;
+}
+
+NozzleStation Nozzle::station_at_state(const std::vector<double>& state, int station) {
+    m_gas.restore_state(state);
+    set_station_chemistry(station);
+    const ExpansionProperties props = m_gas.expansion_properties();
+    return {true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P, state,
+        props.pinned_transition};
 }
 
 void Nozzle::throw_invalid_expansion_ratio(double expansion, double min) const {
