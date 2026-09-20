@@ -40,9 +40,15 @@ void bind_nozzle(nb::module_& m) {
              &Goddard::Nozzle::solve_throat_conditions,
              "abstol"_a = 4e-4)
         .def("solve_stations",
-             &Goddard::Nozzle::solve_stations,
+             nb::overload_cast<const Goddard::ThroatCondition&, Goddard::ExpansionType,
+                 const std::vector<double>&>(&Goddard::Nozzle::solve_stations),
              "throat_condition"_a, "expansion_type"_a, "ratios"_a,
              DOC(Goddard, Nozzle, solve_stations))
+        .def("solve_stations",
+             nb::overload_cast<const Goddard::FiniteAreaChamber&, Goddard::ExpansionType,
+                 const std::vector<double>&>(&Goddard::Nozzle::solve_stations),
+             "chamber"_a, "expansion_type"_a, "ratios"_a,
+             DOC(Goddard, Nozzle, solve_stations, 2))
         .def("solve_finite_area_chamber",
              &Goddard::Nozzle::solve_finite_area_chamber,
              "injector_state"_a, "type"_a, "value"_a, "reltol"_a = 1e-6,

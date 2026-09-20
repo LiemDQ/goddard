@@ -689,8 +689,17 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     NozzleResults exits = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, nozzle_opts.expansion_ratios);
     NozzleResults comb_end_result = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 2.0);
 
+    Gas station_gas(Cantera::newSolution("h2o2.yaml", "ohmech"), GasChemistry::EQUILIBRIUM);
+    auto equilibrium_station = [&station_gas](const std::vector<double>& state) {
+        station_gas.restore_state(state);
+        const ExpansionProperties props = station_gas.expansion_properties();
+        return NozzleStation{true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
+            state, props.pinned_transition};
+    };
+
     FiniteAreaChamber fac{
-        stagnation_state,
+        equilibrium_station(injector_states.get_state(0)),
+        equilibrium_station(stagnation_state),
         comb_end_result.expansions[0],
         exits.throat,
         injector_pressure,
@@ -704,7 +713,7 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
         "rocket",
         injector_states,
         GasChemistry::EQUILIBRIUM,
-        {NozzleResults{fac.throat, exits.expansions}},
+        {NozzleResults{fac.injector, fac.throat, exits.expansions}},
         {of_ratio},
         {injector_pressure},
         {5.0},

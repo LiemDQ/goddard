@@ -261,6 +261,52 @@ TEST_F(NozzleTests, FrozenSubsonicAreaExpansion) {
     }
 }
 
+// A frozen subsonic station keeps the throat composition and the chamber entropy.
+TEST_F(NozzleTests, FrozenSubsonicStationKeepsThroatComposition) {
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 0;
+    Nozzle nozzle(*gas, options);
+    NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 1.5);
+
+    Gas products(gas);
+    products.restore_state(results.throat.state);
+    const std::vector<double> throat_composition = products.mole_fractions();
+    products.restore_state(results.expansions.front().state);
+    const std::vector<double> station_composition = products.mole_fractions();
+    ASSERT_EQ(station_composition.size(), throat_composition.size());
+    for (std::size_t k = 0; k < throat_composition.size(); k++) {
+        EXPECT_NEAR(station_composition[k], throat_composition[k], 1e-12) << "species " << k;
+    }
+    EXPECT_NEAR(products.entropy_mass(), results.throat.S_inlet,
+        1e-6 * std::abs(results.throat.S_inlet));
+}
+
+// Station indices restart at every call, so a second call with the same throat freezes at the
+// same station and gives the same stations as the first.
+TEST_F(NozzleTests, RepeatedSolveStationsIsIndependent) {
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 2;
+    Nozzle nozzle(*gas, options);
+    const ThroatCondition throat = nozzle.solve_throat_conditions();
+    const std::vector<double> ratios = {5.0, 20.0};
+
+    const std::vector<NozzleStation> first =
+        nozzle.solve_stations(throat, ExpansionType::SUPERSONIC_AREA_RATIO, ratios);
+    const std::vector<NozzleStation> second =
+        nozzle.solve_stations(throat, ExpansionType::SUPERSONIC_AREA_RATIO, ratios);
+
+    ASSERT_EQ(first.size(), second.size());
+    for (std::size_t i = 0; i < first.size(); i++) {
+        EXPECT_DOUBLE_EQ(first[i].gamma_s, second[i].gamma_s) << "station " << i;
+        ASSERT_EQ(first[i].state.size(), second[i].state.size());
+        for (std::size_t k = 0; k < first[i].state.size(); k++) {
+            EXPECT_DOUBLE_EQ(first[i].state[k], second[i].state[k]) << "station " << i;
+        }
+    }
+    // The first expansion station is in equilibrium, the second frozen.
+    EXPECT_LT(first[0].gamma_s, first[1].gamma_s);
+}
+
 // Test pressure ratio expansion
 TEST_F(NozzleTests, EquilibriumPressureRatioExpansion) {
     Nozzle nozzle(*gas, options);
@@ -708,14 +754,14 @@ TEST_F(FiniteAreaCombustorTests, ContractionRatioMatchesCEA) {
     // CEA, ac_at = 1.58.
     EXPECT_NEAR(chamber.injector_pressure, INJECTOR_PRESSURE, 1e-9 * INJECTOR_PRESSURE);
     EXPECT_NEAR(chamber.stagnation_pressure, 49.16230e5, CEA_RELTOL * 49.16230e5);
-    EXPECT_NEAR(pressure_of(chamber.stagnation_state), 49.16230e5, CEA_RELTOL * 49.16230e5);
+    EXPECT_NEAR(pressure_of(chamber.stagnation.state), 49.16230e5, CEA_RELTOL * 49.16230e5);
     EXPECT_NEAR(pressure_of(chamber.combustion_end.state), 44.62730e5, CEA_RELTOL * 44.62730e5);
     EXPECT_NEAR(pressure_of(chamber.throat.state), 28.32907e5, CEA_RELTOL * 28.32907e5);
     // The injector temperature itself differs from CEA (3498.17 K) by 1.5 K from the species
     // data, so temperatures are compared as drops from the injector.
     const double T_injector = temperature_of(injector_state);
     EXPECT_NEAR(T_injector, 3498.17, 5e-4 * 3498.17);
-    EXPECT_NEAR(T_injector - temperature_of(chamber.stagnation_state), 3498.17 - 3488.69, 0.1);
+    EXPECT_NEAR(T_injector - temperature_of(chamber.stagnation.state), 3498.17 - 3488.69, 0.1);
     EXPECT_NEAR(T_injector - temperature_of(chamber.combustion_end.state), 3498.17 - 3454.61, 0.1);
     EXPECT_NEAR(T_injector - temperature_of(chamber.throat.state), 3498.17 - 3297.73, 0.5);
     EXPECT_NEAR(mach_of(chamber.combustion_end.state), 0.41317, 1e-3 * 0.41317);
@@ -870,7 +916,7 @@ TEST_F(FiniteAreaCombustorTests, FrozenExpansionContinuesFromEquilibriumChamber)
     // Frozen at the throat: the exit keeps the throat composition and the stagnation entropy.
     products.restore_state(chamber.throat.state);
     const std::vector<double> throat_composition = products.mole_fractions();
-    products.restore_state(chamber.stagnation_state);
+    products.restore_state(chamber.stagnation.state);
     const double stagnation_entropy = products.entropy_mass();
     const double throat_pressure = pressure_of(chamber.throat.state);
     products.restore_state(exits[0].state);
