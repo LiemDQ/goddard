@@ -61,19 +61,8 @@ ALL_TEST_CASES = [H2_O2_GAS_EQUILIBRIUM, H2_O2_GAS_FROZEN]
 EQUILIBRIUM_CASES = [H2_O2_GAS_EQUILIBRIUM]
 FROZEN_CASES = [H2_O2_GAS_FROZEN]
 
-# Frozen cases excluded from default runs pending gamma_s fix.
-# Use FROZEN_CASES when ready to enable them.
 DEFAULT_CASES = ALL_TEST_CASES
-
-# The frozen case matches CEA in the chamber but not from the throat on (throat temperature 3.6% high),
-# pending the frozen gamma_s fix noted above. strict=True makes the fix show up as a failure, so remove
-# this marker when it lands.
-FROZEN_EXPANSION_XFAIL = pytest.mark.xfail(
-    strict=True, reason="Frozen throat/exit states differ from CEA pending the frozen gamma_s fix")
-EXPANSION_CASES = [
-    pytest.param(case, marks=FROZEN_EXPANSION_XFAIL) if case.nozzle_chemistry == "frozen" else case
-    for case in DEFAULT_CASES
-]
+EXPANSION_CASES = DEFAULT_CASES
 
 
 # ---------------------------------------------------------------------------
