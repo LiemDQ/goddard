@@ -11,6 +11,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/rocket_results.hpp"
 #include "goddard/thermo.hpp"
+#include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -89,15 +90,18 @@ void bind_structs(nb::module_& m) {
         .def(nb::init<>())
         .def("__init__", [](Goddard::ThroatCondition* self,
                             bool converged,
+                            double speed_of_sound,
                             double H_stagnation,
                             double P_inlet,
                             double S_inlet,
                             double gamma_s,
                             double dlV_dlP_T,
                             double dlV_dlT_P,
-                            std::vector<double> state) {
+                            std::vector<double> state,
+                            bool pinned_transition) {
             new (self) Goddard::ThroatCondition();
             self->converged = converged;
+            self->speed_of_sound = speed_of_sound;
             self->H_stagnation = H_stagnation;
             self->P_inlet = P_inlet;
             self->S_inlet = S_inlet;
@@ -105,22 +109,28 @@ void bind_structs(nb::module_& m) {
             self->dlV_dlP_T = dlV_dlP_T;
             self->dlV_dlT_P = dlV_dlT_P;
             self->state = std::move(state);
+            self->pinned_transition = pinned_transition;
         },  "converged"_a = false,
+            "speed_of_sound"_a = 0.0,
             "H_stagnation"_a = 0.0,
             "P_inlet"_a = 0.0,
             "S_inlet"_a = 0.0,
             "gamma_s"_a = 0.0,
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
-            "state"_a = std::vector<double>())
+            "state"_a = std::vector<double>(),
+            "pinned_transition"_a = false)
         .def_ro("converged", &Goddard::ThroatCondition::converged)
+        .def_ro("speed_of_sound", &Goddard::ThroatCondition::speed_of_sound)
         .def_ro("H_stagnation", &Goddard::ThroatCondition::H_stagnation)
         .def_ro("P_inlet", &Goddard::ThroatCondition::P_inlet)
         .def_ro("S_inlet", &Goddard::ThroatCondition::S_inlet)
         .def_ro("gamma_s", &Goddard::ThroatCondition::gamma_s)
         .def_ro("dlV_dlP_T", &Goddard::ThroatCondition::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::ThroatCondition::dlV_dlT_P)
-        .def_ro("state", &Goddard::ThroatCondition::state);
+        .def_ro("state", &Goddard::ThroatCondition::state)
+        .def_ro("pinned_transition", &Goddard::ThroatCondition::pinned_transition,
+             DOC(Goddard, ThroatCondition, pinned_transition));
 
     // NozzleResult
     nb::class_<Goddard::NozzleStation>(m, "NozzleResult")
@@ -130,23 +140,28 @@ void bind_structs(nb::module_& m) {
                             double gamma_s,
                             double dlV_dlP_T,
                             double dlV_dlT_P,
-                            std::vector<double> state) {
+                            std::vector<double> state,
+                            bool pinned_transition) {
             new (self) Goddard::NozzleStation();
             self->converged = converged;
             self->gamma_s = gamma_s;
             self->dlV_dlP_T = dlV_dlP_T;
             self->dlV_dlT_P = dlV_dlT_P;
             self->state = std::move(state);
+            self->pinned_transition = pinned_transition;
         },  "converged"_a = false,
             "gamma_s"_a = 0.0,
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
-            "state"_a = std::vector<double>())
+            "state"_a = std::vector<double>(),
+            "pinned_transition"_a = false)
         .def_ro("converged", &Goddard::NozzleStation::converged)
         .def_ro("gamma_s", &Goddard::NozzleStation::gamma_s)
         .def_ro("dlV_dlP_T", &Goddard::NozzleStation::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::NozzleStation::dlV_dlT_P)
-        .def_ro("state", &Goddard::NozzleStation::state);
+        .def_ro("state", &Goddard::NozzleStation::state)
+        .def_ro("pinned_transition", &Goddard::NozzleStation::pinned_transition,
+             DOC(Goddard, NozzleStation, pinned_transition));
 
     // NozzleResults
     nb::class_<Goddard::NozzleResults>(m, "NozzleResults")
@@ -196,17 +211,26 @@ void bind_structs(nb::module_& m) {
                             std::vector<double> mixtures,
                             std::vector<double> OF_ratios,
                             std::vector<double> phi_ratios,
-                            std::vector<double> fuel_weight_percentages)
+                            std::vector<double> fuel_weight_percentages,
+                            std::string reactant_file,
+                            std::string condensed_file,
+                            std::unordered_set<std::string> condensed_species,
+                            bool all_condensed_species)
                             {
             new (self) Goddard::ChemicalParameters();
             self->thermo_file = std::move(thermo_file);
             self->species = std::move(species);
             self->cantera_fuel_state = std::move(cantera_fuel_state);
             self->cantera_oxidizer_state = std::move(cantera_oxidizer_state);
+            self->mixture_type = mixture_type;
             self->mixtures = std::move(mixtures);
             self->OF_ratios = std::move(OF_ratios);
             self->phi_ratios = std::move(phi_ratios);
             self->fuel_weight_percentages = std::move(fuel_weight_percentages);
+            self->reactant_file = std::move(reactant_file);
+            self->condensed_file = std::move(condensed_file);
+            self->condensed_species = std::move(condensed_species);
+            self->all_condensed_species = all_condensed_species;
         },  "thermo_file"_a = "",
             "species"_a = std::unordered_set<std::string>(),
             "cantera_fuel_state"_a = Goddard::PhaseSpecification(),
@@ -215,7 +239,11 @@ void bind_structs(nb::module_& m) {
             "mixtures"_a = std::vector<double>(),
             "OF_ratios"_a = std::vector<double>(),
             "phi_ratios"_a = std::vector<double>(),
-            "fuel_weight_percentages"_a = std::vector<double>())
+            "fuel_weight_percentages"_a = std::vector<double>(),
+            "reactant_file"_a = "",
+            "condensed_file"_a = "",
+            "condensed_species"_a = std::unordered_set<std::string>(),
+            "all_condensed_species"_a = false)
         .def_rw("thermo_file", &Goddard::ChemicalParameters::thermo_file)
         .def_rw("species", &Goddard::ChemicalParameters::species)
         .def_rw("cantera_fuel_state", &Goddard::ChemicalParameters::cantera_fuel_state)
@@ -224,7 +252,11 @@ void bind_structs(nb::module_& m) {
         .def_rw("mixtures", &Goddard::ChemicalParameters::mixtures)
         .def_rw("OF_ratios", &Goddard::ChemicalParameters::OF_ratios)
         .def_rw("phi_ratios", &Goddard::ChemicalParameters::phi_ratios)
-        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages);
+        .def_rw("fuel_weight_percentages", &Goddard::ChemicalParameters::fuel_weight_percentages)
+        .def_rw("reactant_file", &Goddard::ChemicalParameters::reactant_file)
+        .def_rw("condensed_file", &Goddard::ChemicalParameters::condensed_file)
+        .def_rw("condensed_species", &Goddard::ChemicalParameters::condensed_species)
+        .def_rw("all_condensed_species", &Goddard::ChemicalParameters::all_condensed_species);
 
     // ThermoStateInfo
     nb::class_<Goddard::ThermodynamicState>(m, "ThermodynamicState")
@@ -244,7 +276,10 @@ void bind_structs(nb::module_& m) {
                             double dlV_dlT_P,
                             double speed_of_sound,
                             double stagnation_enthalpy,
-                            std::map<std::string, double> composition) {
+                            std::map<std::string, double> composition,
+                            double mixture_molecular_weight,
+                            double gas_mass_fraction,
+                            bool pinned_transition) {
             new (self) Goddard::ThermodynamicState();
             self->pressure = pressure;
             self->temperature = temperature;
@@ -261,6 +296,9 @@ void bind_structs(nb::module_& m) {
             self->speed_of_sound = speed_of_sound;
             self->stagnation_enthalpy = stagnation_enthalpy;
             self->composition = std::move(composition);
+            self->mixture_molecular_weight = mixture_molecular_weight;
+            self->gas_mass_fraction = gas_mass_fraction;
+            self->pinned_transition = pinned_transition;
         },  "pressure"_a = 0.0,
             "temperature"_a = 0.0,
             "density"_a = 0.0,
@@ -275,7 +313,10 @@ void bind_structs(nb::module_& m) {
             "dlV_dlT_P"_a = 0.0,
             "speed_of_sound"_a = 0.0,
             "stagnation_enthalpy"_a = 0.0,
-            "composition"_a = std::map<std::string, double>())
+            "composition"_a = std::map<std::string, double>(),
+            "mixture_molecular_weight"_a = 0.0,
+            "gas_mass_fraction"_a = 1.0,
+            "pinned_transition"_a = false)
         .def_ro("pressure", &Goddard::ThermodynamicState::pressure)
         .def_ro("temperature", &Goddard::ThermodynamicState::temperature)
         .def_ro("density", &Goddard::ThermodynamicState::density)
@@ -290,7 +331,14 @@ void bind_structs(nb::module_& m) {
         .def_ro("dlV_dlT_P", &Goddard::ThermodynamicState::dlV_dlT_P)
         .def_ro("speed_of_sound", &Goddard::ThermodynamicState::speed_of_sound)
         .def_ro("stagnation_enthalpy", &Goddard::ThermodynamicState::stagnation_enthalpy)
-        .def_ro("composition", &Goddard::ThermodynamicState::composition);
+        .def_ro("composition", &Goddard::ThermodynamicState::composition)
+        .def_ro("mixture_molecular_weight",
+             &Goddard::ThermodynamicState::mixture_molecular_weight,
+             DOC(Goddard, ThermodynamicState, mixture_molecular_weight))
+        .def_ro("gas_mass_fraction", &Goddard::ThermodynamicState::gas_mass_fraction,
+             DOC(Goddard, ThermodynamicState, gas_mass_fraction))
+        .def_ro("pinned_transition", &Goddard::ThermodynamicState::pinned_transition,
+             DOC(Goddard, ThermodynamicState, pinned_transition));
 
     // StationType
     nb::enum_<Goddard::StationType>(m, "StationType")

@@ -76,6 +76,11 @@ class ComparisonTolerances:
     isp_rel: float = 1e-2               # 1%
     ivac_rel: float = 1e-2              # 1%
     cf_rel: float = 2e-2                # 2%
+    area_ratio_rel: float = 1e-3        # 0.1%
+    mach_rel: float = 3e-3              # 0.3%
+    # Pc/Pe inherits the cross-database error of the exit pressure, which is an order of
+    # magnitude larger than the error of the area ratio the expansion was solved for.
+    pressure_ratio_rel: float = 3e-3    # 0.3%
 
 
 # ---------------------------------------------------------------------------

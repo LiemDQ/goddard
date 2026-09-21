@@ -3,8 +3,12 @@
 #include "cantera/base/SolutionArray.h"
 
 #include "goddard/thermoarray.hpp"
+#include "goddard/condensed.hpp"
+#include "goddard/error.hpp"
+#include "goddard/gas.hpp"
 #include "goddard/utils.hpp"
 
+#include <algorithm>
 #include <vector>
 #include <exception>
 #include <utility>
@@ -61,12 +65,38 @@ ThermoArray::ThermoArray(const std::shared_ptr<Solution>& sol, const std::vector
 	}
 }
 
+ThermoArray::ThermoArray(const Gas& gas, const std::vector<long>& shape) :
+	ThermoArray(gas.solution(), shape) {
+
+	if (gas.m_condensed) {
+		m_condensed = gas.m_condensed->clone();
+		// SolutionArray::create fills every entry with the current gas state, so the condensed side
+		// table starts from the current amounts for the same reason.
+		m_condensed_moles.resize(static_cast<size_t>(size()) * m_condensed->size());
+		for (int loc = 0; loc < size(); loc++) {
+			std::copy(m_condensed->moles.begin(), m_condensed->moles.end(),
+				m_condensed_moles.begin() + static_cast<long>(loc) * static_cast<long>(m_condensed->size()));
+		}
+	}
+}
+
+size_t ThermoArray::num_condensed() const {
+	return m_condensed ? m_condensed->size() : 0;
+}
+
+std::vector<std::string> ThermoArray::condensed_species_names() const {
+	if (!m_condensed) return {};
+	return m_condensed->names();
+}
+
 void ThermoArray::reshape(const std::vector<long>& shape) {
 	// setApiShape resizes the storage. Entries that remain keep their data, so the buffered
 	// location still matches the Solution state if it is in range; new entries are zero-filled.
 	shape_size(shape);
 	m_states->setApiShape(shape);
 	m_shape_is_set = !shape.empty();
+	// Entries that survive keep their amounts; new entries start empty.
+	m_condensed_moles.resize(static_cast<size_t>(size()) * num_condensed(), 0.0);
 }
 
 int ThermoArray::flat_index(long i, long j, long k) const {
@@ -88,11 +118,55 @@ int ThermoArray::flat_index(long i, long j, long k) const {
 }
 
 std::vector<double> ThermoArray::get_state(int loc) const {
-	return m_states->getState(loc);
+	std::vector<double> state = m_states->getState(loc);
+	const size_t n_condensed = num_condensed();
+	for (size_t k = 0; k < n_condensed; k++) {
+		state.push_back(m_condensed_moles[static_cast<size_t>(loc) * n_condensed + k]);
+	}
+	return state;
 }
 
 void ThermoArray::set_state(int loc, const std::vector<double>& state) {
+	const size_t n_condensed = num_condensed();
+	const size_t cantera_size = m_solution->thermo()->stateSize();
+
+	if (state.size() == cantera_size + n_condensed) {
+		m_states->setState(loc, std::vector<double>(state.begin(),
+			state.begin() + static_cast<long>(cantera_size)));
+		for (size_t k = 0; k < n_condensed; k++) {
+			m_condensed_moles[static_cast<size_t>(loc) * n_condensed + k] = state[cantera_size + k];
+		}
+		return;
+	}
+
+	if (state.size() != cantera_size) {
+		throw std::invalid_argument(
+			"ThermoArray::set_state: state vector has length " + std::to_string(state.size())
+			+ ", expected " + std::to_string(cantera_size) + " (gas only) or "
+			+ std::to_string(cantera_size + n_condensed) + " (gas plus condensed species).");
+	}
+
 	m_states->setState(loc, state);
+	for (size_t k = 0; k < n_condensed; k++) {
+		m_condensed_moles[static_cast<size_t>(loc) * n_condensed + k] = 0.0;
+	}
+}
+
+std::vector<double> ThermoArray::get_condensed_moles(int loc) const {
+	const size_t n_condensed = num_condensed();
+	const auto first = m_condensed_moles.begin() + static_cast<long>(loc) * static_cast<long>(n_condensed);
+	return std::vector<double>(first, first + static_cast<long>(n_condensed));
+}
+
+void ThermoArray::set_condensed_moles(int loc, const std::vector<double>& moles) {
+	const size_t n_condensed = num_condensed();
+	if (moles.size() != n_condensed) {
+		throw std::invalid_argument(
+			"ThermoArray::set_condensed_moles: expected " + std::to_string(n_condensed)
+			+ " values, got " + std::to_string(moles.size()) + ".");
+	}
+	std::copy(moles.begin(), moles.end(),
+		m_condensed_moles.begin() + static_cast<long>(loc) * static_cast<long>(n_condensed));
 }
 
 ArrayXXd ThermoArray::temperature(int slice) const {
@@ -134,9 +208,28 @@ ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
 
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
 
+	if (num_condensed() == 0) {
+		for (int loc = 0; loc < size(); loc++){
+			m_states->setLoc(loc);
+			m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
+			m_states->updateState(loc);
+		}
+		return;
+	}
+
+	// The condensed amounts are part of the problem, so each location goes through a `Gas` sharing
+	// the array's phase and candidate set. The solver arguments Cantera's ThermoPhase takes do not
+	// all apply; the two that do are forwarded.
+	Gas gas(m_solution, m_condensed);
+	gas.equilibrium_options.rtol = rtol;
+	gas.equilibrium_options.max_steps = max_steps;
+
 	for (int loc = 0; loc < size(); loc++){
 		m_states->setLoc(loc);
-		m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
+		m_condensed->moles = get_condensed_moles(loc);
+		m_condensed->update_pinned_group();
+		gas.equilibrate(XY, solver == "auto" ? "gibbs" : solver);
+		set_condensed_moles(loc, m_condensed->moles);
 		m_states->updateState(loc);
 	}
 }

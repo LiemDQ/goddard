@@ -3,6 +3,8 @@
 #include "goddard/error.hpp"
 #include "cantera/core.h"
 #include "cantera/base/stringUtils.h"
+#include <algorithm>
+#include <iterator>
 #include <utility>
 #include <iostream>
 #include <cassert>
@@ -14,23 +16,24 @@ BaseCombustor::BaseCombustor(Gas gas)
     : m_gas(std::move(gas))
 {}
 
+void BaseCombustor::check_combustor_type(const CombustorOptions& options) {
+    if (options.type != CombustorType::INFINITE_AREA) {
+        throw NotImplementedError("Finite area combustors are not implemented.");
+    }
+}
+
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
-    switch (options.type) {
-        case CombustorType::INFINITE_AREA: {
-            switch (options.process) {
-                case CombustionProcess::ISOBARIC:
-                    states.equilibrate("HP", "gibbs");
-                    break;
-                case CombustionProcess::ISOCHORIC:
-                    // Cantera's "gibbs" (MultiPhaseEquil) solver does not support UV, and
-                    // "element_potential" fails to converge for H2/O2 at initial pressures of
-                    // ~10 bar and above. "vcs" converges across O/F 1-32 and 1e3-1e7 Pa.
-                    states.equilibrate("UV", "vcs");
-                    break;
-            }
+    check_combustor_type(options);
+    switch (options.process) {
+        case CombustionProcess::ISOBARIC:
+            states.equilibrate("HP", "gibbs");
             break;
-        }
-        default: throw NotImplementedError("Finite area combustors are not implemented.");
+        case CombustionProcess::ISOCHORIC:
+            // Cantera's "gibbs" (MultiPhaseEquil) solver does not support UV, and
+            // "element_potential" fails to converge for H2/O2 at initial pressures of
+            // ~10 bar and above. "vcs" converges across O/F 1-32 and 1e3-1e7 Pa.
+            states.equilibrate("UV", "vcs");
+            break;
     }
     return states;
 }
@@ -63,6 +66,121 @@ Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidiz
     : BaseCombustor(std::move(gas)),
       m_fuel_composition(fuel), m_oxidizer_composition(oxidizer)
 {}
+
+Combustor::Combustor(Gas products, Gas fuel, Gas oxidizer)
+    : BaseCombustor(std::move(products)),
+      m_fuel_gas(std::move(fuel)), m_oxidizer_gas(std::move(oxidizer))
+{}
+
+Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
+    const std::vector<std::string> product_elements = m_gas.element_names();
+    const std::vector<std::string> stream_elements = stream.element_names();
+    const Eigen::ArrayXd stream_moles = stream.element_moles();
+
+    Eigen::ArrayXd mapped = Eigen::ArrayXd::Zero(static_cast<long>(product_elements.size()));
+    for (size_t m = 0; m < stream_elements.size(); m++) {
+        const double amount = stream_moles(static_cast<long>(m));
+        const auto match = std::find(product_elements.begin(), product_elements.end(),
+            stream_elements[m]);
+        if (match == product_elements.end()) {
+            // Elements the reactant phase declares but does not actually contain are ignored:
+            // a stream built from a shared species list carries the elements of every listed
+            // species, not only of the ones it is made of.
+            if (amount > 0.0) {
+                throw FmtError(
+                    "Combustor: reactant stream contains element '{}', which is absent from the "
+                    "product gas.", stream_elements[m]);
+            }
+            continue;
+        }
+        mapped(static_cast<long>(std::distance(product_elements.begin(), match))) = amount;
+    }
+    return mapped;
+}
+
+namespace {
+
+/** Mass fraction of fuel in the mixture from a mixture ratio and its interpretation. */
+double fuel_mass_fraction(double mixture_ratio, MixtureRatioType type) {
+    switch (type) {
+        case MixtureRatioType::OF_RATIO:
+            return 1.0 / (1.0 + mixture_ratio);
+        case MixtureRatioType::FUEL_FRAC:
+            return mixture_ratio;
+        case MixtureRatioType::PHI_RATIO:
+            break;
+    }
+    throw NotImplementedError(
+        "Combustor: equivalence ratios are not implemented for reactant Gas streams; CEA's "
+        "valence rule is needed to define the stoichiometric ratio of an arbitrary reactant.");
+}
+
+} // namespace
+
+ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
+    const CombustorOptions& options) {
+
+    if (!m_fuel_gas || !m_oxidizer_gas) {
+        throw NotImplementedError(
+            "Combustor::solve(pressures, mixture_ratios) requires the combustor to be built from "
+            "reactant Gas streams. Use solve(fuel_T, oxidizer_T, pressures, mixture_ratios) for "
+            "reactants given as product-species compositions.");
+    }
+    check_combustor_type(options);
+    if (options.process == CombustionProcess::ISOCHORIC && m_gas.has_condensed_candidates()) {
+        throw NotImplementedError(
+            "Constant-volume combustion with candidate condensed species is not implemented.");
+    }
+
+    const Eigen::ArrayXd fuel_elements = stream_element_moles(*m_fuel_gas);
+    const Eigen::ArrayXd oxidizer_elements = stream_element_moles(*m_oxidizer_gas);
+    const double fuel_enthalpy = m_fuel_gas->enthalpy_mass();
+    const double oxidizer_enthalpy = m_oxidizer_gas->enthalpy_mass();
+    // Specific volume and internal energy of each stream at its own state. Only meaningful for
+    // gaseous reactants, and only read on the isochoric path.
+    const double fuel_volume = 1.0 / m_fuel_gas->density();
+    const double oxidizer_volume = 1.0 / m_oxidizer_gas->density();
+    const double fuel_energy = fuel_enthalpy - m_fuel_gas->pressure() * fuel_volume;
+    const double oxidizer_energy =
+        oxidizer_enthalpy - m_oxidizer_gas->pressure() * oxidizer_volume;
+
+    const long n_ratios = mixture_ratios.size();
+    const long n_pressures = pressures.size();
+    ThermoArray combustion_states(m_gas, {n_ratios, n_pressures});
+
+    for (long i = 0; i < n_ratios; i++) {
+        const double fuel_fraction = fuel_mass_fraction(mixture_ratios(i), options.mixture_type);
+        const Eigen::ArrayXd element_moles =
+            fuel_fraction * fuel_elements + (1.0 - fuel_fraction) * oxidizer_elements;
+        const double enthalpy =
+            fuel_fraction * fuel_enthalpy + (1.0 - fuel_fraction) * oxidizer_enthalpy;
+
+        double temperature_guess = m_gas.equilibrium_options.T_default;
+        for (long j = 0; j < n_pressures; j++) {
+            m_gas.set_element_moles(element_moles, temperature_guess, pressures(j));
+            switch (options.process) {
+                case CombustionProcess::ISOBARIC:
+                    m_gas.equilibrate_HP(enthalpy, pressures(j));
+                    break;
+                case CombustionProcess::ISOCHORIC: {
+                    const double energy =
+                        fuel_fraction * fuel_energy + (1.0 - fuel_fraction) * oxidizer_energy;
+                    const double volume =
+                        fuel_fraction * fuel_volume + (1.0 - fuel_fraction) * oxidizer_volume;
+                    m_gas.thermo()->setState_UV(energy, volume);
+                    // See `BaseCombustor::combust` for why the UV problem uses the "vcs" solver.
+                    m_gas.equilibrate("UV", "vcs");
+                    break;
+                }
+            }
+            // Warm start of the next pressure at the same mixture ratio.
+            temperature_guess = m_gas.temperature();
+            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
+        }
+    }
+
+    return combustion_states;
+}
 
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options) {

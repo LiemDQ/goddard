@@ -146,3 +146,19 @@ def test_convenience_combustor():
     opts = infinite_area_combustor([1e6])
     assert opts.type == CombustorType.INFINITE_AREA
     assert opts.pressures == [1e6]
+
+
+def test_import_condensed_api():
+    from goddard import (
+        EquilibriumOptions, EquilibriumProperty, MixtureRatioType,
+        equilibrium_derivatives, equilibrium_properties, frozen_properties,
+        reactant_gas, condensed_species,
+    )
+
+    assert EquilibriumProperty.ENTHALPY is not None
+    assert EquilibriumProperty.ENTROPY is not None
+    assert MixtureRatioType.OF_RATIO is not None
+    assert EquilibriumOptions().max_steps > 0
+    assert condensed_species("f.yaml", ["C(gr)"]) == {
+        "condensed_file": "f.yaml", "condensed_species": {"C(gr)"}}
+    assert condensed_species("f.yaml") == {"condensed_file": "f.yaml", "all_condensed": True}

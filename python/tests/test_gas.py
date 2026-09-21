@@ -2,6 +2,7 @@
 import os
 import math
 
+import numpy as np
 import pytest
 
 from conftest import find_data_dir
@@ -273,6 +274,9 @@ def test_nozzle_from_gas(h2o2_yaml):
     result = nozzle.solve(ExpansionType.SUPERSONIC_AREA_RATIO, 5.0)
     assert result.throat.converged
     assert len(result.expansions) == 1
+    # A gas-only mixture can never sit at a condensed phase transition.
+    assert result.throat.pinned_transition is False
+    assert result.expansions[0].pinned_transition is False
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +294,114 @@ def test_from_cantera():
 
     assert abs(gas.temperature - 2500.0) < 1.0
     assert abs(gas.pressure - 3e6) < 100.0
+
+
+# ---------------------------------------------------------------------------
+# Condensed species
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def nasa9_files():
+    """Paths to the NASA9 gas, condensed and reactant data files."""
+    data_dir = find_data_dir()
+    return (os.path.join(data_dir, "nasa9_gas.yaml"),
+            os.path.join(data_dir, "nasa9_condensed.yaml"),
+            os.path.join(data_dir, "nasa9_reactants.yaml"))
+
+
+@pytest.fixture
+def water_gas(nasa9_files):
+    """H2/O2 products carrying the two water candidates."""
+    from goddard import Gas, GasChemistry
+
+    gas_file, condensed_file, _ = nasa9_files
+    return Gas(gas_file, phase_name="products",
+               species={"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2"},
+               condensed_file=condensed_file,
+               condensed_species={"H2O(L)", "H2O(cr)"},
+               chemistry=GasChemistry.EQUILIBRIUM)
+
+
+def test_condensed_candidates(water_gas):
+    assert water_gas.has_condensed_candidates
+    assert not water_gas.has_condensed_phases
+    assert set(water_gas.condensed_species_names) == {"H2O(L)", "H2O(cr)"}
+    assert water_gas.condensed_moles == [0.0, 0.0]
+    assert water_gas.gas_mass_fraction == 1.0
+    assert not water_gas.at_phase_transition
+    assert water_gas.pinned_polymorphs == (-1, -1)
+
+
+def test_condensed_state_vector_is_extended(water_gas, h2o2_yaml):
+    from goddard import Gas
+
+    gas_only = Gas(h2o2_yaml, phase_name="ohmech")
+    assert len(water_gas.save_state()) == water_gas.num_species + 2 + 2
+    assert len(gas_only.save_state()) == gas_only.num_species + 2
+
+
+def test_no_condensed_candidates_by_default(gas):
+    assert not gas.has_condensed_candidates
+    assert gas.condensed_species_names == []
+    assert gas.gas_mass_fraction == 1.0
+    assert gas.mixture_molecular_weight == pytest.approx(gas.mean_molecular_weight)
+
+
+def test_equilibrate_tp_condenses_water(water_gas, nasa9_files):
+    import goddard
+    from goddard import reactant_gas
+
+    _, _, reactant_file = nasa9_files
+    stream = reactant_gas(reactant_file, {"H2": 100.0, "O2": 60.0}, 298.15, 101325.0)
+    amounts = dict(zip(stream.element_names, stream.element_moles))
+    elements = np.array([amounts[element] for element in water_gas.element_names])
+
+    pressure = 0.05 * 101325.0
+    water_gas.set_element_moles(elements, 300.0, pressure)
+    water_gas.equilibrate_TP(300.0, pressure)
+
+    liquid = water_gas.condensed_moles[water_gas.condensed_species_names.index("H2O(L)")]
+    assert liquid > 0.0
+    assert water_gas.has_condensed_phases
+    assert water_gas.gas_mass_fraction < 1.0
+    assert water_gas.mixture_molecular_weight < water_gas.mean_molecular_weight
+    assert water_gas.last_equilibrium_solve_count() > 0
+    assert sum(water_gas.mixture_mass_fractions) == pytest.approx(1.0)
+
+    # One entry per *present* condensed species, in candidate order.
+    assert len(water_gas.condensed_enthalpy_RT) == 1
+    assert len(water_gas.condensed_cp_R) == 1
+    assert water_gas.condensed_molar_masses[0] == pytest.approx(18.0153, rel=1e-3)
+    assert water_gas.condensed_stoich_coeffs.shape == (1, len(water_gas.element_names))
+
+    derivatives = goddard.equilibrium_derivatives(water_gas)
+    assert len(derivatives.dn_condensed_dlogT_P) == 1
+    assert len(derivatives.dn_condensed_dlogP_T) == 1
+    assert not derivatives.pinned_transition
+
+
+def test_equilibrium_options_are_writable(water_gas):
+    from goddard import EquilibriumOptions
+
+    assert water_gas.equilibrium_options.max_steps == 20000
+    options = EquilibriumOptions()
+    options.max_steps = 5000
+    water_gas.equilibrium_options = options
+    assert water_gas.equilibrium_options.max_steps == 5000
+
+
+def test_equilibrium_properties_of_a_gas(eq_gas):
+    import goddard
+
+    eq_gas.set_state_TPX(3000.0, 2e6, "H2:2, O2:1")
+    eq_gas.equilibrate("HP")
+
+    properties = goddard.equilibrium_properties(eq_gas)
+    frozen = goddard.frozen_properties(eq_gas)
+    derivatives = goddard.equilibrium_derivatives(eq_gas)
+
+    assert properties.gamma_s > 1.0
+    assert properties.spec_heat_p > frozen.spec_heat_p
+    assert not properties.pinned_transition
+    assert len(derivatives.dn_condensed_dlogT_P) == 0
+    assert properties.speed_of_sound == pytest.approx(eq_gas.speed_of_sound, rel=1e-9)

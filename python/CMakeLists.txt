@@ -17,6 +17,7 @@ set(GODDARD_DOCSTRINGS_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/src/goddard_docstring
 # Public headers to scan. Keep this list explicit so we can exclude headers
 # that confuse libclang (e.g. heavy template metaprogramming).
 set(GODDARD_PUBLIC_HEADERS
+    "${PROJECT_SOURCE_DIR}/include/goddard/chemistry.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/gas.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/equilibrium.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/combustor.hpp"
