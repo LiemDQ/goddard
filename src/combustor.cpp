@@ -127,7 +127,7 @@ Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
             }
             continue;
         }
-        mapped(static_cast<long>(std::distance(product_elements.begin(), match))) = amount;
+        mapped(std::distance(product_elements.begin(), match)) = amount;
     }
     return mapped;
 }
