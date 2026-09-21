@@ -100,11 +100,10 @@ class RocketProblem {
     /**
      * Product `Gas` for one solver stage. Every returned `Gas` references the same `Solution` and
      * the same candidate condensed species set, so attaching candidates once in the constructor is
-     * enough for the combustor and the nozzle to see them.
-     *
-     * @param chemistry Chemistry mode of the returned `Gas`.
+     * enough for the combustor and the nozzle to see them. The chemistry mode is left at its
+     * default: the combustor does not read it, and the nozzle and the results set their own.
      */
-    Gas product_gas(GasChemistry chemistry) const;
+    Gas product_gas() const;
 
     /** Reactant stream `Gas` built from `ChemicalParameters::reactant_file` and set to `state`. */
     Gas reactant_gas(const PhaseSpecification& state) const;

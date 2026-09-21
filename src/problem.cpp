@@ -74,14 +74,12 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
     }
 }
 
-Gas RocketProblem::product_gas(GasChemistry chemistry) const {
+Gas RocketProblem::product_gas() const {
     if (m_condensed_prototype) {
         // A copy shares the `Solution` and the candidate condensed species set of the prototype.
-        Gas gas = *m_condensed_prototype;
-        gas.chemistry = chemistry;
-        return gas;
+        return *m_condensed_prototype;
     }
-    return Gas(m_sln, chemistry);
+    return Gas(m_sln);
 }
 
 Gas RocketProblem::reactant_gas(const PhaseSpecification& state) const {
@@ -122,7 +120,7 @@ RocketProblemResults RocketProblem::solve() {
     for (RocketCaseParameters& params : problem_cases) {
         Eigen::ArrayXd pressures = vector_to_eigenarray(params.combustor_options.pressures);
 
-        Gas combustor_gas = product_gas(GasChemistry::FROZEN);
+        Gas combustor_gas = product_gas();
 
         ThermoArray combustion_states = reactant_streams
             ? Combustor(combustor_gas, reactant_gas(fuel_input), reactant_gas(ox_input))
@@ -132,15 +130,41 @@ RocketProblemResults RocketProblem::solve() {
 
         std::vector<NozzleResults> expansion_results;
         expansion_results.reserve(static_cast<std::size_t>(combustion_states.size()));
+        std::vector<FiniteAreaChamber> finite_area_chambers;
 
-        Gas gas = product_gas(params.nozzle_options.chemistry);
+        Gas gas = product_gas();
         Nozzle nozzle(gas, params.nozzle_options);
 
         for (int i = 0; i < combustion_states.size(); i++) {
             state = combustion_states.get_state(i);
-            nozzle.set_inlet_state(state);
-            NozzleResults expansions = nozzle.solve(params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
-            expansion_results.push_back(expansions);
+
+            switch (params.combustor_options.type) {
+                case CombustorType::INFINITE_AREA: {
+                    nozzle.set_inlet_state(state);
+                    NozzleResults expansions = nozzle.solve(
+                        params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
+                    expansion_results.push_back(std::move(expansions));
+                    break;
+                }
+                case CombustorType::FINITE_MASS_FLUX:
+                case CombustorType::FINITE_CONTRACTION_RATIO: {
+                    const double value =
+                        params.combustor_options.type == CombustorType::FINITE_CONTRACTION_RATIO
+                            ? params.combustor_options.contraction_ratio
+                            : params.combustor_options.mass_flux;
+                    FiniteAreaChamber fac = nozzle.solve_finite_area_chamber(
+                        state, params.combustor_options.type, value);
+                    std::vector<NozzleStation> stations = nozzle.solve_stations(fac,
+                        params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
+
+                    expansion_results.push_back(
+                        NozzleResults{fac.injector, fac.throat, std::move(stations)});
+                    finite_area_chambers.push_back(std::move(fac));
+                    break;
+                }
+                case CombustorType::NONE:
+                    throw NotImplementedError("RocketProblem: CombustorType::NONE is not implemented.");
+            }
         }
 
         case_results.emplace(params.name, RocketProblemCaseResult{
@@ -152,11 +176,13 @@ RocketProblemResults RocketProblem::solve() {
             params.combustor_options.pressures,
             params.nozzle_options.expansion_ratios,
             params.nozzle_options.expansion_type,
-            params.combustor_options.process
+            params.combustor_options.process,
+            params.combustor_options.type,
+            std::move(finite_area_chambers)
         });
     }
     
-    return {std::move(case_results), product_gas(GasChemistry::FROZEN)};
+    return {std::move(case_results), product_gas()};
 }
 
 

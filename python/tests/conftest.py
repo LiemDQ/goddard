@@ -10,6 +10,12 @@ import numpy as np
 import pytest
 import goddard
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "slow: long-running test (condensed-phase CEA comparisons); deselect with -m 'not slow'")
+
 # ---------------------------------------------------------------------------
 # Data directory
 # ---------------------------------------------------------------------------
@@ -162,7 +168,7 @@ def solve_cea_problem(case: RocketTestCase):
     if case.nozzle_chemistry == "frozen":
         # CEA station numbering: 1=combustor, 2=throat
         # frozen_NFZ=1 in Goddard (freeze at throat) maps to n_frz=2 in CEA
-        solve_kwargs["n_frz"] = case.frozen_NFZ
+        solve_kwargs["n_frz"] = case.frozen_NFZ + 1
 
     # CEA requires at least one pressure ratio; use a large one to get all stations
     pi_p = [1000.0]

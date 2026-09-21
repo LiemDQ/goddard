@@ -134,6 +134,11 @@ public:
      * @throws std::invalid_argument if the vector has neither length.
      */
     void restore_state(const std::vector<double>& state);
+
+    /**
+     * Size of the state vector.
+     */
+    size_t state_size() const; 
     /**
      * Return a ThermodynamicState struct containing all current properties.
      *
@@ -187,6 +192,10 @@ public:
     std::vector<std::string> species_names() const;
 
     // Chemistry-aware derived properties
+    /**
+     * Convenience for the standard cp/cv adiabatic index. 
+     */
+    double gamma() const;
     /**
      * Effective ratio of specific heats used for compressible-flow calculations.
      *

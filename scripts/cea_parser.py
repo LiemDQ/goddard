@@ -273,19 +273,35 @@ class CEAParser:
         states = []
         lines = section.split('\n')
         
-        # Find header line with CHAMBER THROAT EXIT
+        # Find header line with CHAMBER THROAT EXIT (infinite-area combustor) or
+        # INJECTOR COMB END THROAT EXIT (finite-area combustor).
         header_idx = -1
         for i, line in enumerate(lines):
-            if "CHAMBER" in line and "THROAT" in line and "EXIT" in line:
+            if "THROAT" in line and "EXIT" in line and ("CHAMBER" in line or "INJECTOR" in line):
                 header_idx = i
                 break
-        
+
         if header_idx == -1:
             return states
-        
+
         header_line = lines[header_idx].strip()
         locations = header_line.split()  # Standard CEA format
-        
+        # A finite-area combustor header splits the two-word "COMB END" location into
+        # separate tokens; merge them back into a single location so column indices stay
+        # aligned with the data rows below.
+        merged_locations = []
+        skip_next = False
+        for idx, token in enumerate(locations):
+            if skip_next:
+                skip_next = False
+                continue
+            if token == "COMB" and idx + 1 < len(locations) and locations[idx + 1] == "END":
+                merged_locations.append("COMB END")
+                skip_next = True
+            else:
+                merged_locations.append(token)
+        locations = merged_locations
+
         
         # Parse data table
         data_dict = {}

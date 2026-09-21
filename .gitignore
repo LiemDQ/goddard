@@ -12,6 +12,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+build-docs/
+build-python/
 develop-eggs/
 dist/
 downloads/
@@ -171,8 +173,16 @@ cython_debug/
 .pixi/
 !.pixi/config.toml
 
+# ccache and CPM caches (pixi activation env)
+.cache/
+
 # AI tools
-.claude/
+CLAUDE.local.md
+.claude/worktrees/
+.claude/plans/
+.claude/debug/
+.claude/logs/
+
 instructions/
 *.mcp.json
 debug_probes/

@@ -23,6 +23,10 @@ Checks: >
   readability-redundant-declaration,
   readability-identifier-naming
 WarningsAsErrors: ""
+# The compile database is produced by GCC, whose warning flags clang does not all know.
+# Without this, clang rejects -Wduplicated-cond, -Wlogical-op, -Wuseless-cast and friends, and
+# a build configured with -Werror (the default) turns that into a fatal clang-diagnostic-error.
+ExtraArgs: ["-Wno-unknown-warning-option"]
 # Only project headers. Matches <repo>/include/goddard/ but not the pixi environment's include directories.
 HeaderFilterRegex: "include/goddard/.*"
 FormatStyle: none

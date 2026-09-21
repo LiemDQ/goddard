@@ -2422,7 +2422,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/typing_extensions-4.15.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhcf101f3_1.conda
-      - pypi: https://files.pythonhosted.org/packages/01/20/6360a1c17e118ae1929d905fa5d9b2a5a105fe3c465ccf8142cfb4c654bf/cea-3.1.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/04/1c/c8d22bc58b66940e195f97c53b98462e14e854b9168d7428564097c389aa/cea-3.3.4-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.1.4-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -2565,7 +2565,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/yaml-cpp-0.8.0-h92383a6_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-1.3.2-hbb4bfdb_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h3eecb57_6.conda
-      - pypi: https://files.pythonhosted.org/packages/cf/0f/8449ffd73ad5a326bc574fa399b3e41aae22dd34dd7b552a1d6333ce637a/cea-3.1.1.tar.gz
+      - pypi: https://files.pythonhosted.org/packages/bf/58/6027521345f853b9f5ae87f9c6fcd672bc8b09b1e06178ab2dbfe1e133be/cea-3.3.4.tar.gz
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.1.4-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -2689,7 +2689,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/yaml-0.2.5-h6a83c73_3.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/yaml-cpp-0.8.0-he0c23c2_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_6.conda
-      - pypi: https://files.pythonhosted.org/packages/c5/95/4c824923bef7af3fe53f6e08b886a10b4291a5dd43ae0f99347b57d98b00/cea-3.1.1-cp314-cp314-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/1b/ae/dc60d6560d22060e5de20a31ebdff2fcbcf2b26b053b0b44d828b57b29d8/cea-3.3.4-cp314-cp314-win_amd64.whl
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
   sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
@@ -12672,10 +12672,10 @@ packages:
   purls: []
   size: 388453
   timestamp: 1764777142545
-- pypi: https://files.pythonhosted.org/packages/01/20/6360a1c17e118ae1929d905fa5d9b2a5a105fe3c465ccf8142cfb4c654bf/cea-3.1.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/04/1c/c8d22bc58b66940e195f97c53b98462e14e854b9168d7428564097c389aa/cea-3.3.4-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
   name: cea
-  version: 3.1.1
-  sha256: 45acdd1f80a68bf94d06215c92092f4d0823f156902351eed1adc354707fc0e5
+  version: 3.3.4
+  sha256: f5a6397b78457c5cede543aaab4d3a2b1769abaaaa5c2515cae229fa5077def8
   requires_dist:
   - numpy>=2
   requires_python: '>=3.11'
@@ -12781,6 +12781,13 @@ packages:
   - pytest-xdist ; extra == 'test-integration'
   - bash-kernel ; extra == 'test-ui'
   requires_python: '>=3.9'
+- pypi: https://files.pythonhosted.org/packages/1b/ae/dc60d6560d22060e5de20a31ebdff2fcbcf2b26b053b0b44d828b57b29d8/cea-3.3.4-cp314-cp314-win_amd64.whl
+  name: cea
+  version: 3.3.4
+  sha256: b84da3e0c3caf4f03c31293d8714c81e25469f64a799ed73bcc22f0979acb906
+  requires_dist:
+  - numpy>=2
+  requires_python: '>=3.11'
 - pypi: https://files.pythonhosted.org/packages/28/de/a3e710469772c6a89595fc52816da05c1e164b4c866a89e3cb82fb1b67c5/mkdocs_autorefs-1.4.4-py3-none-any.whl
   name: mkdocs-autorefs
   version: 1.4.4
@@ -12885,17 +12892,10 @@ packages:
   version: 0.1.2
   sha256: 84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
   requires_python: '>=3.7'
-- pypi: https://files.pythonhosted.org/packages/c5/95/4c824923bef7af3fe53f6e08b886a10b4291a5dd43ae0f99347b57d98b00/cea-3.1.1-cp314-cp314-win_amd64.whl
+- pypi: https://files.pythonhosted.org/packages/bf/58/6027521345f853b9f5ae87f9c6fcd672bc8b09b1e06178ab2dbfe1e133be/cea-3.3.4.tar.gz
   name: cea
-  version: 3.1.1
-  sha256: 2f2e073eb668b203019858dc071492aa96dc395b6367b0f5154b7978555e72df
-  requires_dist:
-  - numpy>=2
-  requires_python: '>=3.11'
-- pypi: https://files.pythonhosted.org/packages/cf/0f/8449ffd73ad5a326bc574fa399b3e41aae22dd34dd7b552a1d6333ce637a/cea-3.1.1.tar.gz
-  name: cea
-  version: 3.1.1
-  sha256: d70cd8cd10d6b82ac3eee0ac58ccbab54c9e46011ad752bbafc3359f6b5f7365
+  version: 3.3.4
+  sha256: 6e744f3eb82b56f6034c2a571c0f5ec886622ebff3d8bad630ad0fd523be057f
   requires_dist:
   - numpy>=2
   requires_python: '>=3.11'

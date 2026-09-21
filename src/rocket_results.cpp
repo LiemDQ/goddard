@@ -47,22 +47,25 @@ RocketProblemResults::RocketProblemResults(
             case_result.expansion_ratios,
             case_result.chemistry,
             case_result.expansion_type,
-            case_result.process
+            case_result.process,
+            case_result.combustor_type,
+            {}
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
         const std::size_t N_p  = case_result.pressures.size();
+        const bool is_fac = case_result.combustor_type != CombustorType::INFINITE_AREA;
+        if (is_fac) {
+            m_case_meta[name].mass_flux.assign(N_of * N_p, 0.0);
+        }
 
         for (std::size_t of_idx = 0; of_idx < N_of; of_idx++) {
             for (std::size_t p_idx = 0; p_idx < N_p; p_idx++) {
                 const std::size_t state_idx = static_cast<std::size_t>(case_result.inlet_states.flat_index(
                     static_cast<long>(of_idx), static_cast<long>(p_idx)));
 
-                std::vector<double> inlet_state = case_result.inlet_states.get_state(state_idx);
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
 
-                // Chamber derivatives must be computed (not stored like throat/exit), so the
-                // chamber snapshot is taken in the chemistry mode of the case.
                 switch (case_result.chemistry) {
                     case GasChemistry::EQUILIBRIUM:
                     case GasChemistry::FROZEN:
@@ -71,7 +74,7 @@ RocketProblemResults::RocketProblemResults(
                         throw NotImplementedError("Chemistry type not implemented.");
                 }
 
-                // Chamber station
+                // Chamber station: the injector face for a finite-area combustor.
                 {
                     RocketStation s;
                     s.case_name       = name;
@@ -81,8 +84,47 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
                     s.converged       = true;
-                    s.thermo          = read_thermo(inlet_state, case_result.chemistry);
+                    s.thermo          = read_station(nozzle.inlet.state, nozzle.inlet.gamma_s,
+                                                         nozzle.inlet.dlV_dlP_T, nozzle.inlet.dlV_dlT_P,
+                                                         nozzle.inlet.pinned_transition);
                     m_stations.push_back(std::move(s));
+                }
+
+                if (is_fac) {
+                    const FiniteAreaChamber& fac = case_result.finite_area_chambers[state_idx];
+                    m_case_meta[name].mass_flux[of_idx * N_p + p_idx] = fac.mass_flux;
+
+                    // Stagnation station "inf": always equilibrium (see `FiniteAreaChamber`).
+                    {
+                        RocketStation s;
+                        s.case_name       = name;
+                        s.type            = StationType::STAGNATION;
+                        s.of_index        = of_idx;
+                        s.pressure_index  = p_idx;
+                        s.expansion_index = 0;
+                        s.area_ratio      = 0.0;
+                        s.converged       = true;
+                        s.thermo          = read_station(fac.stagnation.state, fac.stagnation.gamma_s,
+                                                         fac.stagnation.dlV_dlP_T, fac.stagnation.dlV_dlT_P,
+                                                         fac.stagnation.pinned_transition);
+                        m_stations.push_back(std::move(s));
+                    }
+
+                    // Combustion-end station — gamma and derivatives are stored on it already.
+                    {
+                        const NozzleStation& ce = fac.combustion_end;
+                        RocketStation s;
+                        s.case_name       = name;
+                        s.type            = StationType::COMBUSTION_END;
+                        s.of_index        = of_idx;
+                        s.pressure_index  = p_idx;
+                        s.expansion_index = 0;
+                        s.area_ratio      = fac.contraction_ratio;
+                        s.converged       = ce.converged;
+                        s.thermo          = read_station(ce.state, ce.gamma_s, ce.dlV_dlP_T,
+                                                         ce.dlV_dlT_P, ce.pinned_transition);
+                        m_stations.push_back(std::move(s));
+                    }
                 }
 
                 // Throat station — gamma and derivatives are stored in ThroatCondition.
@@ -197,7 +239,7 @@ std::vector<RocketStation> RocketProblemResults::exits(
 RocketPerformance RocketProblemResults::performance(
     std::size_t of_index, std::size_t exit_index, const std::string& case_name) const
 {
-    const RocketStation& c = chamber(of_index, case_name);
+    const RocketStation& c = stagnation(of_index, case_name);
     const RocketStation& t = throat(of_index, case_name);
     auto exit_stations = exits(of_index, case_name);
     if (exit_index >= exit_stations.size()) {
@@ -206,6 +248,38 @@ RocketPerformance RocketProblemResults::performance(
             " out of range (" + std::to_string(exit_stations.size()) + " exits available)");
     }
     return calculate_performance(c.thermo, t.thermo, exit_stations[exit_index].thermo);
+}
+
+const RocketStation& RocketProblemResults::stagnation(
+    std::size_t of_index, const std::string& case_name) const
+{
+    const std::string resolved = resolve_case(case_name);
+    const StationType type = m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA
+        ? StationType::CHAMBER : StationType::STAGNATION;
+    for (const auto& s : m_stations) {
+        if (s.case_name == resolved && s.type == type && s.of_index == of_index) {
+            return s;
+        }
+    }
+    throw std::runtime_error("Stagnation state not found for case '" + resolved +
+                              "', of_index=" + std::to_string(of_index));
+}
+
+const RocketStation& RocketProblemResults::combustion_end(
+    std::size_t of_index, const std::string& case_name) const
+{
+    const std::string resolved = resolve_case(case_name);
+    if (m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA) {
+        throw std::runtime_error("Case '" + resolved +
+            "' uses an infinite-area combustor; it has no combustion-end station.");
+    }
+    for (const auto& s : m_stations) {
+        if (s.case_name == resolved && s.type == StationType::COMBUSTION_END && s.of_index == of_index) {
+            return s;
+        }
+    }
+    throw std::runtime_error("Combustion-end state not found for case '" + resolved +
+                              "', of_index=" + std::to_string(of_index));
 }
 
 std::vector<std::string> RocketProblemResults::case_names() const {
@@ -257,20 +331,31 @@ constexpr double PA_TO_BAR  = 1e-5;
 constexpr double PA_TO_PSIA = 1.0 / 6894.757;
 constexpr double J_TO_KJ    = 1e-3;
 
+/** Extra header/column scalars needed only for a finite-area combustor page. */
+struct FacReportInfo {
+    double injector_pressure_pa;   ///< Pinj [Pa].
+    double stagnation_pressure_pa; ///< Pinf [Pa].
+    double mass_flux;              ///< mdot/Ac [kg/(m^2 s)].
+    double contraction_ratio;      ///< Ac/At [-].
+};
+
 std::string build_report_page(
     GasChemistry chemistry,
     CombustionProcess process,
     const std::vector<ThermodynamicState>& states,
+    std::size_t throat_col,
+    const ThermodynamicState& stagnation,
     double of_ratio,
-    double chamber_pressure_pa,
-    double initial_pressure_pa)
+    double display_pressure_pa,
+    double initial_pressure_pa,
+    const FacReportInfo* fac = nullptr)
 {
     std::string page;
 
     std::string combustor_description;
     switch (process) {
         case CombustionProcess::ISOBARIC:
-            combustor_description = "INFINITE AREA COMBUSTOR";
+            combustor_description = (fac != nullptr) ? "FINITE AREA COMBUSTOR" : "INFINITE AREA COMBUSTOR";
             break;
         case CombustionProcess::ISOCHORIC:
             combustor_description = "CONSTANT-VOLUME COMBUSTOR";
@@ -291,22 +376,30 @@ std::string build_report_page(
         default: break;
     }
 
-    page += "Pin = " + format_fixed(chamber_pressure_pa * PA_TO_PSIA, 7, 1) + " PSIA\n";
+    page += "Pin = " + format_fixed(display_pressure_pa * PA_TO_PSIA, 7, 1) + " PSIA\n";
     if (process == CombustionProcess::ISOCHORIC) {
         page += "Pinitial = " + format_fixed(initial_pressure_pa * PA_TO_PSIA, 7, 1) + " PSIA\n";
+    }
+    if (fac != nullptr) {
+        page += "MDOT/Ac = " + format_fixed(fac->mass_flux, 9, 3) + " (KG/S)/M**2      Pinj/Pinf = "
+              + format_fixed(fac->injector_pressure_pa / fac->stagnation_pressure_pa, 9, 6) + "\n";
+        page += "Ac/At = " + format_fixed(fac->contraction_ratio, 9, 4) + "\n";
     }
     page += "O/F=" + format_fixed(of_ratio, 11, 5) + "\n\n";
 
     TextTable table(18, 10);
     std::vector<std::string> headers;
-    headers.push_back("CHAMBER");
+    if (fac != nullptr) {
+        headers.push_back("INJECTOR");
+        headers.push_back("COMB END");
+    } else {
+        headers.push_back("CHAMBER");
+    }
     headers.push_back("THROAT");
-    for (std::size_t i = 2; i < states.size(); i++) {
+    for (std::size_t i = throat_col + 1; i < states.size(); i++) {
         headers.push_back("EXIT");
     }
     table.set_headers(headers);
-
-    const auto& ch = states[0];
 
     auto row_vals = [&](auto fn) {
         std::vector<std::string> vals;
@@ -316,7 +409,12 @@ std::string build_report_page(
         return vals;
     };
 
-    table.add_row("Pinf/P",       row_vals([&](const ThermodynamicState& s){ return format_fixed(ch.pressure / s.pressure, 10, 4); }));
+    if (fac != nullptr) {
+        table.add_row("Pinj/P", row_vals([&](const ThermodynamicState& s){ return format_fixed(fac->injector_pressure_pa / s.pressure, 10, 4); }));
+        table.add_row("Pinf/P", row_vals([&](const ThermodynamicState& s){ return format_fixed(stagnation.pressure / s.pressure, 10, 4); }));
+    } else {
+        table.add_row("Pinf/P", row_vals([&](const ThermodynamicState& s){ return format_fixed(states[0].pressure / s.pressure, 10, 4); }));
+    }
     table.add_row("P, BAR",       row_vals([](const ThermodynamicState& s){ return format_fixed(s.pressure * PA_TO_BAR, 10, 4); }));
     table.add_row("T, K",         row_vals([](const ThermodynamicState& s){ return format_fixed(s.temperature, 10, 2); }));
     table.add_row("RHO, KG/CU M", row_vals([](const ThermodynamicState& s){ return format_cea_engineering(s.density, 10); }));
@@ -348,14 +446,20 @@ std::string build_report_page(
     table.add_row("GAMMAs",          row_vals([](const ThermodynamicState& s){ return format_fixed(s.gamma_s, 10, 4); }));
     table.add_row("SON VEL,M/SEC",   row_vals([](const ThermodynamicState& s){ return format_fixed(s.speed_of_sound, 10, 1); }));
 
-    // Mach number: 0 at chamber, 1 at throat, computed for exits
+    // Mach number: 0 at the first column, 1 at the throat, computed for every other column.
     {
         std::vector<std::string> vals;
-        vals.push_back(format_fixed(0.0, 10, 3));
-        vals.push_back(format_fixed(1.0, 10, 3));
-        for (std::size_t i = 2; i < states.size(); i++) {
-            auto perf = RocketProblemResults::calculate_performance(states[0], states[1], states[i]);
-            vals.push_back(format_fixed(perf.mach_number, 10, 3));
+        for (std::size_t i = 0; i < states.size(); i++) {
+            double mach = 0.0;
+            if (i == 0) {
+                mach = 0.0;
+            } else if (i == throat_col) {
+                mach = 1.0;
+            } else {
+                mach = RocketProblemResults::calculate_performance(
+                    stagnation, states[throat_col], states[i]).mach_number;
+            }
+            vals.push_back(format_fixed(mach, 10, 3));
         }
         table.add_row("MACH NUMBER", vals);
     }
@@ -368,18 +472,22 @@ std::string build_report_page(
     {
         std::vector<std::string> vals;
         vals.push_back("");
-        vals.push_back(format_fixed(1.0, 10, 4));
-        for (std::size_t i = 2; i < states.size(); i++) {
-            auto perf = RocketProblemResults::calculate_performance(states[0], states[1], states[i]);
-            vals.push_back(format_fixed(perf.area_ratio, 10, 3));
+        for (std::size_t i = 1; i < states.size(); i++) {
+            if (i == throat_col) {
+                vals.push_back(format_fixed(1.0, 10, 4));
+            } else {
+                auto perf = RocketProblemResults::calculate_performance(stagnation, states[throat_col], states[i]);
+                vals.push_back(format_fixed(perf.area_ratio, 10, 3));
+            }
         }
         table.add_row("Ae/At", vals);
     }
 
-    // CSTAR — same for all supersonic stations
+    // CSTAR — same for every column but the first.
     double cstar_val = 0.0;
     if (states.size() >= 2) {
-        cstar_val = RocketProblemResults::calculate_performance(states[0], states[1], states[1]).cstar;
+        cstar_val = RocketProblemResults::calculate_performance(
+            stagnation, states[throat_col], states[throat_col]).cstar;
     }
     {
         std::vector<std::string> vals;
@@ -394,10 +502,8 @@ std::string build_report_page(
     {
         std::vector<std::string> vals;
         vals.push_back("");
-        auto throat_perf = RocketProblemResults::calculate_performance(states[0], states[1], states[1]);
-        vals.push_back(format_fixed(throat_perf.CF, 10, 4));
-        for (std::size_t i = 2; i < states.size(); i++) {
-            auto perf = RocketProblemResults::calculate_performance(states[0], states[1], states[i]);
+        for (std::size_t i = 1; i < states.size(); i++) {
+            auto perf = RocketProblemResults::calculate_performance(stagnation, states[throat_col], states[i]);
             vals.push_back(format_fixed(perf.CF, 10, 4));
         }
         table.add_row("CF", vals);
@@ -407,10 +513,8 @@ std::string build_report_page(
     {
         std::vector<std::string> vals;
         vals.push_back("");
-        auto throat_perf = RocketProblemResults::calculate_performance(states[0], states[1], states[1]);
-        vals.push_back(format_fixed(throat_perf.ivac, 10, 1));
-        for (std::size_t i = 2; i < states.size(); i++) {
-            auto perf = RocketProblemResults::calculate_performance(states[0], states[1], states[i]);
+        for (std::size_t i = 1; i < states.size(); i++) {
+            auto perf = RocketProblemResults::calculate_performance(stagnation, states[throat_col], states[i]);
             vals.push_back(format_fixed(perf.ivac, 10, 1));
         }
         table.add_row("Ivac, M/SEC", vals);
@@ -420,10 +524,8 @@ std::string build_report_page(
     {
         std::vector<std::string> vals;
         vals.push_back("");
-        auto throat_perf = RocketProblemResults::calculate_performance(states[0], states[1], states[1]);
-        vals.push_back(format_fixed(throat_perf.isp, 10, 1));
-        for (std::size_t i = 2; i < states.size(); i++) {
-            auto perf = RocketProblemResults::calculate_performance(states[0], states[1], states[i]);
+        for (std::size_t i = 1; i < states.size(); i++) {
+            auto perf = RocketProblemResults::calculate_performance(stagnation, states[throat_col], states[i]);
             vals.push_back(format_fixed(perf.isp, 10, 1));
         }
         table.add_row("Isp, M/SEC", vals);
@@ -500,18 +602,43 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
     std::string result;
     for (const auto& name : cases_to_report) {
         const CaseMeta& meta = m_case_meta.at(name);
+        const bool is_fac = meta.combustor_type != CombustorType::INFINITE_AREA;
 
         for (std::size_t of_idx = 0; of_idx < meta.of_ratios.size(); of_idx++) {
             for (std::size_t p_idx = 0; p_idx < meta.pressures.size(); p_idx++) {
-                // Collect stations for this (of_idx, p_idx) in order: chamber, throat, exits.
+                // Collect stations for this (of_idx, p_idx), in column order: chamber/injector,
+                // [comb end, for a finite-area combustor], throat, exits.
                 std::vector<ThermodynamicState> thermo_states;
+                ThermodynamicState stagnation_thermo{};
+                double combustion_end_area_ratio = 0.0;
+
                 for (const auto& s : m_stations) {
                     if (s.case_name == name && s.type == StationType::CHAMBER &&
                         s.of_index == of_idx && s.pressure_index == p_idx) {
                         thermo_states.push_back(s.thermo);
+                        if (!is_fac) stagnation_thermo = s.thermo;
                         break;
                     }
                 }
+
+                if (is_fac) {
+                    for (const auto& s : m_stations) {
+                        if (s.case_name == name && s.type == StationType::STAGNATION &&
+                            s.of_index == of_idx && s.pressure_index == p_idx) {
+                            stagnation_thermo = s.thermo;
+                            break;
+                        }
+                    }
+                    for (const auto& s : m_stations) {
+                        if (s.case_name == name && s.type == StationType::COMBUSTION_END &&
+                            s.of_index == of_idx && s.pressure_index == p_idx) {
+                            thermo_states.push_back(s.thermo);
+                            combustion_end_area_ratio = s.area_ratio;
+                            break;
+                        }
+                    }
+                }
+
                 for (const auto& s : m_stations) {
                     if (s.case_name == name && s.type == StationType::THROAT &&
                         s.of_index == of_idx && s.pressure_index == p_idx) {
@@ -519,6 +646,8 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                         break;
                     }
                 }
+                const std::size_t throat_col = thermo_states.size() - 1;
+
                 for (std::size_t exp_idx = 0; ; exp_idx++) {
                     bool found = false;
                     for (const auto& s : m_stations) {
@@ -535,13 +664,26 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
 
                 if (thermo_states.size() < 2) continue;
 
+                FacReportInfo fac_info{};
+                const FacReportInfo* fac_ptr = nullptr;
+                if (is_fac) {
+                    fac_info.injector_pressure_pa = thermo_states[0].pressure;
+                    fac_info.stagnation_pressure_pa = stagnation_thermo.pressure;
+                    fac_info.contraction_ratio = combustion_end_area_ratio;
+                    fac_info.mass_flux = meta.mass_flux[of_idx * meta.pressures.size() + p_idx];
+                    fac_ptr = &fac_info;
+                }
+
                 result += build_report_page(
                     meta.chemistry,
                     meta.process,
                     thermo_states,
+                    throat_col,
+                    stagnation_thermo,
                     meta.of_ratios[of_idx],
                     thermo_states[0].pressure,
-                    meta.pressures[p_idx]);
+                    meta.pressures[p_idx],
+                    fac_ptr);
             }
         }
     }

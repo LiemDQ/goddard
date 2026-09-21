@@ -23,6 +23,9 @@ dev = ["pytest"]
 
 [tool.scikit-build]
 cmake.build-type = "Release"
+# Persistent build directory so repeated editable installs (e.g. the test-python tasks) rebuild
+# incrementally instead of configuring and compiling from scratch in a temporary directory.
+build-dir = "build-python/{wheel_tag}"
 wheel.packages = ["python/goddard"]
 # Package builds must not fail on compiler warnings introduced by a newer toolchain; the C++ CI job
 # builds with warnings as errors instead.

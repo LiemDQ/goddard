@@ -5,12 +5,37 @@ name = "goddard"
 platforms = ["linux-64", "win-64", "osx-64"]
 version = "0.1.0"
 
+# Build caches live in the project so sandboxed and worktree builds can write to them, and build
+# parallelism is capped: the default ninja -j (one job per core) runs out of memory on 15 GB machines.
+[activation.env]
+CCACHE_DIR = "$PIXI_PROJECT_ROOT/.cache/ccache"
+CPM_SOURCE_CACHE = "$PIXI_PROJECT_ROOT/.cache/cpm"
+CMAKE_BUILD_PARALLEL_LEVEL = "6"
+
 [tasks]
 compile = "cmake --build build"
 ctest = "ctest --test-dir build"
+# Skips the tests labelled "slow" (condensed-phase suites)
+ctest-fast = "ctest --test-dir build -LE slow"
 clean = "rm -rf build"
-pip-install = "pip install -e . --no-build-isolation"
-test-python = "pytest python/tests/"
+clean-python = "rm -rf build-python"
+# Refuses to run in a worktree: its .pixi is shared with the main checkout, so installing there would
+# point the shared environment's editable goddard package at the worktree.
+pip-install = "bash scripts/pip_install.sh"
+# The Python tests import the installed package, so they reinstall it first: a stale `_core` would
+# otherwise be tested silently.
+[tasks.test-python]
+cmd = "pytest python/tests/"
+depends-on = ["pip-install"]
+
+# Skips the tests marked "slow" (condensed-phase CEA comparisons)
+[tasks.test-python-fast]
+cmd = "pytest python/tests/ -m 'not slow'"
+depends-on = ["pip-install"]
+
+[tasks.setup-worktree]
+args = [{arg = "name"}, {arg = "base", default = "HEAD"}]
+cmd = "bash scripts/setup_worktree.sh {{ name }} {{ base }}"
 
 # MoC convergence sweep. Needs -Dgoddard_BUILD_TOOLS=ON at configure time. The library is
 # built with ASan, so the preload and options below are mandatory for any binary linked
@@ -86,7 +111,7 @@ fortran-compiler = "*"
 cantera = "3.2.*"
 
 [feature.test.pypi-dependencies]
-cea = "*"
+cea = ">=3.3.1"
 
 [feature.test.tasks]
 test-cea = "pytest python/tests/test_cea_comparison.py -v"
@@ -102,15 +127,25 @@ mkdocs-jupyter = "*"
 mike = "*"
 pybind11-mkdoc = "*"
 
-[feature.docs.tasks.docs-configure]
-cmd = "mkdir -p build && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -Dgoddard_BUILD_DOCSTRINGS=ON -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF"
+# pybind11_mkdoc otherwise picks up a system libclang whose ABI does not match its Python bindings,
+# and then silently writes no docstrings.
+[feature.docs.activation.env]
+LIBCLANG_PATH = "$CONDA_PREFIX/lib/libclang.so.13"
 
+# The docs use their own build directory, pinned to the docs environment's Python (which has
+# pybind11_mkdoc), so they neither reconfigure the development build/ nor inherit its interpreter.
+# They only need the Python module, so strict warnings and static analysis stay off.
+[feature.docs.tasks.docs-configure]
+cmd = "mkdir -p build-docs && cmake -B build-docs -G Ninja -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE=$CONDA_PREFIX/bin/python -Dgoddard_BUILD_DOCSTRINGS=ON -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF -Dgoddard_WARNINGS_AS_ERRORS=OFF -Dgoddard_ENABLE_CLANG_TIDY=OFF -Dgoddard_ENABLE_CPPCHECK=OFF"
+
+# goddard_docstrings.h is shared by every build: a default-env build without pybind11_mkdoc writes the
+# stub, which the docs build would otherwise treat as up to date. Removing it forces regeneration.
 [feature.docs.tasks.docs-compile]
-cmd = "cmake --build build"
+cmd = "rm -f python/src/goddard_docstrings.h && cmake --build build-docs"
 depends-on = ["docs-configure"]
 
 [feature.docs.tasks.docs-stubs]
-cmd = "PYTHONPATH=python LD_LIBRARY_PATH=build/src python -m nanobind.stubgen -m goddard._core -o python/goddard/_core.pyi"
+cmd = "PYTHONPATH=python LD_LIBRARY_PATH=build-docs/src python -m nanobind.stubgen -m goddard._core -o python/goddard/_core.pyi"
 depends-on = ["docs-compile"]
 
 [feature.docs.tasks.docs-prepare]

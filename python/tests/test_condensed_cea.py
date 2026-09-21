@@ -38,6 +38,9 @@ NASA9_REACTANTS = os.path.join(DATA_DIR, "nasa9_reactants.yaml")
 
 BAR = 1.0e5
 
+# Condensed-phase comparisons dominate the suite's run time; `pytest -m "not slow"` skips them.
+pytestmark = pytest.mark.slow
+
 
 # ---------------------------------------------------------------------------
 # Running pycea out of process

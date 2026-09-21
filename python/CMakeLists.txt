@@ -78,6 +78,19 @@ add_custom_target(goddard_docstrings_header
     DEPENDS "${GODDARD_DOCSTRINGS_HEADER}"
 )
 
+# Static analysis runs on the compile database of a configured but uncompiled build (see
+# scripts/static_analysis.sh), where the custom command above has not run yet and the binding
+# sources fail to include the header. Seed the stub at configure time so they always parse.
+# Only when docstrings are off: with them on, a stub here would satisfy the custom command's
+# output and suppress the real extraction.
+if(NOT goddard_BUILD_DOCSTRINGS AND NOT EXISTS "${GODDARD_DOCSTRINGS_HEADER}")
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/scripts/generate_docstrings.py"
+                --stub --output "${GODDARD_DOCSTRINGS_HEADER}"
+    )
+endif()
+
 nanobind_add_module(
     _core
     NB_STATIC

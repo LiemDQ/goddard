@@ -16,17 +16,51 @@ BaseCombustor::BaseCombustor(Gas gas)
     : m_gas(std::move(gas))
 {}
 
-void BaseCombustor::check_combustor_type(const CombustorOptions& options) {
-    if (options.type != CombustorType::INFINITE_AREA) {
-        throw NotImplementedError("Finite area combustors are not implemented.");
+void BaseCombustor::validate_options(const CombustorOptions& options) {
+    switch (options.type) {
+        case CombustorType::INFINITE_AREA:
+            break;
+        case CombustorType::FINITE_MASS_FLUX:
+            if (options.mass_flux <= 0.0) {
+                throw std::invalid_argument(
+                    "BaseCombustor: FINITE_MASS_FLUX requires mass_flux > 0.");
+            }
+            if (options.process == CombustionProcess::ISOCHORIC) {
+                throw std::invalid_argument(
+                    "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
+            }
+            break;
+        case CombustorType::FINITE_CONTRACTION_RATIO:
+            if (options.contraction_ratio <= 1.0) {
+                throw std::invalid_argument(
+                    "BaseCombustor: FINITE_CONTRACTION_RATIO requires contraction_ratio > 1.");
+            }
+            if (options.process == CombustionProcess::ISOCHORIC) {
+                throw std::invalid_argument(
+                    "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
+            }
+            break;
+        case CombustorType::NONE:
+            throw NotImplementedError("CombustorType::NONE is not implemented.");
     }
 }
 
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
-    check_combustor_type(options);
+    validate_options(options);
     switch (options.process) {
         case CombustionProcess::ISOBARIC:
-            states.equilibrate("HP", "gibbs");
+            try {
+                states.equilibrate("HP", "gibbs");
+            } catch (const Cantera::CanteraError&) {
+                if (states.num_condensed() > 0) {
+                    throw;
+                }
+                // "gibbs" tests its enthalpy residual relative to H and fails when the target
+                // enthalpy is close to zero (e.g. gaseous H2/O2 at 298.15 K); see
+                // `Gas::equilibrate_HP`. Locations already solved are HP equilibria, so
+                // re-solving them with "vcs" leaves them unchanged.
+                states.equilibrate("HP", "vcs");
+            }
             break;
         case CombustionProcess::ISOCHORIC:
             // Cantera's "gibbs" (MultiPhaseEquil) solver does not support UV, and
@@ -93,7 +127,7 @@ Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
             }
             continue;
         }
-        mapped(static_cast<long>(std::distance(product_elements.begin(), match))) = amount;
+        mapped(std::distance(product_elements.begin(), match)) = amount;
     }
     return mapped;
 }
@@ -126,7 +160,7 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
             "reactant Gas streams. Use solve(fuel_T, oxidizer_T, pressures, mixture_ratios) for "
             "reactants given as product-species compositions.");
     }
-    check_combustor_type(options);
+    validate_options(options);
     if (options.process == CombustionProcess::ISOCHORIC && m_gas.has_condensed_candidates()) {
         throw NotImplementedError(
             "Constant-volume combustion with candidate condensed species is not implemented.");

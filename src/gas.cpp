@@ -225,6 +225,13 @@ void Gas::restore_state(const std::vector<double>& state) {
     }
 }
 
+size_t Gas::state_size() const {
+    const size_t cantera_size = thermo()->stateSize();
+    const size_t n_condensed = m_condensed ? m_condensed->size() : 0;
+
+    return cantera_size + n_condensed;
+}
+
 ThermodynamicState Gas::snapshot() const {
     auto t = thermo();
 
@@ -349,6 +356,10 @@ std::vector<double> Gas::mass_fractions() const {
 size_t Gas::num_species() const { return thermo()->nSpecies(); }
 std::vector<std::string> Gas::species_names() const { return thermo()->speciesNames(); }
 // Chemistry-aware derived properties
+
+double Gas::gamma() const {
+    return cp_mass() / cv_mass();
+}
 
 double Gas::gamma_s() const {
     switch (chemistry) {
@@ -656,8 +667,17 @@ void Gas::equilibrate_HP(double H, double P) {
         return;
     }
     m_equilibrium_solve_count = 0;
+    const std::vector<double> start_state = save_state();
     thermo()->setState_HP(H, P);
-    thermo()->equilibrate("HP", "gibbs");
+    try {
+        thermo()->equilibrate("HP", "gibbs");
+    } catch (const Cantera::CanteraError&) {
+        // "gibbs" tests its enthalpy residual relative to H, so it fails when the target enthalpy
+        // is close to zero, e.g. gaseous H2/O2 reactants at 298.15 K. "vcs" does not.
+        restore_state(start_state);
+        thermo()->setState_HP(H, P);
+        thermo()->equilibrate("HP", "vcs");
+    }
 }
 
 void Gas::equilibrate_SP(double S, double P) {

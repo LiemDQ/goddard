@@ -24,10 +24,20 @@ def test_import_enums():
     assert ExpansionType.PRESSURE_RATIO is not None
 
 
+def test_import_station_type():
+    from goddard import StationType
+
+    assert StationType.CHAMBER is not None
+    assert StationType.STAGNATION is not None
+    assert StationType.COMBUSTION_END is not None
+    assert StationType.THROAT is not None
+    assert StationType.EXIT is not None
+
+
 def test_import_structs():
     from goddard import (
         CombustorOptions, NozzleOptions, ThroatCondition,
-        NozzleResult, NozzleResults, RocketCaseParameters,
+        NozzleResult, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
         ChemicalParameters, ThermodynamicState, RocketPerformance,
         RocketState, ExpansionProperties, EquilibriumDerivatives,
     )
