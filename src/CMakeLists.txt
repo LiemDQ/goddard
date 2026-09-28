@@ -31,6 +31,7 @@ add_library(
   moc_nozzle.cpp
   moc_inverse_march.cpp
   shocks.cpp
+  shock_jump.cpp
   profile.cpp
   kinetic_nozzle.cpp
   interpolation.cpp
