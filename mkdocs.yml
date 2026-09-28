@@ -92,6 +92,7 @@ nav:
       - Nozzle Flow: theory/nozzle_flow.md
       - Method of Characteristics: theory/method_of_characteristics.md
       - Shocks: theory/shocks.md
+      - Detonations: theory/detonations.md
       - Heat Capacity Ratio: theory/heat_capacity.md
       - Numerical Algorithms: theory/numerics.md 
   - Tutorials:
@@ -105,6 +106,7 @@ nav:
       - Method of Characteristics: api/moc.md
       - Kinetic Nozzle: api/kinetic_nozzle.md
       - Shocks: api/shocks.md
+      - Detonations: api/detonations.md
       - Convenience Functions: api/convenience.md
   - Contributing:
       - Docstring Style Guide: contributing/docstring_style.md

@@ -6,6 +6,7 @@ Goddard is a C++/Python rocket engine simulation toolkit. It wraps [Cantera](htt
 - **Nozzle flow** -- 1-D equilibrium, frozen, and kinetic nozzle expansions
 - **Method of Characteristics** -- 2-D/axisymmetric supersonic flow fields for nozzle design and analysis
 - **Shock relations** -- normal, reflected, and oblique shocks
+- **Detonations** -- Chapman-Jouguet, overdriven, under-driven and reflected detonations
 
 ## Quick start
 

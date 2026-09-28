@@ -14,7 +14,7 @@ Goddard performs 5 main types of computations:
 2. Combustion/equilibrium calculations. 
 3. 1D nozzle flow: frozen, equilibrium and kinetic chemistries.
 4. Method of characteristics for 2D or axisymmetric supersonic flow fields for design and analysis.
-5. Shock properties (incident, reflected, and oblique)
+5. Shock properties (incident, reflected, and oblique) and detonations (Chapman-Jouguet, overdriven, under-driven, reflected)
 
 
 ### C++ Core Components
@@ -38,7 +38,8 @@ Goddard performs 5 main types of computations:
   - `compute_thrust_coefficient()`: Exit plane integration for thrust performance
   - Planar and axisymmetric flow with perfect gas, frozen, or equilibrium chemistry
 - **KineticNozzle** (`kinetic_nozzle.hpp/cpp`): 1D supersonic nozzle with finite-rate chemistry via Cantera's `IdealGasMoleReactor`. Standalone class, because its spatially-resolved output is incompatible with the discrete area-ratio interface of `Nozzle`. Instead uses composition: owns a `Nozzle` for throat conditions only. Output is `KineticNozzleResults` containing a `ThroatCondition` and a vector of `KineticNozzleStation` (x, velocity, Mach, area_ratio, thermo state, per-species Damköhler numbers). The `NozzleChemistryType` constructor parameter selects the throat model (EQUILIBRIUM or FROZEN); KINETIC is not valid as a throat model.
-- **Shocks** (`shocks.hpp/cpp`): Normal, reflected (shock tube) and oblique shocks. Perfect-gas free functions, and `ShockSolver`, which dispatches on `Gas::chemistry` (PERFECT_GAS, FROZEN, EQUILIBRIUM; incident and reflected shocks may use different chemistry). One Newton kernel (`solve_shock_jump`, RP-1311 ch. 7) serves frozen and equilibrium by switching `gas.chemistry`. Pre-shock state is taken as given; Mach inputs use its frozen sound speed. KINETIC chemistry and condensed species are not supported (`std::invalid_argument`). Results: `ShockResult`, `ReflectedShockResult`, `ObliqueShockResult`.
+- **Shocks** (`shocks.hpp/cpp`): Normal, reflected (shock tube) and oblique shocks. Perfect-gas free functions, and `ShockSolver`, which dispatches on `Gas::chemistry` (PERFECT_GAS, FROZEN, EQUILIBRIUM; incident and reflected shocks may use different chemistry). One Newton kernel (`solve_shock_jump` in the internal `shock_jump.hpp/cpp`, RP-1311 ch. 7) serves frozen and equilibrium by switching `gas.chemistry`; `DetonationSolver` shares it. Pre-shock state is taken as given; Mach inputs use its frozen sound speed. KINETIC chemistry and condensed species are not supported (`std::invalid_argument`). Results: `ShockResult`, `ReflectedShockResult`, `ObliqueShockResult`.
+- **Detonations** (`detonations.hpp/cpp`): `DetonationSolver` computes Chapman-Jouguet detonations (RP-1311 ch. 8: `JumpCondition::CHAPMAN_JOUGUET` in `solve_shock_jump`, gamma_s held fixed in the Jacobian, section 8.3 initial estimate), solved once at construction. Overdriven and under-driven detonations (`DetonationBranch`, drive factor u1/u_CJ > 1 for both) solve the incident-shock jump with equilibrium products from a one-gamma guess fitted to the CJ solution; the branch is checked against the products' Mach number. Reflected detonations reuse `reflected_shock_from_state2`. Every `DetonationResult` carries the frozen von Neumann shock. Products are always at equilibrium; PERFECT_GAS and KINETIC input and condensed species are rejected. One-gamma free functions (`chapman_jouguet_detonation`, `detonation`, `reflected_detonation`) take the heat release q/(R T1). Derivations and validation: `instructions/detonations.md`.
 
 ### Python Bindings (`python/`)
 - Built with **nanobind** (`python/src/bind_*.cpp`), exposed as `goddard._core` extension module
