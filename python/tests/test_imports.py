@@ -64,9 +64,10 @@ def test_import_gas():
 
 def test_import_shocks():
     from goddard import (
-        ShockResult, ObliqueShockResult, ShockSolver,
+        ShockResult, ReflectedShockResult, ObliqueShockResult, ShockSolver,
         normal_shock, reflected_shock,
         oblique_shock_wave_angle, oblique_shock_deflection_angle,
+        oblique_shock_max_deflection, oblique_shock_max_deflection_wave_angle,
         oblique_shock_from_wave_angle, oblique_shock_from_deflection,
     )
     assert ShockResult is not None
@@ -79,6 +80,24 @@ def test_perfect_gas_normal_shock():
     assert r.valid
     assert r.mach_out < 1.0
     assert r.static_pressure_ratio > 1.0
+
+
+def test_perfect_gas_reflected_shock():
+    from goddard import reflected_shock, normal_shock
+    r = reflected_shock(2.0, 1.4)
+    assert r.valid
+    assert r.incident.static_pressure_ratio == normal_shock(2.0, 1.4).static_pressure_ratio
+    # The reflected shock is weaker than the incident one but still a shock
+    assert 1.0 < r.reflected.mach_in < 2.0
+
+
+def test_perfect_gas_max_deflection():
+    import math
+    from goddard import oblique_shock_max_deflection, oblique_shock_from_deflection
+    # NACA 1135 chart 2: theta_max = 22.97 deg at M = 2, gamma = 1.4
+    theta_max = oblique_shock_max_deflection(2.0, 1.4)
+    assert abs(math.degrees(theta_max) - 22.97) < 0.01
+    assert not oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4).valid
 
 
 def test_nozzle_options_new_fields():
