@@ -9,6 +9,34 @@
 
 namespace Goddard {
 
+// ===== utilities =====
+namespace {
+
+ShockResult invalid_shock() {
+    ShockResult result;
+    result.valid = false;
+    result.static_pressure_ratio = -1.0;
+    result.static_temperature_ratio = -1.0;
+    result.total_pressure_ratio = -1.0;
+    result.mach_in = -1.0;
+    result.mach_out = -1.0;
+
+    return result;
+}
+
+ObliqueShockResult invalid_oblique_shock() {
+    ObliqueShockResult result;
+    result.valid = false;
+    result.mach_in = -1.0;
+    result.mach_out = -1.0;
+    result.shock = invalid_shock();
+    result.beta = -1.0;
+    result.theta = -1.0;
+    return result;    
+}
+
+} // namespace
+
 // ===== Perfect gas free functions =====
 
 ShockResult normal_shock(double mach, double gamma) {
@@ -16,11 +44,7 @@ ShockResult normal_shock(double mach, double gamma) {
     ShockResult result;
     // check if input values are valid
     if (mach < 1.0 || gamma < 1.0){
-        result.valid = false;
-        result.static_pressure_ratio = -1.0;
-        result.static_temperature_ratio = -1.0;
-        result.total_pressure_ratio = -1.0;
-        return result;
+        return invalid_shock();
     }
 
     //mach numbers
@@ -47,12 +71,7 @@ ShockResult normal_shock(double mach, double gamma) {
 
 ShockResult reflected_shock(double mach, double gamma) {
     if (mach < 1.0) {
-        ShockResult result;
-        result.static_pressure_ratio = -1.0;
-        result.static_temperature_ratio = -1.0;
-        result.total_pressure_ratio = -1.0;
-        result.valid = false;
-        return result;
+        return invalid_shock();
     }
 
     double MR_relation = mach/(mach*mach - 1)
@@ -282,6 +301,9 @@ ShockResult reflected_shock_frozen(Cantera::ThermoPhase& thermo, double mach, So
         return result;
     }
 
+    std::vector<double> state1(thermo.stateSize());
+    thermo.saveState(state1);
+
     const double divR = 1.0/Cantera::GasConstant;
 
     const double h2 = thermo.enthalpy_mass();
@@ -289,9 +311,6 @@ ShockResult reflected_shock_frozen(Cantera::ThermoPhase& thermo, double mach, So
     const double T2 = thermo.temperature();
     const double rho2 = thermo.density();
     const double mw2 = thermo.meanMolecularWeight();
-
-    std::vector<double> state1(thermo.stateSize());
-    thermo.saveState(state1);
 
     const double gamma2 = thermo.cp_mass()/thermo.cv_mass();
     const double u2 = gas_sonic_velocity(thermo, gamma2)*mach;
