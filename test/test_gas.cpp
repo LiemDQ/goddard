@@ -121,6 +121,29 @@ TEST_F(GasTests, StagnationPressureMatchesFreeFunction) {
                 max_fp_error(expected, 1e-10, 1e-6));
 }
 
+TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) {
+    // The fixture state is at equilibrium. Decelerating it isentropically with shifting
+    // equilibrium must reach the stagnation enthalpy h + v^2/2 at the returned pressure.
+    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    const double velocity = 1500.0;
+    const double P_static = gas.pressure();
+    const double P_stagnation = gas.stagnation_pressure(velocity);
+
+    EXPECT_DOUBLE_EQ(gas.pressure(), P_static) << "stagnation_pressure must not modify the state";
+
+    Gas stagnation = gas.clone();
+    stagnation.equilibrate_SP(gas.entropy_mass(), P_stagnation);
+    // The solver stops on a 1e-6 relative pressure step, i.e. an enthalpy error of up to
+    // 1e-6 * P/rho ~ 2 J/kg here; 10 J/kg is ~1e-5 of the kinetic energy.
+    EXPECT_NEAR(stagnation.enthalpy_mass(), gas.stagnation_enthalpy(velocity), 10.0);
+
+    // Recombination during compression releases heat, so the equilibrium and frozen
+    // stagnation pressures of this dissociated mixture differ well beyond solver tolerance.
+    Gas frozen(sol, GasChemistry::FROZEN);
+    const double P_stagnation_frozen = frozen.stagnation_pressure(velocity);
+    EXPECT_GT(std::abs(P_stagnation - P_stagnation_frozen) / P_stagnation_frozen, 1e-4);
+}
+
 TEST_F(GasTests, IsenthalpicVelocityMatchesFreeFunction) {
     Gas gas(sol, GasChemistry::FROZEN);
     double H_stag = gas.enthalpy_mass() + 100000.0;

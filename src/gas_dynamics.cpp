@@ -53,21 +53,21 @@ double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity)
     double mach = velocity / gas_sonic_velocity(*thermo, gamma);
     double P_stag = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
     
-    int max_iters = 10;
+    int max_iters = 50;
     int k = 0;
-    const double abstol = 1e-8;
-    double residual = 1.0;
+    const double reltol = 1e-9;
+    double relative_step = 1.0;
     // Use Newton's method to solve for stagnation pressure.
     // As energy is conserved, h_stag - h(S, P_stag) = 0.
     // Thus: P_{k+1} = P_k - (h_stag - h(S, P_stag))/(dh/dP)_S
     // Note that by definition, (dh/dP)_S = V = 1/rho
-    while (abs(residual) > abstol) {
+    while (relative_step > reltol) {
         if (k > max_iters)
-            throw ConvergenceError("Failed to converge to stagnation pressure.", k, abstol, residual);
+            throw ConvergenceError("Failed to converge to stagnation pressure.", k, reltol, relative_step);
         thermo->setState_SP(entropy, P_stag);
-        double rho = thermo->density();
-        residual = thermo->enthalpy_mass() - h_stag;
-        P_stag = P_stag - residual * rho;
+        const double step = -(thermo->enthalpy_mass() - h_stag) * thermo->density();
+        P_stag += step;
+        relative_step = std::abs(step) / P_stag;
         k++;
     }
 
