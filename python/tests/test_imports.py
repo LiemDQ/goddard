@@ -191,3 +191,28 @@ def test_import_condensed_api():
     assert condensed_species("f.yaml", ["C(gr)"]) == {
         "condensed_file": "f.yaml", "condensed_species": {"C(gr)"}}
     assert condensed_species("f.yaml") == {"condensed_file": "f.yaml", "all_condensed": True}
+
+
+def test_import_detonations():
+    from goddard import (
+        DetonationBranch, DetonationResult, ReflectedDetonationResult, DetonationSolver,
+        chapman_jouguet_detonation, detonation, reflected_detonation,
+    )
+    assert DetonationBranch.OVERDRIVEN is not None
+    assert DetonationBranch.UNDERDRIVEN is not None
+    assert DetonationSolver is not None
+
+
+def test_perfect_gas_detonation():
+    from goddard import chapman_jouguet_detonation, detonation, DetonationBranch
+    # M_CJ = sqrt(H) + sqrt(H + 1), H = (gamma^2 - 1) Q/(2 gamma); Q is chosen so that H = 4.
+    gamma = 1.4
+    Q = 2.0 * gamma * 4.0 / (gamma * gamma - 1.0)
+    cj = chapman_jouguet_detonation(gamma, Q)
+    assert cj.valid
+    assert abs(cj.mach_in - (2.0 + 5.0**0.5)) < 1e-12
+    assert abs(cj.mach_out - 1.0) < 1e-12
+    strong = detonation(1.5, gamma, Q, DetonationBranch.OVERDRIVEN)
+    weak = detonation(1.5, gamma, Q, DetonationBranch.UNDERDRIVEN)
+    assert strong.mach_out < 1.0 < weak.mach_out
+    assert not detonation(0.9, gamma, Q).valid

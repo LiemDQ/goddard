@@ -90,6 +90,14 @@ from goddard._core import (
     oblique_shock_max_deflection,
     oblique_shock_from_wave_angle,
     oblique_shock_from_deflection,
+    # Detonations
+    DetonationBranch,
+    DetonationResult,
+    ReflectedDetonationResult,
+    DetonationSolver,
+    chapman_jouguet_detonation,
+    detonation,
+    reflected_detonation,
 )
 
 from goddard.convenience import (

@@ -32,6 +32,7 @@ set(GODDARD_PUBLIC_HEADERS
     "${PROJECT_SOURCE_DIR}/include/goddard/problem.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/rocket_results.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/shocks.hpp"
+    "${PROJECT_SOURCE_DIR}/include/goddard/detonations.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/thermoarray.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/thermo.hpp"
 )
@@ -108,6 +109,7 @@ nanobind_add_module(
     src/bind_kinetic_nozzle.cpp
     src/bind_gas_properties.cpp
     src/bind_shocks.cpp
+    src/bind_detonations.cpp
     "${GODDARD_DOCSTRINGS_HEADER}"
 )
 add_dependencies(_core goddard_docstrings_header)
