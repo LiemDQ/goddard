@@ -2,6 +2,7 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/newton.hpp"
 
 #include "cantera/base/AnyMap.h"
 #include "cantera/core.h"
@@ -780,46 +781,40 @@ void Gas::solve_frozen_XP(EquilibriumProperty property, double target, double P)
     }
     T = std::clamp(T, T_lowest, T_highest);
 
-    const int max_iterations = 100;
-    double residual = 0.0;
-    for (int iteration = 0; iteration < max_iterations; iteration++) {
-        thermo()->setState_TP(T, P);
-        const double value = mixture_value(*this, property);
+    // The residual is scaled so that one tolerance serves enthalpy and entropy.
+    NewtonOptions options;
+    options.residual_abstol = 1e-12;
+    options.max_iterations = 100;
+    const NewtonResult result = newton_solve(T, [&](double T_trial) {
+        thermo()->setState_TP(T_trial, P);
         const double heat_capacity = cp_mass();
-        residual = value - target;
-
-        const double scale = property == EquilibriumProperty::ENTHALPY
-            ? std::abs(target) + heat_capacity * T
-            : std::abs(target) + heat_capacity;
-        if (std::abs(residual) <= 1e-12 * scale) {
-            return;
+        const double residual = mixture_value(*this, property) - target;
+        if (property == EquilibriumProperty::ENTHALPY) {
+            const double scale = std::abs(target) + heat_capacity * T_trial;
+            return NewtonFunction{.value = residual / scale, .derivative = heat_capacity / scale};
         }
-
-        const double step = property == EquilibriumProperty::ENTHALPY
-            ? -residual / heat_capacity
-            : -residual * T / heat_capacity;
+        const double scale = std::abs(target) + heat_capacity;
+        return NewtonFunction{.value = residual / scale, .derivative = heat_capacity / (T_trial * scale)};
+    }, [&](int, double T_trial, double step) {
         // Damp the step so a bad guess cannot leave the valid temperature window in one go.
-        const double T_next = std::clamp(std::clamp(T + step, 0.5 * T, 2.0 * T),
+        const double T_next = std::clamp(std::clamp(T_trial + step, 0.5 * T_trial, 2.0 * T_trial),
                                          T_lowest, T_highest);
-
-        if (T_next == T) {
-            const size_t limiter = step < 0.0 ? low_limiter : high_limiter;
-            if (limiter != Cantera::npos) {
-                throw FmtError(
-                    "Gas::set_state_{}P: the frozen state leaves the temperature range of "
-                    "condensed species '{}' ({:.2f} - {:.2f} K) at T = {:.2f} K.",
-                    property == EquilibriumProperty::ENTHALPY ? "H" : "S",
-                    set.species[limiter].name, set.species[limiter].T_min,
-                    set.species[limiter].T_max, T);
-            }
-            return;
+        const size_t limiter = step < 0.0 ? low_limiter : high_limiter;
+        if (T_next == T_trial && limiter != Cantera::npos) {
+            throw FmtError(
+                "Gas::set_state_{}P: the frozen state leaves the temperature range of "
+                "condensed species '{}' ({:.2f} - {:.2f} K) at T = {:.2f} K.",
+                property == EquilibriumProperty::ENTHALPY ? "H" : "S",
+                set.species[limiter].name, set.species[limiter].T_min,
+                set.species[limiter].T_max, T_trial);
         }
-        T = T_next;
+        return T_next - T_trial;
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Gas::set_state_HP/SP: the frozen temperature iteration did not "
+                               "converge with condensed species present.",
+                               result.iterations, options.residual_abstol, result.residual);
     }
-
-    throw ConvergenceError("Gas::set_state_HP/SP: the frozen temperature iteration did not "
-                           "converge with condensed species present.",
-                           max_iterations, 1e-12, residual);
 }
 
 } // namespace Goddard

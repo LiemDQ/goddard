@@ -3,6 +3,7 @@
 #include "goddard/error.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include "goddard/newton.hpp"
 
 #include "cantera/core.h"
 #include <algorithm>
@@ -423,16 +424,12 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
         ln_pressure_ratio = 0.5 * (lower + upper);
     }
 
-    const int max_iters = 60;
-    double step = 1.0;
-    int iters = 0;
-    while (std::abs(step) > abstol) {
-        iters++;
-        if (iters > max_iters) {
-            throw ConvergenceError("Maximum number of iterations exceeded for subsonic area expansion.",
-                iters, abstol, std::abs(step));
-        }
-        const double pressure_ratio = std::exp(ln_pressure_ratio);
+    NewtonOptions options;
+    options.step_abstol = abstol;
+    options.max_iterations = 60;
+    double ln_area_ratio = 0.0;
+    const NewtonResult result = newton_solve(ln_pressure_ratio, [&](double x) {
+        const double pressure_ratio = std::exp(x);
         if (is_equilibrium) {
             m_gas.equilibrate_SP(throat_condition.S_inlet, throat_condition.P_inlet / pressure_ratio);
         } else {
@@ -442,26 +439,28 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
         gamma_s = m_gas.gamma_s();
         velocity = m_gas.isenthalpic_velocity();
         const double sonic_velocity = m_gas.speed_of_sound();
-        const double ln_area_ratio = std::log(m_gas.area_per_mdot(velocity) / A_mdot_throat);
-
+        ln_area_ratio = std::log(m_gas.area_per_mdot(velocity) / A_mdot_throat);
+        // (dlnA/dlnP)_s = (u^2 - a^2)/(gamma_s u^2), and x increases as P falls
+        return NewtonFunction{
+            .value = ln_area_ratio - ln_expansion_ratio,
+            .derivative = (velocity * velocity - sonic_velocity * sonic_velocity)
+                / (gamma_s * velocity * velocity)};
+    }, [&](int, double x, double step) {
         // Area too small (or not finite) means the station is too close to the throat.
         if (!(ln_area_ratio > ln_expansion_ratio)) {
-            upper = ln_pressure_ratio;
+            upper = x;
         } else {
-            lower = ln_pressure_ratio;
+            lower = x;
         }
-
-        const double dlogp_dlogA =
-            gamma_s * velocity * velocity / (velocity * velocity - sonic_velocity * sonic_velocity);
-        double next = ln_pressure_ratio + dlogp_dlogA * (ln_expansion_ratio - ln_area_ratio);
+        const double next = x + step;
         if (!std::isfinite(next) || next <= lower || next >= upper) {
-            next = 0.5 * (lower + upper);
+            return 0.5 * (lower + upper) - x;
         }
-        step = next - ln_pressure_ratio;
-        if (std::abs(step) <= abstol) {
-            break;
-        }
-        ln_pressure_ratio = next;
+        return step;
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Maximum number of iterations exceeded for subsonic area expansion.",
+            result.iterations, abstol, std::abs(result.step));
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
@@ -511,42 +510,24 @@ NozzleStation Nozzle::iterate_area_expansion(
     double expansion_ratio, double pressure_ratio_guess, int station,
     const std::vector<double>& frozen_state, double abstol) {
 
-    double pressure_ratio = pressure_ratio_guess;
-    double gamma_s = m_gas.gamma_s();
     double velocity = m_gas.isenthalpic_velocity();
     const double A_mdot_thrt = m_gas.area_per_mdot(velocity);
 
-    double P_exit = throat_condition.P_inlet / pressure_ratio;
     const bool is_equilibrium = set_station_chemistry(station);
-
-    if (is_equilibrium) {
-        m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
-        gamma_s = m_gas.gamma_s();
-    }
-    else {
+    if (!is_equilibrium) {
         m_gas.restore_state(frozen_state);
     }
-    
     double T_exit = m_gas.temperature();
-    std::vector<double> composition = m_gas.mole_fractions();    
+    const std::vector<double> composition = m_gas.mole_fractions();
+    const double ln_expansion_ratio = std::log(expansion_ratio);
 
-    double Ae_At = m_gas.area_per_mdot(velocity)/A_mdot_thrt;
-
-    int iters = 0;
-    int max_iter = 10;
-    double residual = 1.0;
-    double sonic_velocity = 0.0;
-    double dlogp_dlogA = 0.0;
-
-    while (std::abs(residual) > abstol) {
-        iters++;
-        if (iters >= max_iter) {
-            throw ConvergenceError("Maximum number of iterations exceeded for area expansion.", iters, abstol, std::abs(residual));
-        }
-
+    NewtonOptions options;
+    options.step_abstol = abstol;
+    options.max_iterations = 9;
+    const NewtonResult result = newton_solve(std::log(pressure_ratio_guess), [&](double ln_pressure_ratio) {
+        const double pressure_ratio = std::exp(ln_pressure_ratio);
         if (is_equilibrium) {
-            P_exit = throat_condition.P_inlet / pressure_ratio;
-            m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
+            m_gas.equilibrate_SP(throat_condition.S_inlet, throat_condition.P_inlet / pressure_ratio);
         } else {
             T_exit = iterate_temperature(
                 throat_condition, pressure_ratio, T_exit, composition, station);
@@ -555,16 +536,18 @@ NozzleStation Nozzle::iterate_area_expansion(
             }
         }
 
-        gamma_s = m_gas.gamma_s();
+        const double gamma_s = m_gas.gamma_s();
         velocity = m_gas.isenthalpic_velocity();
-        sonic_velocity = m_gas.speed_of_sound();
-        Ae_At = m_gas.area_per_mdot(velocity)/A_mdot_thrt;
-
-        dlogp_dlogA = gamma_s * velocity * velocity / (velocity*velocity - sonic_velocity*sonic_velocity);
-        residual = dlogp_dlogA * (std::log(expansion_ratio) - std::log(Ae_At));
-        double log_pinf_pe = std::log(pressure_ratio) + residual;
-
-        pressure_ratio = std::exp(log_pinf_pe);
+        const double sonic_velocity = m_gas.speed_of_sound();
+        const double Ae_At = m_gas.area_per_mdot(velocity)/A_mdot_thrt;
+        // (dlnA/dlnP)_s = (u^2 - a^2)/(gamma_s u^2), and ln(P_inf/P_e) increases as P_e falls
+        return NewtonFunction{
+            .value = std::log(Ae_At) - ln_expansion_ratio,
+            .derivative = (velocity*velocity - sonic_velocity*sonic_velocity)/(gamma_s*velocity*velocity)};
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Maximum number of iterations exceeded for area expansion.",
+            result.iterations, abstol, std::abs(result.step));
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
@@ -633,31 +616,20 @@ double Nozzle::iterate_temperature(
         return m_gas.temperature();
     }
 
-    double T_exit = T_guess;
-
-    m_gas.set_state_TPX(T_exit, P_exit, composition.data());
-
-    double Cp = m_gas.cp_mass();
-    double dlnT = (throat_condition.S_inlet - m_gas.entropy_mass())/Cp;
-
-    int maxiter = 8;
-    int iters = 0;
-
-    while (std::abs(dlnT) > abstol) {
-        iters++;
-        if (iters >= maxiter){
-            throw ConvergenceError("Frozen flow temperature iteration failed.", iters, abstol, std::abs(dlnT));
-        }
-
-        double lnT_exit = std::log(T_exit) + dlnT;
-        T_exit = std::exp(lnT_exit);
-
-        m_gas.set_state_TPX(T_exit, P_exit, composition.data());
-        Cp = m_gas.cp_mass();
-        dlnT = (throat_condition.S_inlet - m_gas.entropy_mass())/Cp;
+    NewtonOptions options;
+    options.step_abstol = abstol;
+    options.max_iterations = 8;
+    const NewtonResult result = newton_solve(std::log(T_guess), [&](double ln_T) {
+        m_gas.set_state_TPX(std::exp(ln_T), P_exit, composition.data());
+        // (ds/dlnT)_P = cp
+        return NewtonFunction{.value = m_gas.entropy_mass() - throat_condition.S_inlet,
+                              .derivative = m_gas.cp_mass()};
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Frozen flow temperature iteration failed.",
+            result.iterations, abstol, std::abs(result.step));
     }
-
-    return T_exit;
+    return std::exp(result.x);
 }
 
 bool Nozzle::is_equilibrium_station(int station) const {

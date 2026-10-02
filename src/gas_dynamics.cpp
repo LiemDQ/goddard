@@ -4,6 +4,7 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/error.hpp"
+#include "goddard/newton.hpp"
 
 namespace Goddard {
 
@@ -51,27 +52,24 @@ double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity)
     // initial guess
     double gamma = gas.cp_mass()/gas.cv_mass();
     double mach = velocity / gas_sonic_velocity(*thermo, gamma);
-    double P_stag = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
-    
-    int max_iters = 50;
-    int k = 0;
-    const double reltol = 1e-9;
-    double relative_step = 1.0;
+    const double P_guess = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
+
     // Use Newton's method to solve for stagnation pressure.
     // As energy is conserved, h_stag - h(S, P_stag) = 0.
-    // Thus: P_{k+1} = P_k - (h_stag - h(S, P_stag))/(dh/dP)_S
     // Note that by definition, (dh/dP)_S = V = 1/rho
-    while (relative_step > reltol) {
-        if (k > max_iters)
-            throw ConvergenceError("Failed to converge to stagnation pressure.", k, reltol, relative_step);
+    NewtonOptions options;
+    options.step_reltol = 1e-9;
+    options.max_iterations = 51;
+    const NewtonResult result = newton_solve(P_guess, [&](double P_stag) {
         thermo->setState_SP(entropy, P_stag);
-        const double step = -(thermo->enthalpy_mass() - h_stag) * thermo->density();
-        P_stag += step;
-        relative_step = std::abs(step) / P_stag;
-        k++;
+        return NewtonFunction{.value = thermo->enthalpy_mass() - h_stag,
+                              .derivative = 1.0/thermo->density()};
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Failed to converge to stagnation pressure.", result.iterations,
+            options.step_reltol, std::abs(result.step/result.x));
     }
-
-    return P_stag;
+    return result.x;
 }
 
 double stagnation_factor(double mach, double gamma) {
