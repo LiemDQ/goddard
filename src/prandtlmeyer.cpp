@@ -5,6 +5,7 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/thermoarray.hpp"
+#include "goddard/newton.hpp"
 #include "goddard/prandtlmeyer.hpp"
 
 namespace Goddard {
@@ -27,17 +28,16 @@ double mach_from_prandtl_meyer(double nu, double gamma,
                                 double tol,
                                 int max_iter) {
 
-    double mach = (mach_guess > 1.0) ? mach_guess : 1.0 + nu;
+    NewtonOptions options;
+    options.residual_abstol = tol;
+    options.max_iterations = max_iter;
+    const NewtonResult result = newton_solve((mach_guess > 1.0) ? mach_guess : 1.0 + nu, [&](double mach) {
+        return NewtonFunction{.value = prandtl_meyer(mach, gamma) - nu,
+                              .derivative = prandtl_meyer_derivative(mach, gamma)};
+    }, options);
 
-    for (int i = 0; i < max_iter; i++) {
-        double residual = prandtl_meyer(mach, gamma) - nu;
-        if (std::abs(residual) < tol) return mach;
-
-        mach -= residual / prandtl_meyer_derivative(mach, gamma);
-    }
-    
-    // should not reach here for well-formed inputs
-    return -1.0;
+    // should not fail for well-formed inputs
+    return result.status == NewtonStatus::CONVERGED ? result.x : -1.0;
 }
 
 void PrandtlMeyerTable::build_table(
