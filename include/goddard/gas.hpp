@@ -213,6 +213,11 @@ public:
     double stagnation_enthalpy(double velocity) const;
     /**
      * Stagnation pressure obtained by isentropic deceleration from the current state.
+     *
+     * The deceleration follows the active GasChemistry mode: EQUILIBRIUM re-equilibrates the
+     * mixture at constant entropy, and every other mode holds the composition fixed. The current
+     * state is not modified.
+     *
      * @param velocity flow velocity [m/s]
      * @return stagnation pressure [Pa]
      */

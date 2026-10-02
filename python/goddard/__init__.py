@@ -79,12 +79,15 @@ from goddard._core import (
     Gas,
     # Shocks
     ShockResult,
+    ReflectedShockResult,
     ObliqueShockResult,
     ShockSolver,
     normal_shock,
     reflected_shock,
     oblique_shock_wave_angle,
     oblique_shock_deflection_angle,
+    oblique_shock_max_deflection_wave_angle,
+    oblique_shock_max_deflection,
     oblique_shock_from_wave_angle,
     oblique_shock_from_deflection,
 )

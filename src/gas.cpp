@@ -387,29 +387,39 @@ double Gas::stagnation_enthalpy(double velocity) const {
 }
 
 double Gas::stagnation_pressure(double velocity) const {
-    if (!has_condensed_candidates()) {
-        return gas_stagnation_pressure(*thermo(), velocity);
-    }
-
-    // Same Newton iteration as the gas-only helper, on mixture quantities: at fixed entropy and
-    // frozen composition, (dh/dP)_S is the specific volume 1/rho of the mixture.
+    // Newton iteration on h(s, P0) = h + v^2/2. (dh/dP)_s is the specific volume 1/rho of the
+    // mixture, for frozen composition and for a mixture held at equilibrium alike.
     Gas work = clone();
     const double h_stagnation = stagnation_enthalpy(velocity);
     const double entropy = entropy_mass();
-    const double gamma = cp_mass() / cv_mass();
-    const double mach_number = velocity / speed_of_sound();
-    double P_stagnation = perfect_gas_stagnation_pressure(pressure(), mach_number, gamma);
+    // The frozen sound speed gives the initial guess: the current state need not be at
+    // equilibrium when chemistry is EQUILIBRIUM.
+    const double gamma_frozen = gamma();
+    const double mach_frozen = velocity / gas_sonic_velocity(temperature(), molecular_weight(), gamma_frozen);
+    double P_stagnation = perfect_gas_stagnation_pressure(pressure(), mach_frozen, gamma_frozen);
 
-    const int max_iterations = 20;
-    const double abstol = 1e-8;
-    double residual = 1.0;
-    for (int k = 0; std::abs(residual) > abstol; k++) {
+    // Cantera's SP equilibrium solve leaves temperature noise of ~1e-8 relative, which puts a
+    // floor of ~3e-7 under the relative pressure step, so the equilibrium tolerance is looser.
+    const int max_iterations = 50;
+    const double reltol = (chemistry == GasChemistry::EQUILIBRIUM) ? 1e-6 : 1e-9;
+    double relative_step = 1.0;
+    for (int k = 0; relative_step > reltol; k++) {
         if (k > max_iterations) {
-            throw ConvergenceError("Failed to converge to stagnation pressure.", k, abstol, residual);
+            throw ConvergenceError("Failed to converge to stagnation pressure.", k, reltol, relative_step);
         }
-        work.set_state_SP(entropy, P_stagnation);
-        residual = work.enthalpy_mass() - h_stagnation;
-        P_stagnation -= residual * work.density();
+        switch (chemistry) {
+            case GasChemistry::EQUILIBRIUM:
+                work.equilibrate_SP(entropy, P_stagnation);
+                break;
+            case GasChemistry::PERFECT_GAS:
+            case GasChemistry::FROZEN:
+            case GasChemistry::KINETIC:
+                work.set_state_SP(entropy, P_stagnation);
+                break;
+        }
+        const double step = -(work.enthalpy_mass() - h_stagnation) * work.density();
+        P_stagnation += step;
+        relative_step = std::abs(step) / P_stagnation;
     }
     return P_stagnation;
 }

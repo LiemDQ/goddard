@@ -437,8 +437,12 @@ TEST_F(CondensedGuardTests, ShockSolverRejectsCondensedPhases) {
     ASSERT_TRUE(products.has_condensed_phases());
 
     ShockSolver solver(products);
-    EXPECT_THROW(solver.normal_shock(2.0), NotImplementedError);
-    EXPECT_THROW(solver.reflected_shock(2.0), NotImplementedError);
-    EXPECT_THROW(solver.oblique_shock_from_wave_angle(2.0, 0.6), NotImplementedError);
-    EXPECT_THROW(solver.oblique_shock_from_deflection(2.0, 0.2), NotImplementedError);
+    EXPECT_THROW(solver.normal_shock(2.0), std::invalid_argument);
+    EXPECT_THROW(solver.normal_shock_from_velocity(3000.0), std::invalid_argument);
+    EXPECT_THROW(solver.reflected_shock(2.0), std::invalid_argument);
+    EXPECT_THROW(solver.reflected_shock(2.0, GasChemistry::FROZEN, GasChemistry::EQUILIBRIUM),
+                 std::invalid_argument);
+    EXPECT_THROW(solver.oblique_shock_from_wave_angle(2.0, 0.6), std::invalid_argument);
+    EXPECT_THROW(solver.oblique_shock_from_deflection(2.0, 0.2), std::invalid_argument);
+    EXPECT_THROW(solver.max_deflection(2.0), std::invalid_argument);
 }
