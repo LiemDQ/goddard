@@ -28,8 +28,9 @@ NewtonSystemFunction<2> circle_and_hyperbola(const Eigen::Vector2d& x) {
     return result;
 }
 
-const Eigen::Vector2d circle_and_hyperbola_root((std::sqrt(6.0) + std::sqrt(2.0))/2.0,
-                                                (std::sqrt(6.0) - std::sqrt(2.0))/2.0);
+Eigen::Vector2d circle_and_hyperbola_root() {
+    return Eigen::Vector2d((std::sqrt(6.0) + std::sqrt(2.0))/2.0, (std::sqrt(6.0) - std::sqrt(2.0))/2.0);
+}
 
 } // anonymous namespace
 
@@ -168,8 +169,8 @@ TEST(NewtonTests, SystemConvergesToAnalyticRoot) {
         newton_solve(Eigen::Vector2d(2.0, 0.3), circle_and_hyperbola, options);
 
     ASSERT_EQ(result.status, NewtonStatus::CONVERGED);
-    EXPECT_NEAR(result.x(0), circle_and_hyperbola_root(0), 1e-13);
-    EXPECT_NEAR(result.x(1), circle_and_hyperbola_root(1), 1e-13);
+    EXPECT_NEAR(result.x(0), circle_and_hyperbola_root()(0), 1e-13);
+    EXPECT_NEAR(result.x(1), circle_and_hyperbola_root()(1), 1e-13);
 }
 
 TEST(NewtonTests, SystemStepLimiterBoundsEveryAppliedStep) {
@@ -189,8 +190,8 @@ TEST(NewtonTests, SystemStepLimiterBoundsEveryAppliedStep) {
         }, options);
 
     ASSERT_EQ(result.status, NewtonStatus::CONVERGED);
-    EXPECT_NEAR(result.x(0), circle_and_hyperbola_root(0), 1e-13);
-    EXPECT_NEAR(result.x(1), circle_and_hyperbola_root(1), 1e-13);
+    EXPECT_NEAR(result.x(0), circle_and_hyperbola_root()(0), 1e-13);
+    EXPECT_NEAR(result.x(1), circle_and_hyperbola_root()(1), 1e-13);
     for (size_t i = 1; i < evaluated_points.size(); i++) {
         const double applied = (evaluated_points[i] - evaluated_points[i - 1]).cwiseAbs().maxCoeff();
         EXPECT_LE(applied, largest_step*(1.0 + 1e-12));
