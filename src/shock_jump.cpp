@@ -4,6 +4,7 @@
 #include <vector>
 #include "cantera/core.h"
 #include "goddard/error.hpp"
+#include "goddard/newton.hpp"
 #include "goddard/shock_jump.hpp"
 
 namespace Goddard {
@@ -75,23 +76,17 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
     const double momentum_coeff = mw_up*velocity*velocity/(R*T_up);
     const double energy_coeff = velocity*velocity/R;
 
-    double log_pressure_ratio = std::log(pressure_ratio_guess);
-    double log_temperature_ratio = std::log(temperature_ratio_guess);
-    set_trial_state(gas, temperature_ratio_guess*T_up, pressure_ratio_guess*P_up);
-
-    const double abstol = opts.abstol;
-    double residual = 1.0;
-    for (int k = 0; residual >= abstol; k++) {
-        if (k > opts.max_iterations) {
-            const char* message = condition == JumpCondition::CHAPMAN_JOUGUET
-                ? "Chapman-Jouguet detonation failed to converge."
-                : "Normal shock properties failed to converge.";
-            throw ConvergenceError(message, k, abstol, residual);
-        }
+    // x = (ln P_down/P_up, ln T_down/T_up)
+    const Eigen::Vector2d guess(std::log(pressure_ratio_guess), std::log(temperature_ratio_guess));
+    NewtonOptions options;
+    options.step_abstol = opts.abstol;
+    options.max_iterations = opts.max_iterations + 1;
+    const NewtonSystemResult<2> result = newton_solve(guess, [&](const Eigen::Vector2d& x) {
+        set_trial_state(gas, std::exp(x(1))*T_up, std::exp(x(0))*P_up);
         const ExpansionProperties props = gas.expansion_properties();
         const double dlogV_dlogT = props.dlogV_dlogT_P;
         const double dlogV_dlogP = props.dlogV_dlogP_T;
-        const double pressure_ratio = std::exp(log_pressure_ratio);
+        const double pressure_ratio = std::exp(x(0));
         const double T_down = gas.temperature();
         const double enthalpy_rise = (gas.enthalpy_mass() - h_up)/R;
         // (1/R)(dh/d ln P)_T = (T/M)(1 - dlnV/dlnT), and (1/R)(dh/d ln T)_P = T cp/R
@@ -139,24 +134,35 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
             }
         }
 
-        // Newton step J dx = -f by Cramer's rule, limited as in RP-1311
-        const double determinant = J_PP*J_hT - J_PT*J_hP;
-        const double dlog_pressure = -(f_P*J_hT - J_PT*f_h)/determinant;
-        const double dlog_temperature = -(J_PP*f_h - J_hP*f_P)/determinant;
-        residual = std::max(std::abs(dlog_pressure), std::abs(dlog_temperature));
-        if (!std::isfinite(residual)) {
-            throw ConvergenceError("Shock jump Newton step is not finite.", k, abstol, residual);
-        }
-        const double control_factor = std::min(1.0, normal_shock_control_factor(k)/residual);
+        NewtonSystemFunction<2> function;
+        function.value << f_P, f_h;
+        function.jacobian << J_PP, J_PT,
+                             J_hP, J_hT;
+        return function;
+    }, [](int k, const Eigen::Vector2d&, const Eigen::Vector2d& step) -> Eigen::Vector2d {
+        // one factor for both corrections, limiting the larger one as in RP-1311
+        return step*std::min(1.0, normal_shock_control_factor(k)/step.cwiseAbs().maxCoeff());
+    }, options);
 
-        log_pressure_ratio += control_factor*dlog_pressure;
-        log_temperature_ratio += control_factor*dlog_temperature;
-        set_trial_state(gas, std::exp(log_temperature_ratio)*T_up, std::exp(log_pressure_ratio)*P_up);
+    const double largest_step = result.step.cwiseAbs().maxCoeff();
+    switch (result.status) {
+        case NewtonStatus::CONVERGED:
+            break;
+        case NewtonStatus::MAX_ITERATIONS: {
+            const char* message = condition == JumpCondition::CHAPMAN_JOUGUET
+                ? "Chapman-Jouguet detonation failed to converge."
+                : "Normal shock properties failed to converge.";
+            throw ConvergenceError(message, result.iterations, opts.abstol, largest_step);
+        }
+        case NewtonStatus::NON_FINITE_STEP:
+            throw ConvergenceError("Shock jump Newton step is not finite.",
+                result.iterations, opts.abstol, largest_step);
     }
+    set_trial_state(gas, std::exp(result.x(1))*T_up, std::exp(result.x(0))*P_up);
 
     ShockJump jump;
-    jump.pressure_ratio = std::exp(log_pressure_ratio);
-    jump.temperature_ratio = std::exp(log_temperature_ratio);
+    jump.pressure_ratio = std::exp(result.x(0));
+    jump.temperature_ratio = std::exp(result.x(1));
     jump.density_ratio = gas.density()/rho_up;
     return jump;
 }
