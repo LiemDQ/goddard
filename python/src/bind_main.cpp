@@ -16,6 +16,7 @@ void bind_gas_properties(nb::module_& m);
 void bind_moc(nb::module_& m);
 void bind_kinetic_nozzle(nb::module_& m);
 void bind_shocks(nb::module_& m);
+void bind_detonations(nb::module_& m);
 
 NB_MODULE(_core, m) {
     m.doc() = "Goddard rocket engine simulation toolkit";
@@ -38,4 +39,6 @@ NB_MODULE(_core, m) {
     bind_moc(m);
     bind_kinetic_nozzle(m);
     bind_shocks(m);
+    // after bind_shocks: DetonationResult holds a ShockResult
+    bind_detonations(m);
 }

@@ -86,7 +86,7 @@ The perfect-gas relations with the frozen $\gamma_1$ give the initial guess. An 
 
 The pre-shock state 1 is taken as given, and it need not be at equilibrium: in a shock tube it is often an unburned mixture that burns behind the shock. Its sound speed, and so the Mach number $M_1 = u_1/a_1$, is therefore the frozen one, as in CEA. Downstream Mach numbers use the sound speed of the post-shock chemistry, and stagnation pressures come from isentropic deceleration with that chemistry.
 
-An equilibrium shock in an exothermic mixture only exists above the Chapman-Jouguet detonation speed. Below it the Newton iteration fails to converge.
+An equilibrium shock in an exothermic mixture only exists above the Chapman-Jouguet detonation speed. Below it the Newton iteration fails to converge. Above it, the shock is an overdriven [detonation](detonations.md).
 
 ## Reflected shocks
 

@@ -171,7 +171,8 @@ ObliqueShockResult oblique_shock_from_deflection(
  * frozen one. Mach-number inputs are converted to velocity with that frozen sound speed.
  *
  * @note An equilibrium shock in an exothermic mixture only exists above the Chapman-Jouguet
- * detonation speed; below it the solver throws `ConvergenceError`. Oblique shocks in such a
+ * detonation speed; below it the solver throws `ConvergenceError`. Above it the shock is an
+ * overdriven detonation, which `DetonationSolver` also computes. Oblique shocks in such a
  * mixture are oblique detonations and are not modelled.
  */
 class ShockSolver {

@@ -33,6 +33,7 @@ add_executable(
     test_moc_inverse_march.cpp
     test_kinetic_nozzle.cpp
     test_shocks.cpp
+    test_detonations.cpp
     test_gas.cpp
     test_condensed.cpp
     test_nozzle_condensed.cpp
