@@ -4,6 +4,7 @@
 #include "goddard/error.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include "goddard/newton.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -396,17 +397,14 @@ double Gas::stagnation_pressure(double velocity) const {
     // equilibrium when chemistry is EQUILIBRIUM.
     const double gamma_frozen = gamma();
     const double mach_frozen = velocity / gas_sonic_velocity(temperature(), molecular_weight(), gamma_frozen);
-    double P_stagnation = perfect_gas_stagnation_pressure(pressure(), mach_frozen, gamma_frozen);
+    const double P_guess = perfect_gas_stagnation_pressure(pressure(), mach_frozen, gamma_frozen);
 
     // Cantera's SP equilibrium solve leaves temperature noise of ~1e-8 relative, which puts a
     // floor of ~3e-7 under the relative pressure step, so the equilibrium tolerance is looser.
-    const int max_iterations = 50;
-    const double reltol = (chemistry == GasChemistry::EQUILIBRIUM) ? 1e-6 : 1e-9;
-    double relative_step = 1.0;
-    for (int k = 0; relative_step > reltol; k++) {
-        if (k > max_iterations) {
-            throw ConvergenceError("Failed to converge to stagnation pressure.", k, reltol, relative_step);
-        }
+    NewtonOptions options;
+    options.step_reltol = (chemistry == GasChemistry::EQUILIBRIUM) ? 1e-6 : 1e-9;
+    options.max_iterations = 51;
+    const NewtonResult result = newton_solve(P_guess, [&](double P_stagnation) {
         switch (chemistry) {
             case GasChemistry::EQUILIBRIUM:
                 work.equilibrate_SP(entropy, P_stagnation);
@@ -417,11 +415,14 @@ double Gas::stagnation_pressure(double velocity) const {
                 work.set_state_SP(entropy, P_stagnation);
                 break;
         }
-        const double step = -(work.enthalpy_mass() - h_stagnation) * work.density();
-        P_stagnation += step;
-        relative_step = std::abs(step) / P_stagnation;
+        return NewtonFunction{.value = work.enthalpy_mass() - h_stagnation,
+                              .derivative = 1.0/work.density()};
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Failed to converge to stagnation pressure.", result.iterations,
+            options.step_reltol, std::abs(result.step/result.x));
     }
-    return P_stagnation;
+    return result.x;
 }
 
 double Gas::isenthalpic_velocity(double H_stagnation) const {

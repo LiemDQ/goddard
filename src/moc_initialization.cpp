@@ -4,6 +4,7 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/moc_initialization.hpp"
 #include "goddard/moc_unit_processes.hpp"
+#include "goddard/newton.hpp"
 
 namespace Goddard {
 
@@ -441,21 +442,19 @@ double MocInitialization::KL_solve_transonic_x(double y, double gamma, double R,
     // the residual is normalized by r to make the tolerance r-independent, and
     // on-axis stations (y = 0) are evaluated at a small finite r, where the
     // normalized residual converges to the r->0 limit of the v = 0 locus.
-    double r = std::max(y, 1e-4);
-    double residual = 1.0;
-    double tol = 1e-6;
-    double x = x_guess;
-    int max_iters = 30;
-    for (int i = 0; i <= max_iters; i++) {
-
-        residual = KL_yMach(x, r, gamma, R) / r;
-        if (std::abs(residual) < tol)
-            return x;
-
-        x = x - residual/(KL_dyMachdx(x, r, gamma, R) / r);
+    const double r = std::max(y, 1e-4);
+    NewtonOptions options;
+    options.residual_abstol = 1e-6;
+    options.max_iterations = 31;
+    const NewtonResult result = newton_solve(x_guess, [&](double x) {
+        return NewtonFunction{.value = KL_yMach(x, r, gamma, R) / r,
+                              .derivative = KL_dyMachdx(x, r, gamma, R) / r};
+    }, options);
+    if (result.status != NewtonStatus::CONVERGED) {
+        throw ConvergenceError("Newton's method for transonic line x-coordinate failed to converge.",
+            result.iterations, options.residual_abstol, result.residual);
     }
-
-    throw ConvergenceError("Newton's method for transonic line x-coordinate failed to converge.", max_iters, tol);
+    return result.x;
 }
 
 namespace {

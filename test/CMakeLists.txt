@@ -35,6 +35,7 @@ add_executable(
     test_shocks.cpp
     test_detonations.cpp
     test_gas.cpp
+    test_newton.cpp
     test_condensed.cpp
     test_nozzle_condensed.cpp
     asan_options.cpp

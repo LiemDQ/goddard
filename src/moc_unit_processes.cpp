@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/error.hpp"
+#include "goddard/newton.hpp"
 #include "goddard/prandtlmeyer.hpp"
 
 namespace Goddard {
@@ -497,18 +498,18 @@ double find_node_mach(
     double abstol,
     MocLog& log)
 {
-    // initial guess: mach of upstream
-    double mach = (mach_guess > 1.0) ? mach_guess : p1.mach;
-
     double delta_theta = p1.theta - p2.theta;
-    const int max_iter = 15;
+    NewtonOptions options;
+    options.residual_abstol = abstol;
+    options.max_iterations = 15;
     // Newton's method to find root
     // Residual function obtained from combining both compatibility equations:
     //
     //$$\epsilon (V_P) = (\theta_{A}- \theta_{B}) + \Delta \nu (V_{A} \rightarrow V_{P})
     // + \Delta \nu (V_{B} \rightarrow V_{P}) - (S_{A}- S_{B})$$
     // where A and B indicate upstream points.
-    for (int i = 0; i < max_iter; i++) {
+    // initial guess: mach of upstream
+    const NewtonResult result = newton_solve((mach_guess > 1.0) ? mach_guess : p1.mach, [&](double mach) {
         double nu3, derivative;
 
         if (thermo.chemistry() == GasChemistry::PERFECT_GAS) {
@@ -523,15 +524,16 @@ double find_node_mach(
             derivative = 2.0 * sqrt(mach * mach - 1.0) / V;
         }
 
-        double residual = (nu3 - p1.nu) + (nu3 - p2.nu) - delta_theta - source_delta;
-        if (std::abs(residual) < abstol) return mach;
-
-        mach -= residual / derivative;
+        return NewtonFunction{.value = (nu3 - p1.nu) + (nu3 - p2.nu) - delta_theta - source_delta,
+                              .derivative = derivative};
+    }, options);
+    if (result.status == NewtonStatus::CONVERGED) {
+        return result.x;
     }
 
     // rootfinding has failed
     log.warning("find_node_mach did not converge after {} iterations. "
-        "Last Mach={}, delta_theta={}.", max_iter, mach, delta_theta);
+        "Last Mach={}, delta_theta={}.", result.iterations, result.x, delta_theta);
     return -1.0;
 }
 
