@@ -11,6 +11,10 @@
 # Needs only `cmake` configuration (compile_commands.json), not a compiled build.
 set -euo pipefail
 
+# Use half the available CPU cores (minimum 1)
+jobs=$(( $(nproc) / 2 ))
+[[ $jobs -lt 1 ]] && jobs=1
+
 build_dir="build"
 base_ref=""
 while [[ $# -gt 0 ]]; do
@@ -37,14 +41,14 @@ cppcheck_args=(
     --std=c++20
     --template=gcc
     --quiet
-    -j "$(nproc)"
+    -j "$jobs"
 )
 
 status=0
 
 if [[ -z "$base_ref" ]]; then
     echo "== clang-tidy (all sources)"
-    run-clang-tidy -p "$build_dir" -quiet -j "$(nproc)" \
+    run-clang-tidy -p "$build_dir" -quiet -j "$jobs" \
         -source-filter '.*/(src|test|python/src)/[^/]*\.cpp$' || status=1
 
     echo "== cppcheck (src/)"
