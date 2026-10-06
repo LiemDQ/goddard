@@ -1,0 +1,62 @@
+context:
+  name: goddard
+  # Must match project(goddard VERSION ...) in CMakeLists.txt, which the Python package reads its
+  # version from. The release workflow checks the tag against CMakeLists.txt.
+  version: "0.1.0"
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  # The working tree, minus .gitignore'd files.
+  path: ..
+
+build:
+  number: 0
+  skip:
+    - not linux
+  script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  build:
+    - ${{ compiler('cxx') }}
+    - ${{ compiler('c') }}
+    - cmake
+    - ninja
+  host:
+    - python
+    - pip
+    - scikit-build-core >=0.10
+    - nanobind
+    - libcantera-devel 3.2.*
+    - eigen >=5
+    - numpy
+  run:
+    - python
+    - numpy
+    # libcantera-devel has no run_exports, so the shared library goddard links against is listed
+    # explicitly.
+    - libcantera 3.2.*
+
+tests:
+  - python:
+      imports:
+        - goddard
+  - files:
+      recipe:
+        - smoke_test.py
+    script:
+      - python smoke_test.py
+
+about:
+  homepage: https://github.com/LiemDQ/goddard
+  repository: https://github.com/LiemDQ/goddard
+  documentation: https://liemdq.github.io/goddard/
+  license: LGPL-2.1-only
+  license_file: LICENSE
+  summary: Reactive flow simulation toolkit built on Cantera
+  description: |
+    Goddard simulates chemically reactive compressible flows: combustion and chemical
+    equilibrium, 1-D equilibrium, frozen and kinetic nozzle expansions, the method of
+    characteristics for 2-D and axisymmetric nozzles, shocks and detonations.

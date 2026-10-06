@@ -16,6 +16,8 @@ build-docs/
 build-python/
 develop-eggs/
 dist/
+# rattler-build output (pixi run -e package conda-build)
+/output/
 downloads/
 eggs/
 .eggs/
