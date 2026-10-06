@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(
     goddard
-    VERSION 0.0.1
+    VERSION 0.1.0
     LANGUAGES CXX C)
 
 option(goddard_BUILD_PYTHON "Build Python bindings" ON)
