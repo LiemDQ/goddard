@@ -54,6 +54,8 @@ protected:
      * or a manufactured source-flow field) can be marched without requiring a throat/KL/fan
      * construction consistent with it. See InverseMarchUniformFlow.StaysUniform and
      * InverseMarchSourceFlow.SecondOrderConvergence (test/test_moc_inverse_march.cpp).
+     * The points' coordinates are in the unit of NozzleGeometry::throat_radius, like
+     * MocOptions::nozzle_profile.
      */
     std::optional<std::vector<CharacteristicPoint>> m_inverse_front_override;
 

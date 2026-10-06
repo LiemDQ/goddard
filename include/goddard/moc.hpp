@@ -61,13 +61,20 @@ std::string_view to_string(MocStepLimiter limiter);
 /**
  * Throat and contour geometry the solver is anchored to.
  *
- * Lengths are expressed in whatever unit `throat_radius` is given in; the two curvature radii
- * are dimensionless multiples of it. `length_fraction` and `expansion_ratio` are consumed only
- * by MocMode::DESIGN_RAO, which uses them to generate the Rao contour it then marches.
+ * `throat_radius` fixes the length unit of the whole solve: MocOptions::nozzle_profile is read
+ * in the unit `throat_radius` is given in, and every length in MocResult is reported in it.
+ * The two curvature radii are dimensionless multiples of `throat_radius`. `length_fraction`
+ * and `expansion_ratio` are consumed only by MocMode::DESIGN_RAO, which uses them to generate
+ * the Rao contour it then marches.
  */
 struct NozzleGeometry {
-    /// Throat radius, in length units. All other lengths in the solve are scaled by it.
-    double throat_radius;
+    /**
+     * Throat radius (axisymmetric) or throat half-height (planar), in any length unit; must
+     * be positive. The solver works in throat radii internally and converts the input contour
+     * and every output length with it, so its value only sets the unit: the dimensionless
+     * results do not depend on it.
+     */
+    double throat_radius = 1.0;
     /// Wall radius of curvature upstream of the throat, as a multiple of `throat_radius`.
     double upstream_wall_curvature_radius = 1.5;
     /**
@@ -105,8 +112,12 @@ struct MocOptions {
     SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
     /// Throat and contour geometry.
     NozzleGeometry geometry;
-    /// Wall contour to march against in MocMode::ANALYSIS; ignored by the design modes, which
-    /// generate their own contour and report it in MocResult::profile instead.
+    /**
+     * Wall contour to march against in MocMode::ANALYSIS, in the length unit of
+     * NozzleGeometry::throat_radius, with the throat at x = 0: its smallest radius must equal
+     * `geometry.throat_radius` (within 1e-3 relative). Ignored by the design modes, which
+     * generate their own contour and report it in MocResult::profile instead.
+     */
     NozzleProfile nozzle_profile;
     /// Set to MocLogLevel::DEBUG for a verbose kernel trace.
     MocLogLevel log_level = MocLogLevel::NORMAL;
@@ -216,8 +227,8 @@ void validate_moc_options(const MocOptions& options);
  */
 struct MocCrossings {
     size_t count = 0;          ///< Number of same-family characteristic crossings found.
-    double first_x = 0.0;      ///< Position of the most upstream crossing.
-    double first_y = 0.0;
+    double first_x = 0.0;      ///< Position of the most upstream crossing, in the unit of NozzleGeometry::throat_radius.
+    double first_y = 0.0;      ///< See `first_x`.
     CharacteristicFamily first_family = CharacteristicFamily::UNSPECIFIED; ///< Family that crossed there.
 };
 
@@ -237,7 +248,7 @@ MocCrossings find_like_characteristic_crossings(const CharacteristicNet& net);
  * outward. This is what compute_thrust_coefficient() integrates over.
  */
 struct ExitPlane {
-    std::vector<double> y;           ///< Radial (or transverse) station, in length units.
+    std::vector<double> y;           ///< Radial (or transverse) station, in the unit of NozzleGeometry::throat_radius.
     std::vector<double> mach;        ///< Local Mach number.
     std::vector<double> theta;       ///< Local flow angle, in radians.
     std::vector<double> pressure;    ///< Static pressure; Pa for frozen/equilibrium, normalized by the stagnation pressure for perfect gas.
@@ -252,6 +263,9 @@ struct ExitPlane {
  * The front is where every known axisymmetric failure mode shows up first, and none of it
  * is visible in the finished net: a sampling void contains no cells, so per-cell statistics
  * look healthy while it grows. These are the quantities that expose it.
+ *
+ * Every length here (spacings, positions, step_dx) is in the unit of
+ * NozzleGeometry::throat_radius.
  */
 struct MocPassDiagnostics {
     int pass = 0;                       ///< Kernel pass this record describes.
@@ -321,10 +335,10 @@ struct MocInitDiagnostics {
     size_t points = 0;                  ///< Points on the initial data line.
 
     /**
-     * Distance from the data line's wall end to the prescribed wall contour, in length
-     * units. The line's top point is registered as *the* wall point, so a nonzero value
-     * means the wall march begins from a point that is not on the wall. Zero in design
-     * modes, which have no prescribed contour.
+     * Distance from the data line's wall end to the prescribed wall contour, in the unit of
+     * NozzleGeometry::throat_radius. The line's top point is registered as *the* wall point,
+     * so a nonzero value means the wall march begins from a point that is not on the wall.
+     * Zero in design modes, which have no prescribed contour.
      */
     double wall_gap = 0.0;
     /// wall_gap divided by the characteristic spacing. Growth with N is the anti-convergence signature.
@@ -436,23 +450,33 @@ std::string_view to_string(MocErrorCode code);
 struct MocFailure {
     MocErrorCode code = MocErrorCode::NONE; ///< Failure classification; NONE if no failure occurred.
     std::string message;                    ///< Human-readable description of the failure.
-    double x = 0.0;                         ///< x-coordinate of the failing point (or a parent's, if the point itself could not be computed).
-    double y = 0.0;                         ///< y-coordinate of the failing point (or a parent's, if the point itself could not be computed).
+    double x = 0.0;                         ///< x-coordinate of the failing point (or a parent's, if the point itself could not be computed), in the unit of NozzleGeometry::throat_radius.
+    double y = 0.0;                         ///< y-coordinate of the failing point (or a parent's, if the point itself could not be computed), in the unit of NozzleGeometry::throat_radius.
     int kernel_pass = -1;                   ///< Kernel marching pass on which the failure occurred; -1 for pre-kernel (initialization) failures.
 };
 
-/** Everything a MocNozzle::solve() produces: the flow field, the contour, and the diagnostics. */
+/**
+ * Everything a MocNozzle::solve() produces: the flow field, the contour, and the diagnostics.
+ *
+ * Every length (net point and wall coordinates, `profile`, `nozzle_length`, `exit_plane.y`,
+ * `min_theta_x`/`min_theta_y`, crossing and failure locations, and the length fields of
+ * the diagnostics) is in the unit of NozzleGeometry::throat_radius, recorded here as
+ * `throat_radius`. Coordinates quoted inside `messages` are in throat radii.
+ */
 struct MocResult {
-    bool converged; ///< True iff failure.code == MocErrorCode::NONE and the kernel completed without hitting the iteration cap.
+    bool converged = false; ///< True iff failure.code == MocErrorCode::NONE and the kernel completed without hitting the iteration cap.
     CharacteristicNet net; ///< The solved characteristic mesh. Populated even when the march fails partway.
     NozzleProfile profile; ///< Wall contour: computed in design mode, echoed back in analysis mode.
 
     std::vector<std::string> messages; ///< Warnings and error information collected during the solve.
     MocFailure failure; ///< Populated when converged is false; MocErrorCode::NONE otherwise.
 
-    double exit_mach;       ///< Mach number at the exit plane.
-    double nozzle_length;   ///< Distance from throat to exit plane, in length units.
-    double area_ratio;      ///< Exit area divided by throat area.
+    double exit_mach = 0.0;     ///< Mach number at the exit plane.
+    double nozzle_length = 0.0; ///< Distance from throat to exit plane, in the unit of NozzleGeometry::throat_radius.
+    double area_ratio = 0.0;    ///< Exit area divided by throat area.
+    /// The NozzleGeometry::throat_radius of the solve: the length unit of every length in
+    /// this result, and the reference compute_thrust_coefficient() normalizes by.
+    double throat_radius = 1.0;
 
     /// Per-pass marching-front geometry; one entry per kernel pass, in order. Recorded by the
     /// inverse march only; empty for minimum-length design.
@@ -492,8 +516,8 @@ struct MocResult {
      * Badham 1963; Migdal & Kosson 1965). Reported for every scheme.
      */
     double min_theta = 0.0;
-    double min_theta_x = 0.0;
-    double min_theta_y = 0.0;
+    double min_theta_x = 0.0; ///< Axial position of min_theta, in the unit of NozzleGeometry::throat_radius.
+    double min_theta_y = 0.0; ///< Radial position of min_theta, in the unit of NozzleGeometry::throat_radius.
 
     ExitPlane exit_plane;
 };
@@ -511,6 +535,9 @@ struct ThrustCoefficient {
  *
  * Uses the relation rho*V^2 = gamma_s * p * M^2 which holds for all chemistry types.
  * The integrand at each exit plane point is: f = p * (gamma_s * M^2 * cos^2(theta) + 1).
+ * The integral is normalized by p0 times the throat area built from `result.throat_radius`
+ * (2 r_t for planar flow, pi r_t^2 axisymmetric), so the coefficient does not depend on the
+ * length unit.
  *
  * @param result   MoC solution result (must have populated exit_plane with gamma_s)
  * @param flow_type  PLANAR or AXISYMMETRIC (determines integration measure)

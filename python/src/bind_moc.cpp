@@ -130,10 +130,8 @@ void bind_moc(nb::module_& m) {
 
     // ---- NozzleGeometry ----
 
-    // No nb::init<>() overload on purpose: NozzleGeometry has members without default
-    // initializers, so a bare value-initializing constructor would hand back throat_radius = 0.
-    // Routing every construction through the keyword constructor below keeps the documented
-    // defaults as the only defaults.
+    // No nb::init<>() overload on purpose: routing every construction through the keyword
+    // constructor below keeps the documented defaults visible in the generated signature.
     nb::class_<Goddard::NozzleGeometry>(m, "NozzleGeometry", DOC(Goddard, NozzleGeometry))
         .def("__init__", [](Goddard::NozzleGeometry* self,
                             double throat_radius,
@@ -246,6 +244,8 @@ void bind_moc(nb::module_& m) {
         .def("push_back", [](Goddard::NozzleProfile& self, double x, double y) {
             self.push_back({x, y});
         }, "x"_a, "y"_a, DOC(Goddard, NozzleProfile, push_back))
+        .def("scaled", &Goddard::NozzleProfile::scaled, "factor"_a,
+             DOC(Goddard, NozzleProfile, scaled))
         .def("__len__", &Goddard::NozzleProfile::size)
         // Defining __getitem__ is also what makes the profile iterable: Python falls back to
         // the sequence protocol, walking indices until IndexError.
@@ -721,6 +721,8 @@ void bind_moc(nb::module_& m) {
         .def_ro("nozzle_length", &Goddard::MocResult::nozzle_length,
                 DOC(Goddard, MocResult, nozzle_length))
         .def_ro("area_ratio", &Goddard::MocResult::area_ratio, DOC(Goddard, MocResult, area_ratio))
+        .def_ro("throat_radius", &Goddard::MocResult::throat_radius,
+                DOC(Goddard, MocResult, throat_radius))
         .def_ro("pass_diagnostics", &Goddard::MocResult::pass_diagnostics,
                 DOC(Goddard, MocResult, pass_diagnostics))
         .def_ro("init_diagnostics", &Goddard::MocResult::init_diagnostics,

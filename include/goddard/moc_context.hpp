@@ -74,11 +74,15 @@ private:
  * Everything a kernel or unit process needs for one solve(), besides the points it works on.
  * Immutable for the solve: built once solve() has the thermo object and the resolved contour,
  * and passed by const reference everywhere.
+ *
+ * Every length in the context is in throat radii: solve() hands the kernels a copy of its
+ * options with `geometry.throat_radius = 1` and `nozzle_profile` divided by the caller's
+ * throat radius, and converts the result's lengths back afterwards.
  */
 struct MocSolveContext {
-    const MocOptions& options; ///< The options the solve was invoked with.
-    /** The contour the solve marches against: `options.nozzle_profile` in analysis mode, or
-     *  the freshly generated contour in a design mode. */
+    const MocOptions& options; ///< The options the solve was invoked with, normalized to throat radii.
+    /** The contour the solve marches against, in throat radii: `options.nozzle_profile` in
+     *  analysis mode, or the freshly generated contour in a design mode. */
     const NozzleProfile& wall;
     const MocThermo& thermo;   ///< Chemistry dispatch shared by every unit process this solve.
     MocLog& log;                ///< Sink for warnings, info, and (at DEBUG level) trace entries.
