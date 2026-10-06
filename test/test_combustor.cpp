@@ -538,6 +538,70 @@ TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsobaricPath) {
     }
 }
 
+TEST(MultiSpeciesStreamTests, compositionPathBlendsEnthalpyByMassLikeStreamPath) {
+    // H2 burnt in air. The composition path blends the stream enthalpies with the fuel mass
+    // fraction from `ThermoPhase::mixtureFraction`, whose basis argument describes the stream
+    // compositions, which are mole fractions. Read as mass fractions, air (O2:0.21, N2:0.79)
+    // carries 21 % O by mass instead of 23.3 %, and at O/F 40 the fuel fraction comes out as
+    // about 0.0216 instead of 1/41 = 0.0244. The fuel is preheated to 1000 K
+    // (h ~ 10 MJ/kg against ~0 for the air), so that error shifts the mixture enthalpy by
+    // about 30 kJ/kg and the flame temperature by roughly 20 K. The reactant-stream path blends by
+    // mass fraction 1/(1+O/F) directly and is the reference.
+    const double fuel_temperature = 1000.0;     // K
+    const double oxidizer_temperature = 300.0;  // K
+    const double pressure = 10.0 * Cantera::OneBar;
+    const std::string fuel_composition = "H2:1";
+    const std::string oxidizer_composition = "O2:0.21, N2:0.79";
+
+    Eigen::ArrayXd pressures(1);
+    pressures << pressure;
+    Eigen::ArrayXd of_ratios(1);
+    of_ratios << 40.0;  // lean H2/air, stoichiometric O/F is 34.3
+    const double fuel_mass_fraction = 1.0 / (1.0 + of_ratios(0));
+    const CombustorOptions options{CombustorType::INFINITE_AREA, MixtureRatioType::OF_RATIO,
+        {pressure}, 0.0, 0.0};
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(fuel_temperature, pressure, fuel_composition);
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(oxidizer_temperature, pressure, oxidizer_composition);
+    const double mixture_enthalpy = fuel_mass_fraction * fuel.enthalpy_mass()
+        + (1.0 - fuel_mass_fraction) * oxidizer.enthalpy_mass();
+
+    Gas stream_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_streams = Combustor(stream_products, fuel, oxidizer)
+        .solve(pressures, of_ratios, options);
+
+    Gas composition_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_compositions = Combustor(composition_products, fuel_composition,
+        oxidizer_composition).solve(fuel_temperature, oxidizer_temperature, pressures, of_ratios,
+        options);
+
+    // With zero recirculation the diluted combustor burns the same fresh mixture.
+    Gas diluted_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_diluted = DilutedCombustor(diluted_products, fuel_composition,
+        oxidizer_composition, "N2:1").solve(fuel_temperature, oxidizer_temperature,
+        oxidizer_temperature, pressures, of_ratios, 0.0, options);
+
+    auto reference = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    reference->restoreState(from_streams.get_state(0));
+    const double T_reference = reference->temperature();
+    EXPECT_NEAR(reference->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0));
+
+    auto composition = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    composition->restoreState(from_compositions.get_state(0));
+    EXPECT_NEAR(composition->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0)) << "first law: chamber h = mass-blended h";
+    EXPECT_NEAR(composition->temperature(), T_reference, 1e-6 * T_reference);
+
+    auto diluted = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    diluted->restoreState(from_diluted.get_state(0));
+    EXPECT_NEAR(diluted->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0)) << "first law: chamber h = mass-blended h";
+    EXPECT_NEAR(diluted->temperature(), T_reference, 1e-6 * T_reference);
+}
+
 TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsochoricPath) {
     const double reactant_temperature = 300.0;
     Eigen::ArrayXd pressures(1);

@@ -253,8 +253,10 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
 
     for (long i = 0; i < n_compositions; i++) {
         set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        // The stream compositions are mole fractions, as in `set_mixture_composition`, and the
+        // basis argument describes them. The returned mixture fraction is a fuel mass fraction.
         double fuel_mass_frac = thermo->mixtureFraction(
-            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::molar);
         enthalpies[i] = fuel_enthalpy * fuel_mass_frac + oxidizer_enthalpy * (1.0 - fuel_mass_frac);
     }
 
@@ -375,8 +377,9 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
     for (long i = 0; i < n_compositions; i++) {
         // Get fuel mass fraction within the fresh feed
         set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        // Mole-fraction stream compositions; see `Combustor::solve`.
         double fuel_mass_frac_fresh = thermo->mixtureFraction(
-            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::molar);
         double ox_mass_frac_fresh = 1.0 - fuel_mass_frac_fresh;
 
         enthalpies[i] = fuel_enthalpy * fuel_mass_frac_fresh * w_reactant
