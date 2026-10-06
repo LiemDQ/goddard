@@ -224,7 +224,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     auto results = problem.solve();
 
     // Extract chamber state
-    const auto& goddard_chamber = results.chamber(0, "H2_O2_equilibrium").thermo;
+    const auto& goddard_chamber = results.chamber(0, 0, "H2_O2_equilibrium").thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -272,7 +272,7 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
     auto results = problem.solve();
 
     // Extract throat state
-    const auto& goddard_throat = results.throat(0, "H2_O2_equilibrium").thermo;
+    const auto& goddard_throat = results.throat(0, 0, "H2_O2_equilibrium").thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -312,7 +312,7 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
     auto results = problem.solve();
 
     // Extract exit states
-    auto goddard_exits = results.exits(0, "H2_O2_equilibrium");
+    auto goddard_exits = results.exits(0, 0, "H2_O2_equilibrium");
     std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state
@@ -369,7 +369,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
     auto results = problem.solve();
 
     // Extract chamber state
-    const auto& goddard_chamber = results.chamber(0, "H2_O2_frozen").thermo;
+    const auto& goddard_chamber = results.chamber(0, 0, "H2_O2_frozen").thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -418,7 +418,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
     auto results = problem.solve();
 
     // Extract throat state
-    const auto& goddard_throat = results.throat(0, "H2_O2_frozen").thermo;
+    const auto& goddard_throat = results.throat(0, 0, "H2_O2_frozen").thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -456,7 +456,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
     auto results = problem.solve();
 
     // Extract exit states
-    auto goddard_exits = results.exits(0, "H2_O2_frozen");
+    auto goddard_exits = results.exits(0, 0, "H2_O2_frozen");
     std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state

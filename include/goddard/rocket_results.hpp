@@ -81,28 +81,76 @@ public:
     // If case_name is empty and there is exactly one case, that case is used.
     std::vector<RocketStation> stations_of_type(StationType type, const std::string& case_name = "") const;
 
-    // Single-station convenience accessors.
-    // If case_name is empty and there is exactly one case, that case is used.
-    const RocketStation& chamber(std::size_t of_index = 0, const std::string& case_name = "") const;
-    const RocketStation& throat(std::size_t of_index = 0, const std::string& case_name = "") const;
-    std::vector<RocketStation> exits(std::size_t of_index = 0, const std::string& case_name = "") const;
+    /**
+     * Chamber station of one operating point. For a finite-area combustor, the injector face.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
+     */
+    const RocketStation& chamber(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                 const std::string& case_name = "") const;
+
+    /**
+     * Throat station of one operating point.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
+     */
+    const RocketStation& throat(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                const std::string& case_name = "") const;
+
+    /**
+     * Exit stations of one operating point, ordered by expansion index.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case does not exist.
+     */
+    std::vector<RocketStation> exits(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                     const std::string& case_name = "") const;
 
     /**
      * Stagnation state that the nozzle expands from: the "inf" state of a finite-area combustor,
      * or the chamber state of an infinite-area combustor.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
      */
-    const RocketStation& stagnation(std::size_t of_index = 0, const std::string& case_name = "") const;
+    const RocketStation& stagnation(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                    const std::string& case_name = "") const;
 
     /**
      * Combustion-end station of a finite-area combustor.
      *
-     * @throws std::runtime_error if the case uses an infinite-area combustor.
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case uses an infinite-area combustor, or if the case or
+     * the station does not exist.
      */
-    const RocketStation& combustion_end(std::size_t of_index = 0, const std::string& case_name = "") const;
+    const RocketStation& combustion_end(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                        const std::string& case_name = "") const;
 
-    // Compute rocket performance for a given operating point and exit station.
-    // If case_name is empty and there is exactly one case, that case is used.
-    RocketPerformance performance(std::size_t of_index = 0, std::size_t exit_index = 0,
+    /**
+     * Rocket performance of one operating point at one exit station, from its stagnation,
+     * throat and exit states (see `calculate_performance`).
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param exit_index Index into the exit stations of the operating point [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or a station does not exist, or if `exit_index`
+     * is out of range.
+     */
+    RocketPerformance performance(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                  std::size_t exit_index = 0,
                                   const std::string& case_name = "") const;
 
     // List all case names.

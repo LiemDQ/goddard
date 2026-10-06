@@ -193,39 +193,53 @@ std::vector<RocketStation> RocketProblemResults::stations_of_type(
     return result;
 }
 
+namespace {
+
+/** Operating point label for error messages. */
+std::string operating_point_label(const std::string& case_name, std::size_t of_index,
+                                  std::size_t pressure_index) {
+    return "case '" + case_name + "', of_index=" + std::to_string(of_index)
+        + ", pressure_index=" + std::to_string(pressure_index);
+}
+
+} // namespace
+
 const RocketStation& RocketProblemResults::chamber(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::CHAMBER && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::CHAMBER && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Chamber state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Chamber state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 const RocketStation& RocketProblemResults::throat(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::THROAT && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::THROAT && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Throat state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Throat state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 std::vector<RocketStation> RocketProblemResults::exits(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     std::vector<RocketStation> result;
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::EXIT && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::EXIT && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             result.push_back(s);
         }
     }
@@ -237,11 +251,12 @@ std::vector<RocketStation> RocketProblemResults::exits(
 }
 
 RocketPerformance RocketProblemResults::performance(
-    std::size_t of_index, std::size_t exit_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, std::size_t exit_index,
+    const std::string& case_name) const
 {
-    const RocketStation& c = stagnation(of_index, case_name);
-    const RocketStation& t = throat(of_index, case_name);
-    auto exit_stations = exits(of_index, case_name);
+    const RocketStation& c = stagnation(of_index, pressure_index, case_name);
+    const RocketStation& t = throat(of_index, pressure_index, case_name);
+    auto exit_stations = exits(of_index, pressure_index, case_name);
     if (exit_index >= exit_stations.size()) {
         throw std::runtime_error(
             "exit_index " + std::to_string(exit_index) +
@@ -251,22 +266,23 @@ RocketPerformance RocketProblemResults::performance(
 }
 
 const RocketStation& RocketProblemResults::stagnation(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     const StationType type = m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA
         ? StationType::CHAMBER : StationType::STAGNATION;
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == type && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == type && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Stagnation state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Stagnation state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 const RocketStation& RocketProblemResults::combustion_end(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     if (m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA) {
@@ -274,12 +290,13 @@ const RocketStation& RocketProblemResults::combustion_end(
             "' uses an infinite-area combustor; it has no combustion-end station.");
     }
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::COMBUSTION_END && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::COMBUSTION_END
+            && s.of_index == of_index && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Combustion-end state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Combustion-end state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 std::vector<std::string> RocketProblemResults::case_names() const {

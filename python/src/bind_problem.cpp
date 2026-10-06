@@ -55,31 +55,32 @@ void bind_problem(nb::module_& m) {
         .def("stations_of_type", &Goddard::RocketProblemResults::stations_of_type,
              "type"_a, "case_name"_a = "",
              "Return all stations of a given StationType, optionally filtered to a case.")
+        // Everything after of_index is keyword-only: pressure_index was inserted before
+        // exit_index and case_name, so an old positional call must fail instead of
+        // silently reading another operating point.
         .def("chamber", &Goddard::RocketProblemResults::chamber,
-             "of_index"_a = 0, "case_name"_a = "",
-             "Chamber station for the given O/F index. "
-             "case_name may be omitted when there is only one case.",
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, chamber),
              nb::rv_policy::reference_internal)
         .def("throat", &Goddard::RocketProblemResults::throat,
-             "of_index"_a = 0, "case_name"_a = "",
-             "Throat station for the given O/F index. "
-             "case_name may be omitted when there is only one case.",
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, throat),
              nb::rv_policy::reference_internal)
         .def("stagnation", &Goddard::RocketProblemResults::stagnation,
-             "of_index"_a = 0, "case_name"_a = "",
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "case_name"_a = "",
              DOC(Goddard, RocketProblemResults, stagnation),
              nb::rv_policy::reference_internal)
         .def("combustion_end", &Goddard::RocketProblemResults::combustion_end,
-             "of_index"_a = 0, "case_name"_a = "",
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "case_name"_a = "",
              DOC(Goddard, RocketProblemResults, combustion_end),
              nb::rv_policy::reference_internal)
         .def("exits", &Goddard::RocketProblemResults::exits,
-             "of_index"_a = 0, "case_name"_a = "",
-             "Exit stations for the given O/F index, ordered by expansion ratio. "
-             "case_name may be omitted when there is only one case.")
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, exits))
         .def("performance", &Goddard::RocketProblemResults::performance,
-             "of_index"_a = 0, "exit_index"_a = 0, "case_name"_a = "",
-             "Compute rocket performance for the given O/F index and exit station.")
+             "of_index"_a = 0, nb::kw_only(), "pressure_index"_a = 0, "exit_index"_a = 0,
+             "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, performance))
         .def("case_names", &Goddard::RocketProblemResults::case_names,
              "List all case names.")
         .def("of_ratios", &Goddard::RocketProblemResults::of_ratios,

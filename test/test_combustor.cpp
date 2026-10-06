@@ -317,16 +317,16 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     auto thermo = gas.thermo();
     thermo->restoreState(reference.get_state(0));
 
-    const RocketStation& chamber = results.chamber(0, "isochoric");
+    const RocketStation& chamber = results.chamber(0, 0, "isochoric");
     EXPECT_NEAR(chamber.thermo.pressure, thermo->pressure(), 1e-6 * thermo->pressure());
     EXPECT_NEAR(chamber.thermo.temperature, thermo->temperature(), 1e-6 * thermo->temperature());
     EXPECT_GT(chamber.thermo.pressure, 5.0 * initial_pressure);
 
-    const RocketStation& throat = results.throat(0, "isochoric");
+    const RocketStation& throat = results.throat(0, 0, "isochoric");
     EXPECT_TRUE(throat.converged);
     EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
 
-    std::vector<RocketStation> exits = results.exits(0, "isochoric");
+    std::vector<RocketStation> exits = results.exits(0, 0, "isochoric");
     ASSERT_EQ(exits.size(), 1u);
     EXPECT_LT(exits[0].thermo.pressure, throat.thermo.pressure);
 
@@ -416,6 +416,68 @@ TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
         EXPECT_NEAR(chamber.thermo.temperature, thermo->temperature(), 1e-9 * thermo->temperature())
             << "of_index = " << chamber.of_index << ", pressure_index = " << chamber.pressure_index;
     }
+}
+
+TEST(RocketProblemIndexing, AccessorsSelectTheChamberPressure) {
+    // Two chamber pressures and two area ratios at one O/F. Every accessor must return stations
+    // of the requested pressure: mixing the throat of one pressure with the exit of the other
+    // gives an area ratio of about AR * P0/P1 from mass flux continuity.
+    const double reactant_temperature = 300.0;
+    const std::vector<double> pressures = {20.0 * Cantera::OneBar, 50.0 * Cantera::OneBar};
+    const std::vector<double> area_ratios = {5.0, 20.0};
+
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {6.0};
+
+    RocketCaseParameters case_params;
+    case_params.name = "pressures";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.pressures = pressures;
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = area_ratios;
+
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    RocketProblemResults results = problem.solve();
+
+    for (std::size_t p_idx = 0; p_idx < pressures.size(); p_idx++) {
+        const RocketStation& chamber = results.chamber(0, p_idx, "pressures");
+        EXPECT_EQ(chamber.pressure_index, p_idx);
+        EXPECT_NEAR(chamber.thermo.pressure, pressures[p_idx], 1e-9 * pressures[p_idx]);
+
+        const RocketStation& stagnation = results.stagnation(0, p_idx, "pressures");
+        EXPECT_EQ(stagnation.pressure_index, p_idx);
+        EXPECT_NEAR(stagnation.thermo.pressure, pressures[p_idx], 1e-9 * pressures[p_idx]);
+
+        const RocketStation& throat = results.throat(0, p_idx, "pressures");
+        EXPECT_EQ(throat.pressure_index, p_idx);
+        EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
+        EXPECT_GT(throat.thermo.pressure, 0.5 * chamber.thermo.pressure);
+
+        std::vector<RocketStation> exits = results.exits(0, p_idx, "pressures");
+        ASSERT_EQ(exits.size(), area_ratios.size()) << "pressure_index = " << p_idx;
+        for (std::size_t e = 0; e < area_ratios.size(); e++) {
+            EXPECT_EQ(exits[e].pressure_index, p_idx);
+            EXPECT_EQ(exits[e].expansion_index, e);
+
+            // Area ratio from mass flux continuity, rho_t a_t / (rho_e v_e): the nozzle solved for
+            // the requested area ratio, so this recovers it to the station solver tolerance.
+            const RocketPerformance performance = results.performance(0, p_idx, e, "pressures");
+            EXPECT_NEAR(performance.area_ratio, area_ratios[e], 1e-3 * area_ratios[e])
+                << "pressure_index = " << p_idx << ", exit_index = " << e;
+            EXPECT_NEAR(performance.pressure_ratio,
+                        pressures[p_idx] / exits[e].thermo.pressure,
+                        1e-9 * performance.pressure_ratio)
+                << "pressure_index = " << p_idx << ", exit_index = " << e;
+        }
+    }
+    EXPECT_NE(results.chamber(0, 0, "pressures").thermo.pressure,
+              results.chamber(0, 1, "pressures").thermo.pressure);
 }
 
 // ---- Reactant streams given as Gas objects ----
@@ -638,7 +700,7 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     RocketProblem problem(chem_params, {case_params}, "gas");
     RocketProblemResults results = problem.solve();
 
-    const RocketStation& chamber = results.chamber(0, "ex8");
+    const RocketStation& chamber = results.chamber(0, 0, "ex8");
     EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 3.0);
     EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
     EXPECT_NEAR(chamber.thermo.pressure, CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
@@ -740,27 +802,27 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     EXPECT_EQ(stations[4].type, StationType::EXIT);
 
     // Accessors.
-    const RocketStation& chamber_station = results.chamber(0, "fac_case");
+    const RocketStation& chamber_station = results.chamber(0, 0, "fac_case");
     EXPECT_EQ(chamber_station.type, StationType::CHAMBER);
     EXPECT_NEAR(chamber_station.thermo.pressure, injector_pressure, 1e-6 * injector_pressure);
 
-    const RocketStation& stagnation_station = results.stagnation(0, "fac_case");
+    const RocketStation& stagnation_station = results.stagnation(0, 0, "fac_case");
     EXPECT_EQ(stagnation_station.type, StationType::STAGNATION);
     EXPECT_NEAR(stagnation_station.thermo.pressure, stagnation_pressure, 1e-6 * stagnation_pressure);
 
-    const RocketStation& comb_end_station = results.combustion_end(0, "fac_case");
+    const RocketStation& comb_end_station = results.combustion_end(0, 0, "fac_case");
     EXPECT_EQ(comb_end_station.type, StationType::COMBUSTION_END);
     EXPECT_DOUBLE_EQ(comb_end_station.area_ratio, 2.0);
 
     // performance() must use the stagnation station, not the chamber/injector one: the two
     // differ here, since P_inf != P_inj.
-    const RocketStation& throat_station = results.throat(0, "fac_case");
-    std::vector<RocketStation> exit_stations = results.exits(0, "fac_case");
+    const RocketStation& throat_station = results.throat(0, 0, "fac_case");
+    std::vector<RocketStation> exit_stations = results.exits(0, 0, "fac_case");
     ASSERT_EQ(exit_stations.size(), 1u);
 
     RocketPerformance expected = RocketProblemResults::calculate_performance(
         stagnation_station.thermo, throat_station.thermo, exit_stations[0].thermo);
-    RocketPerformance actual = results.performance(0, 0, "fac_case");
+    RocketPerformance actual = results.performance(0, 0, 0, "fac_case");
     EXPECT_DOUBLE_EQ(actual.cstar, expected.cstar);
     EXPECT_DOUBLE_EQ(actual.CF, expected.CF);
     EXPECT_DOUBLE_EQ(actual.isp, expected.isp);
@@ -803,10 +865,10 @@ TEST(FiniteAreaCombustorResults, InfiniteAreaHasNoCombustionEndStation) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     RocketProblemResults results = problem.solve();
 
-    EXPECT_THROW(results.combustion_end(0, "infinite"), std::runtime_error);
+    EXPECT_THROW(results.combustion_end(0, 0, "infinite"), std::runtime_error);
 
-    const RocketStation& stag = results.stagnation(0, "infinite");
-    const RocketStation& chamber = results.chamber(0, "infinite");
+    const RocketStation& stag = results.stagnation(0, 0, "infinite");
+    const RocketStation& chamber = results.chamber(0, 0, "infinite");
     EXPECT_EQ(stag.type, StationType::CHAMBER);
     EXPECT_NEAR(stag.thermo.pressure, chamber.thermo.pressure, 1e-9 * chamber.thermo.pressure);
 }
