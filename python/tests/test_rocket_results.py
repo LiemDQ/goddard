@@ -81,3 +81,17 @@ def test_accessors_reject_positional_arguments_after_of_index(two_pressure_resul
         results.performance(0, 1)
     with pytest.raises(TypeError):
         results.chamber(0, "two_pressures")
+
+
+# ---------------------------------------------------------------------------
+# Nozzle option defaults
+# ---------------------------------------------------------------------------
+
+def test_frozen_nfz_defaults_to_the_chamber_everywhere():
+    """C++, the keyword constructor and frozen_nozzle() agree: frozen_NFZ = 0, the chamber.
+
+    0 is CEA's default freezing point (nfz = frozen_NFZ + 1 = 1).
+    """
+    assert goddard.NozzleOptions().frozen_NFZ == 0
+    assert goddard.NozzleOptions(chemistry=goddard.GasChemistry.FROZEN).frozen_NFZ == 0
+    assert goddard.frozen_nozzle(10.0).frozen_NFZ == 0

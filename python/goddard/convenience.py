@@ -127,13 +127,16 @@ def equilibrium_nozzle(*ratios):
     return opts
 
 
-def frozen_nozzle(*ratios, frozen_NFZ=1):
+def frozen_nozzle(*ratios, frozen_NFZ=0):
     """Create NozzleOptions for frozen chemistry nozzle with supersonic
     area ratio expansion.
 
     Args:
         *ratios: Expansion ratios. If empty, returns bare GasChemistry.
-        frozen_NFZ: Frozen flow station number.
+        frozen_NFZ: Freezing station, 0-based: 0 is the chamber (the default,
+            and CEA's default freezing point), 1 the throat, 2 onward the exit
+            stations in order. For an infinite-area combustor CEA's ``nfz`` is
+            ``frozen_NFZ + 1``.
 
     Returns:
         NozzleOptions if ratios provided, GasChemistry.FROZEN otherwise.
