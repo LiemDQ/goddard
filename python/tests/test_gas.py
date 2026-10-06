@@ -321,6 +321,23 @@ def test_from_cantera():
     assert abs(gas.pressure - 3e6) < 100.0
 
 
+def test_from_cantera_warns_for_non_ideal_gas():
+    ct = pytest.importorskip("cantera")
+    from goddard import from_cantera
+
+    ct_sol = ct.Solution("h2o2.yaml", "ohmech")
+
+    class NonIdeal:
+        """The Solution's attributes, with a thermo model Goddard does not support."""
+        thermo_model = "Redlich-Kwong"
+
+        def __getattr__(self, name):
+            return getattr(ct_sol, name)
+
+    with pytest.warns(UserWarning, match="Redlich-Kwong"):
+        from_cantera(NonIdeal())
+
+
 # ---------------------------------------------------------------------------
 # Condensed species
 # ---------------------------------------------------------------------------

@@ -61,27 +61,13 @@ facet; the reference-plane march has neither problem.
 
 ::: goddard.CharacteristicFamily
 
-::: goddard.ChainMetadata
-
 ::: goddard.ChainTermination
 
-::: goddard.PointMembership
-
-## Diagnostics
+## Failures and checks
 
 ::: goddard.MocFailure
 
 ::: goddard.MocErrorCode
-
-::: goddard.MocPassDiagnostics
-
-::: goddard.MocStepLimiter
-
-::: goddard.MocInitDiagnostics
-
-::: goddard.MocFrontShear
-
-::: goddard.summarize_front_shear
 
 ::: goddard.MocCrossings
 
@@ -92,3 +78,11 @@ facet; the reference-plane march has neither problem.
 ## Plotting
 
 ::: goddard.plotting
+
+## Solver diagnostics
+
+Per-pass front statistics, start-line diagnostics and the chain bookkeeping of the
+characteristic net live in `goddard.moc_diagnostics`. They are for studying the
+solver itself; a design or analysis needs only `MocResult`.
+
+::: goddard.moc_diagnostics

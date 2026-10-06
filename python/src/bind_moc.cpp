@@ -434,22 +434,20 @@ void bind_moc(nb::module_& m) {
     // ---- Net topology ----
 
     nb::class_<Goddard::PointMembership>(m, "PointMembership", DOC(Goddard, PointMembership))
-        .def(nb::init<>())
-        .def_rw("c_plus_chain_idx", &Goddard::PointMembership::c_plus_chain_idx,
+        .def_ro("c_plus_chain_idx", &Goddard::PointMembership::c_plus_chain_idx,
                 DOC(Goddard, PointMembership, c_plus_chain_idx))
-        .def_rw("c_minus_chain_idx", &Goddard::PointMembership::c_minus_chain_idx,
+        .def_ro("c_minus_chain_idx", &Goddard::PointMembership::c_minus_chain_idx,
                 DOC(Goddard, PointMembership, c_minus_chain_idx));
 
     nb::class_<Goddard::ChainMetadata>(m, "ChainMetadata", DOC(Goddard, ChainMetadata))
-        .def(nb::init<>())
-        .def_rw("active", &Goddard::ChainMetadata::active, DOC(Goddard, ChainMetadata, active))
-        .def_rw("termination", &Goddard::ChainMetadata::termination,
+        .def_ro("active", &Goddard::ChainMetadata::active, DOC(Goddard, ChainMetadata, active))
+        .def_ro("termination", &Goddard::ChainMetadata::termination,
                 DOC(Goddard, ChainMetadata, termination))
-        .def_rw("family", &Goddard::ChainMetadata::family,
+        .def_ro("family", &Goddard::ChainMetadata::family,
                 DOC(Goddard, ChainMetadata, family))
-        .def_rw("origin_point_idx", &Goddard::ChainMetadata::origin_point_idx,
+        .def_ro("origin_point_idx", &Goddard::ChainMetadata::origin_point_idx,
                 DOC(Goddard, ChainMetadata, origin_point_idx))
-        .def_rw("latest_point_idx", &Goddard::ChainMetadata::latest_point_idx,
+        .def_ro("latest_point_idx", &Goddard::ChainMetadata::latest_point_idx,
                 DOC(Goddard, ChainMetadata, latest_point_idx));
 
     // ---- CharacteristicNet ----

@@ -381,7 +381,8 @@ def test_rao_design_mode_runs():
 
 
 def test_pass_diagnostics_table():
-    from goddard import moc_design, pass_diagnostics_table
+    from goddard import moc_design
+    from goddard.moc_diagnostics import pass_diagnostics_table
 
     table = pass_diagnostics_table(moc_design(15.0))
     assert "pass_index" in table

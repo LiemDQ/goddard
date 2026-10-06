@@ -6,7 +6,9 @@ Factory functions and helpers that simplify common workflows.
 
 ::: goddard.from_cantera
 
-::: goddard.OF_ratio
+::: goddard.reactant_gas
+
+::: goddard.condensed_species
 
 ::: goddard.supersonic_ratio
 
@@ -35,5 +37,3 @@ Factory functions and helpers that simplify common workflows.
 ::: goddard.moc_rao_design
 
 ::: goddard.moc_analysis
-
-::: goddard.pass_diagnostics_table

@@ -35,7 +35,8 @@ def test_import_moc_enums():
 
 
 def test_import_moc_marching_enums():
-    from goddard import MocStepLimiter, MocStartLine
+    from goddard import MocStartLine
+    from goddard.moc_diagnostics import MocStepLimiter
 
     assert MocStepLimiter.NONE is not None
     assert MocStepLimiter.CFL is not None
@@ -51,21 +52,32 @@ def test_import_moc_marching_enums():
 def test_import_moc_structs():
     from goddard import (
         NozzleGeometry, NozzleProfile, MocOptions,
-        CharacteristicPoint, CharacteristicNet, ChainMetadata, PointMembership,
-        ExitPlane, MocResult, MocFailure, MocPassDiagnostics, MocInitDiagnostics,
-        MocFrontShear, MocCrossings, ThrustCoefficient,
+        CharacteristicPoint, CharacteristicNet,
+        ExitPlane, MocResult, MocFailure, MocCrossings, ThrustCoefficient,
+    )
+    from goddard.moc_diagnostics import (
+        ChainMetadata, PointMembership, MocPassDiagnostics, MocInitDiagnostics, MocFrontShear,
     )
 
     assert MocInitDiagnostics is not None
     assert MocFrontShear is not None
 
 
+def test_diagnostics_are_not_top_level():
+    import goddard
+    for name in ("MocPassDiagnostics", "MocInitDiagnostics", "MocFrontShear", "MocStepLimiter",
+                 "ChainMetadata", "PointMembership", "summarize_front_shear",
+                 "pass_diagnostics_table"):
+        assert not hasattr(goddard, name), name
+        assert hasattr(goddard.moc_diagnostics, name), name
+
+
 def test_import_moc_class():
     from goddard import (
         MocNozzle, compute_thrust_coefficient,
         find_like_characteristic_crossings, validate_moc_options,
-        summarize_front_shear,
     )
+    from goddard.moc_diagnostics import summarize_front_shear
 
     assert summarize_front_shear is not None
 
@@ -73,8 +85,9 @@ def test_import_moc_class():
 def test_import_convenience_moc():
     from goddard import (
         moc_design, moc_rao_design, moc_analysis,
-        conical_nozzle, rao_nozzle, bezier_nozzle, pass_diagnostics_table,
+        conical_nozzle, rao_nozzle, bezier_nozzle,
     )
+    from goddard.moc_diagnostics import pass_diagnostics_table
 
 
 def test_import_plotting_without_matplotlib_at_import_time():
@@ -257,7 +270,7 @@ def test_characteristic_net_fronts_default_empty():
 
 
 def test_moc_pass_diagnostics_step_fields_default():
-    from goddard import MocPassDiagnostics, MocStepLimiter
+    from goddard.moc_diagnostics import MocPassDiagnostics, MocStepLimiter
 
     diag = MocPassDiagnostics()
     assert diag.step_dx == pytest.approx(0.0)

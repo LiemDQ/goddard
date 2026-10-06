@@ -153,10 +153,8 @@ depends-on = ["docs-compile"]
 cmd = "python scripts/copy_notebooks_to_docs.py"
 depends-on = ["docs-stubs"]
 
-# Note: --strict is omitted because griffe emits warnings for untyped
-# parameters in convenience.py. Re-enable once type annotations are added.
 [feature.docs.tasks.docs-build]
-cmd = "mkdocs build"
+cmd = "mkdocs build --strict"
 depends-on = ["docs-prepare"]
 
 [feature.docs.tasks.docs-serve]

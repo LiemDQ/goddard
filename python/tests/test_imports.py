@@ -113,7 +113,7 @@ def test_import_errors():
 
 def test_import_convenience():
     from goddard import (
-        OF_ratio, supersonic_ratio, subsonic_ratio, pressure_ratio,
+        supersonic_ratio, subsonic_ratio, pressure_ratio,
         infinite_area_combustor, finite_mass_flux_combustor,
         finite_contraction_ratio_combustor,
         equilibrium_nozzle, frozen_nozzle, from_cantera,
@@ -151,9 +151,12 @@ def test_nozzle_options_construction():
     assert opts.expansion_ratios == [3.0, 5.0, 10.0]
 
 
-def test_convenience_of_ratio():
-    from goddard import OF_ratio
-    assert OF_ratio(2.0, 3.0, 4.0) == [2.0, 3.0, 4.0]
+def test_nozzle_helpers_always_return_options():
+    from goddard import equilibrium_nozzle, frozen_nozzle, NozzleOptions, GasChemistry
+    assert isinstance(equilibrium_nozzle(), NozzleOptions)
+    assert equilibrium_nozzle().chemistry == GasChemistry.EQUILIBRIUM
+    assert frozen_nozzle().chemistry == GasChemistry.FROZEN
+    assert frozen_nozzle(5.0, frozen_NFZ=1).frozen_NFZ == 1
 
 
 def test_convenience_supersonic_ratio():
