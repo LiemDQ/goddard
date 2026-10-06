@@ -21,7 +21,7 @@ Goddard performs 5 main types of computations:
 - **Gas** (`gas.hpp/cpp`): Core primitive for querying thermodynamic properties. Building block for the main solvers. 
 - **Equilibrium** (`equilibrium.hpp/cpp`): Chemical equilibrium calculations and thermodynamic derivatives
 - **Combustor** (`combustor.hpp/cpp`): Combustion of fuel/oxidizer streams (`Combustor`) and streams diluted with recirculated flue gas (`DilutedCombustor`). `CombustionProcess` selects isobaric (HP) or isochoric (UV) equilibrium. `CombustorType::INFINITE_AREA` gives the chamber directly; for `FINITE_MASS_FLUX` and `FINITE_CONTRACTION_RATIO` the combustor produces the injector-face state and `Nozzle::solve_finite_area_chamber` solves the finite-area chamber (isobaric only). Every solve rejects empty pressure or mixture-ratio grids with `std::invalid_argument`.
-- **Nozzle** (`nozzle.hpp/cpp`): 1D isentropic nozzle expansion. A single `Nozzle` class dispatches on `NozzleOptions::chemistry` (EQUILIBRIUM, or FROZEN with `frozen_NFZ` giving the freezing station). Solves throat conditions, then supersonic/subsonic area-ratio or pressure-ratio stations, or stations along a `NozzleProfile`.
+- **Nozzle** (`nozzle.hpp/cpp`): 1D isentropic nozzle expansion. A single `Nozzle` class dispatches on `NozzleOptions::chemistry` (EQUILIBRIUM, or FROZEN with `frozen_NFZ` giving the freezing station). Solves throat conditions, then supersonic/subsonic area-ratio or pressure-ratio stations, or stations along a `NozzleProfile`. Each `NozzleStation` (and `ThroatCondition`) carries a `ThermodynamicState` in the station's chemistry plus velocity, Mach and A/A_t; the raw `state` vector is kept for `Gas::restore_state`.
 - **ThermoArray** (`thermoarray.hpp/cpp`): Batch thermodynamic property calculations over up to 3-D grids, wrapping `Cantera::SolutionArray`. Entries are stored first-dimension-fastest; always convert indices with `flat_index(i, j, k)`. Each array owns a private clone of its `Solution`: Cantera 3.2's `SolutionArray::getState` returns the live `Solution` state for the most recently accessed location (Cantera #2067, unreleased fix), so the private `Solution` must always equal the stored entry at that location. Write states with `set_state`, never through a shared `Solution`.
 - **MoC**: 2D supersonic nozzle flow via Method of Characteristics, one concern per header:
   - `moc.hpp`: Public options/results/error types (`MocOptions`, `MocResult`, `MocFailure`, `MocErrorCode`, diagnostics structs)
@@ -144,7 +144,8 @@ Users start by constructing a `Gas` object by specifying thermodynamic data. `Ga
 - Private class members start with `m_`. Public class members are named normally. 
 
 ### State Management
-- Cantera `Solution` objects are wrapped in `std::shared_ptr` for safe state management
+- Cantera `Solution` objects are wrapped in `std::shared_ptr`. Copying a `Gas` shares its `Solution`; `Gas::clone()` makes an independent copy.
+- Solvers (`Nozzle`, combustors, `ShockSolver`, `DetonationSolver`, `KineticNozzle`, `MocNozzle`) clone the `Gas` they are given, so they never change the caller's `Gas`; state accessors such as `post_shock_state()` return independent copies.
 - Initial states are preserved using `saveState()/restoreState()` pattern
 - Thermodynamic calculations modify underlying Cantera state objects
 
@@ -172,8 +173,11 @@ Users start by constructing a `Gas` object by specifying thermodynamic data. `Ga
 - `goddard_warnings` is linked PRIVATE to `goddard_lib` so consumers (bindings, tests) don't inherit `-Werror` and strict warning flags
 - `python/CMakeLists.txt` additionally suppresses warnings from Python C API headers via `-Wno-*` flags
 - `ThermoArray` is bound read-only (getters only); Eigen arrays auto-convert to numpy via `nanobind/eigen/dense.h`
-- `RocketProblemResults.cases` accessed via `get_case(name)` / `case_names()` methods (returns references) rather than exposing the raw `unordered_map`
+- `RocketProblemResults` exposes a flat station list and accessors (`chamber()`, `throat()`, `exits()`, `performance()`, `case_names()`) rather than the per-case map
 - `moc_design()` / `moc_analysis()` convenience functions for common MoC workflows
+- MoC solver diagnostics (pass and start-line diagnostics, chain bookkeeping) live in `goddard.moc_diagnostics`, not the top-level namespace
+- Result structs are read-only and have no Python constructor; option structs have one keyword constructor with all-default arguments
+- Options for planned but unimplemented features (`MocOptions::exit_mach`, `MocMode::DESIGN_CENTERLINE`, `RocketProblem` transport/ionized species/trace, `ChemicalParameters` mixtures/phi_ratios/fuel_weight_percentages) raise `NotImplementedError` when set rather than being ignored
 
 ### Examples
 Python examples and notebooks in `examples/` demonstrate:
