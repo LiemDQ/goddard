@@ -7,6 +7,8 @@
 #include <iterator>
 #include <utility>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 #include <cassert>
 namespace Goddard {
 
@@ -42,6 +44,12 @@ void BaseCombustor::validate_options(const CombustorOptions& options) {
             break;
         case CombustorType::NONE:
             throw NotImplementedError("CombustorType::NONE is not implemented.");
+    }
+}
+
+void BaseCombustor::require_nonempty(const Eigen::ArrayXd& values, const std::string& name) {
+    if (values.size() == 0) {
+        throw std::invalid_argument("Combustor: " + name + " must not be empty.");
     }
 }
 
@@ -167,6 +175,8 @@ double fuel_mass_fraction(double mixture_ratio, MixtureRatioType type) {
 ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
     if (!m_fuel_gas || !m_oxidizer_gas) {
         throw NotImplementedError(
             "Combustor::solve(pressures, mixture_ratios) requires the combustor to be built from "
@@ -232,6 +242,9 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options) {
 
+    require_nonempty(temperatures, "temperatures");
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type);
 
     ThermoArray combustion_states =
@@ -245,6 +258,8 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
     const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
     auto thermo = m_gas.thermo();
     MixtureRatioType type = options.mixture_type;
 
@@ -355,6 +370,9 @@ DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,
 ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio, const CombustorOptions& options) {
 
+    require_nonempty(temperatures, "temperatures");
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type, recirculation_ratio);
 
     ThermoArray combustion_states =
@@ -369,6 +387,8 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
     const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
     auto thermo = m_gas.thermo();
     MixtureRatioType type = options.mixture_type;
     double r = recirculation_ratio;

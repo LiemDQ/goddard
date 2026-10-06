@@ -221,6 +221,63 @@ TEST_F(H2O2CombustorTests, stringCompositionConstructorParsesSpecies) {
     }
 }
 
+TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
+    // An empty pressure or mixture-ratio grid has no combustion state to compute. Every solve
+    // entry point must say so instead of reading pressures[0] out of bounds.
+    const Eigen::ArrayXd empty(0);
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << 6.0;
+
+    EXPECT_THROW(combustor->solve(300.0, 300.0, empty, mixture_ratios, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(300.0, 300.0, pressures, empty, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(temperatures, empty, mixture_ratios, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(temperatures, pressures, empty, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(empty, pressures, mixture_ratios, options),
+                 std::invalid_argument);
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    EXPECT_THROW(stream_combustor.solve(empty, mixture_ratios, options), std::invalid_argument);
+    EXPECT_THROW(stream_combustor.solve(pressures, empty, options), std::invalid_argument);
+
+    DilutedCombustor diluted(gas, fuel_comp, oxidizer_comp, Composition{{"N2", 1.0}});
+    EXPECT_THROW(diluted.solve(300.0, 300.0, 300.0, empty, mixture_ratios, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(300.0, 300.0, 300.0, pressures, empty, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(temperatures, empty, mixture_ratios, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(temperatures, pressures, empty, 0.1, options),
+                 std::invalid_argument);
+
+    // An empty chamber pressure list in a RocketProblem reaches the same check.
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures(0), "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures(0), "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {6.0};
+    RocketCaseParameters case_params;
+    case_params.name = "no_pressures";
+    case_params.problem_type = "rocket";
+    case_params.nozzle_options.expansion_ratios = {5.0};
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    EXPECT_THROW(problem.solve(), std::invalid_argument);
+}
+
 // ---- Isochoric combustion ----
 
 TEST_F(H2O2CombustorTests, isochoricConservesInternalEnergyAndVolume) {

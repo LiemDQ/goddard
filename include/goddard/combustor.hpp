@@ -99,6 +99,15 @@ class BaseCombustor {
      */
     static void validate_options(const CombustorOptions& options);
 
+    /**
+     * Reject an empty input grid before any entry of it is read.
+     *
+     * @param values Grid of input values, e.g. pressures [Pa] or mixture ratios [-].
+     * @param name Name of the grid, for the error message.
+     * @throws std::invalid_argument if `values` is empty.
+     */
+    static void require_nonempty(const Eigen::ArrayXd& values, const std::string& name);
+
     void set_mixture_composition(double value, MixtureRatioType type,
         const Composition& fuel, const Composition& oxidizer) const;
 };
@@ -158,6 +167,7 @@ class Combustor : public BaseCombustor {
      * if `options.type` is `NONE`, or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
      * @throws FmtError if a reactant contains an element the product gas does not have.
+     * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty.
      */
     ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});
