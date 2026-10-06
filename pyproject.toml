@@ -78,7 +78,7 @@ sdist.exclude = [
     "/instructions",
     "/site",
     "/build*",
-    "/examples/basic_MoC.ipynb",
+    "/examples/*",
     "/.bash_profile",
     "/.bashrc",
     "/.profile",
