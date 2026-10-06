@@ -16,7 +16,6 @@ add_library(
   speciate.cpp
   nozzle.cpp
   gas_dynamics.cpp
-  numerics.cpp
   problem.cpp
   format.cpp
   rocket_results.cpp

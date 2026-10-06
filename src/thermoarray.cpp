@@ -429,10 +429,5 @@ void ThermoArray::_update_states_with_composition(
 		}
 	}
 }
- 
-std::shared_ptr<Solution> ThermoArray::copy_original_solution(){
-
-	return copy_solution(*m_solution);
-}
 
 } //namespace Goddard

@@ -47,12 +47,6 @@ Gas::Gas(const std::string& infile,
     set_current_state_as_reference();
 }
 
-Gas::Gas(double gamma) : m_gamma(gamma)
-{
-    chemistry = GasChemistry::PERFECT_GAS;
-    set_current_state_as_reference();
-}
-
 Gas Gas::clone() const {
     Gas copy = *this;
     if (m_condensed) {
@@ -365,12 +359,8 @@ double Gas::gamma() const {
 
 double Gas::gamma_s() const {
     switch (chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            if (has_cantera_sln()) {
-                return cp_mass() / cv_mass();
-            }
-            else return m_gamma;
-        }
+        case GasChemistry::PERFECT_GAS:
+            return cp_mass() / cv_mass();
         case GasChemistry::FROZEN:
         case GasChemistry::KINETIC:
             return cp_mass() / cv_mass();
@@ -572,14 +562,7 @@ ExpansionProperties Gas::expansion_properties() const {
     switch (chemistry) {
         case GasChemistry::EQUILIBRIUM:
             return get_thermo_equilibrium_properties(*this);
-        case GasChemistry::PERFECT_GAS: {
-            if (!has_cantera_sln()) return {1.0, -1.0, 0.0, m_gamma};
-            else {
-                double cp = cp_mass();
-                double g = cp / cv_mass();
-                return {1.0, -1.0, cp, g};
-            }
-        }
+        case GasChemistry::PERFECT_GAS:
         case GasChemistry::FROZEN:
         case GasChemistry::KINETIC: {
             double cp = cp_mass();

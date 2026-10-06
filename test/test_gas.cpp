@@ -229,17 +229,6 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
 
 // Copy semantics
 
-TEST_F(GasTests, PerfectGasCopyPreservesGamma) {
-    Gas gas(1.4);
-    Gas copied(gas); // NOLINT(performance-unnecessary-copy-initialization): the copy is under test
-    EXPECT_DOUBLE_EQ(copied.gamma_s(), 1.4);
-
-    Gas assigned(1.2);
-    assigned = gas;
-    EXPECT_DOUBLE_EQ(assigned.gamma_s(), 1.4);
-    EXPECT_EQ(assigned.chemistry, GasChemistry::PERFECT_GAS);
-}
-
 TEST_F(GasTests, CopySharesSolution) {
     Gas gas(sol, GasChemistry::FROZEN);
     Gas copied = gas;
@@ -271,13 +260,6 @@ TEST_F(GasTests, CloneIsIndependentDeepCopy) {
     double T_original = gas.temperature();
     cloned.set_state_TP(1000.0, 1e5);
     EXPECT_DOUBLE_EQ(gas.temperature(), T_original);
-}
-
-TEST_F(GasTests, ClonePerfectGas) {
-    Gas gas(1.3);
-    Gas cloned = gas.clone();
-    EXPECT_FALSE(cloned.has_cantera_sln());
-    EXPECT_DOUBLE_EQ(cloned.gamma_s(), 1.3);
 }
 
 // Element bookkeeping and reactant streams

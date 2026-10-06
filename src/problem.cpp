@@ -25,24 +25,6 @@
 
 namespace Goddard {
 
-std::shared_ptr<RocketProblem> create(const ChemicalParameters& chem_params,
-        std::vector<RocketCaseParameters>& cases,
-        const std::string& name,
-        bool include_transport,
-        bool include_ionized_species,
-        double trace_cutoff) {
-    
-    
-    return std::make_shared<RocketProblem>(
-        chem_params,
-        cases,
-        name,
-        include_transport,
-        include_ionized_species,
-        trace_cutoff
-    );
-} 
-
 RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
         const std::vector<RocketCaseParameters>& cases,
         const std::string& name,

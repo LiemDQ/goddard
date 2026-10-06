@@ -68,13 +68,6 @@ public:
      * prints a specific heat of zero for such a station.
      */
     bool pinned_transition = false;
-
-    size_t state_size() const;
-    /**
-     * Outputs a raw vector suitable for use with Cantera objects. 
-     */
-    std::vector<double> to_vector() const;
-    std::vector<double> to_mole_vector(Cantera::ThermoPhase& sln) const;
 };
 
 
@@ -91,10 +84,6 @@ public:
     double T = 0.0;
     double P = 0.0;
     Composition composition = {};
-
-    std::vector<double> to_vector(Cantera::ThermoPhase& sln) const;
-    std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln) const;
-    
 };
 
 

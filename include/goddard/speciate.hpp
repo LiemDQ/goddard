@@ -81,10 +81,4 @@ Cantera::AnyMap create_speciated_phase_node(
     const std::vector<std::string>& elements, 
     double T = 298.15, double P = 101325);
 
-struct Speciation { //TODO: implement speciation functionality
-    std::unordered_set<std::string> elements;
-    std::unordered_set<std::string> species;
-    int max_species = 10;
-};
-
 } //namespace Goddard

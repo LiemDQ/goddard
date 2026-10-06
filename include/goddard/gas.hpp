@@ -60,11 +60,6 @@ public:
         GasChemistry chemistry = GasChemistry::FROZEN);
     
     /**
-     * Create a perfect gas object from the adiabatic index.
-     */
-    Gas(double gamma);
-
-    /**
      * Create a new Gas with a deep copy of the underlying Solution object and of the condensed
      * species set, if any. The chemistry mode and stored reference stagnation enthalpy and
      * entropy are preserved.
@@ -600,7 +595,6 @@ private:
     std::shared_ptr<CondensedPhaseSet> m_condensed;
     double m_H_stagnation = 0.0;
     double m_S0 = 0.0;
-    double m_gamma = 0.0;
     /** Constant-T, constant-P solves used by the most recent `equilibrate_*` call. */
     int m_equilibrium_solve_count = 0;
 

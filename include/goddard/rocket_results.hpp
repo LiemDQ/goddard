@@ -201,10 +201,6 @@ private:
     /** Product mixture used to read the stored station states back. */
     Gas m_gas;
 
-    /** Underlying Cantera handles of the product mixture. */
-    inline std::shared_ptr<Cantera::Solution> solution() { return m_gas.solution(); }
-    inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_gas.thermo(); }
-
     // Resolve case_name: if empty, returns the single case name; throws if ambiguous.
     std::string resolve_case(const std::string& case_name) const;
 };

@@ -55,10 +55,6 @@ class ThermoArray {
 	 */
 	ThermoArray(const Gas& gas, const std::vector<long>& shape);
 
-	static std::shared_ptr<ThermoArray> create(const std::shared_ptr<Cantera::Solution>& sol, int size=0, const Cantera::AnyMap& meta={}) {
-		return std::shared_ptr<ThermoArray>(new ThermoArray(sol, size, meta));
-	}
-
 	void reshape(const std::vector<long>& shape);
 	inline std::vector<long> shape() const {return m_states->apiShape();}
 
@@ -258,11 +254,6 @@ class ThermoArray {
 	template <typename Func>
 	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& arr1, const Eigen::ArrayXd& arr2, const Eigen::ArrayXXd& arr3);
 	
-	/**
-	 * @brief Create a copy of the underlying solution that the array is derived from.
-	 * 
-	 */
-	std::shared_ptr<Cantera::Solution> copy_original_solution();
 	
 
 	// Private copy of the constructor's Solution, used by `m_states` as its working state.
