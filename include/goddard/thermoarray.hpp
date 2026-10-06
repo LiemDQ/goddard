@@ -110,6 +110,9 @@ class ThermoArray {
 	 * Property getters. The result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D arrays,
 	 * where element (i, j) is the entry at `flat_index(i, j, slice)`. `slice` selects the index along the third
 	 * dimension and must be 0 for arrays with fewer than 3 dimensions.
+	 *
+	 * The values are those of the gas phase alone: condensed species are not included in the
+	 * energies, entropies or molecular weight.
 	 */
 	Eigen::ArrayXXd temperature(int slice = 0) const;
 	Eigen::ArrayXXd pressure(int slice = 0) const;
@@ -151,7 +154,7 @@ class ThermoArray {
 	void TD(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ds);
 
 	/**
-	 * @brief Set the enthalpy and pressure of the array.
+	 * @brief Set the temperature [K] and specific volume [m^3/kg] of the array.
 	 */
 	void TV(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Vs);
 
@@ -173,9 +176,9 @@ class ThermoArray {
 	void HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps);
 
 	/**
-	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
-	 * The mole fraction matrix columns should represent species and 
-	 * the rows should represent distinct compositions. 
+	 * @brief Set the enthalpy, pressure, and mole fractions (HPX) or mass fractions (HPY) of
+	 * the array. The composition matrix columns should represent species and the rows should
+	 * represent distinct compositions.
 	 * */
 	void HPX(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
 	void HPY(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
@@ -186,9 +189,9 @@ class ThermoArray {
 	void SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps);
 
 	/**
-	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
-	 * The mole fraction matrix columns should represent species and 
-	 * the rows should represent distinct compositions. 
+	 * @brief Set the entropy, pressure, and mole fractions (SPX) or mass fractions (SPY) of
+	 * the array. The composition matrix columns should represent species and the rows should
+	 * represent distinct compositions.
 	 * */
 	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
 	void SPY(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);

@@ -241,14 +241,34 @@ public:
      * @return velocity [m/s]
      */
     double isenthalpic_velocity() const;
+    /**
+     * Nozzle area per unit mass flow rate at the current state, RT/(P M u) (RP-1311 eq. 6.12).
+     * @param velocity flow velocity [m/s]
+     * @return area per mass flow rate [m^2 s/kg]
+     */
     double area_per_mdot(double velocity) const;
     /**
      * Mach number at the current state for a given velocity.
      * @param velocity flow velocity [m/s]
      */
     double mach(double velocity) const;
+    /**
+     * Characteristic velocity from the perfect-gas formula, using the current temperature,
+     * molecular weight and `gamma_s()`. This is an estimate: the c* of a rocket case is the
+     * one in `RocketPerformance`, computed from the throat mass flux.
+     * @return c* [m/s]
+     */
     double cstar() const;
+    /**
+     * Isenthalpic velocity from the stored stagnation enthalpy, the specific impulse of an
+     * exit at the current state.
+     * @return specific impulse [m/s]
+     */
     double isp() const;
+    /**
+     * Vacuum specific impulse of an exit at the current state, u + RT/(M u).
+     * @return vacuum specific impulse [m/s]
+     */
     double ivac() const;
 
     // Mixture properties
@@ -280,6 +300,13 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /**
+     * Set the composition from a fuel fraction, an equivalence ratio or an O/F ratio, keeping
+     * temperature and pressure.
+     *
+     * These setters also make the new state the reference: the stored stagnation enthalpy and
+     * reference entropy are reset to those of the new mixture.
+     */
     void set_fuel_fraction(
         double fuel_frac,
         const std::string& fuel_comp, 

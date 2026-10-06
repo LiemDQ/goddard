@@ -93,7 +93,7 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
         const double dh_dlogP = T_down/gas.molecular_weight()*(1.0 - dlogV_dlogT);
         const double dh_dlogT = T_down*props.spec_heat_p/R;
 
-        // residuals f and Jacobian J = df/dx, in the sign convention of instructions/shocks.md
+        // residuals f and Jacobian J = df/dx, in the sign convention of docs/theory/shocks.md
         double f_P = 0.0, f_h = 0.0;
         double J_PP = 0.0, J_PT = 0.0, J_hP = 0.0, J_hT = 0.0;
         switch (condition) {
@@ -120,7 +120,7 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
             }
             case JumpCondition::CHAPMAN_JOUGUET: {
                 // RP-1311 eqs. (8.1)-(8.12): u2 = a2 eliminates the velocity. gamma_s is held
-                // fixed in the Jacobian, as in RP-1311; see instructions/detonations.md.
+                // fixed in the Jacobian, as in RP-1311; see docs/theory/detonations.md.
                 const double r = gas.density()/rho_up;  // rho2/rho1
                 const double gamma_s = props.gamma_s;
                 const double sonic = gamma_s*T_down/(2.0*gas.molecular_weight());  // a2^2/(2R)

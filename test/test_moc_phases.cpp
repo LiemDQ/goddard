@@ -557,6 +557,19 @@ TEST(MocThrust, AmbientPressureReducesCf) {
         << "Cf_vacuum and Cf should match when ambient=0";
 }
 
+TEST(MocThrust, RejectsExitPlaneWithFewerThanTwoPoints) {
+    MocResult result;
+    result.throat_radius = 1.0;
+    EXPECT_THROW(compute_thrust_coefficient(result, MocFlowKind::PLANAR), std::invalid_argument);
+
+    result.exit_plane.y = {0.0};
+    result.exit_plane.mach = {2.0};
+    result.exit_plane.theta = {0.0};
+    result.exit_plane.pressure = {0.1};
+    result.exit_plane.gamma_s = {1.4};
+    EXPECT_THROW(compute_thrust_coefficient(result, MocFlowKind::PLANAR), std::invalid_argument);
+}
+
 // ============================================================
 // Analysis mode
 // ============================================================

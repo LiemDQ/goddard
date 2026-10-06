@@ -197,7 +197,9 @@ ThrustCoefficient compute_thrust_coefficient(
     size_t n = ep.y.size();
 
     if (n < 2) {
-        return {0.0, 0.0, 0.0, 0.0};
+        throw std::invalid_argument(std::format(
+            "compute_thrust_coefficient needs at least 2 exit-plane points, got {}; "
+            "the MoC solve likely failed before reaching the exit.", n));
     }
 
     double momentum_integral = 0.0;

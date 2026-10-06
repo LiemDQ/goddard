@@ -49,10 +49,8 @@ public:
      *
      * theta_at() looks up the bracketing facet [x[idx-1], x[idx]] and returns its single
      * finite-difference angle theta_at_idx(idx) unchanged for every query inside that
-     * facet, i.e. it is piecewise constant in x -- deliberately so, since it reports the
-     * angle of the facet a query point belongs to, which is what the DIRECT kernel's
-     * facet-quantized wall stepping and its invariance tests are built against. theta_at is
-     * therefore left unchanged here. A caller that samples the wall at stations finer than
+     * facet, i.e. it is piecewise constant in x: it reports the angle of the facet a query
+     * point belongs to. A caller that samples the wall at stations finer than
      * the profile's own facets (the inverse march's per-pass wall point) instead needs an
      * angle that is continuous in x, so this interpolates linearly between the same
      * theta_at_idx() vertex values across each facet rather than snapping to one of them.

@@ -165,7 +165,7 @@ MixtureState mixture_state(const Gas& gas) {
  *
  * Unknowns are ordered `[pi (l) | dn_C' (|C'|) | dlog n (1)]` and the same matrix is solved for
  * the temperature and the pressure right-hand side (G&M 2.56-2.58 and 2.64-2.66, extended with
- * the condensed columns and rows as in `instructions/condensed_species.md` section 4):
+ * the condensed columns and rows listed below):
  *
  * - element row k: `sum_i [sum_G a_kj a_ij n_j] pi_i + sum_C a_kj dn_j + [sum_G a_kj n_j] dlog n`
  * - condensed row j: `sum_i a_ij pi_i`

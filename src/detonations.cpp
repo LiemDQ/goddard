@@ -141,7 +141,7 @@ JumpGuess chapman_jouguet_initial_estimate(Gas& gas) {
 /**
  * Initial guess for an overdriven or under-driven detonation: the one-gamma model fitted to the
  * CJ solution, which is exact at a drive factor of 1 and splits into the two branches as
- * sqrt(drive_factor - 1). See instructions/detonations.md.
+ * sqrt(drive_factor - 1). See docs/theory/detonations.md.
  *
  * @param momentum_coeff rho1 u1^2/P1 [-]
  */

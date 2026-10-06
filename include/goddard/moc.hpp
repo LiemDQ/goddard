@@ -542,6 +542,8 @@ struct ThrustCoefficient {
  * @param result   MoC solution result (must have populated exit_plane with gamma_s)
  * @param flow_type  PLANAR or AXISYMMETRIC (determines integration measure)
  * @param ambient_pressure_ratio  p_amb / p0 (0 for vacuum)
+ *
+ * @throws std::invalid_argument if the exit plane has fewer than 2 points.
  */
 ThrustCoefficient compute_thrust_coefficient(
     const MocResult& result,

@@ -58,7 +58,7 @@ struct CombustorOptions {
 };
 
 /**
- * @brief Base class for isobaric combustion reactions.
+ * @brief Base class for isobaric (HP) and isochoric (UV) combustion.
  * Provides shared utilities for stream mixing and equilibration.
  */
 class BaseCombustor {

@@ -198,7 +198,8 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
     const double gamma_injector = m_gas.gamma_s();
     const double R_specific = Cantera::GasConstant / m_gas.molecular_weight();
 
-    // Perfect-gas initial guess for P_inf (see instructions/finite_area_combustor.md, section 3).
+    // Perfect-gas initial guess for P_inf: find the combustion-end Mach number that the
+    // contraction ratio or mass flux implies, then P_inf = P_inj / finite_area_pressure_loss(M).
     double mach_guess = 0.0;
     if (contraction_mode) {
         mach_guess = mach_from_area_ratio(value, gamma_injector, false);

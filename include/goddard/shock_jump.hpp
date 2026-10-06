@@ -42,7 +42,7 @@ ShockResult invalid_shock();
  *
  * `gas` holds the upstream state on entry and the downstream state on exit. `gas.chemistry`
  * selects frozen or equilibrium downstream properties; the derivations are in
- * instructions/shocks.md and instructions/detonations.md.
+ * docs/theory/shocks.md and docs/theory/detonations.md.
  *
  * @param velocity u1 for INCIDENT, the particle velocity u_p of gas 2 for REFLECTED, ignored for
  * CHAPMAN_JOUGUET [m/s]
@@ -55,7 +55,7 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
 
 /**
  * Solve a shock jump with the given chemistry. EQUILIBRIUM first solves the frozen jump and
- * uses it as the initial guess (instructions/shocks.md, section 1).
+ * uses it as the initial guess (docs/theory/shocks.md, "Normal shock relations for real gases").
  *
  * `gas` holds the upstream state on entry and the downstream state on exit, with
  * `gas.chemistry` set to `chemistry`.

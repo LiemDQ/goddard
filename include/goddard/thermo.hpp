@@ -22,13 +22,13 @@ inline double ideal_gas_D_to_P(double D, double T, double molar_mass) {
 }
 
 /**
- * @brief Get the pressure of an ideal gas from its density, temperature, and molar mass. 
- * 
+ * @brief Get the density of an ideal gas from its pressure, temperature, and molar mass.
+ *
  * @param P pressure in Pa
  * @param T temperature in K
  * @param molar_mass molar mass in kg/kmol
- * 
- * @returns Density in kg/kmol 
+ *
+ * @returns Density in kg/m3
  */
 inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
     return P*molar_mass/(T*Cantera::GasConstant);
