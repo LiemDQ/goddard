@@ -9,9 +9,10 @@ macro that nanobind binding files can use::
     .def("set_state_TP", &Goddard::Gas::set_state_TP,
          "T"_a, "P"_a, DOC(Goddard, Gas, set_state_TP))
 
-If ``pybind11_mkdoc`` (or its libclang dependency) is not available, OR if
-``--stub`` is passed, the script writes a stub header that defines
-``DOC(...)`` as an empty string. The generated header is committed, so builds
+If ``pybind11_mkdoc`` (or its libclang dependency) is not available or fails, the
+script keeps an existing header and writes a stub only when there is none; ``--stub``
+always writes the stub, which defines ``DOC(...)`` as an empty string. The generated
+header is committed, so builds
 without the docs toolchain (e.g. plain ``pixi run compile``) use it as is and
 only fall back to the stub when it is missing (``--stub --if-missing``).
 """
@@ -43,18 +44,31 @@ def write_stub(out_path: Path) -> None:
     print(f"[generate_docstrings] wrote stub -> {out_path}", file=sys.stderr)
 
 
+def fall_back(out_path: Path, reason: str) -> None:
+    """Keep an existing header when extraction is impossible; write the stub only if none exists.
+
+    The header is committed, so replacing it with the stub would silently strip every docstring
+    from the next commit and from packages built from it.
+    """
+    if out_path.exists():
+        print(f"[generate_docstrings] {reason}; keeping the existing {out_path}", file=sys.stderr)
+    else:
+        print(f"[generate_docstrings] {reason}; falling back to stub", file=sys.stderr)
+        write_stub(out_path)
+
+
 def run_mkdoc(out_path: Path, include_dirs: list[str], headers: list[Path],
               extra_clang_args: list[str]) -> int:
     try:
         import pybind11_mkdoc  # noqa: F401
     except ImportError:
-        print("[generate_docstrings] pybind11_mkdoc not installed; falling back to stub",
-              file=sys.stderr)
-        write_stub(out_path)
+        fall_back(out_path, "pybind11_mkdoc not installed")
         return 0
 
+    # Extract into a temporary file, so that a failed run cannot leave a partial header behind.
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd: list[str] = [sys.executable, "-m", "pybind11_mkdoc", "-o", str(out_path)]
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
+    cmd: list[str] = [sys.executable, "-m", "pybind11_mkdoc", "-o", str(tmp_path)]
     for inc in include_dirs:
         cmd.append(f"-I{inc}")
     cmd.extend(extra_clang_args)
@@ -65,15 +79,14 @@ def run_mkdoc(out_path: Path, include_dirs: list[str], headers: list[Path],
     try:
         result = subprocess.run(cmd, check=False)
     except FileNotFoundError as e:
-        print(f"[generate_docstrings] failed to launch pybind11_mkdoc: {e}", file=sys.stderr)
-        write_stub(out_path)
+        fall_back(out_path, f"failed to launch pybind11_mkdoc: {e}")
         return 0
 
-    if result.returncode != 0:
-        print(f"[generate_docstrings] pybind11_mkdoc exited with {result.returncode}; "
-              "falling back to stub", file=sys.stderr)
-        write_stub(out_path)
+    if result.returncode != 0 or not tmp_path.exists():
+        tmp_path.unlink(missing_ok=True)
+        fall_back(out_path, f"pybind11_mkdoc exited with {result.returncode}")
     else:
+        tmp_path.replace(out_path)
         print(f"[generate_docstrings] wrote {out_path}", file=sys.stderr)
     return 0
 
