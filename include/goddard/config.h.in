@@ -1,3 +1,4 @@
 #pragma once
 
 #define DATA_DIR "@DATA_DIR@"
+#define GODDARD_VERSION "@PROJECT_VERSION@"

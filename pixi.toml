@@ -138,8 +138,9 @@ LIBCLANG_PATH = "$CONDA_PREFIX/lib/libclang.so.13"
 [feature.docs.tasks.docs-configure]
 cmd = "mkdir -p build-docs && cmake -B build-docs -G Ninja -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE=$CONDA_PREFIX/bin/python -Dgoddard_BUILD_DOCSTRINGS=ON -Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF -Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF -Dgoddard_WARNINGS_AS_ERRORS=OFF -Dgoddard_ENABLE_CLANG_TIDY=OFF -Dgoddard_ENABLE_CPPCHECK=OFF"
 
-# goddard_docstrings.h is shared by every build: a default-env build without pybind11_mkdoc writes the
-# stub, which the docs build would otherwise treat as up to date. Removing it forces regeneration.
+# goddard_docstrings.h is committed and shared by every build; the docs build regenerates it in place.
+# Removing it first forces regeneration even when the header looks up to date, so the result
+# always reflects the current C++ headers. Commit the regenerated header.
 [feature.docs.tasks.docs-compile]
 cmd = "rm -f python/src/goddard_docstrings.h && cmake --build build-docs"
 depends-on = ["docs-configure"]
@@ -170,8 +171,18 @@ args = [{arg="version", default = "0.1"}]
 cmd = "mike deploy --push --update-aliases {{ version }} latest"
 depends-on = ["docs-build"]
 
+# Release packaging: the PyPI sdist and the conda package from recipe/recipe.yaml.
+[feature.package.dependencies]
+rattler-build = "*"
+python-build = "*"
+
+[feature.package.tasks]
+sdist = "python -m build --sdist --no-isolation"
+conda-build = "rattler-build build --recipe recipe/"
+
 [environments]
 default = {solve-group = "default"}
 examples = {features = ["examples"], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
 docs = {features = ["docs", "examples"], solve-group = "default"}
+package = {features = ["package"], solve-group = "default"}
