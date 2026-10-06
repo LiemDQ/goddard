@@ -361,7 +361,6 @@ double Gas::gamma() const {
 double Gas::gamma_s() const {
     switch (chemistry) {
         case GasChemistry::PERFECT_GAS:
-            return cp_mass() / cv_mass();
         case GasChemistry::FROZEN:
         case GasChemistry::KINETIC:
             return cp_mass() / cv_mass();

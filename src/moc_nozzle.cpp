@@ -190,6 +190,10 @@ MocResult MocNozzle::solve() {
     }
     else {
         // Cantera-backed path for frozen/equilibrium chemistry
+        if (!m_gas) {
+            throw std::invalid_argument(
+                "MocNozzle: FROZEN and EQUILIBRIUM chemistry need a Gas; construct with MocNozzle(gas, options).");
+        }
         NozzleOptions nozzle_opts;
         nozzle_opts.chemistry = options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);

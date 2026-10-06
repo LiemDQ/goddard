@@ -302,3 +302,14 @@ TEST(MocOptionsValidation, PlaceholderOptionsAreNotImplemented) {
     upstream.geometry.upstream_wall_curvature_radius = 2.0;
     EXPECT_THROW(validate_moc_options(upstream), NotImplementedError);
 }
+
+// Real-gas chemistry without a Gas is a usage error, not undefined behaviour.
+TEST(MocOptionsValidation, RealGasChemistryWithoutGasThrows) {
+    MocOptions options;
+    options.flow_type = MocFlowKind::PLANAR;
+    options.chemistry = GasChemistry::FROZEN;
+    options.mode = MocMode::DESIGN_MIN_LENGTH;
+    options.theta_max = 15.0 * DEG;
+    MocNozzle nozzle(options);
+    EXPECT_THROW(nozzle.solve(), std::invalid_argument);
+}

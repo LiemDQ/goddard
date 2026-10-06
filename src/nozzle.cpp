@@ -39,7 +39,7 @@ namespace {
 } // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
-    : m_inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(options) {
+    : m_inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(std::move(options)) {
     set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
@@ -50,7 +50,7 @@ Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
 }
 
 Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
-    : m_inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(options) {
+    : m_inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(std::move(options)) {
     set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
