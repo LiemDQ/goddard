@@ -177,7 +177,6 @@ MocResult MocNozzle::solve() {
         // Pure algebraic path: no Cantera dependency
         // throat populated with dummy values; they are not used in the perfect gas case.
         throat = ThroatCondition{
-            .converged = true,
             .speed_of_sound = 1.0,
             .H_stagnation = 1.0,
             .P_inlet = 1.0, // dimensionless stagnation pressure

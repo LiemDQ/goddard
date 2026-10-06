@@ -90,7 +90,6 @@ Goddard::RocketCaseParameters CEAIntegrationTests::createCaseParams(
 
     Goddard::RocketCaseParameters case_params;
     case_params.name = name;
-    case_params.problem_type = "rocket";
 
     // Combustor: infinite area at CEA pressure (convert psia to Pa)
     case_params.combustor_options.type = Goddard::CombustorType::INFINITE_AREA;

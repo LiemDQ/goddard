@@ -12,8 +12,7 @@ void bind_enums(nb::module_& m) {
     nb::enum_<Goddard::CombustorType>(m, "CombustorType")
         .value("INFINITE_AREA", Goddard::CombustorType::INFINITE_AREA)
         .value("FINITE_MASS_FLUX", Goddard::CombustorType::FINITE_MASS_FLUX)
-        .value("FINITE_CONTRACTION_RATIO", Goddard::CombustorType::FINITE_CONTRACTION_RATIO)
-        .value("NONE", Goddard::CombustorType::NONE);
+        .value("FINITE_CONTRACTION_RATIO", Goddard::CombustorType::FINITE_CONTRACTION_RATIO);
 
     nb::enum_<Goddard::CombustionProcess>(m, "CombustionProcess", DOC(Goddard, CombustionProcess))
         .value("ISOBARIC", Goddard::CombustionProcess::ISOBARIC)
@@ -109,16 +108,12 @@ void bind_enums(nb::module_& m) {
     nb::class_<Goddard::SolverOptions>(m, "SolverOptions")
         .def("__init__", [](Goddard::SolverOptions* self,
                             double abstol,
-                            double reltol,
                             int max_iterations) {
             new (self) Goddard::SolverOptions();
             self->abstol = abstol;
-            self->reltol = reltol;
             self->max_iterations = max_iterations;
         },  "abstol"_a = 1e-6,
-            "reltol"_a = 1e-5,
             "max_iterations"_a = 100)
         .def_rw("abstol", &Goddard::SolverOptions::abstol)
-        .def_rw("reltol", &Goddard::SolverOptions::reltol)
         .def_rw("max_iterations", &Goddard::SolverOptions::max_iterations);
 }

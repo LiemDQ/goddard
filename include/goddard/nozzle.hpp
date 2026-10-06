@@ -35,18 +35,10 @@ struct NozzleOptions {
      * throat in both cases.
      */
     int frozen_NFZ = 0;
-    SolverOptions solver;
-    double gamma = 1.4; // used only for PERFECT_GAS
-
-    // KineticNozzle-specific (ignored by Nozzle)
-    double dt_max = 1e-6;
-    double dx_max = 1e-3;
-    int max_steps = 100000;
 };
 
 
 struct ThroatCondition {
-    bool converged;
     double speed_of_sound;
     double H_stagnation;
     double P_inlet;
@@ -65,7 +57,6 @@ struct ThroatCondition {
 };
 
 struct NozzleStation {
-    bool converged;
     double gamma_s;
     double dlV_dlP_T;
     double dlV_dlT_P;

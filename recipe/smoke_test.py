@@ -40,12 +40,10 @@ def check_rocket_chamber():
     chemistry.species = PRODUCT_SPECIES
     chemistry.fuel_state = goddard.PhaseSpecification(300.0, 101325.0, "H2:1")
     chemistry.oxidizer_state = goddard.PhaseSpecification(300.0, 101325.0, "O2:1")
-    chemistry.mixture_ratio_type = goddard.MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [OF_RATIO]
 
     case = goddard.RocketCaseParameters()
     case.name = "smoke"
-    case.problem_type = "rocket"
     case.combustor_options = goddard.infinite_area_combustor([CHAMBER_PRESSURE])
     case.nozzle_options = goddard.equilibrium_nozzle(10.0)
 

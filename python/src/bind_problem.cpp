@@ -18,7 +18,7 @@ void bind_problem(nb::module_& m) {
                        const std::string&, bool, bool, double>(),
              "chem_params"_a, "cases"_a,
              "name"_a = "", "transport"_a = false,
-             "ionized_species"_a = false, "trace"_a = 1e-6)
+             "ionized_species"_a = false, "trace"_a = 0.0)
         .def("solve", &Goddard::RocketProblem::solve)
         .def_rw("include_transport", &Goddard::RocketProblem::include_transport)
         .def_rw("include_ionized_species", &Goddard::RocketProblem::include_ionized_species)

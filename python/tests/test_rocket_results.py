@@ -22,7 +22,6 @@ def build_h2o2_problem(name, pressures, area_ratios, of_ratios=(6.0,), nozzle_op
 
     case_params = goddard.RocketCaseParameters()
     case_params.name = name
-    case_params.problem_type = "rocket"
     case_params.combustor_options = goddard.infinite_area_combustor(pressures)
     case_params.nozzle_options = (nozzle_options if nozzle_options is not None
                                   else goddard.equilibrium_nozzle(*area_ratios))
@@ -112,3 +111,29 @@ def test_combustor_helpers_accept_numpy_pressures():
         assert list(opts.pressures) == pytest.approx(list(pressures))
 
     assert list(goddard.infinite_area_combustor().pressures) == []
+
+
+# ---------------------------------------------------------------------------
+# Options for planned features raise instead of being ignored
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("attribute, value", [
+    ("include_transport", True),
+    ("include_ionized_species", True),
+    ("trace_cutoff", 1e-5),
+])
+def test_unimplemented_problem_options_raise(attribute, value):
+    problem = build_h2o2_problem("placeholder", [20.0 * BAR], [5.0])
+    setattr(problem, attribute, value)
+    with pytest.raises(NotImplementedError):
+        problem.solve()
+
+
+@pytest.mark.parametrize("attribute", ["mixtures", "phi_ratios", "fuel_weight_percentages"])
+def test_unimplemented_mixture_lists_raise(attribute):
+    problem = build_h2o2_problem("placeholder", [20.0 * BAR], [5.0])
+    chem_params = problem.chemical_params
+    setattr(chem_params, attribute, [1.0])
+    problem.chemical_params = chem_params
+    with pytest.raises(NotImplementedError):
+        problem.solve()

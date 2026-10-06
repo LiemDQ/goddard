@@ -76,6 +76,7 @@ struct NozzleGeometry {
      */
     double throat_radius = 1.0;
     /// Wall radius of curvature upstream of the throat, as a multiple of `throat_radius`.
+    /// Not implemented: `validate_moc_options` raises NotImplementedError for any other value.
     double upstream_wall_curvature_radius = 1.5;
     /**
      * Wall radius of curvature downstream of the throat, as a multiple of `throat_radius`.
@@ -109,7 +110,7 @@ struct MocOptions {
     /// Ratio of specific heats. Used only when `chemistry` is GasChemistry::PERFECT_GAS.
     double gamma = 1.4;
     /// Tolerances for the iterative unit processes.
-    SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
+    SolverOptions solver_options{.abstol = 1e-10};
     /// Throat and contour geometry.
     NozzleGeometry geometry;
     /**
@@ -125,8 +126,9 @@ struct MocOptions {
     // -- Design --
     /// Maximum wall angle (radians), for MocMode::DESIGN_MIN_LENGTH.
     double theta_max = 0.0;
-    /// Target exit Mach number, for the design modes. Not read by the solver; the design
-    /// target is set through theta_max.
+    /// Target exit Mach number, for the design modes. Not implemented: the design target is set
+    /// through theta_max, and `validate_moc_options` raises NotImplementedError if this is
+    /// non-zero.
     double exit_mach = 0.0;
 
     /**
@@ -210,8 +212,11 @@ struct MocOptions {
  * error, not a numerical failure, so it throws rather than returning a MocFailure --
  * solve()'s "never throws for numerical failures" contract is unaffected.
  *
- * Mode-dependent fields (theta_max, exit_mach) are deliberately not checked: they are
- * legitimately left unset in ANALYSIS mode.
+ * theta_max is mode-dependent and deliberately not checked: it is legitimately left unset in
+ * ANALYSIS mode.
+ *
+ * @throws NotImplementedError for MocMode::DESIGN_CENTERLINE, a non-zero exit_mach, or a
+ * non-default geometry.upstream_wall_curvature_radius.
  */
 void validate_moc_options(const MocOptions& options);
 

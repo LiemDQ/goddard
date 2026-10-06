@@ -4,6 +4,7 @@
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/error.hpp"
 #include "cantera/core.h"
 #include <cmath>
 #include <limits>
@@ -277,4 +278,27 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
         EXPECT_TRUE(std::isfinite(pt.mu)) << "mu is non-finite";
     }
     expect_all_points_valid(result, opts.solver_options.abstol);
+}
+
+// Options that stand for planned features are rejected rather than silently ignored.
+TEST(MocOptionsValidation, PlaceholderOptionsAreNotImplemented) {
+    MocOptions base;
+    base.flow_type = MocFlowKind::PLANAR;
+    base.chemistry = GasChemistry::PERFECT_GAS;
+    base.mode = MocMode::DESIGN_MIN_LENGTH;
+    base.theta_max = 15.0 * DEG;
+    EXPECT_NO_THROW(validate_moc_options(base));
+
+    MocOptions centerline = base;
+    centerline.mode = MocMode::DESIGN_CENTERLINE;
+    EXPECT_THROW(validate_moc_options(centerline), NotImplementedError);
+
+    MocOptions exit_mach = base;
+    exit_mach.exit_mach = 2.0;
+    EXPECT_THROW(validate_moc_options(exit_mach), NotImplementedError);
+    EXPECT_THROW({ MocNozzle nozzle(exit_mach); }, NotImplementedError);
+
+    MocOptions upstream = base;
+    upstream.geometry.upstream_wall_curvature_radius = 2.0;
+    EXPECT_THROW(validate_moc_options(upstream), NotImplementedError);
 }

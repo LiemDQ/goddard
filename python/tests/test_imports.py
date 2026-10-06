@@ -13,7 +13,6 @@ def test_import_enums():
     assert CombustorType.INFINITE_AREA is not None
     assert CombustorType.FINITE_MASS_FLUX is not None
     assert CombustorType.FINITE_CONTRACTION_RATIO is not None
-    assert CombustorType.NONE is not None
 
     assert GasChemistry.FROZEN is not None
     assert GasChemistry.EQUILIBRIUM is not None
@@ -39,7 +38,7 @@ def test_import_structs():
         CombustorOptions, NozzleOptions, ThroatCondition,
         NozzleResult, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
         ChemicalParameters, ThermodynamicState, RocketPerformance,
-        RocketState, ExpansionProperties, EquilibriumDerivatives,
+        ExpansionProperties, EquilibriumDerivatives,
     )
 
 
@@ -100,14 +99,11 @@ def test_perfect_gas_max_deflection():
     assert not oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4).valid
 
 
-def test_nozzle_options_new_fields():
-    from goddard import NozzleOptions, SolverOptions
-    opts = NozzleOptions()
-    assert opts.dt_max == 1e-6
-    assert opts.dx_max == 1e-3
-    assert opts.max_steps == 100000
-    opts.solver = SolverOptions(abstol=1e-8)
-    assert opts.solver.abstol == 1e-8
+def test_nozzle_options_fields():
+    from goddard import NozzleOptions, GasChemistry
+    opts = NozzleOptions(frozen_NFZ=1, chemistry=GasChemistry.FROZEN)
+    assert opts.frozen_NFZ == 1
+    assert opts.chemistry == GasChemistry.FROZEN
 
 
 def test_import_errors():

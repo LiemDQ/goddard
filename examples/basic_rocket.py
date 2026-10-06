@@ -38,7 +38,6 @@ nozzle_opts = goddard.NozzleOptions(
 
 case1 = goddard.RocketCaseParameters(
     name = "h2o2eq",
-    problem_type = "",
     combustor_options = combust_opts,
     nozzle_options = nozzle_opts
 )

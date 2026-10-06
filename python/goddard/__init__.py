@@ -32,7 +32,6 @@ from goddard._core import (
     PhaseSpecification,
     RocketStation,
     RocketPerformance,
-    RocketState,
     ExpansionProperties,
     EquilibriumDerivatives,
     EquilibriumOptions,

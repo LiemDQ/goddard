@@ -54,42 +54,25 @@ void bind_structs(nb::module_& m) {
                             Goddard::GasChemistry chemistry,
                             Goddard::ExpansionType expansion_type,
                             std::vector<double> expansion_ratios,
-                            int frozen_NFZ,
-                            Goddard::SolverOptions solver,
-                            double dt_max,
-                            double dx_max,
-                            int max_steps) {
+                            int frozen_NFZ) {
             new (self) Goddard::NozzleOptions();
             self->chemistry = chemistry;
             self->expansion_type = expansion_type;
             self->expansion_ratios = std::move(expansion_ratios);
             self->frozen_NFZ = frozen_NFZ;
-            self->solver = solver;
-            self->dt_max = dt_max;
-            self->dx_max = dx_max;
-            self->max_steps = max_steps;
         },  "chemistry"_a = Goddard::GasChemistry::EQUILIBRIUM,
             "expansion_type"_a = Goddard::ExpansionType::SUPERSONIC_AREA_RATIO,
             "expansion_ratios"_a = std::vector<double>(),
-            "frozen_NFZ"_a = 0,
-            "solver"_a = Goddard::SolverOptions(),
-            "dt_max"_a = 1e-6,
-            "dx_max"_a = 1e-3,
-            "max_steps"_a = 100000)
+            "frozen_NFZ"_a = 0)
         .def_rw("chemistry", &Goddard::NozzleOptions::chemistry)
         .def_rw("expansion_type", &Goddard::NozzleOptions::expansion_type)
         .def_rw("expansion_ratios", &Goddard::NozzleOptions::expansion_ratios)
-        .def_rw("frozen_NFZ", &Goddard::NozzleOptions::frozen_NFZ)
-        .def_rw("solver", &Goddard::NozzleOptions::solver)
-        .def_rw("dt_max", &Goddard::NozzleOptions::dt_max)
-        .def_rw("dx_max", &Goddard::NozzleOptions::dx_max)
-        .def_rw("max_steps", &Goddard::NozzleOptions::max_steps);
+        .def_rw("frozen_NFZ", &Goddard::NozzleOptions::frozen_NFZ);
 
     // ThroatCondition
     nb::class_<Goddard::ThroatCondition>(m, "ThroatCondition")
         .def(nb::init<>())
         .def("__init__", [](Goddard::ThroatCondition* self,
-                            bool converged,
                             double speed_of_sound,
                             double H_stagnation,
                             double P_inlet,
@@ -100,7 +83,6 @@ void bind_structs(nb::module_& m) {
                             std::vector<double> state,
                             bool pinned_transition) {
             new (self) Goddard::ThroatCondition();
-            self->converged = converged;
             self->speed_of_sound = speed_of_sound;
             self->H_stagnation = H_stagnation;
             self->P_inlet = P_inlet;
@@ -110,8 +92,7 @@ void bind_structs(nb::module_& m) {
             self->dlV_dlT_P = dlV_dlT_P;
             self->state = std::move(state);
             self->pinned_transition = pinned_transition;
-        },  "converged"_a = false,
-            "speed_of_sound"_a = 0.0,
+        },  "speed_of_sound"_a = 0.0,
             "H_stagnation"_a = 0.0,
             "P_inlet"_a = 0.0,
             "S_inlet"_a = 0.0,
@@ -120,7 +101,6 @@ void bind_structs(nb::module_& m) {
             "dlV_dlT_P"_a = 0.0,
             "state"_a = std::vector<double>(),
             "pinned_transition"_a = false)
-        .def_ro("converged", &Goddard::ThroatCondition::converged)
         .def_ro("speed_of_sound", &Goddard::ThroatCondition::speed_of_sound)
         .def_ro("H_stagnation", &Goddard::ThroatCondition::H_stagnation)
         .def_ro("P_inlet", &Goddard::ThroatCondition::P_inlet)
@@ -136,26 +116,22 @@ void bind_structs(nb::module_& m) {
     nb::class_<Goddard::NozzleStation>(m, "NozzleResult")
         .def(nb::init<>())
         .def("__init__", [](Goddard::NozzleStation* self,
-                            bool converged,
                             double gamma_s,
                             double dlV_dlP_T,
                             double dlV_dlT_P,
                             std::vector<double> state,
                             bool pinned_transition) {
             new (self) Goddard::NozzleStation();
-            self->converged = converged;
             self->gamma_s = gamma_s;
             self->dlV_dlP_T = dlV_dlP_T;
             self->dlV_dlT_P = dlV_dlT_P;
             self->state = std::move(state);
             self->pinned_transition = pinned_transition;
-        },  "converged"_a = false,
-            "gamma_s"_a = 0.0,
+        },  "gamma_s"_a = 0.0,
             "dlV_dlP_T"_a = 0.0,
             "dlV_dlT_P"_a = 0.0,
             "state"_a = std::vector<double>(),
             "pinned_transition"_a = false)
-        .def_ro("converged", &Goddard::NozzleStation::converged)
         .def_ro("gamma_s", &Goddard::NozzleStation::gamma_s)
         .def_ro("dlV_dlP_T", &Goddard::NozzleStation::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::NozzleStation::dlV_dlT_P)
@@ -238,20 +214,16 @@ void bind_structs(nb::module_& m) {
         .def(nb::init<>())
         .def("__init__", [](Goddard::RocketCaseParameters* self,
                             std::string name,
-                            std::string problem_type,
                             Goddard::CombustorOptions combustor_options,
                             Goddard::NozzleOptions nozzle_options) {
             new (self) Goddard::RocketCaseParameters();
             self->name = std::move(name);
-            self->problem_type = std::move(problem_type);
             self->combustor_options = std::move(combustor_options);
             self->nozzle_options = std::move(nozzle_options);
         },  "name"_a = "",
-            "problem_type"_a = "",
             "combustor_options"_a = Goddard::CombustorOptions(),
             "nozzle_options"_a = Goddard::NozzleOptions())
         .def_rw("name", &Goddard::RocketCaseParameters::name)
-        .def_rw("problem_type", &Goddard::RocketCaseParameters::problem_type)
         .def_rw("combustor_options", &Goddard::RocketCaseParameters::combustor_options)
         .def_rw("nozzle_options", &Goddard::RocketCaseParameters::nozzle_options);
 
@@ -263,7 +235,6 @@ void bind_structs(nb::module_& m) {
                             std::unordered_set<std::string> species,
                             Goddard::PhaseSpecification fuel_state,
                             Goddard::PhaseSpecification oxidizer_state,
-                            Goddard::MixtureRatioType mixture_type,
                             std::vector<double> mixtures,
                             std::vector<double> OF_ratios,
                             std::vector<double> phi_ratios,
@@ -278,7 +249,6 @@ void bind_structs(nb::module_& m) {
             self->species = std::move(species);
             self->fuel_state = std::move(fuel_state);
             self->oxidizer_state = std::move(oxidizer_state);
-            self->mixture_type = mixture_type;
             self->mixtures = std::move(mixtures);
             self->OF_ratios = std::move(OF_ratios);
             self->phi_ratios = std::move(phi_ratios);
@@ -291,7 +261,6 @@ void bind_structs(nb::module_& m) {
             "species"_a = std::unordered_set<std::string>(),
             "fuel_state"_a = Goddard::PhaseSpecification(),
             "oxidizer_state"_a = Goddard::PhaseSpecification(),
-            "mixture_type"_a = Goddard::MixtureRatioType::FUEL_FRAC,
             "mixtures"_a = std::vector<double>(),
             "OF_ratios"_a = std::vector<double>(),
             "phi_ratios"_a = std::vector<double>(),
@@ -304,7 +273,6 @@ void bind_structs(nb::module_& m) {
         .def_rw("species", &Goddard::ChemicalParameters::species)
         .def_rw("fuel_state", &Goddard::ChemicalParameters::fuel_state)
         .def_rw("oxidizer_state", &Goddard::ChemicalParameters::oxidizer_state)
-        .def_rw("mixture_ratio_type", &Goddard::ChemicalParameters::mixture_type)
         .def_rw("mixtures", &Goddard::ChemicalParameters::mixtures)
         .def_rw("OF_ratios", &Goddard::ChemicalParameters::OF_ratios)
         .def_rw("phi_ratios", &Goddard::ChemicalParameters::phi_ratios)
@@ -412,8 +380,7 @@ void bind_structs(nb::module_& m) {
         .def_ro("pressure_index",  &Goddard::RocketStation::pressure_index)
         .def_ro("expansion_index", &Goddard::RocketStation::expansion_index)
         .def_ro("area_ratio",      &Goddard::RocketStation::area_ratio)
-        .def_ro("thermo",          &Goddard::RocketStation::thermo)
-        .def_ro("converged",       &Goddard::RocketStation::converged);
+        .def_ro("thermo",          &Goddard::RocketStation::thermo);
 
     // RocketPerformance
     nb::class_<Goddard::RocketPerformance>(m, "RocketPerformance")
@@ -449,41 +416,4 @@ void bind_structs(nb::module_& m) {
         .def_ro("isp", &Goddard::RocketPerformance::isp)
         .def_ro("ivac", &Goddard::RocketPerformance::ivac);
 
-    // RocketState
-    nb::class_<Goddard::RocketState>(m, "RocketState")
-        .def(nb::init<>())
-        .def("__init__", [](Goddard::RocketState* self,
-                            std::string name,
-                            std::vector<double> cantera_state,
-                            double pressure_ratio,
-                            double area_ratio,
-                            double dlv_dlp_t,
-                            double dlv_dlt_p,
-                            double gamma_s,
-                            double speed_of_sound) {
-            new (self) Goddard::RocketState();
-            self->name = std::move(name);
-            self->cantera_state = std::move(cantera_state);
-            self->pressure_ratio = pressure_ratio;
-            self->area_ratio = area_ratio;
-            self->dlv_dlp_t = dlv_dlp_t;
-            self->dlv_dlt_p = dlv_dlt_p;
-            self->gamma_s = gamma_s;
-            self->speed_of_sound = speed_of_sound;
-        },  "name"_a = "",
-            "cantera_state"_a = std::vector<double>(),
-            "pressure_ratio"_a = 0.0,
-            "area_ratio"_a = 0.0,
-            "dlv_dlp_t"_a = 0.0,
-            "dlv_dlt_p"_a = 0.0,
-            "gamma_s"_a = 0.0,
-            "speed_of_sound"_a = 0.0)
-        .def_ro("name", &Goddard::RocketState::name)
-        .def_ro("cantera_state", &Goddard::RocketState::cantera_state)
-        .def_ro("pressure_ratio", &Goddard::RocketState::pressure_ratio)
-        .def_ro("area_ratio", &Goddard::RocketState::area_ratio)
-        .def_ro("dlv_dlp_t", &Goddard::RocketState::dlv_dlp_t)
-        .def_ro("dlv_dlt_p", &Goddard::RocketState::dlv_dlt_p)
-        .def_ro("gamma_s", &Goddard::RocketState::gamma_s)
-        .def_ro("speed_of_sound", &Goddard::RocketState::speed_of_sound);
 }

@@ -17,8 +17,7 @@ namespace Goddard {
 enum class CombustorType {
     INFINITE_AREA,
     FINITE_MASS_FLUX,
-    FINITE_CONTRACTION_RATIO,
-    NONE
+    FINITE_CONTRACTION_RATIO
 };
 
 enum class MixtureRatioType {
@@ -93,7 +92,6 @@ class BaseCombustor {
      * `FINITE_CONTRACTION_RATIO` it produces the injector-face state, and the finite-area chamber
      * is solved afterwards by `Nozzle::solve_finite_area_chamber`.
      *
-     * @throws NotImplementedError if `options.type` is `CombustorType::NONE`.
      * @throws std::invalid_argument for a finite-area type with `contraction_ratio` <= 1 or
      * `mass_flux` <= 0, or combined with `CombustionProcess::ISOCHORIC`.
      */

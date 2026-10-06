@@ -168,7 +168,6 @@ def test_moc_options_defaults():
     assert opts.mode == MocMode.DESIGN_MIN_LENGTH
     assert opts.num_characteristics == 10
     assert opts.gamma == pytest.approx(1.4)
-    assert opts.solver_options.reltol == pytest.approx(1e-5)
     assert opts.solver_options.abstol == pytest.approx(1e-10)
     assert opts.theta_max == pytest.approx(0.0)
     assert opts.exit_mach == pytest.approx(0.0)
@@ -293,3 +292,17 @@ def test_import_plot_fronts():
 
     assert hasattr(plotting, "plot_fronts")
     assert "plot_fronts" in plotting.__all__
+
+
+def test_unimplemented_moc_options_raise():
+    from goddard import MocNozzle, MocOptions, MocMode
+
+    opts = MocOptions(theta_max=0.3)
+    opts.exit_mach = 2.0
+    with pytest.raises(NotImplementedError):
+        MocNozzle(opts)
+
+    opts = MocOptions(theta_max=0.3)
+    opts.mode = MocMode.DESIGN_CENTERLINE
+    with pytest.raises(NotImplementedError):
+        MocNozzle(opts)

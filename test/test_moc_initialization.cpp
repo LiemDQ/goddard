@@ -39,7 +39,6 @@ namespace {
 
 ThroatCondition make_perfect_gas_throat(double gamma) {
     return ThroatCondition{
-        .converged = true,
         .speed_of_sound = 1.0,
         .H_stagnation = 1.0,
         .P_inlet = 1.0,

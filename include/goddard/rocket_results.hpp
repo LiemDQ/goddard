@@ -45,13 +45,11 @@ struct RocketStation {
      * which the adiabatic expansion conserves.
      */
     ThermodynamicState thermo;
-    bool converged;
 };
 
 // Internal type: used by RocketProblem::solve() to pass results to RocketProblemResults.
 // Not part of the public API.
 struct RocketProblemCaseResult {
-    std::string problem_type;
     ThermoArray inlet_states;
     GasChemistry chemistry;
     std::vector<NozzleResults> nozzle_states;

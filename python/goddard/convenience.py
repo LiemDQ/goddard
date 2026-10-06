@@ -223,8 +223,7 @@ def _build_nozzle(opts, gas):
 
 def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
                flow_type=None, chemistry=None, throat_radius=1.0,
-               exit_mach=None, geometry=None, log_level=None,
-               gas=None):
+               geometry=None, log_level=None, gas=None):
     """Design a minimum-length nozzle using the Method of Characteristics.
 
     Args:
@@ -236,7 +235,6 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         throat_radius: Throat radius, used when ``geometry`` is not given. Sets the
             length unit of the result: the designed contour and every other length
             are returned in it.
-        exit_mach: Target exit Mach number, if the design is Mach-driven.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
         gas: A Gas for chemistry-based calculations.
@@ -260,8 +258,6 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         opts.geometry = geometry
     else:
         opts.geometry.throat_radius = throat_radius
-    if exit_mach is not None:
-        opts.exit_mach = exit_mach
     if log_level is not None:
         opts.log_level = log_level
 

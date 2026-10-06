@@ -288,11 +288,9 @@ TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(300.0, pressures(0), "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(300.0, pressures(0), "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {6.0};
     RocketCaseParameters case_params;
     case_params.name = "no_pressures";
-    case_params.problem_type = "rocket";
     case_params.nozzle_options.expansion_ratios = {5.0};
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     EXPECT_THROW(problem.solve(), std::invalid_argument);
@@ -396,12 +394,10 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(fuel_temperature, initial_pressure, "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(oxidizer_temperature, initial_pressure, "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {of_ratio};
 
     RocketCaseParameters case_params;
     case_params.name = "isochoric";
-    case_params.problem_type = "rocket";
     case_params.combustor_options.type = CombustorType::INFINITE_AREA;
     case_params.combustor_options.process = CombustionProcess::ISOCHORIC;
     case_params.combustor_options.pressures = {initial_pressure};
@@ -430,7 +426,6 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     EXPECT_GT(chamber.thermo.pressure, 5.0 * initial_pressure);
 
     const RocketStation& throat = results.throat(0, 0, "isochoric");
-    EXPECT_TRUE(throat.converged);
     EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
 
     std::vector<RocketStation> exits = results.exits(0, 0, "isochoric");
@@ -489,12 +484,10 @@ TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = of_ratios;
 
     RocketCaseParameters case_params;
     case_params.name = "sweep";
-    case_params.problem_type = "rocket";
     case_params.combustor_options.pressures = pressures;
     case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
     case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
@@ -538,12 +531,10 @@ TEST(RocketProblemIndexing, AccessorsSelectTheChamberPressure) {
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {6.0};
 
     RocketCaseParameters case_params;
     case_params.name = "pressures";
-    case_params.problem_type = "rocket";
     case_params.combustor_options.pressures = pressures;
     case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
     case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
@@ -598,12 +589,10 @@ RocketProblem make_h2o2_problem(const std::string& name, const std::vector<doubl
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(300.0, pressures[0], "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(300.0, pressures[0], "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = of_ratios;
 
     RocketCaseParameters case_params;
     case_params.name = name;
-    case_params.problem_type = "rocket";
     case_params.combustor_options.pressures = pressures;
     case_params.nozzle_options = nozzle_options;
     return RocketProblem(chem_params, {case_params}, "ohmech");
@@ -871,11 +860,6 @@ TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
     isochoric_finite.process = CombustionProcess::ISOCHORIC;
     EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, isochoric_finite), std::invalid_argument);
 
-    // CombustorType::NONE is not implemented.
-    CombustorOptions none_type = options;
-    none_type.type = CombustorType::NONE;
-    EXPECT_THROW(stream_combustor.solve(pressures, OF_ratios, none_type), NotImplementedError);
-
     // The product species carry no carbon, so a hydrocarbon fuel cannot be burnt in this phase.
     Gas methane = Gas::create_from_species(reactant_file(), "reactants", {"CH4"});
     methane.set_state_TPX(300.0, pressures(0), "CH4:1");
@@ -943,12 +927,10 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
         PhaseSpecification(H2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"H2(L)", 1.0}});
     chem_params.oxidizer_state =
         PhaseSpecification(O2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"O2(L)", 1.0}});
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {OF_RATIO};
 
     RocketCaseParameters case_params;
     case_params.name = "ex8";
-    case_params.problem_type = "rocket";
     case_params.combustor_options = options;
     case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
     case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
@@ -1012,7 +994,7 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     auto equilibrium_station = [&station_gas](const std::vector<double>& state) {
         station_gas.restore_state(state);
         const ExpansionProperties props = station_gas.expansion_properties();
-        return NozzleStation{true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
+        return NozzleStation{props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
             state, props.pinned_transition};
     };
 
@@ -1029,7 +1011,6 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     };
 
     RocketProblemCaseResult case_result{
-        "rocket",
         injector_states,
         GasChemistry::EQUILIBRIUM,
         {NozzleResults{fac.injector, fac.throat, exits.expansions}},
@@ -1108,12 +1089,10 @@ TEST(FiniteAreaCombustorResults, InfiniteAreaHasNoCombustionEndStation) {
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
     chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressure, "H2:1");
     chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressure, "O2:1");
-    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {of_ratio};
 
     RocketCaseParameters case_params;
     case_params.name = "infinite";
-    case_params.problem_type = "rocket";
     case_params.combustor_options.type = CombustorType::INFINITE_AREA;
     case_params.combustor_options.pressures = {pressure};
     case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;

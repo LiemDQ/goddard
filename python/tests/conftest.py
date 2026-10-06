@@ -124,7 +124,6 @@ def build_goddard_problem(case: RocketTestCase):
 
     case_params = goddard.RocketCaseParameters()
     case_params.name = case.name
-    case_params.problem_type = "rocket"
     case_params.combustor_options = goddard.infinite_area_combustor(
         [case.chamber_pressure_bar * 1e5])  # bar -> Pa
 

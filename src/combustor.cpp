@@ -89,8 +89,6 @@ void BaseCombustor::validate_options(const CombustorOptions& options) {
                     "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
             }
             break;
-        case CombustorType::NONE:
-            throw NotImplementedError("CombustorType::NONE is not implemented.");
     }
 }
 

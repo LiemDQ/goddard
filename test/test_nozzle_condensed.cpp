@@ -188,7 +188,6 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO,
                                          std::vector<double>{5.0, 20.0});
 
-    ASSERT_TRUE(results.throat.converged);
     EXPECT_NEAR(results.throat.H_stagnation, chamber_enthalpy, 1e-10 * std::abs(chamber_enthalpy));
     EXPECT_NEAR(results.throat.S_inlet, chamber_entropy, 1e-10 * std::abs(chamber_entropy));
 
@@ -199,9 +198,6 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     EXPECT_NEAR(std::abs(1.0 - 1.0 / (throat_mach * throat_mach)), 0.0, 4e-4);
 
     ASSERT_EQ(results.expansions.size(), 2u);
-    for (const NozzleStation& station : results.expansions) {
-        ASSERT_TRUE(station.converged);
-    }
 
     double previous_pressure = chamber_pressure;
     for (const std::vector<double>* state :
@@ -305,7 +301,6 @@ TEST_F(BerylliumNozzleTests, ThroatIsPinnedAtTheBerylliaMeltingPoint) {
     Nozzle nozzle(nozzle_gas, chamber_state, options);
     const ThroatCondition throat = nozzle.solve_throat_conditions();
 
-    ASSERT_TRUE(throat.converged);
     EXPECT_TRUE(throat.pinned_transition);
 
     Gas throat_gas = at_state(throat.state);
@@ -365,12 +360,10 @@ TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecular
     }
     chem_params.fuel_state = PhaseSpecification(298.15, Cantera::OneAtm, composition);
     chem_params.oxidizer_state = chem_params.fuel_state;
-    chem_params.mixture_type = MixtureRatioType::FUEL_FRAC;
     chem_params.OF_ratios = {1.0};
 
     RocketCaseParameters case_params;
     case_params.name = "ap_al";
-    case_params.problem_type = "rocket";
     case_params.combustor_options.mixture_type = MixtureRatioType::FUEL_FRAC;
     case_params.combustor_options.pressures = {70.0 * BAR};
     case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
@@ -419,7 +412,6 @@ TEST_F(CondensedGuardTests, MethodOfCharacteristicsRejectsCondensedPhases) {
     ASSERT_TRUE(products.has_condensed_phases());
 
     ThroatCondition throat;
-    throat.converged = true;
     throat.speed_of_sound = products.speed_of_sound();
     throat.H_stagnation = products.enthalpy_mass();
     throat.P_inlet = products.pressure();

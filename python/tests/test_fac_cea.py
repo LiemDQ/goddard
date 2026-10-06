@@ -153,12 +153,10 @@ def _build_problem(name, combustor_options, nozzle_options):
         REACTANT_TEMPERATURE, INJECTOR_PRESSURE, {"H2": 1.0})
     chemistry.oxidizer_state = goddard.PhaseSpecification(
         REACTANT_TEMPERATURE, INJECTOR_PRESSURE, {"O2": 1.0})
-    chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [OF_RATIO]
 
     case = goddard.RocketCaseParameters()
     case.name = name
-    case.problem_type = "rocket"
     case.combustor_options = combustor_options
     case.nozzle_options = nozzle_options
 

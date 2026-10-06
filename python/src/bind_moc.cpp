@@ -350,7 +350,7 @@ void bind_moc(nb::module_& m) {
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
             "num_characteristics"_a = 10,
             "gamma"_a = 1.4,
-            "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10, .reltol = 1e-5},
+            "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10},
             "geometry"_a = Goddard::NozzleGeometry{1.0, 1.5, 0.382, 0.8, 5.0},
             "theta_max"_a = 0.0,
             "exit_mach"_a = 0.0,

@@ -593,12 +593,10 @@ def beryllium_rocket_problem(beryllium_rocket):
         298.15, BERYLLIUM_CHAMBER_PRESSURE, fuel_composition)
     chemistry.oxidizer_state = goddard.PhaseSpecification(
         298.15, BERYLLIUM_CHAMBER_PRESSURE, {"H2O2(L)": 1.0})
-    chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [33.0 / 67.0]   # 67 % fuel by mass
 
     case = goddard.RocketCaseParameters()
     case.name = "ex13"
-    case.problem_type = "rocket"
     case.combustor_options = goddard.infinite_area_combustor([BERYLLIUM_CHAMBER_PRESSURE])
     case.nozzle_options = goddard.pressure_ratio(*BERYLLIUM_PRESSURE_RATIOS)
 
@@ -712,12 +710,10 @@ def cryogenic_rocket():
                                                               {"H2(L)": 1.0})
     chemistry.oxidizer_state = goddard.PhaseSpecification(90.17, CRYOGENIC_PRESSURE,
                                                                   {"O2(L)": 1.0})
-    chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [CRYOGENIC_OF_RATIO]
 
     case = goddard.RocketCaseParameters()
     case.name = "ex8"
-    case.problem_type = "rocket"
     case.combustor_options = goddard.infinite_area_combustor([CRYOGENIC_PRESSURE])
     case.nozzle_options = goddard.equilibrium_nozzle(*CRYOGENIC_AREA_RATIOS)
 

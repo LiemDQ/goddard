@@ -92,7 +92,6 @@ RocketProblemResults::RocketProblemResults(
                     s.pressure_index  = p_idx;
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
-                    s.converged       = true;
                     s.thermo          = read_station(nozzle.inlet.state, nozzle.inlet.gamma_s,
                                                          nozzle.inlet.dlV_dlP_T, nozzle.inlet.dlV_dlT_P,
                                                          nozzle.inlet.pinned_transition);
@@ -112,7 +111,6 @@ RocketProblemResults::RocketProblemResults(
                         s.pressure_index  = p_idx;
                         s.expansion_index = 0;
                         s.area_ratio      = 0.0;
-                        s.converged       = true;
                         s.thermo          = read_station(fac.stagnation.state, fac.stagnation.gamma_s,
                                                          fac.stagnation.dlV_dlP_T, fac.stagnation.dlV_dlT_P,
                                                          fac.stagnation.pinned_transition);
@@ -129,7 +127,6 @@ RocketProblemResults::RocketProblemResults(
                         s.pressure_index  = p_idx;
                         s.expansion_index = 0;
                         s.area_ratio      = fac.contraction_ratio;
-                        s.converged       = ce.converged;
                         s.thermo          = read_station(ce.state, ce.gamma_s, ce.dlV_dlP_T,
                                                          ce.dlV_dlT_P, ce.pinned_transition);
                         m_stations.push_back(std::move(s));
@@ -146,7 +143,6 @@ RocketProblemResults::RocketProblemResults(
                     s.pressure_index  = p_idx;
                     s.expansion_index = 0;
                     s.area_ratio      = 1.0;
-                    s.converged       = tc.converged;
                     s.thermo          = read_station(tc.state, tc.gamma_s, tc.dlV_dlP_T,
                                                      tc.dlV_dlT_P, tc.pinned_transition);
                     m_stations.push_back(std::move(s));
@@ -163,7 +159,6 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = exp_idx;
                     s.area_ratio      = (exp_idx < case_result.expansion_ratios.size())
                                         ? case_result.expansion_ratios[exp_idx] : 0.0;
-                    s.converged       = exp.converged;
                     s.thermo          = read_station(exp.state, exp.gamma_s, exp.dlV_dlP_T,
                                                      exp.dlV_dlT_P, exp.pinned_transition);
                     m_stations.push_back(std::move(s));

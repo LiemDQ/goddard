@@ -139,7 +139,6 @@ TEST_F(KineticNozzleTests, GasConstructorUsesThroatModelFromOptions) {
         KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, opts);
         // One step is enough: only the throat is checked.
         KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
-        ASSERT_TRUE(results.throat.converged);
         double T_throat = temperature_of(results.throat.state);
 
         EXPECT_NEAR(T_throat, T_reference, max_fp_error(T_reference, 1e-10, 1e-8))
@@ -172,7 +171,6 @@ TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
     s_gas->thermo()->restoreState(s_inlet_state);
     KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, cold_state, opts);
     KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
-    ASSERT_TRUE(results.throat.converged);
     double T_throat = temperature_of(results.throat.state);
 
     EXPECT_NEAR(T_throat, T_throat_reference, max_fp_error(T_throat_reference, 1e-10, 1e-8))
@@ -184,11 +182,6 @@ TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
 // ---------------------------------------------------------------------------
 // Throat conditions
 // ---------------------------------------------------------------------------
-
-TEST_F(KineticNozzleTests, ThroatConverges) {
-    EXPECT_TRUE(s_results.throat.converged)
-        << "Throat conditions must converge for a well-posed inlet state";
-}
 
 TEST_F(KineticNozzleTests, SolveReturnsStations) {
     ASSERT_GT(s_results.stations.size(), 0u)
@@ -234,7 +227,6 @@ TEST_F(KineticNozzleTests, StagnationEnthalpyConservedAtEveryStation) {
     // First law (adiabatic, steady): H0 = h + u²/2 = const.
     // Tolerance 1% relative: Strang splitting is O(dt²); accumulated error
     // over ~1000 steps with dt=1e-6 and u~1500 m/s is well within 1%.
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     double H0 = s_results.throat.H_stagnation;
@@ -349,7 +341,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     //
     // Reference: kinetic_nozzle_reference.md §7.1
 
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     // Get kinetic exit temperature and area ratio
@@ -362,7 +353,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double T_equilibrium = s_gas->thermo()->temperature();
 
@@ -371,7 +361,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double T_frozen = s_gas->thermo()->temperature();
 
@@ -391,7 +380,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     // additional enthalpy, which in the nozzle converts to higher exit velocity.
     // Exit velocity: v = sqrt(2*(H0-h)), and h_frozen > h_equilibrium because the
     // frozen composition retains dissociation energy in chemical bonds.
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     double v_kinetic = s_results.stations.back().velocity;
@@ -401,7 +389,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double v_eq = std::sqrt(2.0 * (H0 - s_gas->thermo()->enthalpy_mass()));
 
@@ -410,7 +397,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double v_frz = std::sqrt(2.0 * (H0 - s_gas->thermo()->enthalpy_mass()));
 
@@ -427,7 +413,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     // additional enthalpy, which in the nozzle converts to higher temperature 
     // & therefore pressure.
     
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     const auto& exit_result = s_results.stations.back(); 
@@ -441,7 +426,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double P_eq = s_gas->thermo()->pressure();
 
@@ -450,7 +434,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double P_frz = s_gas->thermo()->pressure();
 
@@ -541,7 +524,6 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     // its equilibrium counterpart.
     ASSERT_GT(s_results.stations.size(), 0u);
 
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     const auto& exit_result = s_results.stations.back(); 
@@ -554,7 +536,6 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double S_eq = s_gas->thermo()->entropy_mass();
 

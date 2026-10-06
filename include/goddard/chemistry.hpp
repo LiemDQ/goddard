@@ -25,7 +25,6 @@ enum class EquilibriumProperty {
 
 struct SolverOptions {
     double abstol = 1e-6;
-    double reltol = 1e-5;
     int max_iterations = 100;
 };
 

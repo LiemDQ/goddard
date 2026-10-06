@@ -76,6 +76,22 @@ Gas RocketProblem::reactant_gas(const PhaseSpecification& state) const {
 }
 
 RocketProblemResults RocketProblem::solve() {
+    if (include_transport) {
+        throw NotImplementedError("RocketProblem: transport properties are not implemented.");
+    }
+    if (include_ionized_species) {
+        throw NotImplementedError("RocketProblem: ionized species are not implemented.");
+    }
+    if (trace_cutoff != 0.0) {
+        throw NotImplementedError("RocketProblem: a trace cutoff is not implemented.");
+    }
+    if (!chemical_params.mixtures.empty() || !chemical_params.phi_ratios.empty()
+            || !chemical_params.fuel_weight_percentages.empty()) {
+        throw NotImplementedError(
+            "RocketProblem: mixtures, phi_ratios and fuel_weight_percentages are not implemented; "
+            "set OF_ratios and CombustorOptions.mixture_type instead.");
+    }
+
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;
     
     Eigen::ArrayXd OFs = vector_to_eigenarray(chemical_params.OF_ratios);
@@ -144,13 +160,10 @@ RocketProblemResults RocketProblem::solve() {
                     finite_area_chambers.push_back(std::move(fac));
                     break;
                 }
-                case CombustorType::NONE:
-                    throw NotImplementedError("RocketProblem: CombustorType::NONE is not implemented.");
             }
         }
 
         case_results.emplace(params.name, RocketProblemCaseResult{
-            params.problem_type,
             std::move(combustion_states),
             params.nozzle_options.chemistry,
             expansion_results,

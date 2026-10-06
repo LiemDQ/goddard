@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include "goddard/moc.hpp"
+#include "goddard/error.hpp"
 
 namespace Goddard {
 
@@ -132,6 +133,18 @@ MocCrossings find_like_characteristic_crossings(const CharacteristicNet& net) {
 }
 
 void validate_moc_options(const MocOptions& options) {
+    // Placeholders for planned features: reject any use rather than silently ignore it.
+    if (options.mode == MocMode::DESIGN_CENTERLINE) {
+        throw NotImplementedError("MocMode::DESIGN_CENTERLINE is not implemented.");
+    }
+    if (options.exit_mach != 0.0) {
+        throw NotImplementedError(
+            "MocOptions::exit_mach is not implemented; set the design through theta_max.");
+    }
+    if (options.geometry.upstream_wall_curvature_radius != NozzleGeometry{}.upstream_wall_curvature_radius) {
+        throw NotImplementedError(
+            "NozzleGeometry::upstream_wall_curvature_radius is not implemented; leave it at its default.");
+    }
     if (options.num_characteristics < 3) {
         throw std::invalid_argument(std::format(
             "num_characteristics must be at least 3; got {}.", options.num_characteristics));

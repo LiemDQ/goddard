@@ -45,7 +45,7 @@ Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
     if (m_opts.chemistry == GasChemistry::PERFECT_GAS) {
-        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
+        throw NotImplementedError("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
     }
 }
 
@@ -56,7 +56,7 @@ Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
     }
     if (m_opts.chemistry == GasChemistry::PERFECT_GAS) {
-        throw std::runtime_error("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
+        throw NotImplementedError("GasChemistry::PERFECT_GAS nozzle not yet implemented.");
     }
 }
 
@@ -180,7 +180,6 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
             break;
         }
         case CombustorType::INFINITE_AREA:
-        case CombustorType::NONE:
         default:
             throw std::invalid_argument(
                 "Nozzle::solve_finite_area_chamber requires FINITE_CONTRACTION_RATIO or FINITE_MASS_FLUX.");
@@ -373,7 +372,7 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
 
     ExpansionProperties final_props = m_gas.expansion_properties();
 
-    return {true,
+    return {
         m_gas.speed_of_sound(),
         H_inlet,
         P_inlet,
@@ -465,7 +464,7 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
-    return {true,
+    return {
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
             final_props.dlogV_dlogT_P,
@@ -552,7 +551,7 @@ NozzleStation Nozzle::iterate_area_expansion(
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
-    return {true,
+    return {
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
             final_props.dlogV_dlogT_P,
@@ -573,7 +572,7 @@ NozzleStation Nozzle::solve_pressure_ratio(
 
         //pressure ratio for equilibrium nozzle does not require iteration
         ExpansionProperties final_props = m_gas.expansion_properties();
-        return {true,
+        return {
             final_props.gamma_s,
             final_props.dlogV_dlogP_T,
             final_props.dlogV_dlogT_P,
@@ -589,7 +588,7 @@ NozzleStation Nozzle::solve_pressure_ratio(
             throw std::runtime_error("Negative temperature returned in pressure ratio loop. This branch should be unreachable.");
         } else {
             ExpansionProperties props = m_gas.expansion_properties();
-            return {true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
+            return {props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
                     m_gas.save_state(), props.pinned_transition};
         }
     }
@@ -652,7 +651,7 @@ NozzleStation Nozzle::station_at_state(const std::vector<double>& state, int sta
     m_gas.restore_state(state);
     set_station_chemistry(station);
     const ExpansionProperties props = m_gas.expansion_properties();
-    return {true, props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P, state,
+    return {props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P, state,
         props.pinned_transition};
 }
 

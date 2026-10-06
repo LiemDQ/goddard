@@ -16,7 +16,6 @@ namespace Goddard {
 
 struct RocketCaseParameters {
     std::string name;
-    std::string problem_type;
     CombustorOptions combustor_options;
     NozzleOptions nozzle_options;
 };
@@ -33,10 +32,16 @@ struct ChemicalParameters {
     PhaseSpecification fuel_state;
     /** Oxidizer stream state; see `fuel_state` for how `composition` is interpreted. */
     PhaseSpecification oxidizer_state;
-    MixtureRatioType mixture_type;
-    std::vector<double> mixtures;
+    /**
+     * Mixture ratios of the problem, interpreted through `CombustorOptions::mixture_type` of each
+     * case (O/F ratios by default).
+     */
     std::vector<double> OF_ratios;
+    /** Not implemented: `RocketProblem::solve` raises `NotImplementedError` if non-empty. */
+    std::vector<double> mixtures;
+    /** Not implemented: `RocketProblem::solve` raises `NotImplementedError` if non-empty. */
     std::vector<double> phi_ratios;
+    /** Not implemented: `RocketProblem::solve` raises `NotImplementedError` if non-empty. */
     std::vector<double> fuel_weight_percentages;
     /**
      * Cantera YAML file holding the reactant species, e.g. `data/nasa9_reactants.yaml`.
@@ -55,19 +60,6 @@ struct ChemicalParameters {
     bool all_condensed_species = false;
 };
 
-struct RocketState {
-    std::string name;
-    std::vector<double> cantera_state;
-    double pressure_ratio;
-    double area_ratio;
-    double dlv_dlp_t;
-    double dlv_dlt_p;
-    double gamma_s;
-    double speed_of_sound;
-};
-
-
-
 // Forward declaration
 class RocketProblemResults;
 
@@ -84,15 +76,18 @@ class RocketProblem {
         const std::string& name = "", 
         bool transport = false,
         bool ionized_species = false,
-        double trace = 1e-6);
+        double trace = 0.0);
     
     RocketProblemResults solve();
     
     inline std::shared_ptr<Cantera::Solution> solution() { return m_sln; }
     inline std::shared_ptr<Cantera::ThermoPhase> thermo() { return m_sln->thermo(); }
-    bool include_transport = false; //TODO: implement transport functionality
-    bool include_ionized_species = false; //TODO: implement ionized species
-    double trace_cutoff = 1e-6;
+    /** Not implemented: `solve` raises `NotImplementedError` if true. */
+    bool include_transport = false;
+    /** Not implemented: `solve` raises `NotImplementedError` if true. */
+    bool include_ionized_species = false;
+    /** Not implemented: `solve` raises `NotImplementedError` if non-zero. */
+    double trace_cutoff = 0.0;
     std::vector<RocketCaseParameters> problem_cases;
     ChemicalParameters chemical_params;
     

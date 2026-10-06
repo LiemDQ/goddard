@@ -291,7 +291,6 @@ def test_nozzle_from_gas(h2o2_yaml):
 
     nozzle = Nozzle(g)
     result = nozzle.solve(ExpansionType.SUPERSONIC_AREA_RATIO, 5.0)
-    assert result.throat.converged
     assert len(result.expansions) == 1
     # A gas-only mixture can never sit at a condensed phase transition.
     assert result.throat.pinned_transition is False
