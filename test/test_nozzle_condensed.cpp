@@ -380,7 +380,7 @@ TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecular
     RocketProblem problem(chem_params, {case_params}, "gas");
     RocketProblemResults results = problem.solve();
 
-    const RocketStation& chamber = results.chamber(0, "ap_al");
+    const RocketStation& chamber = results.chamber(0, 0, "ap_al");
     EXPECT_LT(chamber.thermo.gas_mass_fraction, 1.0);
     EXPECT_GT(chamber.thermo.gas_mass_fraction, 0.0);
     EXPECT_LT(chamber.thermo.mixture_molecular_weight, chamber.thermo.molecular_weight);

@@ -132,7 +132,7 @@ def test_chamber_state(case: RocketTestCase):
     """Compare chamber thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.chamber(0, case.name).thermo
+    chamber = results.chamber(0, case_name=case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -145,7 +145,7 @@ def test_throat_state(case: RocketTestCase):
     """Compare throat thermodynamic state between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    throat = results.throat(0, case.name).thermo
+    throat = results.throat(0, case_name=case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -159,7 +159,7 @@ def test_exit_states(case: RocketTestCase):
     """Compare exit/expansion thermodynamic states between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    exits = [s.thermo for s in results.exits(0, case.name)]
+    exits = [s.thermo for s in results.exits(0, case_name=case.name)]
     assert len(exits) == len(case.area_ratios), (
         f"Expected {len(case.area_ratios)} exit states, got {len(exits)}")
 
@@ -190,7 +190,7 @@ def test_performance(case: RocketTestCase):
     """
     problem = build_goddard_problem(case)
     results = problem.solve()
-    assert len(results.exits(0, case.name)) == len(case.area_ratios)
+    assert len(results.exits(0, case_name=case.name)) == len(case.area_ratios)
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -201,7 +201,7 @@ def test_performance(case: RocketTestCase):
     for i, requested_area_ratio in enumerate(case.area_ratios):
         cea_idx = stations["exits"][i]
         label = f"exit[{i}] AR={requested_area_ratio}"
-        performance = results.performance(0, i, case.name)
+        performance = results.performance(0, exit_index=i, case_name=case.name)
 
         # CEA's own CF definition, confirmed station by station.
         cea_cf = cea_sol.coefficient_of_thrust[cea_idx]
@@ -227,9 +227,9 @@ def test_performance(case: RocketTestCase):
 
         # The static entry point, fed the station states directly, must give the same numbers.
         direct = goddard.RocketProblemResults.calculate_performance(
-            results.chamber(0, case.name).thermo,
-            results.throat(0, case.name).thermo,
-            results.exits(0, case.name)[i].thermo)
+            results.chamber(0, case_name=case.name).thermo,
+            results.throat(0, case_name=case.name).thermo,
+            results.exits(0, case_name=case.name)[i].thermo)
         for field in ("pressure_ratio", "area_ratio", "mach_number", "cstar", "CF",
                       "isp", "ivac"):
             assert getattr(direct, field) == pytest.approx(
@@ -245,7 +245,7 @@ def test_chamber_composition(case: RocketTestCase):
     """Compare chamber species mass fractions between Goddard and CEA."""
     problem = build_goddard_problem(case)
     results = problem.solve()
-    chamber = results.chamber(0, case.name).thermo
+    chamber = results.chamber(0, case_name=case.name).thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)

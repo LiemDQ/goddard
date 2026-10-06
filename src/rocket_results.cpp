@@ -49,7 +49,8 @@ RocketProblemResults::RocketProblemResults(
             case_result.expansion_type,
             case_result.process,
             case_result.combustor_type,
-            {}
+            {},
+            case_result.frozen_NFZ
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
@@ -65,6 +66,14 @@ RocketProblemResults::RocketProblemResults(
                     static_cast<long>(of_idx), static_cast<long>(p_idx)));
 
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
+
+                // Reference stagnation state of this operating point, reported as the
+                // `stagnation_enthalpy` of each of its stations: the "inf" state of a finite-area
+                // combustor, the chamber otherwise.
+                m_gas.restore_state(is_fac
+                    ? case_result.finite_area_chambers[state_idx].stagnation.state
+                    : nozzle.inlet.state);
+                m_gas.set_current_state_as_reference();
 
                 switch (case_result.chemistry) {
                     case GasChemistry::EQUILIBRIUM:
@@ -193,39 +202,53 @@ std::vector<RocketStation> RocketProblemResults::stations_of_type(
     return result;
 }
 
+namespace {
+
+/** Operating point label for error messages. */
+std::string operating_point_label(const std::string& case_name, std::size_t of_index,
+                                  std::size_t pressure_index) {
+    return "case '" + case_name + "', of_index=" + std::to_string(of_index)
+        + ", pressure_index=" + std::to_string(pressure_index);
+}
+
+} // namespace
+
 const RocketStation& RocketProblemResults::chamber(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::CHAMBER && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::CHAMBER && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Chamber state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Chamber state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 const RocketStation& RocketProblemResults::throat(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::THROAT && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::THROAT && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Throat state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Throat state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 std::vector<RocketStation> RocketProblemResults::exits(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     std::vector<RocketStation> result;
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::EXIT && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::EXIT && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             result.push_back(s);
         }
     }
@@ -237,11 +260,12 @@ std::vector<RocketStation> RocketProblemResults::exits(
 }
 
 RocketPerformance RocketProblemResults::performance(
-    std::size_t of_index, std::size_t exit_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, std::size_t exit_index,
+    const std::string& case_name) const
 {
-    const RocketStation& c = stagnation(of_index, case_name);
-    const RocketStation& t = throat(of_index, case_name);
-    auto exit_stations = exits(of_index, case_name);
+    const RocketStation& c = stagnation(of_index, pressure_index, case_name);
+    const RocketStation& t = throat(of_index, pressure_index, case_name);
+    auto exit_stations = exits(of_index, pressure_index, case_name);
     if (exit_index >= exit_stations.size()) {
         throw std::runtime_error(
             "exit_index " + std::to_string(exit_index) +
@@ -251,22 +275,23 @@ RocketPerformance RocketProblemResults::performance(
 }
 
 const RocketStation& RocketProblemResults::stagnation(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     const StationType type = m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA
         ? StationType::CHAMBER : StationType::STAGNATION;
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == type && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == type && s.of_index == of_index
+            && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Stagnation state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Stagnation state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 const RocketStation& RocketProblemResults::combustion_end(
-    std::size_t of_index, const std::string& case_name) const
+    std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
 {
     const std::string resolved = resolve_case(case_name);
     if (m_case_meta.at(resolved).combustor_type == CombustorType::INFINITE_AREA) {
@@ -274,12 +299,13 @@ const RocketStation& RocketProblemResults::combustion_end(
             "' uses an infinite-area combustor; it has no combustion-end station.");
     }
     for (const auto& s : m_stations) {
-        if (s.case_name == resolved && s.type == StationType::COMBUSTION_END && s.of_index == of_index) {
+        if (s.case_name == resolved && s.type == StationType::COMBUSTION_END
+            && s.of_index == of_index && s.pressure_index == pressure_index) {
             return s;
         }
     }
-    throw std::runtime_error("Combustion-end state not found for case '" + resolved +
-                              "', of_index=" + std::to_string(of_index));
+    throw std::runtime_error("Combustion-end state not found for "
+        + operating_point_label(resolved, of_index, pressure_index));
 }
 
 std::vector<std::string> RocketProblemResults::case_names() const {
@@ -348,6 +374,7 @@ std::string build_report_page(
     double of_ratio,
     double display_pressure_pa,
     double initial_pressure_pa,
+    int frozen_NFZ,
     const FacReportInfo* fac = nullptr)
 {
     std::string page;
@@ -367,12 +394,24 @@ std::string build_report_page(
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM\n\n";
             page += "      COMPOSITION DURING EXPANSION FROM " + combustor_description + "\n\n";
             break;
-        case GasChemistry::FROZEN:
-            page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n\n";
+        case GasChemistry::FROZEN: {
+            // Nozzle station numbering: 0 is the chamber (the combustion end for a finite-area
+            // combustor), 1 the throat, k >= 2 the (k-1)th exit.
+            std::string freezing_station;
+            if (frozen_NFZ <= 0) {
+                freezing_station = (fac != nullptr) ? "THE COMBUSTION END" : "THE CHAMBER";
+            } else if (frozen_NFZ == 1) {
+                freezing_station = "THE THROAT";
+            } else {
+                freezing_station = "EXIT " + std::to_string(frozen_NFZ - 1);
+            }
+            page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n";
+            page += "                      FROZEN AT " + freezing_station + "\n\n";
             if (process == CombustionProcess::ISOCHORIC) {
                 page += "      EXPANSION FROM " + combustor_description + "\n\n";
             }
             break;
+        }
         default: break;
     }
 
@@ -553,9 +592,11 @@ std::string build_report_page(
             table.add_row(species, vals);
         }
     } else {
-        const auto& chamber_comp = states[0].composition;
+        // The composition the flow keeps downstream of the freezing station, which the last
+        // station always has.
+        const auto& frozen_comp = states.back().composition;
         std::vector<std::pair<std::string, double>> species_list;
-        for (const auto& [name, frac] : chamber_comp) {
+        for (const auto& [name, frac] : frozen_comp) {
             if (frac > 1e-10) species_list.push_back({name, frac});
         }
         std::sort(species_list.begin(), species_list.end());
@@ -683,6 +724,7 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                     meta.of_ratios[of_idx],
                     thermo_states[0].pressure,
                     meta.pressures[p_idx],
+                    meta.frozen_NFZ,
                     fac_ptr);
             }
         }

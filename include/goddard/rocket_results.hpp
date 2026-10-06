@@ -39,6 +39,11 @@ struct RocketStation {
     std::size_t pressure_index;  // index into the case's pressures vector
     std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
     double area_ratio;           // 0.0 for CHAMBER/STAGNATION, A_c/A_t for COMBUSTION_END, 1.0 for THROAT, >1 for EXIT
+    /**
+     * Mixture state of the station. Its `stagnation_enthalpy` [J/kg] is the enthalpy of the
+     * stagnation state of the station's operating point (see `RocketProblemResults::stagnation`),
+     * which the adiabatic expansion conserves.
+     */
     ThermodynamicState thermo;
     bool converged;
 };
@@ -58,6 +63,8 @@ struct RocketProblemCaseResult {
     CombustorType combustor_type = CombustorType::INFINITE_AREA;
     /** Finite-area chambers, indexed like `nozzle_states`; empty for `INFINITE_AREA`. */
     std::vector<FiniteAreaChamber> finite_area_chambers;
+    /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
+    int frozen_NFZ = 0;
 };
 
 class RocketProblemResults {
@@ -81,28 +88,76 @@ public:
     // If case_name is empty and there is exactly one case, that case is used.
     std::vector<RocketStation> stations_of_type(StationType type, const std::string& case_name = "") const;
 
-    // Single-station convenience accessors.
-    // If case_name is empty and there is exactly one case, that case is used.
-    const RocketStation& chamber(std::size_t of_index = 0, const std::string& case_name = "") const;
-    const RocketStation& throat(std::size_t of_index = 0, const std::string& case_name = "") const;
-    std::vector<RocketStation> exits(std::size_t of_index = 0, const std::string& case_name = "") const;
+    /**
+     * Chamber station of one operating point. For a finite-area combustor, the injector face.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
+     */
+    const RocketStation& chamber(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                 const std::string& case_name = "") const;
+
+    /**
+     * Throat station of one operating point.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
+     */
+    const RocketStation& throat(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                const std::string& case_name = "") const;
+
+    /**
+     * Exit stations of one operating point, ordered by expansion index.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case does not exist.
+     */
+    std::vector<RocketStation> exits(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                     const std::string& case_name = "") const;
 
     /**
      * Stagnation state that the nozzle expands from: the "inf" state of a finite-area combustor,
      * or the chamber state of an infinite-area combustor.
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or the station does not exist.
      */
-    const RocketStation& stagnation(std::size_t of_index = 0, const std::string& case_name = "") const;
+    const RocketStation& stagnation(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                    const std::string& case_name = "") const;
 
     /**
      * Combustion-end station of a finite-area combustor.
      *
-     * @throws std::runtime_error if the case uses an infinite-area combustor.
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case uses an infinite-area combustor, or if the case or
+     * the station does not exist.
      */
-    const RocketStation& combustion_end(std::size_t of_index = 0, const std::string& case_name = "") const;
+    const RocketStation& combustion_end(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                        const std::string& case_name = "") const;
 
-    // Compute rocket performance for a given operating point and exit station.
-    // If case_name is empty and there is exactly one case, that case is used.
-    RocketPerformance performance(std::size_t of_index = 0, std::size_t exit_index = 0,
+    /**
+     * Rocket performance of one operating point at one exit station, from its stagnation,
+     * throat and exit states (see `calculate_performance`).
+     *
+     * @param of_index Index into the case's mixture ratios [-].
+     * @param pressure_index Index into the case's chamber pressures [-].
+     * @param exit_index Index into the exit stations of the operating point [-].
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case or a station does not exist, or if `exit_index`
+     * is out of range.
+     */
+    RocketPerformance performance(std::size_t of_index = 0, std::size_t pressure_index = 0,
+                                  std::size_t exit_index = 0,
                                   const std::string& case_name = "") const;
 
     // List all case names.
@@ -139,6 +194,8 @@ private:
          * from a station's `ThermodynamicState`, so it is captured here for the report.
          */
         std::vector<double> mass_flux;
+        /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
+        int frozen_NFZ = 0;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     /** Product mixture used to read the stored station states back. */

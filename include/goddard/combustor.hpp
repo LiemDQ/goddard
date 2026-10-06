@@ -71,7 +71,20 @@ class BaseCombustor {
     protected:
     mutable Gas m_gas;
 
+    /**
+     * Equilibrate reactant states in place and return them.
+     *
+     * @throws NotImplementedError for `CombustionProcess::ISOCHORIC` when `states` carries
+     * candidate condensed species.
+     */
     ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
+
+    /**
+     * Array of reactant states with the given shape, carrying the candidate condensed species of
+     * `m_gas` with every amount set to zero (the reactants are all gas phase). Sets the condensed
+     * amounts of `m_gas` to zero as well.
+     */
+    ThermoArray reactant_states(const std::vector<long>& shape) const;
 
     /**
      * Check that the combustor options describe a supported combustor.
@@ -85,6 +98,15 @@ class BaseCombustor {
      * `mass_flux` <= 0, or combined with `CombustionProcess::ISOCHORIC`.
      */
     static void validate_options(const CombustorOptions& options);
+
+    /**
+     * Reject an empty input grid before any entry of it is read.
+     *
+     * @param values Grid of input values, e.g. pressures [Pa] or mixture ratios [-].
+     * @param name Name of the grid, for the error message.
+     * @throws std::invalid_argument if `values` is empty.
+     */
+    static void require_nonempty(const Eigen::ArrayXd& values, const std::string& name);
 
     void set_mixture_composition(double value, MixtureRatioType type,
         const Composition& fuel, const Composition& oxidizer) const;
@@ -145,6 +167,7 @@ class Combustor : public BaseCombustor {
      * if `options.type` is `NONE`, or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
      * @throws FmtError if a reactant contains an element the product gas does not have.
+     * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty.
      */
     ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});

@@ -903,6 +903,57 @@ TEST_F(MultiphaseHPTests, MethaneOxygenAtUnitMixtureRatioDepositsGraphite) {
     expect_balances(products, before);
 }
 
+TEST_F(MultiphaseHPTests, CompositionPathCombustorKeepsTheCondensedCandidates) {
+    // The product-species composition path of `Combustor` (used by `RocketProblem` without a
+    // reactant file) must offer the candidate condensed species to the equilibrium solver, as the
+    // reactant-stream path does. CH4/O2 at O/F 1 and 1 bar deposits graphite (CEA: T = 1039.24 K,
+    // x_C(gr) = 0.03137; see MethaneOxygenAtUnitMixtureRatioDepositsGraphite), so a gas-only
+    // solve would give a different, hotter state with no condensed phase. The streams are built
+    // from the product phase itself so both paths start from identical reactant enthalpies.
+    const double reactant_temperature = 298.15;  // K
+    Eigen::ArrayXd pressures(1);
+    pressures << BAR;
+    Eigen::ArrayXd of_ratios(1);
+    of_ratios << 1.0;
+
+    Gas composition_products = make_methane_oxygen_products();
+    Combustor composition_combustor(composition_products, "CH4:1", "O2:1");
+    ThermoArray from_compositions = composition_combustor.solve(
+        reactant_temperature, reactant_temperature, pressures, of_ratios);
+    ASSERT_EQ(from_compositions.num_condensed(), composition_products.condensed_moles().size());
+    ASSERT_GT(from_compositions.num_condensed(), 0u);
+    composition_products.restore_state(from_compositions.get_state(0));
+
+    Gas fuel = make_products({"C", "H", "O"});
+    fuel.set_state_TPX(reactant_temperature, BAR, "CH4:1");
+    Gas oxidizer = make_products({"C", "H", "O"});
+    oxidizer.set_state_TPX(reactant_temperature, BAR, "O2:1");
+    Gas stream_products = make_methane_oxygen_products();
+    ThermoArray from_streams = Combustor(stream_products, fuel, oxidizer).solve(pressures, of_ratios);
+    stream_products.restore_state(from_streams.get_state(0));
+
+    EXPECT_TRUE(composition_products.has_condensed_phases());
+    EXPECT_NEAR(condensed_mole_fraction(composition_products, "C(gr)"), 0.03137, 3e-3);
+    EXPECT_NEAR(composition_products.temperature(), 1039.24, 2.0);
+
+    // Both paths solve the same HP problem to the multiphase solver tolerance (rtol 1e-6).
+    EXPECT_NEAR(composition_products.temperature(), stream_products.temperature(),
+                1e-4 * stream_products.temperature());
+    EXPECT_NEAR(condensed_mole_fraction(composition_products, "C(gr)"),
+                condensed_mole_fraction(stream_products, "C(gr)"),
+                1e-4 * condensed_mole_fraction(stream_products, "C(gr)"));
+    const double enthalpy = 0.5 * fuel.enthalpy_mass() + 0.5 * oxidizer.enthalpy_mass();
+    EXPECT_NEAR(composition_products.enthalpy_mass(), enthalpy,
+                max_fp_error(enthalpy, 1e-6, 1.0)) << "first law: chamber h = reactant h";
+
+    // Constant-volume combustion with candidates attached is out of scope on this path too.
+    CombustorOptions isochoric;
+    isochoric.process = CombustionProcess::ISOCHORIC;
+    EXPECT_THROW(composition_combustor.solve(reactant_temperature, reactant_temperature,
+                                             pressures, of_ratios, isochoric),
+                 NotImplementedError);
+}
+
 TEST_F(MultiphaseHPTests, MethaneOxygenAtMixtureRatioThreeHasNoGraphite) {
     Gas products = make_methane_oxygen_products();
     Gas reactants = make_reactants({"CH4", "O2"}, "CH4:0.25, O2:0.75");

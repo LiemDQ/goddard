@@ -606,7 +606,7 @@ def beryllium_rocket_problem(beryllium_rocket):
 def test_beryllium_rocket_chamber_reports_condensed_fields(beryllium_rocket_problem):
     """The chamber station carries the mixture quantities work package D added."""
     results, rocket = beryllium_rocket_problem
-    chamber = results.chamber(0, "ex13").thermo
+    chamber = results.chamber(0, case_name="ex13").thermo
 
     assert_close_rel(chamber.temperature, rocket["T"][0], 3e-5, "chamber temperature")
     assert_close_rel(chamber.molecular_weight, rocket["M"][0], 5e-5, "chamber M")
@@ -622,7 +622,7 @@ def test_beryllium_rocket_throat_is_pinned(beryllium_rocket_problem):
     Observed errors: throat pressure 6.1e-6, T exact, M 1.9e-5, gamma_s 1e-8, c* 1.7e-5.
     """
     results, rocket = beryllium_rocket_problem
-    throat = results.throat(0, "ex13").thermo
+    throat = results.throat(0, case_name="ex13").thermo
 
     assert throat.pinned_transition
     assert throat.temperature == pytest.approx(BERYLLIUM_TRANSITION_TEMPERATURE, abs=1e-6)
@@ -632,7 +632,7 @@ def test_beryllium_rocket_throat_is_pinned(beryllium_rocket_problem):
     assert_close_rel(throat.gamma_s, rocket["gamma_s"][1], 1e-5, "throat gamma_s")
     assert throat.gamma_s == pytest.approx(0.9979, abs=1e-3)
     # c* depends on the chamber and the throat only, so any exit station reports the same value.
-    assert_close_rel(results.performance(0, 0, "ex13").cstar, rocket["c_star"][1], 5e-5, "c*")
+    assert_close_rel(results.performance(0, exit_index=0, case_name="ex13").cstar, rocket["c_star"][1], 5e-5, "c*")
 
 
 @pytest.mark.parametrize("exit_index,pressure_ratio",
@@ -646,7 +646,7 @@ def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressur
     Mach 3.6e-6, CF 1.2e-5, all relative.
     """
     results, rocket = beryllium_rocket_problem
-    exits = results.exits(0, "ex13")
+    exits = results.exits(0, case_name="ex13")
     assert len(exits) == len(BERYLLIUM_PRESSURE_RATIOS)
 
     station = exits[exit_index].thermo
@@ -664,7 +664,7 @@ def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressur
     assert_close_rel(station.gamma_s, rocket["gamma_s"][index],
                      1e-5, f"{label} gamma_s")
 
-    performance = results.performance(0, exit_index, "ex13")
+    performance = results.performance(0, exit_index=exit_index, case_name="ex13")
     assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-4,
                      f"{label} area_ratio")
     assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 1e-5,
@@ -725,7 +725,7 @@ def cryogenic_rocket():
 def test_cryogenic_rocket_chamber(cryogenic_rocket):
     """The chamber of example 8, built as a RocketProblem with reactant streams."""
     results, rocket = cryogenic_rocket
-    chamber = results.chamber(0, "ex8").thermo
+    chamber = results.chamber(0, case_name="ex8").thermo
 
     assert_close_rel(chamber.temperature, rocket["T"][0], 1e-4, "chamber temperature")
     assert_close_rel(chamber.molecular_weight, rocket["M"][0], 2e-4, "chamber M")
@@ -742,7 +742,7 @@ def test_cryogenic_rocket_throat(cryogenic_rocket):
     Observed errors: P 3.9e-6, T 3.1e-5, M 4.9e-5, gamma_s 8.8e-6, c* 1.3e-5, all relative.
     """
     results, rocket = cryogenic_rocket
-    throat = results.throat(0, "ex8").thermo
+    throat = results.throat(0, case_name="ex8").thermo
     station = 1
 
     assert_close_rel(throat.pressure / BAR, rocket["P"][station], 1e-5, "throat pressure")
@@ -751,7 +751,7 @@ def test_cryogenic_rocket_throat(cryogenic_rocket):
     assert_close_rel(throat.gamma_s, rocket["gamma_s"][station], 3e-5, "throat gamma_s")
     assert not throat.pinned_transition
     # c* depends on the chamber and the throat only, so any exit station reports the same value.
-    assert_close_rel(results.performance(0, 0, "ex8").cstar, rocket["c_star"][station],
+    assert_close_rel(results.performance(0, exit_index=0, case_name="ex8").cstar, rocket["c_star"][station],
                      5e-5, "c*")
 
 
@@ -764,7 +764,7 @@ def test_cryogenic_rocket_exits(cryogenic_rocket, area_ratio):
     CF 1.1e-5, pressure ratio 7.2e-5.
     """
     results, rocket = cryogenic_rocket
-    exits = results.exits(0, "ex8")
+    exits = results.exits(0, case_name="ex8")
     assert [exit.area_ratio for exit in exits] == list(CRYOGENIC_AREA_RATIOS)
 
     exit_index = list(CRYOGENIC_AREA_RATIOS).index(area_ratio)
@@ -778,7 +778,7 @@ def test_cryogenic_rocket_exits(cryogenic_rocket, area_ratio):
     assert_close_rel(station.molecular_weight, rocket["M"][index], 2e-4, f"{label} M")
     assert_close_rel(station.gamma_s, rocket["gamma_s"][index], 5e-5, f"{label} gamma_s")
 
-    performance = results.performance(0, exit_index, "ex8")
+    performance = results.performance(0, exit_index=exit_index, case_name="ex8")
     assert_close_rel(performance.area_ratio, area_ratio, 1e-3, f"{label} area_ratio (requested)")
     assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-5,
                      f"{label} area_ratio (CEA ae_at)")

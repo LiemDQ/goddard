@@ -25,10 +25,14 @@ struct NozzleOptions {
     ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
     std::vector<double> expansion_ratios;
     /**
-     * Freezing station for FROZEN chemistry [-]: 0 is the chamber, 1 the throat, and 2 onward the
-     * expansion stations in the order they are solved. The flow is in equilibrium up to and
-     * including this station and keeps its composition downstream of it. With 0 the chamber
-     * derivatives are frozen as well.
+     * Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber (the default, and
+     * CEA's default freezing point), 1 the throat, and 2 onward the expansion stations in the
+     * order they are solved. The flow is in equilibrium up to and including this station and
+     * keeps its composition downstream of it. With 0 the chamber derivatives are frozen as well.
+     *
+     * For an infinite-area combustor CEA's `nfz` is `frozen_NFZ + 1`. For a finite-area
+     * combustor the count starts at the combustion end, so `nfz` is `frozen_NFZ + 3`; 1 is the
+     * throat in both cases.
      */
     int frozen_NFZ = 0;
     SolverOptions solver;

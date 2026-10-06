@@ -5,6 +5,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/error.hpp"
 #include "goddard/config.h"
+#include "goddard/format.hpp"
 #include <algorithm>
 #include <memory>
 #include <iostream>
@@ -157,6 +158,25 @@ TEST_F(H2O2RecirculatingCombustorTests, moleFracMatrixRowsSumToOne) {
     }
 }
 
+TEST_F(H2O2RecirculatingCombustorTests, negativeFractionsAreRejectedInReleaseBuilds) {
+    // A negative recirculation ratio subtracts flue gas, and the N2 of the flue then has a negative
+    // mole and mass fraction in the H2/O2 feed. That is an invalid input, not a solver failure.
+    DilutedCombustor combustor(gas, fuel_comp, oxidizer_comp, flue_comp);
+    const double negative_recirculation = -0.5;
+    EXPECT_THROW(combustor.generate_mole_fraction_matrix(
+                     OF_ratios, MixtureRatioType::OF_RATIO, negative_recirculation),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor.generate_mass_fraction_matrix(
+                     OF_ratios, MixtureRatioType::OF_RATIO, negative_recirculation),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd negative_ratio(1);
+    negative_ratio << -2.0;
+    EXPECT_THROW(combustor.generate_mass_fraction_matrix(
+                     negative_ratio, MixtureRatioType::OF_RATIO, 0.3),
+                 std::invalid_argument);
+}
+
 TEST_F(H2O2RecirculatingCombustorTests, zeroRecirculationMatchesCombustor) {
     double recircRatio = 0.0;
     DilutedCombustor recircCombustor(gas, fuel_comp, oxidizer_comp, flue_comp);
@@ -219,6 +239,93 @@ TEST_F(H2O2CombustorTests, stringCompositionConstructorParsesSpecies) {
             EXPECT_NEAR(from_strings(i, j), from_maps(i, j), 1e-12);
         }
     }
+}
+
+TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
+    // An empty pressure or mixture-ratio grid has no combustion state to compute. Every solve
+    // entry point must say so instead of reading pressures[0] out of bounds.
+    const Eigen::ArrayXd empty(0);
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    Eigen::ArrayXd mixture_ratios(1);
+    mixture_ratios << 6.0;
+
+    EXPECT_THROW(combustor->solve(300.0, 300.0, empty, mixture_ratios, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(300.0, 300.0, pressures, empty, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(temperatures, empty, mixture_ratios, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(temperatures, pressures, empty, options),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->solve(empty, pressures, mixture_ratios, options),
+                 std::invalid_argument);
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    EXPECT_THROW(stream_combustor.solve(empty, mixture_ratios, options), std::invalid_argument);
+    EXPECT_THROW(stream_combustor.solve(pressures, empty, options), std::invalid_argument);
+
+    DilutedCombustor diluted(gas, fuel_comp, oxidizer_comp, Composition{{"N2", 1.0}});
+    EXPECT_THROW(diluted.solve(300.0, 300.0, 300.0, empty, mixture_ratios, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(300.0, 300.0, 300.0, pressures, empty, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(temperatures, empty, mixture_ratios, 0.1, options),
+                 std::invalid_argument);
+    EXPECT_THROW(diluted.solve(temperatures, pressures, empty, 0.1, options),
+                 std::invalid_argument);
+
+    // An empty chamber pressure list in a RocketProblem reaches the same check.
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures(0), "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures(0), "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {6.0};
+    RocketCaseParameters case_params;
+    case_params.name = "no_pressures";
+    case_params.problem_type = "rocket";
+    case_params.nozzle_options.expansion_ratios = {5.0};
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    EXPECT_THROW(problem.solve(), std::invalid_argument);
+}
+
+TEST_F(H2O2CombustorTests, outOfRangeMixtureRatiosAreRejectedInReleaseBuilds) {
+    // A negative O/F ratio maps to a fuel mass fraction outside [0, 1]: there is no such mixture.
+    // The check must be an exception, not an assert that vanishes under NDEBUG.
+    Eigen::ArrayXd negative_ratio(2);
+    negative_ratio << 6.0, -2.0;
+    EXPECT_THROW(combustor->generate_mole_fraction_matrix(negative_ratio, MixtureRatioType::OF_RATIO),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->generate_mass_fraction_matrix(negative_ratio, MixtureRatioType::OF_RATIO),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    EXPECT_THROW(combustor->solve(300.0, 300.0, pressures, negative_ratio, options),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd fuel_fraction(1);
+    fuel_fraction << 1.5;
+    EXPECT_THROW(combustor->generate_mass_fraction_matrix(fuel_fraction, MixtureRatioType::FUEL_FRAC),
+                 std::invalid_argument);
+
+    // The reactant-stream path checks the same domain.
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    EXPECT_THROW(stream_combustor.solve(pressures, negative_ratio, options), std::invalid_argument);
 }
 
 // ---- Isochoric combustion ----
@@ -317,16 +424,16 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     auto thermo = gas.thermo();
     thermo->restoreState(reference.get_state(0));
 
-    const RocketStation& chamber = results.chamber(0, "isochoric");
+    const RocketStation& chamber = results.chamber(0, 0, "isochoric");
     EXPECT_NEAR(chamber.thermo.pressure, thermo->pressure(), 1e-6 * thermo->pressure());
     EXPECT_NEAR(chamber.thermo.temperature, thermo->temperature(), 1e-6 * thermo->temperature());
     EXPECT_GT(chamber.thermo.pressure, 5.0 * initial_pressure);
 
-    const RocketStation& throat = results.throat(0, "isochoric");
+    const RocketStation& throat = results.throat(0, 0, "isochoric");
     EXPECT_TRUE(throat.converged);
     EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
 
-    std::vector<RocketStation> exits = results.exits(0, "isochoric");
+    std::vector<RocketStation> exits = results.exits(0, 0, "isochoric");
     ASSERT_EQ(exits.size(), 1u);
     EXPECT_LT(exits[0].thermo.pressure, throat.thermo.pressure);
 
@@ -418,6 +525,154 @@ TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
     }
 }
 
+TEST(RocketProblemIndexing, AccessorsSelectTheChamberPressure) {
+    // Two chamber pressures and two area ratios at one O/F. Every accessor must return stations
+    // of the requested pressure: mixing the throat of one pressure with the exit of the other
+    // gives an area ratio of about AR * P0/P1 from mass flux continuity.
+    const double reactant_temperature = 300.0;
+    const std::vector<double> pressures = {20.0 * Cantera::OneBar, 50.0 * Cantera::OneBar};
+    const std::vector<double> area_ratios = {5.0, 20.0};
+
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = {6.0};
+
+    RocketCaseParameters case_params;
+    case_params.name = "pressures";
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.pressures = pressures;
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = area_ratios;
+
+    RocketProblem problem(chem_params, {case_params}, "ohmech");
+    RocketProblemResults results = problem.solve();
+
+    for (std::size_t p_idx = 0; p_idx < pressures.size(); p_idx++) {
+        const RocketStation& chamber = results.chamber(0, p_idx, "pressures");
+        EXPECT_EQ(chamber.pressure_index, p_idx);
+        EXPECT_NEAR(chamber.thermo.pressure, pressures[p_idx], 1e-9 * pressures[p_idx]);
+
+        const RocketStation& stagnation = results.stagnation(0, p_idx, "pressures");
+        EXPECT_EQ(stagnation.pressure_index, p_idx);
+        EXPECT_NEAR(stagnation.thermo.pressure, pressures[p_idx], 1e-9 * pressures[p_idx]);
+
+        const RocketStation& throat = results.throat(0, p_idx, "pressures");
+        EXPECT_EQ(throat.pressure_index, p_idx);
+        EXPECT_LT(throat.thermo.pressure, chamber.thermo.pressure);
+        EXPECT_GT(throat.thermo.pressure, 0.5 * chamber.thermo.pressure);
+
+        std::vector<RocketStation> exits = results.exits(0, p_idx, "pressures");
+        ASSERT_EQ(exits.size(), area_ratios.size()) << "pressure_index = " << p_idx;
+        for (std::size_t e = 0; e < area_ratios.size(); e++) {
+            EXPECT_EQ(exits[e].pressure_index, p_idx);
+            EXPECT_EQ(exits[e].expansion_index, e);
+
+            // Area ratio from mass flux continuity, rho_t a_t / (rho_e v_e): the nozzle solved for
+            // the requested area ratio, so this recovers it to the station solver tolerance.
+            const RocketPerformance performance = results.performance(0, p_idx, e, "pressures");
+            EXPECT_NEAR(performance.area_ratio, area_ratios[e], 1e-3 * area_ratios[e])
+                << "pressure_index = " << p_idx << ", exit_index = " << e;
+            EXPECT_NEAR(performance.pressure_ratio,
+                        pressures[p_idx] / exits[e].thermo.pressure,
+                        1e-9 * performance.pressure_ratio)
+                << "pressure_index = " << p_idx << ", exit_index = " << e;
+        }
+    }
+    EXPECT_NE(results.chamber(0, 0, "pressures").thermo.pressure,
+              results.chamber(0, 1, "pressures").thermo.pressure);
+}
+
+namespace {
+
+/** H2/O2 RocketProblem on h2o2.yaml with gaseous reactants at 300 K (composition path). */
+RocketProblem make_h2o2_problem(const std::string& name, const std::vector<double>& of_ratios,
+                                const std::vector<double>& pressures,
+                                const NozzleOptions& nozzle_options) {
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures[0], "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures[0], "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = of_ratios;
+
+    RocketCaseParameters case_params;
+    case_params.name = name;
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.pressures = pressures;
+    case_params.nozzle_options = nozzle_options;
+    return RocketProblem(chem_params, {case_params}, "ohmech");
+}
+
+} // namespace
+
+TEST(RocketProblemIndexing, StationsCarryTheStagnationEnthalpyOfTheirOperatingPoint) {
+    // The expansion is adiabatic, so every station of an operating point shares the stagnation
+    // enthalpy of its chamber (infinite-area combustor: the chamber is the stagnation state).
+    // The operating points differ in mixture ratio, so their chamber enthalpies differ.
+    NozzleOptions nozzle_options;
+    nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    nozzle_options.expansion_ratios = {5.0, 20.0};
+    RocketProblem problem = make_h2o2_problem("h0", {4.0, 6.0},
+        {20.0 * Cantera::OneBar, 50.0 * Cantera::OneBar}, nozzle_options);
+    RocketProblemResults results = problem.solve();
+
+    ASSERT_NE(results.chamber(0, 0, "h0").thermo.enthalpy, results.chamber(1, 0, "h0").thermo.enthalpy);
+    for (const RocketStation& station : results.stations()) {
+        const double chamber_enthalpy =
+            results.chamber(station.of_index, station.pressure_index, "h0").thermo.enthalpy;
+        EXPECT_NEAR(station.thermo.stagnation_enthalpy, chamber_enthalpy,
+                    max_fp_error(chamber_enthalpy, 1e-9, 1e-6))
+            << "of_index = " << station.of_index << ", pressure_index = " << station.pressure_index
+            << ", station type = " << static_cast<int>(station.type)
+            << ", expansion_index = " << station.expansion_index;
+    }
+}
+
+TEST(RocketProblemReport, FrozenReportPrintsTheCompositionOfTheFrozenFlow) {
+    // Frozen at the throat (frozen_NFZ = 1): the exits keep the throat composition, which differs
+    // from the chamber composition because the flow is in equilibrium up to the throat. The
+    // report's single composition block must show the frozen (exit) composition.
+    NozzleOptions nozzle_options;
+    nozzle_options.chemistry = GasChemistry::FROZEN;
+    nozzle_options.frozen_NFZ = 1;
+    nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    nozzle_options.expansion_ratios = {5.0, 20.0};
+    RocketProblem problem = make_h2o2_problem("frozen", {6.0}, {50.0 * Cantera::OneBar},
+                                              nozzle_options);
+    RocketProblemResults results = problem.solve();
+    const std::string report = results.report("frozen");
+
+    EXPECT_NE(report.find("FROZEN AT THE THROAT"), std::string::npos) << report;
+
+    const RocketStation& chamber = results.chamber(0, 0, "frozen");
+    const RocketStation& throat = results.throat(0, 0, "frozen");
+    const std::vector<RocketStation> exits = results.exits(0, 0, "frozen");
+    ASSERT_EQ(exits.size(), 2u);
+
+    // The report pads each species name to 16 characters before its mass fraction.
+    auto composition_entry = [](const std::string& species, double mass_fraction) {
+        return species + std::string(16 - species.size(), ' ')
+            + format_mass_fraction(mass_fraction, 10);
+    };
+    const std::string species = "OH";
+    const double frozen_fraction = exits.back().thermo.composition.at(species);
+    const double chamber_fraction = chamber.thermo.composition.at(species);
+    EXPECT_NEAR(frozen_fraction, throat.thermo.composition.at(species), 1e-12)
+        << "the exits keep the throat composition";
+    ASSERT_NE(composition_entry(species, frozen_fraction),
+              composition_entry(species, chamber_fraction))
+        << "the chamber and frozen OH fractions must differ for this test to discriminate";
+    EXPECT_NE(report.find(composition_entry(species, frozen_fraction)), std::string::npos) << report;
+    EXPECT_EQ(report.find(composition_entry(species, chamber_fraction)), std::string::npos) << report;
+}
+
 // ---- Reactant streams given as Gas objects ----
 
 namespace {
@@ -474,6 +729,70 @@ TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsobaricPath) {
                 << "i = " << i << ", species " << legacy_thermo->speciesName(k);
         }
     }
+}
+
+TEST(MultiSpeciesStreamTests, compositionPathBlendsEnthalpyByMassLikeStreamPath) {
+    // H2 burnt in air. The composition path blends the stream enthalpies with the fuel mass
+    // fraction from `ThermoPhase::mixtureFraction`, whose basis argument describes the stream
+    // compositions, which are mole fractions. Read as mass fractions, air (O2:0.21, N2:0.79)
+    // carries 21 % O by mass instead of 23.3 %, and at O/F 40 the fuel fraction comes out as
+    // about 0.0216 instead of 1/41 = 0.0244. The fuel is preheated to 1000 K
+    // (h ~ 10 MJ/kg against ~0 for the air), so that error shifts the mixture enthalpy by
+    // about 30 kJ/kg and the flame temperature by roughly 20 K. The reactant-stream path blends by
+    // mass fraction 1/(1+O/F) directly and is the reference.
+    const double fuel_temperature = 1000.0;     // K
+    const double oxidizer_temperature = 300.0;  // K
+    const double pressure = 10.0 * Cantera::OneBar;
+    const std::string fuel_composition = "H2:1";
+    const std::string oxidizer_composition = "O2:0.21, N2:0.79";
+
+    Eigen::ArrayXd pressures(1);
+    pressures << pressure;
+    Eigen::ArrayXd of_ratios(1);
+    of_ratios << 40.0;  // lean H2/air, stoichiometric O/F is 34.3
+    const double fuel_mass_fraction = 1.0 / (1.0 + of_ratios(0));
+    const CombustorOptions options{CombustorType::INFINITE_AREA, MixtureRatioType::OF_RATIO,
+        {pressure}, 0.0, 0.0};
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(fuel_temperature, pressure, fuel_composition);
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(oxidizer_temperature, pressure, oxidizer_composition);
+    const double mixture_enthalpy = fuel_mass_fraction * fuel.enthalpy_mass()
+        + (1.0 - fuel_mass_fraction) * oxidizer.enthalpy_mass();
+
+    Gas stream_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_streams = Combustor(stream_products, fuel, oxidizer)
+        .solve(pressures, of_ratios, options);
+
+    Gas composition_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_compositions = Combustor(composition_products, fuel_composition,
+        oxidizer_composition).solve(fuel_temperature, oxidizer_temperature, pressures, of_ratios,
+        options);
+
+    // With zero recirculation the diluted combustor burns the same fresh mixture.
+    Gas diluted_products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    ThermoArray from_diluted = DilutedCombustor(diluted_products, fuel_composition,
+        oxidizer_composition, "N2:1").solve(fuel_temperature, oxidizer_temperature,
+        oxidizer_temperature, pressures, of_ratios, 0.0, options);
+
+    auto reference = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    reference->restoreState(from_streams.get_state(0));
+    const double T_reference = reference->temperature();
+    EXPECT_NEAR(reference->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0));
+
+    auto composition = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    composition->restoreState(from_compositions.get_state(0));
+    EXPECT_NEAR(composition->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0)) << "first law: chamber h = mass-blended h";
+    EXPECT_NEAR(composition->temperature(), T_reference, 1e-6 * T_reference);
+
+    auto diluted = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
+    diluted->restoreState(from_diluted.get_state(0));
+    EXPECT_NEAR(diluted->enthalpy_mass(), mixture_enthalpy,
+        max_fp_error(mixture_enthalpy, 1e-6, 1.0)) << "first law: chamber h = mass-blended h";
+    EXPECT_NEAR(diluted->temperature(), T_reference, 1e-6 * T_reference);
 }
 
 TEST_F(H2O2CombustorTests, reactantGasPathMatchesLegacyIsochoricPath) {
@@ -638,7 +957,7 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     RocketProblem problem(chem_params, {case_params}, "gas");
     RocketProblemResults results = problem.solve();
 
-    const RocketStation& chamber = results.chamber(0, "ex8");
+    const RocketStation& chamber = results.chamber(0, 0, "ex8");
     EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 0.25);
     EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.002);
     EXPECT_NEAR(chamber.thermo.pressure, CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
@@ -720,7 +1039,8 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
         ExpansionType::SUPERSONIC_AREA_RATIO,
         CombustionProcess::ISOBARIC,
         CombustorType::FINITE_CONTRACTION_RATIO,
-        {fac}
+        {fac},
+        /*frozen_NFZ=*/0
     };
 
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;
@@ -740,27 +1060,27 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     EXPECT_EQ(stations[4].type, StationType::EXIT);
 
     // Accessors.
-    const RocketStation& chamber_station = results.chamber(0, "fac_case");
+    const RocketStation& chamber_station = results.chamber(0, 0, "fac_case");
     EXPECT_EQ(chamber_station.type, StationType::CHAMBER);
     EXPECT_NEAR(chamber_station.thermo.pressure, injector_pressure, 1e-6 * injector_pressure);
 
-    const RocketStation& stagnation_station = results.stagnation(0, "fac_case");
+    const RocketStation& stagnation_station = results.stagnation(0, 0, "fac_case");
     EXPECT_EQ(stagnation_station.type, StationType::STAGNATION);
     EXPECT_NEAR(stagnation_station.thermo.pressure, stagnation_pressure, 1e-6 * stagnation_pressure);
 
-    const RocketStation& comb_end_station = results.combustion_end(0, "fac_case");
+    const RocketStation& comb_end_station = results.combustion_end(0, 0, "fac_case");
     EXPECT_EQ(comb_end_station.type, StationType::COMBUSTION_END);
     EXPECT_DOUBLE_EQ(comb_end_station.area_ratio, 2.0);
 
     // performance() must use the stagnation station, not the chamber/injector one: the two
     // differ here, since P_inf != P_inj.
-    const RocketStation& throat_station = results.throat(0, "fac_case");
-    std::vector<RocketStation> exit_stations = results.exits(0, "fac_case");
+    const RocketStation& throat_station = results.throat(0, 0, "fac_case");
+    std::vector<RocketStation> exit_stations = results.exits(0, 0, "fac_case");
     ASSERT_EQ(exit_stations.size(), 1u);
 
     RocketPerformance expected = RocketProblemResults::calculate_performance(
         stagnation_station.thermo, throat_station.thermo, exit_stations[0].thermo);
-    RocketPerformance actual = results.performance(0, 0, "fac_case");
+    RocketPerformance actual = results.performance(0, 0, 0, "fac_case");
     EXPECT_DOUBLE_EQ(actual.cstar, expected.cstar);
     EXPECT_DOUBLE_EQ(actual.CF, expected.CF);
     EXPECT_DOUBLE_EQ(actual.isp, expected.isp);
@@ -803,10 +1123,10 @@ TEST(FiniteAreaCombustorResults, InfiniteAreaHasNoCombustionEndStation) {
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     RocketProblemResults results = problem.solve();
 
-    EXPECT_THROW(results.combustion_end(0, "infinite"), std::runtime_error);
+    EXPECT_THROW(results.combustion_end(0, 0, "infinite"), std::runtime_error);
 
-    const RocketStation& stag = results.stagnation(0, "infinite");
-    const RocketStation& chamber = results.chamber(0, "infinite");
+    const RocketStation& stag = results.stagnation(0, 0, "infinite");
+    const RocketStation& chamber = results.chamber(0, 0, "infinite");
     EXPECT_EQ(stag.type, StationType::CHAMBER);
     EXPECT_NEAR(stag.thermo.pressure, chamber.thermo.pressure, 1e-9 * chamber.thermo.pressure);
 }
