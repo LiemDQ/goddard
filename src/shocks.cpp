@@ -384,10 +384,19 @@ void ShockSolver::store_post_shock_state() {
     m_gas.copy_state(m_post_shock_state);
 }
 
+void ShockSolver::apply_perfect_gas_jump(bool valid, double temperature_ratio, double pressure_ratio) {
+    if (!valid) {
+        return;
+    }
+    m_gas.set_state_TP(m_gas.temperature()*temperature_ratio, m_gas.pressure()*pressure_ratio);
+}
+
 ShockResult ShockSolver::normal_shock(double mach) {
     if (m_chemistry == GasChemistry::PERFECT_GAS) {
         reset();
         ShockResult result = Goddard::normal_shock(mach, m_gas.gamma_s());
+        apply_perfect_gas_jump(result.valid, result.static_temperature_ratio,
+                               result.static_pressure_ratio);
         store_post_shock_state();
         return result;
     }
@@ -400,6 +409,8 @@ ShockResult ShockSolver::normal_shock_from_velocity(double velocity) {
     switch (m_chemistry) {
         case GasChemistry::PERFECT_GAS:
             result = Goddard::normal_shock(velocity/m_gas.speed_of_sound(), m_gas.gamma_s());
+            apply_perfect_gas_jump(result.valid, result.static_temperature_ratio,
+                                   result.static_pressure_ratio);
             break;
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM:
@@ -418,6 +429,10 @@ ReflectedShockResult ShockSolver::reflected_shock(double mach) {
     if (m_chemistry == GasChemistry::PERFECT_GAS) {
         reset();
         ReflectedShockResult result = Goddard::reflected_shock(mach, m_gas.gamma_s());
+        // State 5 from state 1: T5/T1 = (T2/T1)(T5/T2), and likewise for P.
+        apply_perfect_gas_jump(result.valid,
+            result.incident.static_temperature_ratio*result.reflected.static_temperature_ratio,
+            result.incident.static_pressure_ratio*result.reflected.static_pressure_ratio);
         store_post_shock_state();
         return result;
     }
@@ -438,6 +453,9 @@ ReflectedShockResult ShockSolver::reflected_shock_from_velocity(double velocity)
     if (m_chemistry == GasChemistry::PERFECT_GAS) {
         reset();
         ReflectedShockResult result = Goddard::reflected_shock(velocity/m_gas.speed_of_sound(), m_gas.gamma_s());
+        apply_perfect_gas_jump(result.valid,
+            result.incident.static_temperature_ratio*result.reflected.static_temperature_ratio,
+            result.incident.static_pressure_ratio*result.reflected.static_pressure_ratio);
         store_post_shock_state();
         return result;
     }
@@ -490,6 +508,8 @@ ObliqueShockResult ShockSolver::oblique_shock_from_wave_angle(double mach, doubl
     switch (m_chemistry) {
         case GasChemistry::PERFECT_GAS:
             result = Goddard::oblique_shock_from_wave_angle(mach, wave_angle, m_gas.gamma_s());
+            apply_perfect_gas_jump(result.valid, result.shock.static_temperature_ratio,
+                                   result.shock.static_pressure_ratio);
             break;
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM:
@@ -510,6 +530,8 @@ ObliqueShockResult ShockSolver::oblique_shock_from_deflection(double mach, doubl
     switch (m_chemistry) {
         case GasChemistry::PERFECT_GAS:
             result = Goddard::oblique_shock_from_deflection(mach, deflection, m_gas.gamma_s(), weak);
+            apply_perfect_gas_jump(result.valid, result.shock.static_temperature_ratio,
+                                   result.shock.static_pressure_ratio);
             break;
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM:
@@ -529,9 +551,17 @@ double ShockSolver::max_deflection(double mach) {
     reset();
     double deflection = NaN;
     switch (m_chemistry) {
-        case GasChemistry::PERFECT_GAS:
-            deflection = oblique_shock_max_deflection(mach, m_gas.gamma_s());
+        case GasChemistry::PERFECT_GAS: {
+            const double gamma = m_gas.gamma_s();
+            deflection = oblique_shock_max_deflection(mach, gamma);
+            if (!std::isnan(deflection)) {
+                const ObliqueShockResult max_shock = Goddard::oblique_shock_from_wave_angle(
+                    mach, oblique_shock_max_deflection_wave_angle(mach, gamma), gamma);
+                apply_perfect_gas_jump(max_shock.valid, max_shock.shock.static_temperature_ratio,
+                                       max_shock.shock.static_pressure_ratio);
+            }
             break;
+        }
         case GasChemistry::FROZEN:
         case GasChemistry::EQUILIBRIUM: {
             if (mach < 1.0) {
