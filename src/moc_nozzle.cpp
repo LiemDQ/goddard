@@ -18,11 +18,64 @@ namespace Goddard {
 
 namespace {
 
-// Resolved wall contour for a solve: options.nozzle_profile as given (ANALYSIS,
-// DESIGN_MIN_LENGTH), or the generated Rao contour (DESIGN_RAO). Returned by value so the
-// caller holds it as a solve() local -- never written back into options.nozzle_profile: doing
-// so would leave a later solve on the same MocNozzle instance, with mode changed away from
-// DESIGN_RAO, reading a stale Rao contour from the prior solve.
+/**
+ * The options a solve actually runs on: a copy of the caller's, in throat radii.
+ *
+ * The start lines are built at a throat of unit radius (the centered fan's lip at (0, 1), the
+ * Kliegel-Levine series in r / r_t) and the Rao contour is generated at r_throat = 1, so the
+ * analysis contour is divided by the caller's throat radius to match, and
+ * geometry.throat_radius becomes 1. Everything downstream of solve() then sees one unit, and
+ * solve() converts the result's lengths back (scale_result_lengths).
+ */
+MocOptions options_in_throat_radii(const MocOptions& options) {
+    MocOptions normalized = options;
+    normalized.geometry.throat_radius = 1.0;
+    normalized.nozzle_profile = options.nozzle_profile.scaled(1.0 / options.geometry.throat_radius);
+    return normalized;
+}
+
+/**
+ * Convert every length in a result assembled in throat radii to the caller's unit. The
+ * dimensionless fields (Mach numbers, angles, area ratio, coverage, the *_over_spacing and
+ * grading/margin/error diagnostics) are left alone.
+ */
+void scale_result_lengths(MocResult& result, double factor) {
+    for (CharacteristicPoint& pt : result.net.points) {
+        pt.x *= factor;
+        pt.y *= factor;
+    }
+    for (double& value : result.net.wall_x) value *= factor;
+    for (double& value : result.net.wall_y) value *= factor;
+    result.profile = result.profile.scaled(factor);
+    for (double& value : result.exit_plane.y) value *= factor;
+
+    result.nozzle_length *= factor;
+    result.min_theta_x *= factor;
+    result.min_theta_y *= factor;
+    result.crossings.first_x *= factor;
+    result.crossings.first_y *= factor;
+    result.failure.x *= factor;
+    result.failure.y *= factor;
+
+    for (MocPassDiagnostics& diag : result.pass_diagnostics) {
+        diag.min_spacing *= factor;
+        diag.max_spacing *= factor;
+        diag.mean_spacing *= factor;
+        diag.front_axis_x *= factor;
+        diag.front_wall_x *= factor;
+        diag.front_axis_spacing *= factor;
+        diag.front_wall_spacing *= factor;
+        diag.step_dx *= factor;
+    }
+    result.init_diagnostics.wall_gap *= factor;
+}
+
+// Resolved wall contour for a solve, in throat radii: options.nozzle_profile as given
+// (ANALYSIS, DESIGN_MIN_LENGTH; already normalized by options_in_throat_radii), or the Rao
+// contour generated for a unit throat (DESIGN_RAO). Returned by value so the caller holds it
+// as a solve() local -- never written back into options.nozzle_profile: doing so would leave
+// a later solve on the same MocNozzle instance, with mode changed away from DESIGN_RAO,
+// reading a stale Rao contour from the prior solve.
 NozzleProfile resolve_wall_profile(const MocOptions& options) {
     switch (options.mode) {
         case MocMode::DESIGN_MIN_LENGTH: {
@@ -88,9 +141,9 @@ ExitPlane exit_plane_of(const CharacteristicNet& net, MocMode mode) {
     return exit_plane;
 }
 
-// Exit-to-throat area ratio, given the throat reference radius r_throat (net.wall_y.front()
-// for the ladder, the geometry throat radius for the inverse march -- see solve()). Callers
-// guard net.wall_y/r_throat emptiness themselves before calling this.
+// Exit-to-throat area ratio, given the throat reference radius r_throat in net units
+// (net.wall_y.front() for the ladder, the normalized geometry's 1 for the inverse march --
+// see solve()). Callers guard net.wall_y/r_throat emptiness themselves before calling this.
 double area_ratio_of(const CharacteristicNet& net, MocFlowKind flow, double r_throat) {
     const double y_ratio = net.wall_y.back() / r_throat;
     return (flow == MocFlowKind::PLANAR) ? y_ratio : y_ratio * y_ratio;
@@ -111,7 +164,11 @@ MocResult MocNozzle::solve() {
     MocLog log(options.log_level);
     m_is_solved = false;
 
-    NozzleProfile wall = resolve_wall_profile(options);
+    // The solve runs in throat radii (see options_in_throat_radii); `throat_radius` is the
+    // caller's unit, used only to convert the result back at the end.
+    const double throat_radius = options.geometry.throat_radius;
+    const MocOptions normalized = options_in_throat_radii(options);
+    NozzleProfile wall = resolve_wall_profile(normalized);
 
     ThroatCondition throat{};
     std::optional<MocThermo> thermo;
@@ -143,13 +200,16 @@ MocResult MocNozzle::solve() {
 
     // Everything a kernel or unit process needs for this solve, besides the points it works
     // on.
-    MocSolveContext ctx{options, wall, *thermo, log};
+    MocSolveContext ctx{normalized, wall, *thermo, log};
 
     MocResult result;
+    result.throat_radius = throat_radius;
 
     StartLine line;
     double reference_spacing = 0.0;
-    double throat_radius = 1.0;
+    // Throat radius in the net's own unit (throat radii, so 1), for area_ratio and the
+    // start-line diagnostics.
+    double net_throat_radius = 1.0;
     CharacteristicNet net;
 
     // Exactly one of these is populated inside the try block below, depending on
@@ -170,7 +230,12 @@ MocResult MocNozzle::solve() {
             // and seed the inverse kernel directly from the override. Treated as a generic
             // (Kliegel-Levine-like) line for InverseMarch::initial_front and
             // measure_start_line: it is not collinear along a single characteristic.
+            // Given in the caller's unit, like nozzle_profile.
             line.points = *m_inverse_front_override;
+            for (CharacteristicPoint& pt : line.points) {
+                pt.x *= 1.0 / throat_radius;
+                pt.y *= 1.0 / throat_radius;
+            }
             line.family.reset();
             line.used = MocStartLine::KLIEGEL_LEVINE;
         } else {
@@ -181,34 +246,31 @@ MocResult MocNozzle::solve() {
             direct_march.emplace(ctx, line, net);
             direct_march->seed();
 
-            // Establish throat_radius and reference_spacing, once, from the line actually
+            // Establish net_throat_radius and reference_spacing, once, from the line actually
             // seeded. Both init paths put a wall point at the throat lip first, so
-            // wall_y.front() is the throat radius in whatever units the net is carrying;
-            // taking it from the net rather than from geometry.throat_radius keeps the two
-            // consistent even when the initial line is built in normalized coordinates.
+            // wall_y.front() is the throat radius in the units the net is carrying (1).
             if (!net.wall_y.empty() && net.wall_y.front() > 0.0 &&
                 options.num_characteristics > 1) {
-                throat_radius = net.wall_y.front();
+                net_throat_radius = net.wall_y.front();
                 reference_spacing =
-                    throat_radius / static_cast<double>(options.num_characteristics - 1);
+                    net_throat_radius / static_cast<double>(options.num_characteristics - 1);
             }
         }
         else {
             // The front-based kernel (InverseMarch): no throat-lip anchor is seeded (see
             // InverseMarch::initial_front / CharacteristicNet::add_front); wall_x.front() is
             // F_0's own wall point, not (0, 1), so the throat radius for area_ratio and
-            // diagnostic purposes comes from the geometry directly.
+            // diagnostic purposes is the normalized geometry's, i.e. 1.
             inverse_march.emplace(ctx, net);
             inverse_march->seed(m_inverse_front_override.has_value()
                 ? line.points : inverse_march->initial_front(line));
-            throat_radius = (options.geometry.throat_radius > 0.0)
-                ? options.geometry.throat_radius : 1.0;
+            net_throat_radius = normalized.geometry.throat_radius;
             // Without this, reference_spacing would stay 0 for every analysis/Rao solve,
             // which would make MocInitDiagnostics::wall_gap_over_spacing and
             // wall_station_to_tangency silently report spacing = 1; anchoring it the same way
             // the chain ladder does keeps both kernels' diagnostics comparable.
             if (options.num_characteristics > 1) {
-                reference_spacing = throat_radius / static_cast<double>(options.num_characteristics - 1);
+                reference_spacing = net_throat_radius / static_cast<double>(options.num_characteristics - 1);
             }
         }
     }
@@ -240,7 +302,7 @@ MocResult MocNozzle::solve() {
 
     // Measured before the march so it is available even when the kernel fails partway --
     // an initialization defect is exactly the case where the march does not finish.
-    result.init_diagnostics = measure_start_line(line, ctx, reference_spacing, throat_radius);
+    result.init_diagnostics = measure_start_line(line, ctx, reference_spacing, net_throat_radius);
 
     std::optional<MocFailure> kernel_failure = direct_march.has_value()
         ? direct_march->run()
@@ -256,9 +318,9 @@ MocResult MocNozzle::solve() {
         result.min_theta_x = lowest->x;
         result.min_theta_y = lowest->y;
         if (result.min_theta < -0.5 * M_PI / 180.0) {
-            log.warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f}): a compression is "
-                "converging on the axis (a forming shock); the isentropic solution downstream "
-                "of it is approximate.", result.min_theta * 180.0 / M_PI,
+            log.warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f} throat radii): a "
+                "compression is converging on the axis (a forming shock); the isentropic "
+                "solution downstream of it is approximate.", result.min_theta * 180.0 / M_PI,
                 result.min_theta_x, result.min_theta_y);
         }
     }
@@ -309,9 +371,9 @@ MocResult MocNozzle::solve() {
     if (options.mode != MocMode::DESIGN_MIN_LENGTH) {
         // net.wall_x.front()/wall_y.front() are F_0's own wall point, not the throat lip
         // (0, 1) DirectMarch seeds -- see the front-based seeding branch above -- so the
-        // throat radius reference comes from the geometry directly instead.
+        // throat radius reference is the normalized geometry's (1) instead.
         if (!net.wall_y.empty()) {
-            result.area_ratio = area_ratio_of(net, options.flow_type, throat_radius);
+            result.area_ratio = area_ratio_of(net, options.flow_type, net_throat_radius);
         }
     }
     else if (!net.wall_y.empty() && net.wall_y.front() > 0.0) {
@@ -338,6 +400,9 @@ MocResult MocNozzle::solve() {
 
     // Exit plane extraction: see exit_plane_of() above.
     result.exit_plane = exit_plane_of(net, options.mode);
+
+    // Everything above is in throat radii; report lengths in the caller's unit.
+    scale_result_lengths(result, throat_radius);
 
     m_is_solved = true;
     return result;

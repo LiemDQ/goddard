@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <format>
 #include <sstream>
+#include <stdexcept>
 #include <Eigen/Dense>
 #include "goddard/interpolation.hpp"
 #include "goddard/profile.hpp"
@@ -321,6 +322,17 @@ void NozzleProfile::push_back(std::pair<double, double>&& coords) {
 
 size_t NozzleProfile::size() const {
     return x.size();
+}
+
+NozzleProfile NozzleProfile::scaled(double factor) const {
+    if (!(factor > 0.0)) {
+        throw std::invalid_argument(std::format(
+            "NozzleProfile scale factor must be positive; got {}.", factor));
+    }
+    NozzleProfile out = *this;
+    for (double& value : out.x) value *= factor;
+    for (double& value : out.y) value *= factor;
+    return out;
 }
 
 NozzleProfile NozzleProfile::load_profile_csv(const std::string& filename) {

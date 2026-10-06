@@ -232,7 +232,9 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
         chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
+        throat_radius: Throat radius, used when ``geometry`` is not given. Sets the
+            length unit of the result: the designed contour and every other length
+            are returned in it.
         exit_mach: Target exit Mach number, if the design is Mach-driven.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
@@ -282,7 +284,9 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to AXISYMMETRIC, the mode Rao contours are for).
         chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
+        throat_radius: Throat radius, used when ``geometry`` is not given. The Rao
+            contour is generated for this throat, and every length in the result is in
+            its unit.
         geometry: A NozzleGeometry, overriding ``throat_radius``, ``expansion_ratio``
             and ``length_frac``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
@@ -327,12 +331,15 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     """Analyse an existing nozzle contour using the Method of Characteristics.
 
     Args:
-        profile: NozzleProfile object, or a path (str or os.PathLike) to a CSV file.
+        profile: NozzleProfile object, or a path (str or os.PathLike) to a CSV file,
+            in the same length unit as ``throat_radius``, with its throat at x = 0.
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
         chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
+        throat_radius: Throat radius, used when ``geometry`` is not given. Must equal
+            the contour's smallest radius (within 1e-3 relative); every length in the
+            result is in its unit.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine

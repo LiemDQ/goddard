@@ -325,7 +325,9 @@ double MocInitialization::KL_dzdx(double, double gamma) const {
 }
 
 double MocInitialization::KL_R() const {
-    return geometry.downstream_wall_curvature_radius/geometry.throat_radius;
+    // NozzleGeometry::downstream_wall_curvature_radius is already a multiple of the throat
+    // radius, which is the curvature ratio R = R_c / r_t the series is expanded in.
+    return geometry.downstream_wall_curvature_radius;
 }
 
 double MocInitialization::KL_u1(double r, double z) const {
@@ -792,12 +794,10 @@ MocInitDiagnostics measure_start_line(const StartLine& line, const MocSolveConte
 
     // The shift's natural scale. The transonic region's axial extent goes as
     // sqrt(r_throat * R_curvature), so the same absolute shift is a different fraction of
-    // it at every throat curvature.
-    if (ctx.options.geometry.downstream_wall_curvature_radius > 0.0 &&
-        ctx.options.geometry.throat_radius > 0.0)
-    {
-        const double R = ctx.options.geometry.downstream_wall_curvature_radius
-                       / ctx.options.geometry.throat_radius;
+    // it at every throat curvature. Both the shift and R (the curvature radius as a multiple
+    // of the throat radius) are in throat radii.
+    if (ctx.options.geometry.downstream_wall_curvature_radius > 0.0) {
+        const double R = ctx.options.geometry.downstream_wall_curvature_radius;
         diag.shift_over_transonic_length = ctx.options.initial_line_axial_shift / std::sqrt(R);
     }
 

@@ -126,6 +126,16 @@ public:
     /** Append a wall point, given as an (x, y) pair in length units. */
     void push_back(std::pair<double, double>&& coords);
 
+    /**
+     * Copy of this profile in another length unit: every `x` and `y` multiplied by `factor`.
+     * Angles and slopes are unchanged; `throat_index` is kept.
+     *
+     * @param factor Length scale factor, e.g. 1 / r_throat to express the profile in throat
+     * radii. Must be positive.
+     * @throws std::invalid_argument if `factor` is not positive.
+     */
+    NozzleProfile scaled(double factor) const;
+
     /** Number of points on the profile. */
     size_t size() const;
 
@@ -143,8 +153,8 @@ public:
      * at a sharp throat corner.
      * 
      * @param area_ratio Ratio of the exit area to the throat area. 
-     * @param r_expansion_curve Radius of curvature of the throat expansion arc, in the same
-     * length units as `r_throat`. Zero gives a sharp throat corner.
+     * @param r_expansion_curve Radius of curvature of the throat expansion arc, as a multiple
+     * of `r_throat`. Zero gives a sharp throat corner.
      * @param r_throat Throat radius, in length units. 
      * @param theta_n Conical expansion angle from the centerline, in degrees.
      * @param n_points Number of points in the profile. 

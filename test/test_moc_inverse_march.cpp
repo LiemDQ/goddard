@@ -198,6 +198,10 @@ TEST_P(InverseMarchSourceFlow, SecondOrderConvergence) {
     for (int n : levels) {
         MocOptions opts = make_inverse_options(flow_kind, gamma, n);
         opts.nozzle_profile = profile;
+        // This contour is a cone segment with no throat on it; its narrowest radius serves
+        // as the length reference that NozzleGeometry::throat_radius must match in analysis.
+        // The march is scale invariant, so the choice only sets the internal unit.
+        opts.geometry.throat_radius = profile.y.front();
 
         std::vector<CharacteristicPoint> front0 =
             build_source_flow_front(flow, flow_kind, x_start, y_wall_start, n);
