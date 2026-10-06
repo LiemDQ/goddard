@@ -115,6 +115,29 @@ AnyMap select_species(AnyMap& root_node, const std::unordered_set<string>& speci
     return root_node;
 }
 
+std::vector<string> species_in_file_order(
+    const AnyMap& root_node, const std::vector<string>& species)
+{
+    if (!root_node.hasKey("species")) {
+        std::vector<string> sorted(species);
+        std::sort(sorted.begin(), sorted.end());
+        sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+        return sorted;
+    }
+
+    const std::unordered_set<string> requested(species.begin(), species.end());
+    std::unordered_set<string> found;
+    std::vector<string> ordered;
+    for (const AnyMap& species_node : root_node.at("species").asVector<AnyMap>()) {
+        const string& name = species_node.at("name").asString();
+        if (requested.count(name) && found.insert(name).second) {
+            ordered.push_back(name);
+        }
+    }
+    check_all_species_found(requested, found);
+    return ordered;
+}
+
 AnyMap select_species_from_yaml_string(const string& yaml_str, const std::unordered_set<string>& species) {
     auto root_node = AnyMap::fromYamlString(yaml_str);
     return select_species(root_node, species);

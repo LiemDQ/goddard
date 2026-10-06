@@ -40,6 +40,22 @@ Cantera::AnyMap select_species(const std::string& infile, const std::unordered_s
  */
 Cantera::AnyMap select_species(Cantera::AnyMap& root_node, const std::unordered_set<std::string>& species);
 
+/**
+ * Order species names as they appear in the `species` section of a root node.
+ *
+ * Building a phase from the result gives the same species indices whatever the order of
+ * `species`, e.g. when it comes from an unordered set. If the root node has no `species` section
+ * the names are sorted instead.
+ *
+ * @param root_node Root node of a Cantera YAML input file.
+ * @param species Species names; a repeated name is kept once.
+ * @return the names in file order.
+ * @throws std::invalid_argument if a name is not in the `species` section, listing the missing
+ * names.
+ */
+std::vector<std::string> species_in_file_order(
+    const Cantera::AnyMap& root_node, const std::vector<std::string>& species);
+
 Cantera::AnyMap select_species_from_yaml_string(const std::string& yaml_str, const std::unordered_set<std::string>& species);
 
 
