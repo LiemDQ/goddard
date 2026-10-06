@@ -552,8 +552,8 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     ASSERT_FALSE(result_1d_frozen.expansions.empty());
     ASSERT_TRUE(result_1d_frozen.expansions[0].converged);
     gas->thermo()->restoreState(result_1d_frozen.expansions[0].state);
-    const double mach_1d_frozen = Goddard::mach(
-        *gas->thermo(), result_1d_frozen.throat.H_stagnation, result_1d_frozen.expansions[0].gamma_s);
+    const double mach_1d_frozen = std::sqrt(2.0 * (result_1d_frozen.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
+        / gas_sonic_velocity(*gas->thermo(), result_1d_frozen.expansions[0].gamma_s);
 
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
     NozzleOptions nozzle_opts_equil;
@@ -564,8 +564,8 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     ASSERT_FALSE(result_1d_equil.expansions.empty());
     ASSERT_TRUE(result_1d_equil.expansions[0].converged);
     gas->thermo()->restoreState(result_1d_equil.expansions[0].state);
-    const double mach_1d_equil = Goddard::mach(
-        *gas->thermo(), result_1d_equil.throat.H_stagnation, result_1d_equil.expansions[0].gamma_s);
+    const double mach_1d_equil = std::sqrt(2.0 * (result_1d_equil.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
+        / gas_sonic_velocity(*gas->thermo(), result_1d_equil.expansions[0].gamma_s);
 
     RecordProperty("frozen_1d_mach", std::to_string(mach_1d_frozen));
     RecordProperty("equilibrium_1d_mach", std::to_string(mach_1d_equil));

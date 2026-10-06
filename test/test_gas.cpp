@@ -109,19 +109,22 @@ TEST_F(GasTests, SpeedOfSoundMatchesFreeFunction) {
 
 // Stagnation properties
 
-TEST_F(GasTests, StagnationEnthalpyMatchesFreeFunction) {
+TEST_F(GasTests, StagnationEnthalpyAddsKineticEnergy) {
     Gas gas(sol, GasChemistry::FROZEN);
     double velocity = 500.0;
-    double expected = gas_stagnation_enthalpy(*sol->thermo(), velocity);
-    EXPECT_DOUBLE_EQ(gas.stagnation_enthalpy(velocity), expected);
+    EXPECT_DOUBLE_EQ(gas.stagnation_enthalpy(velocity), gas.enthalpy_mass() + 0.5 * velocity * velocity);
 }
 
-TEST_F(GasTests, StagnationPressureMatchesFreeFunction) {
+TEST_F(GasTests, FrozenStagnationPressureConservesEntropyAndTotalEnthalpy) {
     Gas gas(sol, GasChemistry::FROZEN);
-    double velocity = 500.0;
-    double expected = gas_stagnation_pressure(*sol->thermo(), velocity);
-    EXPECT_NEAR(gas.stagnation_pressure(velocity), expected,
-                max_fp_error(expected, 1e-10, 1e-6));
+    const double velocity = 500.0;
+    const double P_stagnation = gas.stagnation_pressure(velocity);
+    EXPECT_GT(P_stagnation, gas.pressure());
+
+    Gas stagnation = gas.clone();
+    stagnation.set_state_SP(gas.entropy_mass(), P_stagnation);
+    // A 1e-9 relative pressure step gives an enthalpy error of ~1e-9 * P/rho, well under 1e-3 J/kg.
+    EXPECT_NEAR(stagnation.enthalpy_mass(), gas.stagnation_enthalpy(velocity), 1e-3);
 }
 
 TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) {
@@ -147,11 +150,10 @@ TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) 
     EXPECT_GT(std::abs(P_stagnation - P_stagnation_frozen) / P_stagnation_frozen, 1e-4);
 }
 
-TEST_F(GasTests, IsenthalpicVelocityMatchesFreeFunction) {
+TEST_F(GasTests, IsenthalpicVelocityFromEnthalpyDrop) {
     Gas gas(sol, GasChemistry::FROZEN);
     double H_stag = gas.enthalpy_mass() + 100000.0;
-    double expected = gas_isenthalpic_velocity(*sol->thermo(), H_stag);
-    EXPECT_DOUBLE_EQ(gas.isenthalpic_velocity(H_stag), expected);
+    EXPECT_NEAR(gas.isenthalpic_velocity(H_stag), std::sqrt(2.0 * 100000.0), 1e-9);
 }
 
 TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
@@ -163,8 +165,7 @@ TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
     // Set a higher stagnation enthalpy and verify it uses the stored value
     double H_stag = gas.enthalpy_mass() + 100000.0;
     gas.set_stagnation_enthalpy(H_stag);
-    double expected = gas_isenthalpic_velocity(*sol->thermo(), H_stag);
-    EXPECT_DOUBLE_EQ(gas.isenthalpic_velocity(), expected);
+    EXPECT_NEAR(gas.isenthalpic_velocity(), std::sqrt(2.0 * 100000.0), 1e-9);
 }
 
 // Expansion properties

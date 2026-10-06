@@ -390,7 +390,8 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
     ASSERT_TRUE(nozzle_result.expansions[0].converged);
 
     gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+    double mach_1d = std::sqrt(2.0 * (nozzle_result.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
+        / gas_sonic_velocity(*gas->thermo(), nozzle_result.expansions[0].gamma_s);
 
     // 2D MoC vs 1D: expect within ~10% (2D effects + design mode differences)
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
@@ -420,7 +421,8 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
     ASSERT_TRUE(nozzle_result.expansions[0].converged);
 
     gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+    double mach_1d = std::sqrt(2.0 * (nozzle_result.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
+        / gas_sonic_velocity(*gas->thermo(), nozzle_result.expansions[0].gamma_s);
 
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
         << "Axisymmetric equilibrium MoC exit Mach should be in the same ballpark as 1D";

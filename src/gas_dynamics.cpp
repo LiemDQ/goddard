@@ -2,19 +2,9 @@
 #include <format>
 #include <stdexcept>
 #include "goddard/gas_dynamics.hpp"
-#include "goddard/utils.hpp"
 #include "goddard/error.hpp"
-#include "goddard/newton.hpp"
 
 namespace Goddard {
-
-double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagnation){
-    return std::sqrt(2*(H_stagnation - gas.enthalpy_mass()));
-}
-
-Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& H_stagnation) {
-    return (2*(H_stagnation - gas.enthalpy_mass())).sqrt();
-}
 
 double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma){
     return std::sqrt(Cantera::GasConstant*gas.temperature()*gamma/gas.meanMolecularWeight());
@@ -24,69 +14,12 @@ double gas_sonic_velocity(double temperature, double molar_mass, double gamma) {
     return std::sqrt(Cantera::GasConstant*temperature*gamma/molar_mass);
 }
 
-Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma) {
-    return (Cantera::GasConstant*gas.temperature()*gamma / gas.mean_molecular_weight()).sqrt();
-}
-
-double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity) {
-    return gas.enthalpy_mass() + velocity*velocity/2;
-}
-
-Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd& velocity) {
-    return gas.enthalpy_mass() + velocity * velocity / 2;
-}
-
 double perfect_gas_stagnation_pressure(double P, double mach, double gamma) {
     return P * std::pow((1 + (gamma-1)/2 * mach * mach), gamma/(gamma - 1));
 }
 
-Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma) {
-    return P * (1 + (gamma-1)/2 * mach * mach).pow(gamma/(gamma - 1));
-}
-
-double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity) {
-    auto thermo = gas.clone();
-    const double h_stag = gas_stagnation_enthalpy(gas, velocity);
-    const double entropy = gas.entropy_mass();
-    
-    // initial guess
-    double gamma = gas.cp_mass()/gas.cv_mass();
-    double mach = velocity / gas_sonic_velocity(*thermo, gamma);
-    const double P_guess = perfect_gas_stagnation_pressure(thermo->pressure(), mach, gamma);
-
-    // Use Newton's method to solve for stagnation pressure.
-    // As energy is conserved, h_stag - h(S, P_stag) = 0.
-    // Note that by definition, (dh/dP)_S = V = 1/rho
-    NewtonOptions options;
-    options.step_reltol = 1e-9;
-    options.max_iterations = 51;
-    const NewtonResult result = newton_solve(P_guess, [&](double P_stag) {
-        thermo->setState_SP(entropy, P_stag);
-        return NewtonFunction{.value = thermo->enthalpy_mass() - h_stag,
-                              .derivative = 1.0/thermo->density()};
-    }, options);
-    if (result.status != NewtonStatus::CONVERGED) {
-        throw ConvergenceError("Failed to converge to stagnation pressure.", result.iterations,
-            options.step_reltol, std::abs(result.step/result.x));
-    }
-    return result.x;
-}
-
 double stagnation_factor(double mach, double gamma) {
     return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
-}
-
-Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma) {
-    return 1.0 + (gamma - 1.0)/2.0 * mach * mach;
-}
-
-
-double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity) {
-    return gas.temperature()*Cantera::GasConstant / (gas.pressure() * velocity * gas.meanMolecularWeight());
-}
-
-Eigen::ArrayXXd area_per_mdot(const ThermoArray& gas, const Eigen::ArrayXXd& velocity) {
-    return gas.temperature() * Cantera::GasConstant / (gas.pressure() * velocity * gas.mean_molecular_weight());
 }
 
 double cstar(double gamma, double temperature, double molecular_weight) {
@@ -94,37 +27,11 @@ double cstar(double gamma, double temperature, double molecular_weight) {
     return std::sqrt(Cantera::GasConstant * temperature / (molecular_weight* gamma)) * gamma_term;
 }
 
-double isp(const Cantera::ThermoPhase& gas, double /*gamma*/, double enthalpy) {
-    return gas_isenthalpic_velocity(gas, enthalpy);
-}
-
-double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy) {
-    double v = isp(gas, gamma, enthalpy);
-    return v + gas.temperature()*Cantera::GasConstant/(v * gas.meanMolecularWeight());
-}
-
-double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma) {
-    double velocity = gas_isenthalpic_velocity(gas, H_stag);
-    double sonic = gas_sonic_velocity(gas, gamma);
-    
-    return velocity/sonic;
-}
-
 double area_mach_relation(double mach, double gamma) {
     return std::sqrt(
         (1/(mach*mach))
         *std::pow(2.0/(gamma+1)*stagnation_factor(mach, gamma), (gamma+1)/(gamma-1)));
 }
-
-double C_F(double gamma, double pressure_ratio, double) {
-    double term1 = 2*gamma*gamma/(gamma-1);
-    double term2 = std::pow(2/(gamma+1), (gamma+1)/(gamma-1));
-    double term3 = 1 - std::pow(pressure_ratio, (gamma-1)/gamma);
-    //TODO: do we need to include pressure term?
-
-    return std::sqrt(term1*term2*term3);
-}
-
 
 double mach_from_area_ratio(double area_ratio, double gamma, bool supersonic) {
     if (!(area_ratio >= 1.0)) {
