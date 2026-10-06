@@ -3,6 +3,7 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/numerics.hpp"
 #include "goddard/global.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
@@ -933,8 +934,8 @@ TEST_F(MultiphaseHPTests, CompositionPathCombustorKeepsTheCondensedCandidates) {
     stream_products.restore_state(from_streams.get_state(0));
 
     EXPECT_TRUE(composition_products.has_condensed_phases());
-    EXPECT_NEAR(condensed_mole_fraction(composition_products, "C(gr)"), 0.03137, 3e-3);
-    EXPECT_NEAR(composition_products.temperature(), 1039.24, 2.0);
+    EXPECT_NEAR(condensed_mole_fraction(composition_products, "C(gr)"), 0.03137, 1e-4);
+    EXPECT_NEAR(composition_products.temperature(), 1039.24, 0.1);
 
     // Both paths solve the same HP problem to the multiphase solver tolerance (rtol 1e-6).
     EXPECT_NEAR(composition_products.temperature(), stream_products.temperature(),
