@@ -42,7 +42,7 @@ void bind_kinetic_nozzle(nb::module_& m) {
                 Goddard::NozzleProfile profile,
                 double mdot,
                 Goddard::NozzleOptions options) {
-                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot, options);
+                 new (self) Goddard::KineticNozzle(gas, profile, mdot, std::move(options));
              },
              "gas"_a, "profile"_a, "mdot"_a, "options"_a=Goddard::NozzleOptions{})
         .def("__init__",
@@ -52,8 +52,8 @@ void bind_kinetic_nozzle(nb::module_& m) {
                 double mdot,
                 std::vector<double> state,
                 Goddard::NozzleOptions options) {
-                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot,
-                                                    std::move(state), options);
+                 new (self) Goddard::KineticNozzle(gas, profile, mdot, std::move(state),
+                                                    std::move(options));
              },
              "gas"_a, "profile"_a, "mdot"_a, "state"_a, "options"_a=Goddard::NozzleOptions{})
         .def("solve", &Goddard::KineticNozzle::solve,

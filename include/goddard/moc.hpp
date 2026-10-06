@@ -105,9 +105,9 @@ struct MocOptions {
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
 
     /// Number of C+ lines seeded from the initial expansion fan.
-    int num_characteristics;
+    int num_characteristics = 10;
     /// Ratio of specific heats. Used only when `chemistry` is GasChemistry::PERFECT_GAS.
-    double gamma;
+    double gamma = 1.4;
     /// Tolerances for the iterative unit processes.
     SolverOptions solver_options{.abstol = 1e-10, .reltol = 1e-5};
     /// Throat and contour geometry.
@@ -124,10 +124,10 @@ struct MocOptions {
 
     // -- Design --
     /// Maximum wall angle (radians), for MocMode::DESIGN_MIN_LENGTH.
-    double theta_max;
+    double theta_max = 0.0;
     /// Target exit Mach number, for the design modes. Not read by the solver; the design
     /// target is set through theta_max.
-    double exit_mach;
+    double exit_mach = 0.0;
 
     /**
      * Optional user-supplied theta schedule for the expansion fan.
