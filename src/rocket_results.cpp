@@ -35,7 +35,8 @@ RocketProblemResults::RocketProblemResults(
             case_result.process,
             case_result.combustor_type,
             {},
-            case_result.frozen_NFZ
+            case_result.frozen_NFZ,
+            case_result.mixture_type
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
@@ -347,7 +348,8 @@ std::string build_report_page(
     const std::vector<ThermodynamicState>& states,
     std::size_t throat_col,
     const ThermodynamicState& stagnation,
-    double of_ratio,
+    MixtureRatioType mixture_type,
+    double mixture_ratio,
     double display_pressure_pa,
     double initial_pressure_pa,
     int frozen_NFZ,
@@ -400,7 +402,13 @@ std::string build_report_page(
               + format_fixed(fac->injector_pressure_pa / fac->stagnation_pressure_pa, 9, 6) + "\n";
         page += "Ac/At = " + format_fixed(fac->contraction_ratio, 9, 4) + "\n";
     }
-    page += "O/F=" + format_fixed(of_ratio, 11, 5) + "\n\n";
+    std::string mixture_label;
+    switch (mixture_type) {
+        case MixtureRatioType::OF_RATIO: mixture_label = "O/F="; break;
+        case MixtureRatioType::FUEL_FRAC: mixture_label = "FUEL FRACTION="; break;
+        case MixtureRatioType::PHI_RATIO: mixture_label = "PHI="; break;
+    }
+    page += mixture_label + format_fixed(mixture_ratio, 11, 5) + "\n\n";
 
     TextTable table(18, 10);
     std::vector<std::string> headers;
@@ -697,6 +705,7 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                     thermo_states,
                     throat_col,
                     stagnation_thermo,
+                    meta.mixture_type,
                     meta.of_ratios[of_idx],
                     thermo_states[0].pressure,
                     meta.pressures[p_idx],

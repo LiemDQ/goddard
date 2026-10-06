@@ -571,8 +571,8 @@ TEST_F(GasOnlyEquilibriumTests, MixtureOverloadsMatchTheThermoPhaseOverloads) {
 
     EXPECT_DOUBLE_EQ(from_gas.gamma_s, from_thermo.gamma_s);
     EXPECT_DOUBLE_EQ(from_gas.spec_heat_p, from_thermo.spec_heat_p);
-    EXPECT_DOUBLE_EQ(from_gas.dlogV_dlogT_P, from_thermo.dlogV_dlogT_P);
-    EXPECT_DOUBLE_EQ(from_gas.dlogV_dlogP_T, from_thermo.dlogV_dlogP_T);
+    EXPECT_DOUBLE_EQ(from_gas.dlV_dlT_P, from_thermo.dlV_dlT_P);
+    EXPECT_DOUBLE_EQ(from_gas.dlV_dlP_T, from_thermo.dlV_dlP_T);
     EXPECT_DOUBLE_EQ(get_equilibrium_gamma(gas), get_equilibrium_gamma(*gas.thermo()));
 
     // The mixture fields are filled for a gas-only state.
@@ -590,8 +590,8 @@ TEST_F(GasOnlyEquilibriumTests, MixtureOverloadsMatchTheThermoPhaseOverloads) {
 TEST_F(GasOnlyEquilibriumTests, FrozenPropertiesUseFixedComposition) {
     const ExpansionProperties props = get_frozen_properties(gas);
 
-    EXPECT_DOUBLE_EQ(props.dlogV_dlogT_P, 1.0);
-    EXPECT_DOUBLE_EQ(props.dlogV_dlogP_T, -1.0);
+    EXPECT_DOUBLE_EQ(props.dlV_dlT_P, 1.0);
+    EXPECT_DOUBLE_EQ(props.dlV_dlP_T, -1.0);
     EXPECT_DOUBLE_EQ(props.spec_heat_p, gas.cp_mass());
     EXPECT_DOUBLE_EQ(props.spec_heat_v, gas.cv_mass());
     EXPECT_DOUBLE_EQ(props.gamma_s, gas.cp_mass() / gas.cv_mass());

@@ -371,7 +371,11 @@ void bind_structs(nb::module_& m) {
         .def_ro("mach_number", &Goddard::RocketPerformance::mach_number)
         .def_ro("cstar", &Goddard::RocketPerformance::cstar)
         .def_ro("CF", &Goddard::RocketPerformance::CF)
-        .def_ro("isp", &Goddard::RocketPerformance::isp)
-        .def_ro("ivac", &Goddard::RocketPerformance::ivac);
+        .def_ro("isp", &Goddard::RocketPerformance::isp, DOC(Goddard, RocketPerformance, isp))
+        .def_ro("ivac", &Goddard::RocketPerformance::ivac, DOC(Goddard, RocketPerformance, ivac))
+        .def_prop_ro("isp_s", &Goddard::RocketPerformance::isp_s,
+             DOC(Goddard, RocketPerformance, isp_s))
+        .def_prop_ro("ivac_s", &Goddard::RocketPerformance::ivac_s,
+             DOC(Goddard, RocketPerformance, ivac_s));
 
 }

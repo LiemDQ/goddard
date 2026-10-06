@@ -314,20 +314,20 @@ ExpansionProperties assemble_properties(const MixtureState& state,
     props.frozen_gamma = frozen.first / frozen.second;
 
     // Condensed volume is neglected, so P V = n R T with n the *gas* moles per kg of mixture.
-    props.dlogV_dlogP_T = -1.0 + derivs.dlogn_dlogP_T;
+    props.dlV_dlP_T = -1.0 + derivs.dlogn_dlogP_T;
 
     if (derivs.pinned_transition) {
         const double infinity = std::numeric_limits<double>::infinity();
-        props.dlogV_dlogT_P = infinity;
+        props.dlV_dlT_P = infinity;
         props.spec_heat_p = infinity;
         props.spec_heat_v = infinity;
         // An isentropic change at a pinned transition happens at constant temperature.
-        props.gamma_s = -1.0 / props.dlogV_dlogP_T;
+        props.gamma_s = -1.0 / props.dlV_dlP_T;
         props.speed_of_sound = std::sqrt(gas_moles * R * state.temperature * props.gamma_s);
         return props;
     }
 
-    props.dlogV_dlogT_P = 1.0 + derivs.dlogn_dlogT_P;
+    props.dlV_dlT_P = 1.0 + derivs.dlogn_dlogT_P;
 
     // Equilibrium isobaric specific heat. NOTE: this is on a per kg of mixture basis because of the
     // normalization of the mole vectors.
@@ -346,8 +346,8 @@ ExpansionProperties assemble_properties(const MixtureState& state,
     );
 
     props.spec_heat_v = props.spec_heat_p
-        + gas_moles * R * props.dlogV_dlogT_P * props.dlogV_dlogT_P / props.dlogV_dlogP_T;
-    props.gamma_s = -(props.spec_heat_p / props.spec_heat_v) / props.dlogV_dlogP_T;
+        + gas_moles * R * props.dlV_dlT_P * props.dlV_dlT_P / props.dlV_dlP_T;
+    props.gamma_s = -(props.spec_heat_p / props.spec_heat_v) / props.dlV_dlP_T;
     props.speed_of_sound = std::sqrt(gas_moles * R * state.temperature * props.gamma_s);
 
     return props;
@@ -409,8 +409,8 @@ ExpansionProperties get_frozen_properties(const Gas& gas) {
     const std::pair<double, double> frozen = frozen_specific_heats(state);
 
     ExpansionProperties props;
-    props.dlogV_dlogT_P = 1.0;
-    props.dlogV_dlogP_T = -1.0;
+    props.dlV_dlT_P = 1.0;
+    props.dlV_dlP_T = -1.0;
     props.spec_heat_p = frozen.first;
     props.spec_heat_v = frozen.second;
     props.gamma_s = frozen.first / frozen.second;

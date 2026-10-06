@@ -11,8 +11,8 @@ void bind_equilibrium(nb::module_& m) {
     // ExpansionProperties
     nb::class_<Goddard::ExpansionProperties>(m, "ExpansionProperties")
         .def(nb::init<>())
-        .def_ro("dlogV_dlogT_P", &Goddard::ExpansionProperties::dlogV_dlogT_P)
-        .def_ro("dlogV_dlogP_T", &Goddard::ExpansionProperties::dlogV_dlogP_T)
+        .def_ro("dlV_dlT_P", &Goddard::ExpansionProperties::dlV_dlT_P)
+        .def_ro("dlV_dlP_T", &Goddard::ExpansionProperties::dlV_dlP_T)
         .def_ro("spec_heat_p", &Goddard::ExpansionProperties::spec_heat_p)
         .def_ro("gamma_s", &Goddard::ExpansionProperties::gamma_s)
         .def_ro("spec_heat_v", &Goddard::ExpansionProperties::spec_heat_v)

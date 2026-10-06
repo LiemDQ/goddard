@@ -14,14 +14,30 @@
 namespace Goddard {
 
 
+/** Standard gravity [m/s^2], for specific impulse in seconds. */
+constexpr double STANDARD_GRAVITY = 9.80665;
+
+/** Rocket performance of one exit, as CEA reports it. */
 struct RocketPerformance {
+    /** Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-]. */
     double pressure_ratio;
+    /** Exit area over throat area, Ae/At [-]. */
     double area_ratio;
+    /** Exit Mach number [-]. */
     double mach_number;
+    /** Characteristic velocity c* [m/s]. */
     double cstar;
+    /** Thrust coefficient at optimum expansion [-]. */
     double CF;
+    /** Specific impulse at optimum expansion, as an effective exhaust velocity [m/s]. */
     double isp;
+    /** Vacuum specific impulse, as an effective exhaust velocity [m/s]. */
     double ivac;
+
+    /** Specific impulse at optimum expansion in seconds, `isp / STANDARD_GRAVITY` [s]. */
+    double isp_s() const { return isp / STANDARD_GRAVITY; }
+    /** Vacuum specific impulse in seconds, `ivac / STANDARD_GRAVITY` [s]. */
+    double ivac_s() const { return ivac / STANDARD_GRAVITY; }
 };
 
 enum class StationType {
@@ -64,6 +80,8 @@ struct RocketProblemCaseResult {
     std::vector<FiniteAreaChamber> finite_area_chambers;
     /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
     int frozen_NFZ = 0;
+    /** How `OF_ratios` are interpreted; see `CombustorOptions::mixture_type`. */
+    MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
 };
 
 class RocketProblemResults {
@@ -195,6 +213,7 @@ private:
         std::vector<double> mass_flux;
         /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
         int frozen_NFZ = 0;
+        MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     /** Product mixture used to read the stored station states back. */

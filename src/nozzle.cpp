@@ -379,8 +379,8 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     condition.P_inlet = P_inlet;
     condition.S_inlet = S_inlet;
     condition.gamma_s = gamma_s;
-    condition.dlV_dlP_T = final_props.dlogV_dlogP_T;
-    condition.dlV_dlT_P = final_props.dlogV_dlogT_P;
+    condition.dlV_dlP_T = final_props.dlV_dlP_T;
+    condition.dlV_dlT_P = final_props.dlV_dlT_P;
     condition.state = std::move(throat.state);
     condition.pinned_transition = final_props.pinned_transition;
     condition.thermo = std::move(throat.thermo);
@@ -653,8 +653,8 @@ NozzleStation Nozzle::station_at_current_state(const ExpansionProperties& props,
     ThermodynamicState thermo = m_gas.snapshot();
     m_gas.chemistry = chemistry;
     thermo.gamma_s = props.gamma_s;
-    thermo.dlV_dlP_T = props.dlogV_dlogP_T;
-    thermo.dlV_dlT_P = props.dlogV_dlogT_P;
+    thermo.dlV_dlP_T = props.dlV_dlP_T;
+    thermo.dlV_dlT_P = props.dlV_dlT_P;
     thermo.pinned_transition = props.pinned_transition;
     thermo.stagnation_enthalpy = H_stagnation;
     thermo.speed_of_sound = gas_sonic_velocity(thermo.temperature, thermo.molecular_weight,

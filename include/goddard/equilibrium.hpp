@@ -44,9 +44,9 @@ struct EquilibriumDerivatives {
 
 struct ExpansionProperties {
     /** (d log V / d log T)_P [-]. */
-    double dlogV_dlogT_P = 0.0;
+    double dlV_dlT_P = 0.0;
     /** (d log V / d log P)_T [-]. */
-    double dlogV_dlogP_T = 0.0;
+    double dlV_dlP_T = 0.0;
     /** Equilibrium constant-pressure specific heat [J/(kg.K)]. */
     double spec_heat_p = 0.0;
     /** Isentropic exponent -(d log P / d log V)_s [-]. */
@@ -108,8 +108,8 @@ double get_equilibrium_gamma(const Cantera::ThermoPhase& gas);
  * At a pinned phase transition (`Gas::at_phase_transition()` with both polymorphs present) the
  * two polymorphs share one element row, so they are merged into a single condensed unknown and
  * only the pressure block is solved. The temperature derivatives are then undefined and are
- * reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlogV_dlogT_P` are infinite, and
- * `gamma_s = -1 / dlogV_dlogP_T`.
+ * reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlV_dlT_P` are infinite, and
+ * `gamma_s = -1 / dlV_dlP_T`.
  * @{
  */
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Gas& gas);

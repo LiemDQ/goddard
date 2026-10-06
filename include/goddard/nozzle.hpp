@@ -23,6 +23,10 @@ enum class ExpansionType {
 struct NozzleOptions {
     GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
     ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    /**
+     * Station ratios, interpreted by `expansion_type`: area ratios A/A_t [-], or pressure ratios
+     * P_inlet/P [-] (chamber over station pressure, as CEA's `pi/p`).
+     */
     std::vector<double> expansion_ratios;
     /**
      * Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber (the default, and

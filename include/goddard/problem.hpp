@@ -71,9 +71,18 @@ class RocketProblem {
 
     public:
     
+    /**
+     * @param chem_params Thermodynamic data, reactants and mixture ratios.
+     * @param cases Combustor and nozzle settings of each case.
+     * @param phase_name Phase of `chem_params.thermo_file` to build the products from; empty
+     * selects the first phase in the file.
+     * @param transport Not implemented; `solve` raises NotImplementedError if true.
+     * @param ionized_species Not implemented; `solve` raises NotImplementedError if true.
+     * @param trace Not implemented; `solve` raises NotImplementedError if non-zero.
+     */
     RocketProblem(const ChemicalParameters& chem_params,
         const std::vector<RocketCaseParameters>& cases, 
-        const std::string& name = "", 
+        const std::string& phase_name = "", 
         bool transport = false,
         bool ionized_species = false,
         double trace = 0.0);

@@ -84,8 +84,8 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
     const NewtonSystemResult<2> result = newton_solve(guess, [&](const Eigen::Vector2d& x) {
         set_trial_state(gas, std::exp(x(1))*T_up, std::exp(x(0))*P_up);
         const ExpansionProperties props = gas.expansion_properties();
-        const double dlogV_dlogT = props.dlogV_dlogT_P;
-        const double dlogV_dlogP = props.dlogV_dlogP_T;
+        const double dlogV_dlogT = props.dlV_dlT_P;
+        const double dlogV_dlogP = props.dlV_dlP_T;
         const double pressure_ratio = std::exp(x(0));
         const double T_down = gas.temperature();
         const double enthalpy_rise = (gas.enthalpy_mass() - h_up)/R;

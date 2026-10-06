@@ -244,8 +244,8 @@ ThermodynamicState Gas::snapshot() const {
     info.stagnation_enthalpy = m_H_stagnation;
     
     auto props = expansion_properties();
-    info.dlV_dlP_T = props.dlogV_dlogP_T;
-    info.dlV_dlT_P = props.dlogV_dlogT_P;
+    info.dlV_dlP_T = props.dlV_dlP_T;
+    info.dlV_dlT_P = props.dlV_dlT_P;
     info.speed_of_sound = speed_of_sound();
     info.mixture_molecular_weight = mixture_molecular_weight();
     info.gas_mass_fraction = gas_mass_fraction();

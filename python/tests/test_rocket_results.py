@@ -149,3 +149,21 @@ def test_pressure_ratio_exit_reports_area_ratio():
         assert station.area_ratio > 1.0
         assert station.area_ratio == pytest.approx(results.performance(exit_index=index).area_ratio, rel=1e-6)
     assert exits[1].area_ratio > exits[0].area_ratio
+
+
+def test_specific_impulse_in_seconds(two_pressure_results):
+    performance = two_pressure_results.performance()
+    assert performance.isp_s == pytest.approx(performance.isp / 9.80665, rel=1e-15)
+    assert performance.ivac_s == pytest.approx(performance.ivac / 9.80665, rel=1e-15)
+
+
+def test_report_labels_mixture_ratio_by_type(two_pressure_results):
+    assert "O/F=" in two_pressure_results.report()
+
+    problem = build_h2o2_problem("fuel_fraction", [20.0 * BAR], [5.0], of_ratios=(0.15,))
+    case = problem.problem_cases[0]
+    case.combustor_options.mixture_type = goddard.MixtureRatioType.FUEL_FRAC
+    problem.problem_cases = [case]
+    report = problem.solve().report()
+    assert "FUEL FRACTION=" in report
+    assert "O/F=" not in report

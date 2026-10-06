@@ -865,9 +865,9 @@ static const char *__doc_Goddard_ExpansionProperties = R"doc()doc";
 
 static const char *__doc_Goddard_ExpansionProperties_density = R"doc(Mixture density [kg/m^3], P / (gas_moles * R * T). */)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_dlogV_dlogP_T = R"doc((d log V / d log P)_T [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_dlV_dlP_T = R"doc((d log V / d log P)_T [-]. */)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_dlogV_dlogT_P = R"doc((d log V / d log T)_P [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_dlV_dlT_P = R"doc((d log V / d log T)_P [-]. */)doc";
 
 static const char *__doc_Goddard_ExpansionProperties_frozen_gamma = R"doc(Frozen-composition ratio of specific heats cp/cv [-]. */)doc";
 
@@ -2244,7 +2244,10 @@ static const char *__doc_Goddard_NozzleOptions = R"doc()doc";
 
 static const char *__doc_Goddard_NozzleOptions_chemistry = R"doc()doc";
 
-static const char *__doc_Goddard_NozzleOptions_expansion_ratios = R"doc()doc";
+static const char *__doc_Goddard_NozzleOptions_expansion_ratios =
+R"doc(Station ratios, interpreted by `expansion_type`: area ratios A/A_t
+[-], or pressure ratios P_inlet/P [-] (chamber over station pressure,
+as CEA's `pi/p`).)doc";
 
 static const char *__doc_Goddard_NozzleOptions_expansion_type = R"doc()doc";
 
@@ -2944,21 +2947,29 @@ static const char *__doc_Goddard_RocketCaseParameters_name = R"doc()doc";
 
 static const char *__doc_Goddard_RocketCaseParameters_nozzle_options = R"doc()doc";
 
-static const char *__doc_Goddard_RocketPerformance = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance = R"doc(Rocket performance of one exit, as CEA reports it. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_CF = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_CF = R"doc(Thrust coefficient at optimum expansion [-]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_area_ratio = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_area_ratio = R"doc(Exit area over throat area, Ae/At [-]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_cstar = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_cstar = R"doc(Characteristic velocity c* [m/s]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_isp = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_isp =
+R"doc(Specific impulse at optimum expansion, as an effective exhaust
+velocity [m/s]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_ivac = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_isp_s =
+R"doc(Specific impulse at optimum expansion in seconds, `isp /
+STANDARD_GRAVITY` [s]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_mach_number = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_ivac = R"doc(Vacuum specific impulse, as an effective exhaust velocity [m/s]. */)doc";
 
-static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc()doc";
+static const char *__doc_Goddard_RocketPerformance_ivac_s = R"doc(Vacuum specific impulse in seconds, `ivac / STANDARD_GRAVITY` [s]. */)doc";
+
+static const char *__doc_Goddard_RocketPerformance_mach_number = R"doc(Exit Mach number [-]. */)doc";
+
+static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc(Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-]. */)doc";
 
 static const char *__doc_Goddard_RocketProblem = R"doc()doc";
 
@@ -2983,6 +2994,10 @@ R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.
 */)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_inlet_states = R"doc()doc";
+
+static const char *__doc_Goddard_RocketProblemCaseResult_mixture_type =
+R"doc(How `OF_ratios` are interpreted; see `CombustorOptions::mixture_type`.
+*/)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_nozzle_states = R"doc()doc";
 
@@ -3013,6 +3028,8 @@ R"doc(Mass flux mdot/Ac [kg/(m^2 s)] of each operating point, row-major over
 (of_index, pressure_index); empty for `CombustorType::INFINITE_AREA`.
 Not derivable from a station's `ThermodynamicState`, so it is captured
 here for the report.)doc";
+
+static const char *__doc_Goddard_RocketProblemResults_CaseMeta_mixture_type = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblemResults_CaseMeta_of_ratios = R"doc()doc";
 
@@ -3150,7 +3167,25 @@ Parameter ``case_name``:
 Throws:
     std::runtime_error if the case or the station does not exist.)doc";
 
-static const char *__doc_Goddard_RocketProblem_RocketProblem = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_RocketProblem =
+R"doc(Parameter ``chem_params``:
+    Thermodynamic data, reactants and mixture ratios.
+
+Parameter ``cases``:
+    Combustor and nozzle settings of each case.
+
+Parameter ``phase_name``:
+    Phase of `chem_params.thermo_file` to build the products from;
+    empty selects the first phase in the file.
+
+Parameter ``transport``:
+    Not implemented; `solve` raises NotImplementedError if true.
+
+Parameter ``ionized_species``:
+    Not implemented; `solve` raises NotImplementedError if true.
+
+Parameter ``trace``:
+    Not implemented; `solve` raises NotImplementedError if non-zero.)doc";
 
 static const char *__doc_Goddard_RocketProblem_chemical_params = R"doc()doc";
 
@@ -3890,8 +3925,8 @@ At a pinned phase transition (`Gas::at_phase_transition()` with both
 polymorphs present) the two polymorphs share one element row, so they
 are merged into a single condensed unknown and only the pressure block
 is solved. The temperature derivatives are then undefined and are
-reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlogV_dlogT_P` are
-infinite, and `gamma_s = -1 / dlogV_dlogP_T`. @{)doc";
+reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlV_dlT_P` are
+infinite, and `gamma_s = -1 / dlV_dlP_T`. @{)doc";
 
 static const char *__doc_Goddard_get_thermo_equilibrium_properties = R"doc()doc";
 

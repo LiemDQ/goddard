@@ -175,8 +175,8 @@ TEST_F(GasTests, EquilibriumExpansionPropertiesMatchFunction) {
     auto expected = get_thermo_equilibrium_properties(*sol->thermo());
     auto result = gas.expansion_properties();
 
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogT_P, expected.dlogV_dlogT_P);
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogP_T, expected.dlogV_dlogP_T);
+    EXPECT_DOUBLE_EQ(result.dlV_dlT_P, expected.dlV_dlT_P);
+    EXPECT_DOUBLE_EQ(result.dlV_dlP_T, expected.dlV_dlP_T);
     EXPECT_DOUBLE_EQ(result.spec_heat_p, expected.spec_heat_p);
     EXPECT_DOUBLE_EQ(result.gamma_s, expected.gamma_s);
 }
@@ -185,8 +185,8 @@ TEST_F(GasTests, FrozenExpansionPropertiesAreIdealGas) {
     Gas gas(sol, GasChemistry::FROZEN);
     auto result = gas.expansion_properties();
 
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogT_P, 1.0);
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogP_T, -1.0);
+    EXPECT_DOUBLE_EQ(result.dlV_dlT_P, 1.0);
+    EXPECT_DOUBLE_EQ(result.dlV_dlP_T, -1.0);
     EXPECT_DOUBLE_EQ(result.spec_heat_p, sol->thermo()->cp_mass());
     EXPECT_DOUBLE_EQ(result.gamma_s, sol->thermo()->cp_mass() / sol->thermo()->cv_mass());
 }

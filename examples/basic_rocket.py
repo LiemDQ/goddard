@@ -50,7 +50,7 @@ cases = [
 problem = goddard.RocketProblem(
     params,
     cases,
-    name = "ohmech"
+    phase_name = "ohmech"
 )
 
 result = problem.solve()

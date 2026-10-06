@@ -27,7 +27,7 @@ namespace Goddard {
 
 RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
         const std::vector<RocketCaseParameters>& cases,
-        const std::string& name,
+        const std::string& phase_name,
         bool transport,
         bool ionized_species,
         double trace):
@@ -38,7 +38,7 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
     chemical_params(chem_params) {
 
     auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
-    const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", name);
+    const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", phase_name);
     m_sln = Cantera::newSolution(phase_node, root_node);
     m_sln->setSource(chemical_params.thermo_file);
 
@@ -174,7 +174,8 @@ RocketProblemResults RocketProblem::solve() {
             params.combustor_options.process,
             params.combustor_options.type,
             std::move(finite_area_chambers),
-            params.nozzle_options.frozen_NFZ
+            params.nozzle_options.frozen_NFZ,
+            params.combustor_options.mixture_type
         });
     }
     
