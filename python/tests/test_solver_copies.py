@@ -42,7 +42,7 @@ def test_combustor_leaves_gas_unchanged(h2o2_yaml):
     before = snapshot(gas)
 
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
-    combustor.solve_adiabatic(300.0, 300.0, np.array([1e6]), np.array([6.0]),
+    combustor.solve(300.0, 300.0, np.array([1e6]), np.array([6.0]),
                               goddard.infinite_area_combustor([1e6]))
     assert_unchanged(gas, before)
 

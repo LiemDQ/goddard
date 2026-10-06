@@ -112,10 +112,20 @@ class BaseCombustor {
 };
 
 /**
- * @brief Handles isobaric combustion reactions with fuel and oxidizer streams.
+ * @brief Combustion of a fuel and an oxidizer.
+ *
+ * The reactants are given in one of two ways, and each has its own `solve`:
+ * - as compositions of product species (the first two constructors), burnt with the
+ *   `solve` overloads that take reactant temperatures;
+ * - as reactant `Gas` streams carrying their own state (the third constructor), burnt with the
+ *   `solve` overload that takes only pressures and mixture ratios.
  */
 class Combustor : public BaseCombustor {
     public:
+    /**
+     * Construct from fuel and oxidizer compositions, given as product species of `gas`.
+     * Solve with the `solve` overloads that take reactant temperatures.
+     */
     Combustor(Gas gas, const std::string& fuel, const std::string& oxidizer);
     Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer);
 
@@ -136,8 +146,32 @@ class Combustor : public BaseCombustor {
      */
     Combustor(Gas products, Gas fuel, Gas oxidizer);
 
+    /**
+     * Burn the fuel and oxidizer compositions given to the composition constructor over a grid
+     * of reactant temperatures, pressures and mixture ratios.
+     *
+     * @param temperatures Reactant temperatures [K], applied to both streams.
+     * @param pressures Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+     *                  pressures for `ISOCHORIC`.
+     * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
+     * @param options Combustor settings.
+     * @return Array of combustion states.
+     */
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
         const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options = {});
+    /**
+     * Burn the fuel and oxidizer compositions given to the composition constructor, with the
+     * fuel and the oxidizer at their own temperatures, over a grid of pressures and mixture
+     * ratios.
+     *
+     * @param fuel_temperature Fuel temperature [K].
+     * @param oxidizer_temperature Oxidizer temperature [K].
+     * @param pressures Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+     *                  pressures for `ISOCHORIC`.
+     * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
+     * @param options Combustor settings.
+     * @return Array of combustion states with shape (mixture ratios, pressures).
+     */
     ThermoArray solve(double fuel_temperature, double oxidizer_temperature,
         const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});
@@ -163,7 +197,7 @@ class Combustor : public BaseCombustor {
      *
      * @throws NotImplementedError if the combustor was not built from reactant `Gas` streams, if
      * `options.mixture_type` is `PHI_RATIO` (CEA's valence rule is not implemented on this path),
-     * if `options.type` is `NONE`, or if the process is `ISOCHORIC` while the
+     * or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
      * @throws std::invalid_argument if a reactant contains an element the product gas does not have.
      * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty.

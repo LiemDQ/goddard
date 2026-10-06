@@ -24,8 +24,8 @@ void bind_combustor(nb::module_& m) {
                                const Goddard::CombustorOptions&>(
                  &Goddard::Combustor::solve),
              "temperatures"_a, "pressures"_a, "mixture_ratios"_a,
-             "options"_a = Goddard::CombustorOptions{})
-        .def("solve_adiabatic",
+             "options"_a = Goddard::CombustorOptions{}, DOC(Goddard, Combustor, solve))
+        .def("solve",
              nb::overload_cast<double, double,
                                const Eigen::ArrayXd&,
                                const Eigen::ArrayXd&,
@@ -33,7 +33,7 @@ void bind_combustor(nb::module_& m) {
                  &Goddard::Combustor::solve),
              "fuel_temperature"_a, "oxidizer_temperature"_a,
              "pressures"_a, "mixture_ratios"_a,
-             "options"_a = Goddard::CombustorOptions{})
+             "options"_a = Goddard::CombustorOptions{}, DOC(Goddard, Combustor, solve, 2))
         // Reactant-stream constructor and its solve overload. The fuel and oxidizer carry their
         // own state, so no reactant temperatures are passed to solve().
         .def(nb::init<Goddard::Gas, Goddard::Gas, Goddard::Gas>(),
@@ -67,7 +67,7 @@ void bind_combustor(nb::module_& m) {
              "temperatures"_a, "pressures"_a, "mixture_ratios"_a,
              "recirculation_ratio"_a,
              "options"_a = Goddard::CombustorOptions{})
-        .def("solve_adiabatic",
+        .def("solve",
              nb::overload_cast<double, double, double,
                                const Eigen::ArrayXd&,
                                const Eigen::ArrayXd&,

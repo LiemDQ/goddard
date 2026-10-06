@@ -39,7 +39,7 @@ namespace {
 } // namespace
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
-    : inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(options) {
+    : m_inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(options) {
     set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
@@ -50,7 +50,7 @@ Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
 }
 
 Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
-    : inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(options) {
+    : m_inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(options) {
     set_station_chemistry(0);
     if (m_opts.chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument("GasChemistry::KINETIC is not valid for Nozzle. Use KineticNozzle instead.");
@@ -61,21 +61,21 @@ Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, double ratio) {
-    NozzleStation inlet = station_at_state(inlet_state, 0);
+    NozzleStation inlet = station_at_state(m_inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
     return {std::move(inlet), throat_condition,
         solve_stations(throat_condition, expansion_type, {ratio})};
 }
 
 NozzleResults Nozzle::solve(ExpansionType expansion_type, const std::vector<double>& ratios) {
-    NozzleStation inlet = station_at_state(inlet_state, 0);
+    NozzleStation inlet = station_at_state(m_inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
     return {std::move(inlet), throat_condition,
         solve_stations(throat_condition, expansion_type, ratios)};
 }
 
 NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
-    NozzleStation inlet = station_at_state(inlet_state, 0);
+    NozzleStation inlet = station_at_state(m_inlet_state, 0);
     const ThroatCondition throat_condition = solve_throat_conditions();
 
     // For a diverging-only profile (starting at throat), x_min is the throat.
@@ -296,7 +296,7 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
                     "Combustion-end velocity ({} m/s) and Mach number are below the solver's "
                     "resolution at A_c/A_t = {}; treat them as zero.", velocity, contraction_ratio);
             }
-            NozzleStation stagnation = station_at_state(inlet_state, 0);
+            NozzleStation stagnation = station_at_state(m_inlet_state, 0);
             return {std::move(injector), std::move(stagnation), combustion_end, throat, P_injector, P_stagnation,
                 contraction_ratio, mass_flux, iter};
         }
@@ -321,11 +321,11 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
 }
 
 void Nozzle::reset_state(){
-    m_gas.restore_state(inlet_state);
+    m_gas.restore_state(m_inlet_state);
 }
 
 ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
-    m_gas.restore_state(inlet_state);
+    m_gas.restore_state(m_inlet_state);
     m_gas.set_current_state_as_reference();
     const int station = 1;
 

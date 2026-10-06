@@ -202,16 +202,17 @@ class Nozzle {
     double get_gamma_s();
 
     void reset_state();
-    inline void set_inlet_state(const std::vector<double>& state) { 
-        inlet_state = state;
-        m_gas.restore_state(inlet_state);
+    /** Set the inlet (chamber) state the next solve expands from, and make it the reference. */
+    inline void set_inlet_state(const std::vector<double>& state) {
+        m_inlet_state = state;
+        m_gas.restore_state(m_inlet_state);
         m_gas.set_current_state_as_reference();
     }
-    inline std::vector<double> get_inlet_state() const { return inlet_state; }
-
-    std::vector<double> inlet_state;
+    /** Inlet (chamber) state vector. */
+    inline std::vector<double> get_inlet_state() const { return m_inlet_state; }
 
     private:
+    std::vector<double> m_inlet_state;
     Gas m_gas;
     NozzleOptions m_opts;
 

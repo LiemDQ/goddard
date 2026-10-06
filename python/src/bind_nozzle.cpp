@@ -11,7 +11,6 @@ namespace nb = nanobind;
 using namespace nb::literals;
 
 void bind_nozzle(nb::module_& m) {
-    // Constructor takes Solution& but calls shared_from_this(), so we wrap with a lambda
     nb::class_<Goddard::Nozzle>(m, "Nozzle")
    
         // Gas-based constructors
@@ -27,7 +26,7 @@ void bind_nozzle(nb::module_& m) {
         .def("solve",
              nb::overload_cast<Goddard::ExpansionType, double>(
                  &Goddard::Nozzle::solve),
-             "expansion_type"_a, "ratio"_a = 1.0)
+             "expansion_type"_a, "ratio"_a)
         .def("solve_ratios",
              nb::overload_cast<Goddard::ExpansionType, const std::vector<double>&>(
                  &Goddard::Nozzle::solve),
@@ -54,7 +53,6 @@ void bind_nozzle(nb::module_& m) {
              "injector_state"_a, "type"_a, "value"_a, "reltol"_a = 1e-6,
              DOC(Goddard, Nozzle, solve_finite_area_chamber))
         .def("reset_state", &Goddard::Nozzle::reset_state)
-        .def("set_inlet_state", &Goddard::Nozzle::set_inlet_state, "state"_a)
-        .def("get_inlet_state", &Goddard::Nozzle::get_inlet_state)
-        .def_rw("inlet_state", &Goddard::Nozzle::inlet_state);
+        .def_prop_rw("inlet_state", &Goddard::Nozzle::get_inlet_state,
+             &Goddard::Nozzle::set_inlet_state, DOC(Goddard, Nozzle, set_inlet_state));
 }

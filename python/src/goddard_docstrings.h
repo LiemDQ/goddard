@@ -392,7 +392,15 @@ static const char *__doc_Goddard_CombustionProcess_ISOBARIC = R"doc(< Constant e
 
 static const char *__doc_Goddard_CombustionProcess_ISOCHORIC = R"doc(< Constant internal energy and specific volume (UV).)doc";
 
-static const char *__doc_Goddard_Combustor = R"doc(Handles isobaric combustion reactions with fuel and oxidizer streams.)doc";
+static const char *__doc_Goddard_Combustor =
+R"doc(Combustion of a fuel and an oxidizer.
+
+The reactants are given in one of two ways, and each has its own
+`solve`: - as compositions of product species (the first two
+constructors), burnt with the `solve` overloads that take reactant
+temperatures; - as reactant `Gas` streams carrying their own state
+(the third constructor), burnt with the `solve` overload that takes
+only pressures and mixture ratios.)doc";
 
 static const char *__doc_Goddard_CombustorOptions = R"doc()doc";
 
@@ -428,7 +436,10 @@ static const char *__doc_Goddard_CombustorType_FINITE_MASS_FLUX = R"doc()doc";
 
 static const char *__doc_Goddard_CombustorType_INFINITE_AREA = R"doc()doc";
 
-static const char *__doc_Goddard_Combustor_Combustor = R"doc()doc";
+static const char *__doc_Goddard_Combustor_Combustor =
+R"doc(Construct from fuel and oxidizer compositions, given as product
+species of `gas`. Solve with the `solve` overloads that take reactant
+temperatures.)doc";
 
 static const char *__doc_Goddard_Combustor_Combustor_2 = R"doc()doc";
 
@@ -467,9 +478,50 @@ static const char *__doc_Goddard_Combustor_m_oxidizer_composition = R"doc()doc";
 
 static const char *__doc_Goddard_Combustor_m_oxidizer_gas = R"doc()doc";
 
-static const char *__doc_Goddard_Combustor_solve = R"doc()doc";
+static const char *__doc_Goddard_Combustor_solve =
+R"doc(Burn the fuel and oxidizer compositions given to the composition
+constructor over a grid of reactant temperatures, pressures and
+mixture ratios.
 
-static const char *__doc_Goddard_Combustor_solve_2 = R"doc()doc";
+Parameter ``temperatures``:
+    Reactant temperatures [K], applied to both streams.
+
+Parameter ``pressures``:
+    Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+    pressures for `ISOCHORIC`.
+
+Parameter ``mixture_ratios``:
+    Mixture ratios, interpreted according to `options.mixture_type`.
+
+Parameter ``options``:
+    Combustor settings.
+
+Returns:
+    Array of combustion states.)doc";
+
+static const char *__doc_Goddard_Combustor_solve_2 =
+R"doc(Burn the fuel and oxidizer compositions given to the composition
+constructor, with the fuel and the oxidizer at their own temperatures,
+over a grid of pressures and mixture ratios.
+
+Parameter ``fuel_temperature``:
+    Fuel temperature [K].
+
+Parameter ``oxidizer_temperature``:
+    Oxidizer temperature [K].
+
+Parameter ``pressures``:
+    Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+    pressures for `ISOCHORIC`.
+
+Parameter ``mixture_ratios``:
+    Mixture ratios, interpreted according to `options.mixture_type`.
+
+Parameter ``options``:
+    Combustor settings.
+
+Returns:
+    Array of combustion states with shape (mixture ratios, pressures).)doc";
 
 static const char *__doc_Goddard_Combustor_solve_3 =
 R"doc(Burn the reactant streams given to the `Gas`-stream constructor over a
@@ -502,9 +554,9 @@ Returns:
 Throws:
     NotImplementedError if the combustor was not built from reactant
     `Gas` streams, if `options.mixture_type` is `PHI_RATIO` (CEA's
-    valence rule is not implemented on this path), if `options.type`
-    is `NONE`, or if the process is `ISOCHORIC` while the product gas
-    carries candidate condensed species.
+    valence rule is not implemented on this path), or if the process
+    is `ISOCHORIC` while the product gas carries candidate condensed
+    species.
 
 Throws:
     std::invalid_argument if a reactant contains an element the
@@ -2623,9 +2675,7 @@ static const char *__doc_Goddard_Nozzle_Nozzle_2 = R"doc()doc";
 
 static const char *__doc_Goddard_Nozzle_get_gamma_s = R"doc()doc";
 
-static const char *__doc_Goddard_Nozzle_get_inlet_state = R"doc()doc";
-
-static const char *__doc_Goddard_Nozzle_inlet_state = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_get_inlet_state = R"doc(Inlet (chamber) state vector. */)doc";
 
 static const char *__doc_Goddard_Nozzle_is_equilibrium_station =
 R"doc(True when station `station` is in equilibrium, from
@@ -2669,11 +2719,15 @@ Throws:
 
 static const char *__doc_Goddard_Nozzle_m_gas = R"doc()doc";
 
+static const char *__doc_Goddard_Nozzle_m_inlet_state = R"doc()doc";
+
 static const char *__doc_Goddard_Nozzle_m_opts = R"doc()doc";
 
 static const char *__doc_Goddard_Nozzle_reset_state = R"doc()doc";
 
-static const char *__doc_Goddard_Nozzle_set_inlet_state = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_set_inlet_state =
+R"doc(Set the inlet (chamber) state the next solve expands from, and make it
+the reference. */)doc";
 
 static const char *__doc_Goddard_Nozzle_set_station_chemistry =
 R"doc(Set the gas chemistry for station `station`.
