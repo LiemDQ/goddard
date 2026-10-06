@@ -7,10 +7,57 @@
 #include <iterator>
 #include <utility>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <cassert>
 namespace Goddard {
+
+namespace {
+
+/**
+ * Reject a mixture ratio outside its domain: O/F and equivalence ratios must be nonnegative and a
+ * fuel fraction must lie in [0, 1].
+ */
+void validate_mixture_ratio(double value, MixtureRatioType type) {
+    bool valid = false;
+    switch (type) {
+        case MixtureRatioType::OF_RATIO:
+        case MixtureRatioType::PHI_RATIO:
+            valid = value >= 0.0;
+            break;
+        case MixtureRatioType::FUEL_FRAC:
+            valid = value >= 0.0 && value <= 1.0;
+            break;
+    }
+    if (!valid) {
+        std::ostringstream message;
+        message << "Combustor: mixture ratio " << value << " is out of range; O/F and equivalence "
+                   "ratios must be nonnegative and fuel fractions must lie in [0, 1].";
+        throw std::invalid_argument(message.str());
+    }
+}
+
+/**
+ * Throw if a row of a mole or mass fraction matrix has a negative entry. Row `i` belongs to
+ * `mixture_ratios(i)`.
+ */
+void check_nonnegative_fractions(const Eigen::ArrayXXd& fractions,
+    const Eigen::ArrayXd& mixture_ratios, const std::string& kind,
+    double recirculation_ratio = 0.0) {
+    for (long i = 0; i < fractions.rows(); i++) {
+        if ((fractions.row(i) < 0.0).any()) {
+            std::ostringstream message;
+            message << "Combustor: mixture ratio " << mixture_ratios(i);
+            if (recirculation_ratio != 0.0) {
+                message << " with recirculation ratio " << recirculation_ratio;
+            }
+            message << " gives negative " << kind << " fractions.";
+            throw std::invalid_argument(message.str());
+        }
+    }
+}
+
+} // namespace
 
 // ---- BaseCombustor ----
 
@@ -95,6 +142,7 @@ ThermoArray BaseCombustor::reactant_states(const std::vector<long>& shape) const
 
 void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
     const Composition& fuel, const Composition& oxidizer) const {
+    validate_mixture_ratio(value, type);
     switch (type) {
         case MixtureRatioType::OF_RATIO:
             m_gas.set_OF_ratio(value, fuel, oxidizer);
@@ -157,6 +205,7 @@ namespace {
 
 /** Mass fraction of fuel in the mixture from a mixture ratio and its interpretation. */
 double fuel_mass_fraction(double mixture_ratio, MixtureRatioType type) {
+    validate_mixture_ratio(mixture_ratio, type);
     switch (type) {
         case MixtureRatioType::OF_RATIO:
             return 1.0 / (1.0 + mixture_ratio);
@@ -324,7 +373,7 @@ Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(
         }
     }
 
-    assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
+    check_nonnegative_fractions(mole_frac_matrix, mixture_ratios, "mole");
     return mole_frac_matrix;
 }
 
@@ -346,7 +395,7 @@ Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(
         }
     }
 
-    assert((mass_frac_matrix >= 0).all() && "Mass fractions must be nonnegative");
+    check_nonnegative_fractions(mass_frac_matrix, mixture_ratios, "mass");
     return mass_frac_matrix;
 }
 
@@ -482,7 +531,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
         }
     }
 
-    assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
+    check_nonnegative_fractions(mole_frac_matrix, mixture_ratios, "mole", recirculation_ratio);
     return mole_frac_matrix;
 }
 
@@ -515,9 +564,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(
         }
     }
 
-    if (!((mass_frac_matrix >= 0).all())) {
-        throw ConvergenceError("Mass fractions must be nonnegative.");
-    }
+    check_nonnegative_fractions(mass_frac_matrix, mixture_ratios, "mass", recirculation_ratio);
 
     return mass_frac_matrix;
 }

@@ -157,6 +157,25 @@ TEST_F(H2O2RecirculatingCombustorTests, moleFracMatrixRowsSumToOne) {
     }
 }
 
+TEST_F(H2O2RecirculatingCombustorTests, negativeFractionsAreRejectedInReleaseBuilds) {
+    // A negative recirculation ratio subtracts flue gas, and the N2 of the flue then has a negative
+    // mole and mass fraction in the H2/O2 feed. That is an invalid input, not a solver failure.
+    DilutedCombustor combustor(gas, fuel_comp, oxidizer_comp, flue_comp);
+    const double negative_recirculation = -0.5;
+    EXPECT_THROW(combustor.generate_mole_fraction_matrix(
+                     OF_ratios, MixtureRatioType::OF_RATIO, negative_recirculation),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor.generate_mass_fraction_matrix(
+                     OF_ratios, MixtureRatioType::OF_RATIO, negative_recirculation),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd negative_ratio(1);
+    negative_ratio << -2.0;
+    EXPECT_THROW(combustor.generate_mass_fraction_matrix(
+                     negative_ratio, MixtureRatioType::OF_RATIO, 0.3),
+                 std::invalid_argument);
+}
+
 TEST_F(H2O2RecirculatingCombustorTests, zeroRecirculationMatchesCombustor) {
     double recircRatio = 0.0;
     DilutedCombustor recircCombustor(gas, fuel_comp, oxidizer_comp, flue_comp);
@@ -276,6 +295,36 @@ TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
     case_params.nozzle_options.expansion_ratios = {5.0};
     RocketProblem problem(chem_params, {case_params}, "ohmech");
     EXPECT_THROW(problem.solve(), std::invalid_argument);
+}
+
+TEST_F(H2O2CombustorTests, outOfRangeMixtureRatiosAreRejectedInReleaseBuilds) {
+    // A negative O/F ratio maps to a fuel mass fraction outside [0, 1]: there is no such mixture.
+    // The check must be an exception, not an assert that vanishes under NDEBUG.
+    Eigen::ArrayXd negative_ratio(2);
+    negative_ratio << 6.0, -2.0;
+    EXPECT_THROW(combustor->generate_mole_fraction_matrix(negative_ratio, MixtureRatioType::OF_RATIO),
+                 std::invalid_argument);
+    EXPECT_THROW(combustor->generate_mass_fraction_matrix(negative_ratio, MixtureRatioType::OF_RATIO),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    EXPECT_THROW(combustor->solve(300.0, 300.0, pressures, negative_ratio, options),
+                 std::invalid_argument);
+
+    Eigen::ArrayXd fuel_fraction(1);
+    fuel_fraction << 1.5;
+    EXPECT_THROW(combustor->generate_mass_fraction_matrix(fuel_fraction, MixtureRatioType::FUEL_FRAC),
+                 std::invalid_argument);
+
+    // The reactant-stream path checks the same domain.
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+    EXPECT_THROW(stream_combustor.solve(pressures, negative_ratio, options), std::invalid_argument);
 }
 
 // ---- Isochoric combustion ----
