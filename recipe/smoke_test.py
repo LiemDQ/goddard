@@ -50,7 +50,7 @@ def check_rocket_chamber():
     case.nozzle_options = goddard.equilibrium_nozzle(10.0)
 
     results = goddard.RocketProblem(chemistry, [case], "gas").solve()
-    chamber = results.chamber(0, "smoke").thermo
+    chamber = results.chamber(0, case_name="smoke").thermo
     print(f"H2/O2 chamber temperature at O/F {OF_RATIO}: {chamber.temperature:.1f} K")
     assert 2500.0 < chamber.temperature < 4000.0, chamber.temperature
     assert abs(chamber.pressure - CHAMBER_PRESSURE) < 1e-6 * CHAMBER_PRESSURE, chamber.pressure
