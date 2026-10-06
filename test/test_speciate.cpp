@@ -122,3 +122,64 @@ TEST(PhaseNodeCreation, canConstructCanteraSolutionFromElements) {
 
     EXPECT_THAT(sln->thermo()->speciesNames(), UnorderedElementsAreArray(expected_species));
 }
+
+namespace {
+
+/** Species names of a root node's `species` section, in file order. */
+vector<string> species_names_of(const AnyMap& root_node) {
+    vector<string> names;
+    for (const AnyMap& species : root_node.at("species").asVector<AnyMap>()) {
+        names.push_back(species.at("name").asString());
+    }
+    return names;
+}
+
+} // namespace
+
+TEST(SelectSpecies, keepsExactlyTheRequestedSpeciesInFileOrder) {
+    // h2o2.yaml lists H2, H, O, O2, OH, H2O, HO2, H2O2, AR, N2. Selecting a non-contiguous subset
+    // removes neighbouring entries, which exercises the erase loop.
+    Goddard::setup_defaults();
+    unordered_set<string> requested{"H2O", "O2", "H2", "OH", "N2"};
+
+    AnyMap node = Goddard::select_species("h2o2.yaml", requested);
+
+    vector<string> expected;
+    for (const string& name : species_names_of(Goddard::load_root_node("h2o2.yaml"))) {
+        if (requested.count(name)) {
+            expected.push_back(name);
+        }
+    }
+    ASSERT_EQ(expected.size(), requested.size());
+    EXPECT_EQ(species_names_of(node), expected);
+}
+
+TEST(SelectSpecies, unknownSpeciesThrowsAndNamesThem) {
+    // A misspelled species must not silently disappear from the phase.
+    Goddard::setup_defaults();
+    unordered_set<string> requested{"H2", "ZZ_MISSING", "O2", "AA_MISSING"};
+
+    try {
+        Goddard::select_species("h2o2.yaml", requested);
+        FAIL() << "select_species must throw for species absent from the file";
+    } catch (const std::invalid_argument& error) {
+        // Missing names are listed sorted, and present ones are not listed.
+        EXPECT_THAT(error.what(), ::testing::HasSubstr("AA_MISSING ZZ_MISSING"));
+        EXPECT_THAT(error.what(), ::testing::Not(::testing::HasSubstr("H2")));
+    }
+}
+
+TEST(SelectSpecies, ctiAndXmlFilesAreRejected) {
+    // The extension check must fire before the file is looked up, so the error names the format
+    // rather than reporting a missing file.
+    Goddard::setup_defaults();
+    for (const string& infile : {string("h2o2.cti"), string("h2o2.XML")}) {
+        try {
+            Goddard::select_species(infile, {"H2"});
+            FAIL() << infile << " must be rejected";
+        } catch (const Cantera::CanteraError& error) {
+            EXPECT_THAT(error.what(), ::testing::HasSubstr("CTI and XML formats"))
+                << infile;
+        }
+    }
+}

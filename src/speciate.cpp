@@ -1,14 +1,13 @@
 #include "goddard/speciate.hpp"
 #include "goddard/utils.hpp"
 
-#include "cantera/base/stringUtils.h"
-#include "cantera/base/ctexceptions.h"
-
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <map>
 #include <iostream>
 #include <cassert>
+#include <stdexcept>
 
 using Cantera::AnyMap;
 using Cantera::AnyValue;
@@ -18,6 +17,36 @@ using std::shared_ptr;
 using std::string;
 
 namespace Goddard {
+
+namespace {
+
+/**
+ * Throw if any requested species name is missing from the names found in an input file.
+ *
+ * @param requested Species names asked for.
+ * @param found Species names present in the input file.
+ * @throws std::invalid_argument listing the missing names, sorted.
+ */
+void check_all_species_found(const std::unordered_set<string>& requested,
+                             const std::unordered_set<string>& found) {
+    std::vector<string> missing;
+    for (const string& name : requested) {
+        if (!found.count(name)) {
+            missing.push_back(name);
+        }
+    }
+    if (missing.empty()) {
+        return;
+    }
+    std::sort(missing.begin(), missing.end());
+    string message = "Species not found in the input file:";
+    for (const string& name : missing) {
+        message += " " + name;
+    }
+    throw std::invalid_argument(message);
+}
+
+} // namespace
 
 AnyMap speciate(const string& infile, const std::unordered_set<string>& elements) {
     auto root_node = load_root_node(infile);
@@ -47,10 +76,9 @@ AnyMap speciate(AnyMap& root_node, const std::unordered_set<string>& elements) {
                 contains_excluded_element = true;
             }
         }
-        //iterator is invalidated when erase is called, 
-        //so only increment when no erasure happens
+        //erase invalidates the iterator and returns the next one
         if (!contains_element || contains_excluded_element){
-            species_list.erase(it);
+            it = species_list.erase(it);
         }
         else {
             ++it;
@@ -65,30 +93,25 @@ AnyMap speciate_from_yaml_string(const string& yaml_str, const std::unordered_se
 }
 
 AnyMap select_species(const string& infile, const std::unordered_set<string>& species) {
-    size_t dot = infile.find_last_of('c');
-    string extension;
-    if (dot != Cantera::npos) {
-        extension = Cantera::toLowerCopy(infile.substr(dot+1));
-    }
-
-    if (extension == "cti" || extension == "xml") {
-        throw Cantera::CanteraError("newSolution",
-                           "The CTI and XML formats are no longer supported.");
-    }
-    auto root_node = AnyMap::fromYamlFile(infile);
+    auto root_node = load_root_node(infile);
     return select_species(root_node, species);
 }
 
 AnyMap select_species(AnyMap& root_node, const std::unordered_set<string>& species) {
     auto& species_list = root_node["species"].asVector<AnyMap>();
+    std::unordered_set<string> found;
     for (auto it = species_list.begin(); it != species_list.end();) {
-        if (!species.count((*it)["name"].asString())) {
-            species_list.erase(it);
+        const string name = (*it)["name"].asString();
+        if (!species.count(name)) {
+            //erase invalidates the iterator and returns the next one
+            it = species_list.erase(it);
         }
-        else { //only increment if the item isn't erased from species_list, or iterator will be invalidated
+        else {
+            found.insert(name);
             ++it;
         }
     }
+    check_all_species_found(species, found);
     return root_node;
 }
 
