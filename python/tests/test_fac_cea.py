@@ -3,7 +3,9 @@
 Both codes are given the same product species -- every gas species of `nasa9_gas.yaml`
 whose only elements are H and O -- so the tolerances here follow the same-database
 comparisons of `test_condensed_cea.py` rather than the looser cross-database ones of
-`test_cea_comparison.py`.
+`test_cea_comparison.py`. Each tolerance is about 2.5 times the worst error observed over
+the stations it covers; the largest are 1.2e-4 (exit temperature) and 1.0e-4 (exit
+pressure), relative.
 
 The reference case is gaseous H2/O2 at 298.15 K, O/F 5.55157, P_inj 53.3172 bar --
 RP-1311 example 8's propellants at a gaseous rather than cryogenic state, and burned
@@ -199,8 +201,8 @@ def test_fac_injector(fac_rocket):
     chamber = results.chamber(0, "fac").thermo
 
     assert_close_rel(chamber.pressure / BAR, rocket["P"][IDX_INJECTOR], 1e-6, f"{mode} injector P")
-    assert_close_rel(chamber.temperature, rocket["T"][IDX_INJECTOR], 2e-3, f"{mode} injector T")
-    assert_close_rel(chamber.molecular_weight, rocket["M"][IDX_INJECTOR], 1e-3, f"{mode} injector M")
+    assert_close_rel(chamber.temperature, rocket["T"][IDX_INJECTOR], 1e-4, f"{mode} injector T")
+    assert_close_rel(chamber.molecular_weight, rocket["M"][IDX_INJECTOR], 2e-4, f"{mode} injector M")
 
 
 def test_fac_stagnation(fac_rocket):
@@ -208,9 +210,9 @@ def test_fac_stagnation(fac_rocket):
     mode, results, rocket = fac_rocket
     stagnation = results.stagnation(0, "fac").thermo
 
-    assert_close_rel(stagnation.pressure / BAR, rocket["P"][IDX_STAGNATION], 3e-3,
+    assert_close_rel(stagnation.pressure / BAR, rocket["P"][IDX_STAGNATION], 5e-5,
                      f"{mode} stagnation P")
-    assert_close_rel(stagnation.temperature, rocket["T"][IDX_STAGNATION], 2e-3,
+    assert_close_rel(stagnation.temperature, rocket["T"][IDX_STAGNATION], 5e-5,
                      f"{mode} stagnation T")
     # Stagnation pressure is at most the injector pressure (some is lost to momentum).
     assert stagnation.pressure <= INJECTOR_PRESSURE
@@ -222,11 +224,11 @@ def test_fac_combustion_end(fac_rocket):
     combustion_end = results.combustion_end(0, "fac")
     thermo = combustion_end.thermo
 
-    assert_close_rel(thermo.pressure / BAR, rocket["P"][IDX_COMBUSTION_END], 3e-3,
+    assert_close_rel(thermo.pressure / BAR, rocket["P"][IDX_COMBUSTION_END], 1e-4,
                      f"{mode} comb-end P")
-    assert_close_rel(thermo.temperature, rocket["T"][IDX_COMBUSTION_END], 2e-3,
+    assert_close_rel(thermo.temperature, rocket["T"][IDX_COMBUSTION_END], 5e-5,
                      f"{mode} comb-end T")
-    assert_close_rel(combustion_end.area_ratio, rocket["ae_at"][IDX_COMBUSTION_END], 3e-3,
+    assert_close_rel(combustion_end.area_ratio, rocket["ae_at"][IDX_COMBUSTION_END], 3e-4,
                      f"{mode} comb-end Ac/At")
 
 
@@ -234,9 +236,9 @@ def test_fac_throat(fac_rocket):
     mode, results, rocket = fac_rocket
     throat = results.throat(0, "fac").thermo
 
-    assert_close_rel(throat.pressure / BAR, rocket["P"][IDX_THROAT], 3e-3, f"{mode} throat P")
-    assert_close_rel(throat.temperature, rocket["T"][IDX_THROAT], 2e-3, f"{mode} throat T")
-    assert_close_rel(throat.molecular_weight, rocket["M"][IDX_THROAT], 1e-3, f"{mode} throat M")
+    assert_close_rel(throat.pressure / BAR, rocket["P"][IDX_THROAT], 5e-5, f"{mode} throat P")
+    assert_close_rel(throat.temperature, rocket["T"][IDX_THROAT], 1e-4, f"{mode} throat T")
+    assert_close_rel(throat.molecular_weight, rocket["M"][IDX_THROAT], 2e-4, f"{mode} throat M")
 
 
 @pytest.mark.parametrize("exit_index,area_ratio", list(enumerate(AREA_RATIOS)),
@@ -248,20 +250,20 @@ def test_fac_exits(fac_rocket, exit_index, area_ratio):
     station = exits[exit_index].thermo
     label = f"{mode} AR{area_ratio}"
 
-    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 3e-3, f"{label} P")
-    assert_close_rel(station.temperature, rocket["T"][cea_index], 2e-3, f"{label} T")
-    assert_close_rel(station.density, rocket["density"][cea_index], 3e-3, f"{label} density")
+    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 3e-4, f"{label} P")
+    assert_close_rel(station.temperature, rocket["T"][cea_index], 3e-4, f"{label} T")
+    assert_close_rel(station.density, rocket["density"][cea_index], 2e-4, f"{label} density")
     for name in ("H2", "H2O", "O2"):
         assert_close_abs(station.composition.get(name, 0.0), rocket["Y"][name][cea_index],
-                         5e-3, f"{label} Y[{name}]")
+                         3e-5, f"{label} Y[{name}]")
 
     performance = results.performance(0, exit_index, "fac")
-    assert_close_rel(performance.area_ratio, rocket["ae_at"][cea_index], 3e-3,
+    assert_close_rel(performance.area_ratio, rocket["ae_at"][cea_index], 1e-4,
                      f"{label} area_ratio")
-    assert_close_rel(performance.cstar, rocket["c_star"][cea_index], 1e-2, f"{label} c*")
-    assert_close_rel(performance.CF, rocket["CF"][cea_index], 1e-2, f"{label} CF")
-    assert_close_rel(performance.isp, rocket["Isp"][cea_index], 1e-2, f"{label} Isp")
-    assert_close_rel(performance.ivac, rocket["Ivac"][cea_index], 1e-2, f"{label} Ivac")
+    assert_close_rel(performance.cstar, rocket["c_star"][cea_index], 1e-4, f"{label} c*")
+    assert_close_rel(performance.CF, rocket["CF"][cea_index], 1e-4, f"{label} CF")
+    assert_close_rel(performance.isp, rocket["Isp"][cea_index], 3e-5, f"{label} Isp")
+    assert_close_rel(performance.ivac, rocket["Ivac"][cea_index], 2e-5, f"{label} Ivac")
 
 
 def test_fac_mass_flux_contraction_ratio():
@@ -274,7 +276,7 @@ def test_fac_mass_flux_contraction_ratio():
     results = problem.solve()
 
     combustion_end = results.combustion_end(0, "fac_mdot")
-    assert_close_rel(combustion_end.area_ratio, rocket["ae_at"][IDX_COMBUSTION_END], 3e-3,
+    assert_close_rel(combustion_end.area_ratio, rocket["ae_at"][IDX_COMBUSTION_END], 2e-4,
                      "derived Ac/At")
 
 
@@ -314,8 +316,8 @@ def test_fac_frozen_throat_unaffected(fac_frozen_rocket):
     frozen_NFZ, results, rocket = fac_frozen_rocket
     throat = results.throat(0, f"fac_frozen_{frozen_NFZ}").thermo
 
-    assert_close_rel(throat.pressure / BAR, rocket["P"][IDX_THROAT], 3e-3, f"NFZ{frozen_NFZ} throat P")
-    assert_close_rel(throat.temperature, rocket["T"][IDX_THROAT], 2e-3, f"NFZ{frozen_NFZ} throat T")
+    assert_close_rel(throat.pressure / BAR, rocket["P"][IDX_THROAT], 5e-5, f"NFZ{frozen_NFZ} throat P")
+    assert_close_rel(throat.temperature, rocket["T"][IDX_THROAT], 1e-4, f"NFZ{frozen_NFZ} throat T")
 
 
 @pytest.mark.parametrize("exit_index,pressure_ratio", list(enumerate(PI_P)),
@@ -327,8 +329,8 @@ def test_fac_frozen_exits(fac_frozen_rocket, exit_index, pressure_ratio):
     station = exits[exit_index].thermo
     label = f"NFZ{frozen_NFZ} pi_p{pressure_ratio}"
 
-    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 3e-3, f"{label} P")
-    assert_close_rel(station.temperature, rocket["T"][cea_index], 3e-3, f"{label} T")
+    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 1e-5, f"{label} P")
+    assert_close_rel(station.temperature, rocket["T"][cea_index], 2e-4, f"{label} T")
 
 
 # ---------------------------------------------------------------------------
@@ -360,8 +362,8 @@ def test_fac_pressure_ratio_exits(fac_pressure_ratio_rocket, exit_index, pressur
     station = exits[exit_index].thermo
     assert_close_rel(station.pressure, INJECTOR_PRESSURE / pressure_ratio, 1e-3,
                      f"{label} P matches P_inj / ratio")
-    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 3e-3, f"{label} P")
-    assert_close_rel(station.temperature, rocket["T"][cea_index], 2e-3, f"{label} T")
+    assert_close_rel(station.pressure / BAR, rocket["P"][cea_index], 1e-5, f"{label} P")
+    assert_close_rel(station.temperature, rocket["T"][cea_index], 3e-4, f"{label} T")
 
     # Performance is referenced to the stagnation state, so its pressure ratio is P_inf/P.
     stagnation_pressure = results.stagnation(0, "fac_pi_p").thermo.pressure

@@ -38,6 +38,7 @@ from test_fac_cea import run_isolated
 from test_shock_cea import (
     MOLE_FRACTIONS as SHOCK_TUBE_MOLE_FRACTIONS,
     PRESSURE as SHOCK_TUBE_PRESSURE,
+    RATIO_RTOL as SHOCK_RATIO_RTOL,
     SHOCK_SPEEDS,
     TEMPERATURE as SHOCK_TUBE_TEMPERATURE,
     _cea_shock_tube,
@@ -49,9 +50,10 @@ NASA9_GAS = os.path.join(DATA_DIR, "nasa9_gas.yaml")
 
 BAR = 1e5  # Pa
 
-# Same database, and both codes converge the CJ conditions to ~1e-5 or better. 1e-3 leaves room
-# for differences in solver tolerances, as in test_shock_cea.py.
-RATIO_RTOL = 1e-3
+# Same database, and both codes converge the CJ conditions to ~1e-5 or better. Observed worst
+# error over the CJ cases 3.0e-5 (CJ velocity, shock-tube mixture). The overdriven comparison
+# reuses the shock-tube cases and their tolerance, SHOCK_RATIO_RTOL.
+RATIO_RTOL = 1e-4
 
 # (id, reactant mole fractions, T1 [K], P1 [bar])
 CJ_CASES = [
@@ -146,8 +148,8 @@ def test_overdriven_matches_cea_equilibrium_shock():
         label = f"u1={u1:g}"
         r = solver.detonation_from_velocity(u1, DetonationBranch.OVERDRIVEN)
         assert r.valid, label
-        assert_close_rel(r.mach_in, expected["Mach"][0], RATIO_RTOL, f"{label} Mach1")
-        assert_close_rel(r.mach_out, expected["Mach"][1], RATIO_RTOL, f"{label} Mach2")
-        assert_close_rel(r.static_pressure_ratio, expected["P21"], RATIO_RTOL, f"{label} P2/P1")
-        assert_close_rel(r.static_temperature_ratio, expected["T21"], RATIO_RTOL, f"{label} T2/T1")
-        assert_close_rel(1.0 / r.density_ratio, expected["rho12"], RATIO_RTOL, f"{label} rho1/rho2")
+        assert_close_rel(r.mach_in, expected["Mach"][0], SHOCK_RATIO_RTOL, f"{label} Mach1")
+        assert_close_rel(r.mach_out, expected["Mach"][1], SHOCK_RATIO_RTOL, f"{label} Mach2")
+        assert_close_rel(r.static_pressure_ratio, expected["P21"], SHOCK_RATIO_RTOL, f"{label} P2/P1")
+        assert_close_rel(r.static_temperature_ratio, expected["T21"], SHOCK_RATIO_RTOL, f"{label} T2/T1")
+        assert_close_rel(1.0 / r.density_ratio, expected["rho12"], SHOCK_RATIO_RTOL, f"{label} rho1/rho2")

@@ -3,6 +3,8 @@
 Both codes run on the same NASA9 thermodynamic data -- Goddard reads the YAML files converted
 from `data/nasa9.dat`, CEA reads `thermo.lib` -- and are given the same product species, so the
 tolerances here are much tighter than the cross-database ones of `test_cea_comparison.py`.
+Each is about 2.5 times the worst error observed (listed in the test docstrings), but no tighter
+than 1e-5: CEA converges species amounts only to 0.5e-5 relative (RP-1311).
 
 Two properties of pycea shape the code below:
 
@@ -268,8 +270,8 @@ def methane_oxygen_tp_reference(methane_oxygen):
 def test_methane_oxygen_tp(methane_oxygen, methane_oxygen_tp_reference, point):
     """Fuel-rich CH4/O2 deposits graphite; compare the amount and the mixture properties.
 
-    Observed worst errors over the 18 points: graphite 4e-4 absolute, M 1.0e-3,
-    gamma_s 2.6e-4, cp_eq 7.4e-3 (all relative except the graphite fraction).
+    Observed worst errors over the 18 points: graphite 1.5e-5 absolute, M 3.4e-5,
+    gamma_s 1.5e-5, cp_eq 1.8e-4 (all relative except the graphite fraction).
     """
     temperature, pressure, of_ratio = point
     products, _ = methane_oxygen
@@ -281,12 +283,12 @@ def test_methane_oxygen_tp(methane_oxygen, methane_oxygen_tp_reference, point):
 
     assert reference["converged"]
     assert_close_abs(condensed_mole_fraction(products, "C(gr)"),
-                     reference["X"].get("C(gr)", 0.0), 2e-3, "X[C(gr)]")
-    assert_close_rel(products.mean_molecular_weight, reference["M"], 2e-3, "M")
-    assert_close_rel(products.gamma_s, reference["gamma_s"], 3e-3, "gamma_s")
+                     reference["X"].get("C(gr)", 0.0), 5e-5, "X[C(gr)]")
+    assert_close_rel(products.mean_molecular_weight, reference["M"], 1e-4, "M")
+    assert_close_rel(products.gamma_s, reference["gamma_s"], 5e-5, "gamma_s")
 
     properties = goddard.equilibrium_properties(products)
-    assert_close_rel(properties.spec_heat_p, reference["cp_eq"] * 1e3, 1e-2, "cp_eq")
+    assert_close_rel(properties.spec_heat_p, reference["cp_eq"] * 1e3, 5e-4, "cp_eq")
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +319,7 @@ def methane_oxygen_hp_reference(methane_oxygen):
 def test_methane_oxygen_combustor(methane_oxygen, methane_oxygen_hp_reference, point):
     """Burn CH4 in O2 through the reactant-stream Combustor.
 
-    Observed worst errors: flame temperature 8.0e-4 relative, graphite 2.2e-4 absolute.
+    Observed worst errors: flame temperature 1.6e-5 relative, graphite 2.5e-5 absolute.
     """
     pressure, of_ratio = point
     products, _ = methane_oxygen
@@ -337,9 +339,9 @@ def test_methane_oxygen_combustor(methane_oxygen, methane_oxygen_hp_reference, p
     products.restore_state(states.get_state(0))
     assert condensed_moles == pytest.approx(products.condensed_moles)
 
-    assert_close_rel(products.temperature, reference["T"], 2e-3, "chamber temperature")
+    assert_close_rel(products.temperature, reference["T"], 5e-5, "chamber temperature")
     assert_close_abs(condensed_mole_fraction(products, "C(gr)"),
-                     reference["X"].get("C(gr)", 0.0), 2e-3, "X[C(gr)]")
+                     reference["X"].get("C(gr)", 0.0), 1e-4, "X[C(gr)]")
     assert_close_rel(products.pressure, pressure, 1e-6, "chamber pressure")
 
 
@@ -374,8 +376,9 @@ def hydrogen_oxygen():
 def test_water_condensation(hydrogen_oxygen, temperature):
     """Liquid water above 273.15 K and ice below it, in the amounts CEA reports.
 
-    Observed worst error: 9.5e-3 absolute at 300 K, where the liquid fraction moves by about
-    0.25 per kelvin, so the station is unusually sensitive to the equilibrium temperature.
+    Observed worst error: 4.8e-7 absolute. At 300 K the liquid fraction moves by about 0.25
+    per kelvin, so that station is unusually sensitive to the species data: with the water
+    data referenced to 1 atm instead of CEA's 1 bar the error there was 9.5e-3.
     """
     products, elements, pressure, reference = hydrogen_oxygen
     expected = reference[temperature]["X"]
@@ -385,7 +388,7 @@ def test_water_condensation(hydrogen_oxygen, temperature):
 
     for name in ("H2O(L)", "H2O(cr)"):
         assert_close_abs(condensed_mole_fraction(products, name), expected.get(name, 0.0),
-                         1e-2, f"X[{name}] at {temperature} K")
+                         1e-5, f"X[{name}] at {temperature} K")
 
 
 def test_water_dew_point_neighbourhood(hydrogen_oxygen):
@@ -430,8 +433,8 @@ def test_aluminized_perchlorate(propellant, aluminium, expected_polymorph):
     """Burn ammonium perchlorate with aluminium at three pressures.
 
     20 % aluminium burns above the melting point of alumina and leaves the liquid, 5 % stays
-    below it and leaves the solid. Observed worst errors: temperature 5.6e-4 relative,
-    alumina 3e-5 absolute, with the same polymorph selected as CEA everywhere.
+    below it and leaves the solid. Observed worst errors: temperature 1.1e-5 relative,
+    alumina 3.2e-6 absolute, with the same polymorph selected as CEA everywhere.
     """
     products, reference = propellant
     composition = {"NH4CLO4(I)": 1.0 - aluminium, "AL(cr)": aluminium}
@@ -444,10 +447,10 @@ def test_aluminized_perchlorate(propellant, aluminium, expected_polymorph):
         products.equilibrate_HP(stream.enthalpy_mass, pressure)
 
         label = f"{aluminium:.2f} Al at {pressure / BAR:.4f} bar"
-        assert_close_rel(products.temperature, expected["T"], 2e-3, f"temperature, {label}")
+        assert_close_rel(products.temperature, expected["T"], 3e-5, f"temperature, {label}")
         assert present_condensed(products) == cea_condensed(expected), label
         assert_close_abs(condensed_mole_fraction(products, expected_polymorph),
-                         expected["X"][expected_polymorph], 2e-3,
+                         expected["X"][expected_polymorph], 1e-5,
                          f"X[{expected_polymorph}], {label}")
         assert_close_rel(products.enthalpy_mass, stream.enthalpy_mass, 1e-7, f"enthalpy, {label}")
 
@@ -493,14 +496,14 @@ def beryllium_rocket():
 def test_beryllium_chamber(beryllium_rocket):
     """The chamber of example 13, at constant enthalpy and pressure.
 
-    Observed errors: temperature 7e-5 relative, M 2e-5 relative, BeO(L) 4e-6 absolute.
+    Observed errors: temperature 9.5e-6 relative, M 1.8e-5 relative, BeO(L) 2.0e-6 absolute.
     """
     products, stream, rocket, _ = beryllium_rocket
 
-    assert_close_rel(products.temperature, rocket["T"][0], 2e-3, "chamber temperature")
-    assert_close_rel(products.mean_molecular_weight, rocket["M"][0], 1e-3, "chamber M")
+    assert_close_rel(products.temperature, rocket["T"][0], 3e-5, "chamber temperature")
+    assert_close_rel(products.mean_molecular_weight, rocket["M"][0], 5e-5, "chamber M")
     assert_close_abs(condensed_mole_fraction(products, "BeO(L)"),
-                     rocket["X"]["BeO(L)"][0], 2e-3, "chamber X[BeO(L)]")
+                     rocket["X"]["BeO(L)"][0], 1e-5, "chamber X[BeO(L)]")
     assert not products.at_phase_transition
     assert_close_rel(products.enthalpy_mass, stream.enthalpy_mass, 1e-9, "chamber enthalpy")
 
@@ -509,7 +512,7 @@ def test_beryllium_pinned_stations(beryllium_rocket):
     """Stations 1 and 2 sit exactly on the BeO(b)/BeO(L) melting point.
 
     The expansion entropy falls inside the latent heat there, so the temperature stops moving
-    and the two polymorphs split to match. Observed worst error on the split: 4.3e-4.
+    and the two polymorphs split to match. Observed worst error on the split: 2.1e-5.
     """
     products, _, rocket, entropy = beryllium_rocket
 
@@ -522,7 +525,7 @@ def test_beryllium_pinned_stations(beryllium_rocket):
         assert products.temperature == pytest.approx(2851.0, abs=1e-6)
         for name in ("BeO(L)", "BeO(b)"):
             assert_close_abs(condensed_mole_fraction(products, name),
-                             rocket["X"][name][station], 3e-3,
+                             rocket["X"][name][station], 1e-4,
                              f"X[{name}] at station {station}")
         assert_close_rel(products.entropy_mass, entropy, 1e-8, f"entropy at station {station}")
 
@@ -537,14 +540,14 @@ def test_beryllium_pinned_stations(beryllium_rocket):
 def test_beryllium_expansion_stations(beryllium_rocket, station):
     """Below the melting point the expansion follows BeO(b) and then BeO(a).
 
-    Observed worst error on the temperature: 5e-5 relative.
+    Observed worst error on the temperature: 2.5e-5 relative.
     """
     products, _, rocket, entropy = beryllium_rocket
     pressure = rocket["P"][station] * BAR
 
     products.equilibrate_SP(entropy, pressure)
 
-    assert_close_rel(products.temperature, rocket["T"][station], 2e-3,
+    assert_close_rel(products.temperature, rocket["T"][station], 1e-4,
                      f"temperature at station {station}")
     assert not products.at_phase_transition
     assert present_condensed(products) == cea_condensed(rocket, index=station)
@@ -605,8 +608,8 @@ def test_beryllium_rocket_chamber_reports_condensed_fields(beryllium_rocket_prob
     results, rocket = beryllium_rocket_problem
     chamber = results.chamber(0, "ex13").thermo
 
-    assert_close_rel(chamber.temperature, rocket["T"][0], 2e-3, "chamber temperature")
-    assert_close_rel(chamber.molecular_weight, rocket["M"][0], 1e-3, "chamber M")
+    assert_close_rel(chamber.temperature, rocket["T"][0], 3e-5, "chamber temperature")
+    assert_close_rel(chamber.molecular_weight, rocket["M"][0], 5e-5, "chamber M")
     # About a third of the mixture is BeO(L), so CEA's MW is well below its M.
     assert 0.6 < chamber.gas_mass_fraction < 0.7
     assert chamber.mixture_molecular_weight < chamber.molecular_weight
@@ -616,20 +619,20 @@ def test_beryllium_rocket_chamber_reports_condensed_fields(beryllium_rocket_prob
 def test_beryllium_rocket_throat_is_pinned(beryllium_rocket_problem):
     """The throat sits on the BeO(b)/BeO(L) melting point, where CEA reports gamma_s = 0.9979.
 
-    Observed errors: throat pressure 1.7e-5, T exact, M 6e-6, gamma_s 1e-5, c* 2.4e-5.
+    Observed errors: throat pressure 6.1e-6, T exact, M 1.9e-5, gamma_s 1e-8, c* 1.7e-5.
     """
     results, rocket = beryllium_rocket_problem
     throat = results.throat(0, "ex13").thermo
 
     assert throat.pinned_transition
     assert throat.temperature == pytest.approx(BERYLLIUM_TRANSITION_TEMPERATURE, abs=1e-6)
-    assert_close_rel(throat.pressure / BAR, rocket["P"][1], 1e-3, "throat pressure")
-    assert_close_rel(throat.molecular_weight, rocket["M"][1], 1e-3, "throat M")
+    assert_close_rel(throat.pressure / BAR, rocket["P"][1], 2e-5, "throat pressure")
+    assert_close_rel(throat.molecular_weight, rocket["M"][1], 5e-5, "throat M")
     # A pinned expansion is isothermal, so gamma_s = -1 / (dlnV/dlnP)_T, just below one.
-    assert_close_rel(throat.gamma_s, rocket["gamma_s"][1], 1e-3, "throat gamma_s")
+    assert_close_rel(throat.gamma_s, rocket["gamma_s"][1], 1e-5, "throat gamma_s")
     assert throat.gamma_s == pytest.approx(0.9979, abs=1e-3)
     # c* depends on the chamber and the throat only, so any exit station reports the same value.
-    assert_close_rel(results.performance(0, 0, "ex13").cstar, rocket["c_star"][1], 3e-3, "c*")
+    assert_close_rel(results.performance(0, 0, "ex13").cstar, rocket["c_star"][1], 5e-5, "c*")
 
 
 @pytest.mark.parametrize("exit_index,pressure_ratio",
@@ -638,9 +641,9 @@ def test_beryllium_rocket_throat_is_pinned(beryllium_rocket_problem):
 def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressure_ratio):
     """Every expansion station of example 13, including the second pinned one.
 
-    Observed worst errors over the four stations: T 3.5e-5, M 1.8e-5, gamma_s 3.4e-5,
-    and, over the performance fields, area ratio 3.9e-5, c* 2.4e-5, Isp 1.4e-5, Ivac 1.5e-5,
-    Mach 2.1e-5, CF 3.8e-5, all relative.
+    Observed worst errors over the four stations: T 2.5e-5, M 1.9e-5, gamma_s 3.6e-6,
+    and, over the performance fields, area ratio 2.3e-5, c* 1.7e-5, Isp 9.7e-6, Ivac 1.1e-5,
+    Mach 3.6e-6, CF 1.2e-5, all relative.
     """
     results, rocket = beryllium_rocket_problem
     exits = results.exits(0, "ex13")
@@ -655,22 +658,22 @@ def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressur
     pinned = rocket["T"][index] == pytest.approx(BERYLLIUM_TRANSITION_TEMPERATURE, abs=1.0)
     assert station.pinned_transition == pinned, label
 
-    assert_close_rel(station.pressure / BAR, rocket["P"][index], 1e-3, f"{label} pressure")
-    assert_close_rel(station.temperature, rocket["T"][index], 2e-3, f"{label} temperature")
-    assert_close_rel(station.molecular_weight, rocket["M"][index], 1e-3, f"{label} M")
+    assert_close_rel(station.pressure / BAR, rocket["P"][index], 1e-5, f"{label} pressure")
+    assert_close_rel(station.temperature, rocket["T"][index], 1e-4, f"{label} temperature")
+    assert_close_rel(station.molecular_weight, rocket["M"][index], 5e-5, f"{label} M")
     assert_close_rel(station.gamma_s, rocket["gamma_s"][index],
-                     1e-3 if pinned else 3e-3, f"{label} gamma_s")
+                     1e-5, f"{label} gamma_s")
 
     performance = results.performance(0, exit_index, "ex13")
-    assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-3,
+    assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-4,
                      f"{label} area_ratio")
-    assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 1e-3,
+    assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 1e-5,
                      f"{label} pressure_ratio")
-    assert_close_rel(performance.cstar, rocket["c_star"][index], 3e-3, f"{label} c*")
-    assert_close_rel(performance.isp, rocket["Isp"][index], 3e-3, f"{label} Isp")
-    assert_close_rel(performance.ivac, rocket["Ivac"][index], 3e-3, f"{label} Ivac")
-    assert_close_rel(performance.mach_number, rocket["Mach"][index], 3e-3, f"{label} Mach")
-    assert_close_rel(performance.CF, rocket["CF"][index], 3e-3, f"{label} CF")
+    assert_close_rel(performance.cstar, rocket["c_star"][index], 5e-5, f"{label} c*")
+    assert_close_rel(performance.isp, rocket["Isp"][index], 3e-5, f"{label} Isp")
+    assert_close_rel(performance.ivac, rocket["Ivac"][index], 3e-5, f"{label} Ivac")
+    assert_close_rel(performance.mach_number, rocket["Mach"][index], 1e-5, f"{label} Mach")
+    assert_close_rel(performance.CF, rocket["CF"][index], 3e-5, f"{label} CF")
 
 
 # ---------------------------------------------------------------------------
@@ -724,8 +727,8 @@ def test_cryogenic_rocket_chamber(cryogenic_rocket):
     results, rocket = cryogenic_rocket
     chamber = results.chamber(0, "ex8").thermo
 
-    assert_close_rel(chamber.temperature, rocket["T"][0], 2e-3, "chamber temperature")
-    assert_close_rel(chamber.molecular_weight, rocket["M"][0], 1e-3, "chamber M")
+    assert_close_rel(chamber.temperature, rocket["T"][0], 1e-4, "chamber temperature")
+    assert_close_rel(chamber.molecular_weight, rocket["M"][0], 2e-4, "chamber M")
     assert_close_rel(chamber.pressure, CRYOGENIC_PRESSURE, 1e-6, "chamber pressure")
     # No condensed phase at 3384 K, so the mixture quantities collapse onto the gas ones.
     assert chamber.gas_mass_fraction == 1.0
@@ -736,29 +739,29 @@ def test_cryogenic_rocket_chamber(cryogenic_rocket):
 def test_cryogenic_rocket_throat(cryogenic_rocket):
     """The throat of example 8.
 
-    Observed errors: P 4.4e-5, T 2.8e-4, M 5.4e-5, gamma_s 1.0e-4, c* 1.1e-4, all relative.
+    Observed errors: P 3.9e-6, T 3.1e-5, M 4.9e-5, gamma_s 8.8e-6, c* 1.3e-5, all relative.
     """
     results, rocket = cryogenic_rocket
     throat = results.throat(0, "ex8").thermo
     station = 1
 
-    assert_close_rel(throat.pressure / BAR, rocket["P"][station], 1e-3, "throat pressure")
-    assert_close_rel(throat.temperature, rocket["T"][station], 2e-3, "throat temperature")
-    assert_close_rel(throat.molecular_weight, rocket["M"][station], 1e-3, "throat M")
-    assert_close_rel(throat.gamma_s, rocket["gamma_s"][station], 3e-3, "throat gamma_s")
+    assert_close_rel(throat.pressure / BAR, rocket["P"][station], 1e-5, "throat pressure")
+    assert_close_rel(throat.temperature, rocket["T"][station], 1e-4, "throat temperature")
+    assert_close_rel(throat.molecular_weight, rocket["M"][station], 2e-4, "throat M")
+    assert_close_rel(throat.gamma_s, rocket["gamma_s"][station], 3e-5, "throat gamma_s")
     assert not throat.pinned_transition
     # c* depends on the chamber and the throat only, so any exit station reports the same value.
     assert_close_rel(results.performance(0, 0, "ex8").cstar, rocket["c_star"][station],
-                     3e-3, "c*")
+                     5e-5, "c*")
 
 
 @pytest.mark.parametrize("area_ratio", CRYOGENIC_AREA_RATIOS)
 def test_cryogenic_rocket_exits(cryogenic_rocket, area_ratio):
     """The area-ratio stations of example 8.
 
-    Observed worst errors: T 2.9e-4, M 6.1e-5, gamma_s 3.2e-5, and, over the performance
-    fields, area ratio 1.9e-5, c* 1.1e-4, Isp 4.8e-5, Ivac 3.3e-5, Mach 1.4e-4, CF 7.0e-5,
-    pressure ratio 3.6e-4.
+    Observed worst errors: T 1.2e-4, P 7.2e-5, M 6.0e-5, gamma_s 1.5e-5, and, over the
+    performance fields, area ratio 1.9e-5, c* 1.3e-5, Isp 4.8e-6, Ivac 2.0e-6, Mach 2.4e-5,
+    CF 1.1e-5, pressure ratio 7.2e-5.
     """
     results, rocket = cryogenic_rocket
     exits = results.exits(0, "ex8")
@@ -770,22 +773,22 @@ def test_cryogenic_rocket_exits(cryogenic_rocket, area_ratio):
     assert rocket["ae_at"][index] == pytest.approx(area_ratio, rel=1e-3)
     label = f"AR {area_ratio}"
 
-    assert_close_rel(station.temperature, rocket["T"][index], 2e-3, f"{label} temperature")
-    assert_close_rel(station.pressure / BAR, rocket["P"][index], 3e-3, f"{label} pressure")
-    assert_close_rel(station.molecular_weight, rocket["M"][index], 1e-3, f"{label} M")
-    assert_close_rel(station.gamma_s, rocket["gamma_s"][index], 3e-3, f"{label} gamma_s")
+    assert_close_rel(station.temperature, rocket["T"][index], 3e-4, f"{label} temperature")
+    assert_close_rel(station.pressure / BAR, rocket["P"][index], 2e-4, f"{label} pressure")
+    assert_close_rel(station.molecular_weight, rocket["M"][index], 2e-4, f"{label} M")
+    assert_close_rel(station.gamma_s, rocket["gamma_s"][index], 5e-5, f"{label} gamma_s")
 
     performance = results.performance(0, exit_index, "ex8")
     assert_close_rel(performance.area_ratio, area_ratio, 1e-3, f"{label} area_ratio (requested)")
-    assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-3,
+    assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-5,
                      f"{label} area_ratio (CEA ae_at)")
-    assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 3e-3,
+    assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 2e-4,
                      f"{label} pressure_ratio")
-    assert_close_rel(performance.cstar, rocket["c_star"][index], 3e-3, f"{label} c*")
-    assert_close_rel(performance.isp, rocket["Isp"][index], 3e-3, f"{label} Isp")
-    assert_close_rel(performance.ivac, rocket["Ivac"][index], 3e-3, f"{label} Ivac")
-    assert_close_rel(performance.mach_number, rocket["Mach"][index], 3e-3, f"{label} Mach")
-    assert_close_rel(performance.CF, rocket["CF"][index], 3e-3, f"{label} CF")
+    assert_close_rel(performance.cstar, rocket["c_star"][index], 5e-5, f"{label} c*")
+    assert_close_rel(performance.isp, rocket["Isp"][index], 2e-5, f"{label} Isp")
+    assert_close_rel(performance.ivac, rocket["Ivac"][index], 1e-5, f"{label} Ivac")
+    assert_close_rel(performance.mach_number, rocket["Mach"][index], 1e-4, f"{label} Mach")
+    assert_close_rel(performance.CF, rocket["CF"][index], 3e-5, f"{label} CF")
 
 
 # ---------------------------------------------------------------------------

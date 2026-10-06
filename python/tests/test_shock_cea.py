@@ -43,9 +43,10 @@ TEMPERATURE = 300.0
 MOLE_FRACTIONS = {"H2": 0.05, "O2": 0.05, "Ar": 0.9}
 SHOCK_SPEEDS = (1100.0, 1200.0, 1250.0, 1300.0, 1350.0, 1400.0)
 
-# Same database, and both codes converge the jump conditions to ~1e-5 or better; the observed
-# agreement is ~1e-4. 1e-3 leaves room for differences in solver tolerances.
-RATIO_RTOL = 1e-3
+# Same database, and both codes converge the jump conditions to ~1e-5 or better. Observed worst
+# error 2.4e-4 (P2/P1, equilibrium, u1 = 1100 m/s, just above the ~1094 m/s CJ speed where the
+# equilibrium jump is most sensitive), 8e-5 at every other speed.
+RATIO_RTOL = 5e-4
 
 # (incident, reflected) chemistry
 CHEMISTRY_CASES = [
