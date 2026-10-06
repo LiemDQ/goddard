@@ -97,4 +97,3 @@ The docs use their own `build-docs/` directory with the docs environment's Pytho
 | Python tests don't see a C++ change | The package wasn't reinstalled; use the test tasks, which reinstall first |
 | `Error launching '<tool>': No such file or directory` | An env launcher points at a deleted worktree; run `pixi reinstall -e <env>` with the sandbox disabled |
 | `could not lock config file .git/config` on branch deletion | Sandbox; harmless, the branch is still deleted |
-| Docs build shows stub docstrings | `goddard_docstrings.h` was written by a non-docs build; the `docs` task removes and regenerates it |
