@@ -5,6 +5,7 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/eigen/dense.h>
+#include <nanobind/ndarray.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -34,6 +35,16 @@ Eigen::VectorXd to_array(const std::vector<double>& values) {
     Eigen::VectorXd out(static_cast<Eigen::Index>(values.size()));
     std::copy(values.begin(), values.end(), out.data());
     return out;
+}
+
+// Read-only numpy copy of a settable vector attribute: `obj.x[i] = v` would change only the
+// copy, so it raises instead of being silently lost. Assign a whole array to change it.
+using ReadOnlyArray = nb::ndarray<nb::numpy, const double, nb::ndim<1>>;
+
+ReadOnlyArray to_readonly_array(const std::vector<double>& values) {
+    auto* data = new std::vector<double>(values);
+    nb::capsule owner(data, [](void* p) noexcept { delete static_cast<std::vector<double>*>(p); });
+    return ReadOnlyArray(data->data(), {data->size()}, owner);
 }
 
 IndexArray to_index_array(const std::vector<size_t>& indices) {
@@ -189,13 +200,13 @@ void bind_moc(nb::module_& m) {
         // ---- Coordinates ----
 
         .def_prop_rw("x",
-            [](const Goddard::NozzleProfile& self) { return to_array(self.x); },
+            [](const Goddard::NozzleProfile& self) { return to_readonly_array(self.x); },
             [](Goddard::NozzleProfile& self, std::vector<double> values) { self.x = std::move(values); },
-            DOC(Goddard, NozzleProfile, x))
+            nb::rv_policy::automatic, DOC(Goddard, NozzleProfile, x))
         .def_prop_rw("y",
-            [](const Goddard::NozzleProfile& self) { return to_array(self.y); },
+            [](const Goddard::NozzleProfile& self) { return to_readonly_array(self.y); },
             [](Goddard::NozzleProfile& self, std::vector<double> values) { self.y = std::move(values); },
-            DOC(Goddard, NozzleProfile, y))
+            nb::rv_policy::automatic, DOC(Goddard, NozzleProfile, y))
         .def_rw("throat_index", &Goddard::NozzleProfile::throat_index,
                 DOC(Goddard, NozzleProfile, throat_index))
 
@@ -375,11 +386,11 @@ void bind_moc(nb::module_& m) {
         .def_rw("theta_max", &Goddard::MocOptions::theta_max, DOC(Goddard, MocOptions, theta_max))
         .def_rw("exit_mach", &Goddard::MocOptions::exit_mach, DOC(Goddard, MocOptions, exit_mach))
         .def_prop_rw("theta_schedule",
-            [](const Goddard::MocOptions& self) { return to_array(self.theta_schedule); },
+            [](const Goddard::MocOptions& self) { return to_readonly_array(self.theta_schedule); },
             [](Goddard::MocOptions& self, std::vector<double> values) {
                 self.theta_schedule = std::move(values);
             },
-            DOC(Goddard, MocOptions, theta_schedule))
+            nb::rv_policy::automatic, DOC(Goddard, MocOptions, theta_schedule))
         .def_rw("nozzle_profile", &Goddard::MocOptions::nozzle_profile,
                 DOC(Goddard, MocOptions, nozzle_profile))
         .def_rw("log_level", &Goddard::MocOptions::log_level, DOC(Goddard, MocOptions, log_level))
@@ -405,7 +416,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::CharacteristicPoint>(m, "CharacteristicPoint",
                                              DOC(Goddard, CharacteristicPoint))
-        .def(nb::init<>())
         .def_ro("theta", &Goddard::CharacteristicPoint::theta,
                 DOC(Goddard, CharacteristicPoint, theta))
         .def_ro("nu", &Goddard::CharacteristicPoint::nu, DOC(Goddard, CharacteristicPoint, nu))
@@ -453,7 +463,6 @@ void bind_moc(nb::module_& m) {
     // ---- CharacteristicNet ----
 
     nb::class_<Goddard::CharacteristicNet>(m, "CharacteristicNet", DOC(Goddard, CharacteristicNet))
-        .def(nb::init<>())
         .def_ro("points", &Goddard::CharacteristicNet::points,
                 DOC(Goddard, CharacteristicNet, points))
         .def_ro("chain_metadata", &Goddard::CharacteristicNet::chain_metadata,
@@ -547,7 +556,6 @@ void bind_moc(nb::module_& m) {
     // ---- ExitPlane ----
 
     nb::class_<Goddard::ExitPlane>(m, "ExitPlane", DOC(Goddard, ExitPlane))
-        .def(nb::init<>())
         .def_prop_ro("y", [](const Goddard::ExitPlane& self) { return to_array(self.y); },
                      DOC(Goddard, ExitPlane, y))
         .def_prop_ro("mach", [](const Goddard::ExitPlane& self) { return to_array(self.mach); },
@@ -567,7 +575,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocFailure ----
 
     nb::class_<Goddard::MocFailure>(m, "MocFailure", DOC(Goddard, MocFailure))
-        .def(nb::init<>())
         .def_ro("code", &Goddard::MocFailure::code, DOC(Goddard, MocFailure, code))
         .def_ro("message", &Goddard::MocFailure::message, DOC(Goddard, MocFailure, message))
         .def_ro("x", &Goddard::MocFailure::x, DOC(Goddard, MocFailure, x))
@@ -587,7 +594,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::MocPassDiagnostics>(m, "MocPassDiagnostics",
                                             DOC(Goddard, MocPassDiagnostics))
-        .def(nb::init<>())
         // `pass` is a Python keyword, so the field is renamed rather than made unreachable.
         .def_ro("pass_index", &Goddard::MocPassDiagnostics::pass,
                 DOC(Goddard, MocPassDiagnostics, pass))
@@ -620,7 +626,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocFrontShear ----
 
     nb::class_<Goddard::MocFrontShear>(m, "MocFrontShear", DOC(Goddard, MocFrontShear))
-        .def(nb::init<>())
         .def_ro("axis_growth", &Goddard::MocFrontShear::axis_growth,
                 DOC(Goddard, MocFrontShear, axis_growth))
         .def_ro("wall_growth", &Goddard::MocFrontShear::wall_growth,
@@ -642,7 +647,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::MocInitDiagnostics>(m, "MocInitDiagnostics",
                                             DOC(Goddard, MocInitDiagnostics))
-        .def(nb::init<>())
         .def_ro("points", &Goddard::MocInitDiagnostics::points,
                 DOC(Goddard, MocInitDiagnostics, points))
         .def_ro("wall_gap", &Goddard::MocInitDiagnostics::wall_gap,
@@ -692,7 +696,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocCrossings ----
 
     nb::class_<Goddard::MocCrossings>(m, "MocCrossings", DOC(Goddard, MocCrossings))
-        .def(nb::init<>())
         .def_ro("count", &Goddard::MocCrossings::count, DOC(Goddard, MocCrossings, count))
         .def_ro("first_x", &Goddard::MocCrossings::first_x, DOC(Goddard, MocCrossings, first_x))
         .def_ro("first_y", &Goddard::MocCrossings::first_y, DOC(Goddard, MocCrossings, first_y))
@@ -709,7 +712,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocResult ----
 
     nb::class_<Goddard::MocResult>(m, "MocResult", DOC(Goddard, MocResult))
-        .def(nb::init<>())
         .def_ro("converged", &Goddard::MocResult::converged, DOC(Goddard, MocResult, converged))
         .def_ro("net", &Goddard::MocResult::net, DOC(Goddard, MocResult, net))
         .def_ro("profile", &Goddard::MocResult::profile, DOC(Goddard, MocResult, profile))
@@ -745,7 +747,6 @@ void bind_moc(nb::module_& m) {
     // ---- ThrustCoefficient ----
 
     nb::class_<Goddard::ThrustCoefficient>(m, "ThrustCoefficient", DOC(Goddard, ThrustCoefficient))
-        .def(nb::init<>())
         .def_ro("Cf_vacuum", &Goddard::ThrustCoefficient::Cf_vacuum,
                 DOC(Goddard, ThrustCoefficient, Cf_vacuum))
         .def_ro("Cf", &Goddard::ThrustCoefficient::Cf, DOC(Goddard, ThrustCoefficient, Cf))

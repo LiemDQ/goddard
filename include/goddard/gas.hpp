@@ -272,6 +272,11 @@ public:
     double ivac() const;
 
     // Mixture properties
+    /**
+     * Fuel fraction of the current mixture, as a blend of the given fuel and oxidizer
+     * compositions [-].
+     * @param basis molar (default) or mass basis of the compositions and of the result.
+     */
     double fuel_fraction(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -281,7 +286,9 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /** Equivalence ratio of the current mixture, from its element composition [-]. */
     double equivalence_ratio() const;
+    /** Equivalence ratio of the current mixture as a blend of the given fuel and oxidizer [-]. */
     double equivalence_ratio(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -291,6 +298,7 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /** Stoichiometric oxidizer-to-fuel ratio of the given fuel and oxidizer [-]. */
     double stoich_OF_ratio(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -369,7 +377,7 @@ public:
      * gas phase and the candidates whose thermodynamic data covers `T`. Amounts of candidates that
      * have left their data range are first moved to the in-range polymorph of their group.
      *
-     * @throws FmtError if a condensed species is present and no polymorph of its group has data at
+     * @throws std::runtime_error (FmtError) if a condensed species is present and no polymorph of its group has data at
      * `T`.
      * @throws ConvergenceError if the solve fails after all restart strategies.
      */
@@ -411,7 +419,7 @@ public:
      * @param T Temperature [K] of the resulting state.
      * @param P Pressure [Pa] of the resulting state.
      *
-     * @throws FmtError if the phase contains no single-element species for one of the requested
+     * @throws std::invalid_argument if the phase contains no single-element species for one of the requested
      * elements.
      * @note All condensed amounts are set to zero and any pinned transition is cleared, so the
      * requested element amounts are carried entirely by the gas phase.
@@ -436,7 +444,7 @@ public:
      *
      * @param infile Cantera YAML data file containing the species.
      * @param names Species names, matching the data file exactly.
-     * @throws FmtError if a name is absent from the file, or if a species contains an element
+     * @throws std::invalid_argument if a name is absent from the file, or if a species contains an element
      * the gas phase does not have.
      */
     void add_condensed_species(const std::string& infile, const std::vector<std::string>& names);
@@ -612,7 +620,7 @@ private:
      * Newton iteration on temperature for the frozen `set_state_HP`/`set_state_SP` problems with
      * condensed phases present: composition and condensed amounts are held fixed.
      *
-     * @throws FmtError if the solution lies outside the temperature range of a present condensed
+     * @throws std::runtime_error (FmtError) if the solution lies outside the temperature range of a present condensed
      * species, as CEA reports for a frozen expansion.
      */
     void solve_frozen_XP(EquilibriumProperty property, double target, double P);

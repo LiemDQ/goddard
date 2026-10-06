@@ -1,3 +1,4 @@
+#include <format>
 #include "goddard/utils.hpp"
 #include "goddard/speciate.hpp"
 #include "goddard/condensed.hpp"
@@ -701,10 +702,10 @@ void Gas::set_element_moles(const Eigen::ArrayXd& element_moles, double T, doubl
         }
         const size_t j = basis_species_for_element(*gas, m);
         if (j == Cantera::npos) {
-            throw FmtError(
+            throw std::invalid_argument(std::format(
                 "Gas::set_element_moles: the phase contains no species made up of element '{}' "
                 "alone, so no basis composition can be formed.",
-                gas->elementName(m));
+                gas->elementName(m)));
         }
         moles(static_cast<long>(j)) += element_moles(static_cast<long>(m)) / gas->nAtoms(j, m);
     }

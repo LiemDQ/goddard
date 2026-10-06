@@ -332,7 +332,7 @@ def test_methane_oxygen_combustor(methane_oxygen, methane_oxygen_hp_reference, p
 
     states = goddard.Combustor(products, fuel, oxidizer).solve(
         np.array([pressure]), np.array([of_ratio]), options)
-    assert states.size() == 1
+    assert states.size == 1
     assert states.num_condensed() == len(products.condensed_species_names)
     assert states.condensed_species_names() == products.condensed_species_names
     condensed_moles = states.get_condensed_moles(0)

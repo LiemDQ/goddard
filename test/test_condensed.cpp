@@ -89,12 +89,12 @@ TEST_F(CondensedSetTests, ConstructFromNamedSpecies) {
 }
 
 TEST_F(CondensedSetTests, UnknownSpeciesThrows) {
-    EXPECT_THROW(CondensedPhaseSet(root, {"NotASpecies(s)"}, *gas.thermo()), FmtError);
+    EXPECT_THROW(CondensedPhaseSet(root, {"NotASpecies(s)"}, *gas.thermo()), std::invalid_argument);
 }
 
 TEST_F(CondensedSetTests, SpeciesWithElementMissingFromGasThrows) {
     Gas ho_gas = make_gas("ho", {"H2", "O2", "H2O"});
-    EXPECT_THROW(CondensedPhaseSet(root, {"AL2O3(a)"}, *ho_gas.thermo()), FmtError);
+    EXPECT_THROW(CondensedPhaseSet(root, {"AL2O3(a)"}, *ho_gas.thermo()), std::invalid_argument);
 }
 
 TEST_F(CondensedSetTests, ElementAtomsUseGasElementOrder) {

@@ -250,7 +250,7 @@ class Nozzle {
      * @param abstol Convergence tolerance on d(log T) [-].
      * @return Station temperature [K].
      *
-     * @throws FmtError if a present condensed species leaves its temperature range, as CEA
+     * @throws std::runtime_error (FmtError) if a present condensed species leaves its temperature range, as CEA
      * reports for a frozen expansion carried too far.
      */
     double iterate_temperature(

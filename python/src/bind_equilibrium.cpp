@@ -10,7 +10,6 @@ using namespace nb::literals;
 void bind_equilibrium(nb::module_& m) {
     // ExpansionProperties
     nb::class_<Goddard::ExpansionProperties>(m, "ExpansionProperties")
-        .def(nb::init<>())
         .def_ro("dlV_dlT_P", &Goddard::ExpansionProperties::dlV_dlT_P)
         .def_ro("dlV_dlP_T", &Goddard::ExpansionProperties::dlV_dlP_T)
         .def_ro("spec_heat_p", &Goddard::ExpansionProperties::spec_heat_p)
@@ -26,7 +25,6 @@ void bind_equilibrium(nb::module_& m) {
 
     // EquilibriumDerivatives
     nb::class_<Goddard::EquilibriumDerivatives>(m, "EquilibriumDerivatives")
-        .def(nb::init<>())
         .def_ro("dpi_dlogT_P", &Goddard::EquilibriumDerivatives::dpi_dlogT_P)
         .def_ro("dlogn_dlogT_P", &Goddard::EquilibriumDerivatives::dlogn_dlogT_P)
         .def_ro("dpi_dlogP_T", &Goddard::EquilibriumDerivatives::dpi_dlogP_T)

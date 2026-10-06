@@ -262,33 +262,35 @@ def test_moc_options_marching_kwargs():
     assert opts.start_line == MocStartLine.CENTERED_FAN
 
 
-def test_characteristic_net_fronts_default_empty():
-    from goddard import CharacteristicNet
+def test_result_types_are_not_constructible():
+    """Results come from the solver; their types have no Python constructor."""
+    from goddard import CharacteristicNet, MocResult
+    from goddard.moc_diagnostics import MocPassDiagnostics
 
-    net = CharacteristicNet()
-    assert net.fronts == []
-
-
-def test_moc_pass_diagnostics_step_fields_default():
-    from goddard.moc_diagnostics import MocPassDiagnostics, MocStepLimiter
-
-    diag = MocPassDiagnostics()
-    assert diag.step_dx == pytest.approx(0.0)
-    assert diag.step_limiter == MocStepLimiter.NONE
+    for cls in (CharacteristicNet, MocResult, MocPassDiagnostics):
+        with pytest.raises(TypeError):
+            cls()
 
 
-def test_moc_result_min_theta_and_init_diagnostics_defaults():
-    from goddard import MocResult, MocStartLine
+def test_min_length_design_records_no_fronts():
+    """The chain ladder of a minimum-length design keeps its characteristics in chains."""
+    from goddard import moc_design, MocStartLine
 
-    result = MocResult()
-    assert result.min_theta == pytest.approx(0.0)
-    assert result.min_theta_x == pytest.approx(0.0)
-    assert result.min_theta_y == pytest.approx(0.0)
+    result = moc_design(15.0)
+    assert result.net.fronts == []
+    assert len(result.net.chains) > 0
+    assert result.init_diagnostics.start_line_used != MocStartLine.AUTO
 
-    diagnostics = result.init_diagnostics
-    assert diagnostics.wall_bc_residual == pytest.approx(0.0)
-    assert diagnostics.kplus_wall_end == pytest.approx(0.0)
-    assert diagnostics.start_line_used == MocStartLine.AUTO
+
+def test_analysis_pass_diagnostics_have_steps():
+    from goddard import moc_analysis, conical_nozzle, MocFlowKind
+    from goddard.moc_diagnostics import MocStepLimiter
+
+    result = moc_analysis(conical_nozzle(4.0), flow_type=MocFlowKind.AXISYMMETRIC)
+    assert len(result.pass_diagnostics) > 0
+    steps = [d for d in result.pass_diagnostics if d.step_limiter != MocStepLimiter.NONE]
+    assert steps
+    assert all(d.step_dx > 0.0 for d in steps)
 
 
 def test_convenience_moc_functions_accept_start_line():

@@ -9,10 +9,11 @@ namespace nb = nanobind;
 
 void bind_thermoarray(nb::module_& m) {
     nb::class_<Goddard::ThermoArray>(m, "ThermoArray")
-        .def("size", &Goddard::ThermoArray::size)
-        .def("ndim", &Goddard::ThermoArray::ndim)
-        .def("shape", &Goddard::ThermoArray::shape)
-        .def("is_shape_set", &Goddard::ThermoArray::is_shape_set)
+        .def_prop_ro("size", &Goddard::ThermoArray::size, "Number of entries.")
+        .def_prop_ro("ndim", &Goddard::ThermoArray::ndim, "Number of dimensions (1 to 3).")
+        .def_prop_ro("shape", &Goddard::ThermoArray::shape, "Extent of each dimension.")
+        .def_prop_ro("is_shape_set", &Goddard::ThermoArray::is_shape_set,
+             "True once the array has a shape.")
         .def("flat_index", &Goddard::ThermoArray::flat_index,
              nb::arg("i"), nb::arg("j") = 0, nb::arg("k") = 0,
              DOC(Goddard, ThermoArray, flat_index))

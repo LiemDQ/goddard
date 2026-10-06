@@ -165,7 +165,7 @@ class Combustor : public BaseCombustor {
      * `options.mixture_type` is `PHI_RATIO` (CEA's valence rule is not implemented on this path),
      * if `options.type` is `NONE`, or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
-     * @throws FmtError if a reactant contains an element the product gas does not have.
+     * @throws std::invalid_argument if a reactant contains an element the product gas does not have.
      * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty.
      */
     ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,

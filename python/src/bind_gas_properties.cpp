@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <format>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/map.h>
@@ -7,6 +8,8 @@
 #include <nanobind/stl/unordered_set.h>
 #include <nanobind/eigen/dense.h>
 #include <algorithm>
+#include <functional>
+#include <stdexcept>
 #include "goddard/gas.hpp"
 #include "goddard/speciate.hpp"
 #include "goddard_docstrings.h"
@@ -15,8 +18,39 @@
 namespace nb = nanobind;
 using namespace nb::literals;
 
+namespace {
+
+// Composition basis as a string, so the Python API does not expose Cantera's ThermoBasis.
+Cantera::ThermoBasis to_basis(const std::string& basis) {
+    if (basis == "mole") return Cantera::ThermoBasis::molar;
+    if (basis == "mass") return Cantera::ThermoBasis::mass;
+    throw std::invalid_argument("basis must be 'mole' or 'mass', got '" + basis + "'");
+}
+
+// Binds a mixture method for fuel and oxidizer given either as composition strings or as dicts.
+template <typename Class, typename Method>
+void def_mixture(Class& cls, const char* name, Method method, const char* doc) {
+    cls.def(name, [method](const Goddard::Gas& gas, const std::string& fuel, const std::string& oxidizer,
+                           const std::string& basis) {
+            return std::invoke(method, gas, fuel, oxidizer, to_basis(basis));
+        }, "fuel"_a, "oxidizer"_a, "basis"_a = "mole", doc);
+}
+
+const char* chemistry_name(Goddard::GasChemistry chemistry) {
+    switch (chemistry) {
+        case Goddard::GasChemistry::PERFECT_GAS: return "PERFECT_GAS";
+        case Goddard::GasChemistry::FROZEN: return "FROZEN";
+        case Goddard::GasChemistry::EQUILIBRIUM: return "EQUILIBRIUM";
+        case Goddard::GasChemistry::KINETIC: return "KINETIC";
+    }
+    return "UNKNOWN";
+}
+
+} // namespace
+
 void bind_gas_properties(nb::module_& m) {
-    nb::class_<Goddard::Gas>(m, "Gas", DOC(Goddard, Gas))
+    auto gas_class = nb::class_<Goddard::Gas>(m, "Gas", DOC(Goddard, Gas));
+    gas_class
 
         // ---- Constructors ----
 
@@ -141,6 +175,10 @@ void bind_gas_properties(nb::module_& m) {
              "H"_a, "P"_a, DOC(Goddard, Gas, set_state_HP))
         .def("set_state_SP", &Goddard::Gas::set_state_SP,
              "S"_a, "P"_a, DOC(Goddard, Gas, set_state_SP))
+        .def("set_state_TD", &Goddard::Gas::set_state_TD,
+             "T"_a, "D"_a, DOC(Goddard, Gas, set_state_TD))
+        .def("set_state_UV", &Goddard::Gas::set_state_UV,
+             "U"_a, "V"_a, DOC(Goddard, Gas, set_state_UV))
 
         // ---- State save/restore ----
 
@@ -163,6 +201,36 @@ void bind_gas_properties(nb::module_& m) {
              DOC(Goddard, Gas, isenthalpic_velocity, 2))
         .def("mach", &Goddard::Gas::mach,
              "velocity"_a, DOC(Goddard, Gas, mach))
+        .def("area_per_mdot", &Goddard::Gas::area_per_mdot,
+             "velocity"_a, DOC(Goddard, Gas, area_per_mdot))
+        .def("cstar", &Goddard::Gas::cstar, DOC(Goddard, Gas, cstar))
+
+        // ---- Mixture ratios ----
+
+        .def("equivalence_ratio",
+             nb::overload_cast<>(&Goddard::Gas::equivalence_ratio, nb::const_),
+             DOC(Goddard, Gas, equivalence_ratio))
+        .def("set_fuel_fraction",
+             [](Goddard::Gas& gas, double fuel_fraction, const std::string& fuel,
+                const std::string& oxidizer, const std::string& basis) {
+                 gas.set_fuel_fraction(fuel_fraction, fuel, oxidizer, to_basis(basis));
+             }, "fuel_fraction"_a, "fuel"_a, "oxidizer"_a, "basis"_a = "mole",
+             DOC(Goddard, Gas, set_fuel_fraction))
+        .def("set_equivalence_ratio",
+             [](Goddard::Gas& gas, double phi, const std::string& fuel,
+                const std::string& oxidizer, const std::string& basis) {
+                 gas.set_equivalence_ratio(phi, fuel, oxidizer, to_basis(basis));
+             }, "phi"_a, "fuel"_a, "oxidizer"_a, "basis"_a = "mole",
+             DOC(Goddard, Gas, set_fuel_fraction))
+        .def("set_OF_ratio",
+             [](Goddard::Gas& gas, double OF, const std::string& fuel,
+                const std::string& oxidizer, const std::string& basis) {
+                 gas.set_OF_ratio(OF, fuel, oxidizer, to_basis(basis));
+             }, "OF"_a, "fuel"_a, "oxidizer"_a, "basis"_a = "mole",
+             DOC(Goddard, Gas, set_fuel_fraction))
+
+        .def("report", &Goddard::Gas::report, "show_thermo"_a = true, "threshold"_a = -1e-14,
+             DOC(Goddard, Gas, report))
 
         // ---- Expansion and equilibrium ----
 
@@ -201,4 +269,22 @@ void bind_gas_properties(nb::module_& m) {
 
         .def_rw("chemistry", &Goddard::Gas::chemistry,
             "GasChemistry mode (PERFECT_GAS, FROZEN, EQUILIBRIUM, KINETIC).");
+
+    gas_class.def("__repr__", [](const Goddard::Gas& self) {
+        return std::format("<Gas '{}' T={:.6g} K P={:.6g} Pa species={} condensed={} chemistry={}>",
+                           self.name(), self.temperature(), self.pressure(), self.num_species(),
+                           self.condensed_species_names().size(), chemistry_name(self.chemistry));
+    });
+    def_mixture(gas_class, "fuel_fraction",
+        nb::overload_cast<const std::string&, const std::string&, Cantera::ThermoBasis>(
+            &Goddard::Gas::fuel_fraction, nb::const_),
+        DOC(Goddard, Gas, fuel_fraction));
+    def_mixture(gas_class, "equivalence_ratio",
+        nb::overload_cast<const std::string&, const std::string&, Cantera::ThermoBasis>(
+            &Goddard::Gas::equivalence_ratio, nb::const_),
+        DOC(Goddard, Gas, equivalence_ratio, 2));
+    def_mixture(gas_class, "stoich_OF_ratio",
+        nb::overload_cast<const std::string&, const std::string&, Cantera::ThermoBasis>(
+            &Goddard::Gas::stoich_OF_ratio, nb::const_),
+        DOC(Goddard, Gas, stoich_OF_ratio));
 }

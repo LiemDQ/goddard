@@ -1,3 +1,4 @@
+#include <format>
 #include "goddard/combustor.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/error.hpp"
@@ -188,9 +189,9 @@ Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
             // a stream built from a shared species list carries the elements of every listed
             // species, not only of the ones it is made of.
             if (amount > 0.0) {
-                throw FmtError(
+                throw std::invalid_argument(std::format(
                     "Combustor: reactant stream contains element '{}', which is absent from the "
-                    "product gas.", stream_elements[m]);
+                    "product gas.", stream_elements[m]));
             }
             continue;
         }

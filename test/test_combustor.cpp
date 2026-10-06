@@ -864,7 +864,7 @@ TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
     Gas methane = Gas::create_from_species(reactant_file(), "reactants", {"CH4"});
     methane.set_state_TPX(300.0, pressures(0), "CH4:1");
     Combustor carbon_combustor(products, methane, oxidizer);
-    EXPECT_THROW(carbon_combustor.solve(pressures, OF_ratios, options), FmtError);
+    EXPECT_THROW(carbon_combustor.solve(pressures, OF_ratios, options), std::invalid_argument);
 
     // The product-species constructors do not accept the reactant-stream solve overload.
     EXPECT_THROW(combustor->solve(pressures, OF_ratios, options), NotImplementedError);

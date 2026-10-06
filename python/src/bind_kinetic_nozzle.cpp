@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <format>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/shared_ptr.h>
@@ -11,7 +12,6 @@ using namespace nb::literals;
 void bind_kinetic_nozzle(nb::module_& m) {
     // KineticNozzleStation — spatially-resolved output at one axial position
     nb::class_<Goddard::KineticNozzleStation>(m, "KineticNozzleStation")
-        .def(nb::init<>())
         .def_ro("x",              &Goddard::KineticNozzleStation::x)
         .def_ro("velocity",       &Goddard::KineticNozzleStation::velocity)
         .def_ro("mach",           &Goddard::KineticNozzleStation::mach)
@@ -20,11 +20,13 @@ void bind_kinetic_nozzle(nb::module_& m) {
         .def_ro("state",          &Goddard::KineticNozzleStation::state)
         .def_ro("damkohler",      &Goddard::KineticNozzleStation::damkohler)
         .def_ro("Da_min",         &Goddard::KineticNozzleStation::Da_min)
-        .def_ro("min_Da_species", &Goddard::KineticNozzleStation::min_Da_species);
+        .def_ro("min_Da_species", &Goddard::KineticNozzleStation::min_Da_species)
+        .def("__repr__", [](const Goddard::KineticNozzleStation& self) {
+            return std::format("<KineticNozzleStation x={:.6g} A/At={:.6g} T={:.6g} K P={:.6g} Pa M={:.6g} Da_min={:.3g} ({})>", self.x, self.area_ratio, self.thermo.temperature, self.thermo.pressure, self.mach, self.Da_min, self.min_Da_species);
+        });
 
     // KineticNozzleResults — full solver output
     nb::class_<Goddard::KineticNozzleResults>(m, "KineticNozzleResults")
-        .def(nb::init<>())
         .def_ro("throat",   &Goddard::KineticNozzleResults::throat)
         .def_ro("stations", &Goddard::KineticNozzleResults::stations)
         // False if solve() stopped at max_steps before the exit of the profile.

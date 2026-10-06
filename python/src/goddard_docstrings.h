@@ -507,8 +507,8 @@ Throws:
     carries candidate condensed species.
 
 Throws:
-    FmtError if a reactant contains an element the product gas does
-    not have.
+    std::invalid_argument if a reactant contains an element the
+    product gas does not have.
 
 Throws:
     std::invalid_argument if `pressures` or `mixture_ratios` is empty.)doc";
@@ -1007,8 +1007,8 @@ Parameter ``names``:
     Species names, matching the data file exactly.
 
 Throws:
-    FmtError if a name is absent from the file, or if a species
-    contains an element the gas phase does not have.)doc";
+    std::invalid_argument if a name is absent from the file, or if a
+    species contains an element the gas phase does not have.)doc";
 
 static const char *__doc_Goddard_Gas_area_per_mdot =
 R"doc(Nozzle area per unit mass flow rate at the current state, RT/(P M u)
@@ -1174,8 +1174,8 @@ data covers `T`. Amounts of candidates that have left their data range
 are first moved to the in-range polymorph of their group.
 
 Throws:
-    FmtError if a condensed species is present and no polymorph of its
-    group has data at `T`.
+    std::runtime_error (FmtError) if a condensed species is present
+    and no polymorph of its group has data at `T`.
 
 Throws:
     ConvergenceError if the solve fails after all restart strategies.)doc";
@@ -1184,9 +1184,13 @@ static const char *__doc_Goddard_Gas_equilibrium_options =
 R"doc(Settings for the equilibrium solvers used by `equilibrate_TP/HP/SP`.
 */)doc";
 
-static const char *__doc_Goddard_Gas_equivalence_ratio = R"doc()doc";
+static const char *__doc_Goddard_Gas_equivalence_ratio =
+R"doc(Equivalence ratio of the current mixture, from its element composition
+[-]. */)doc";
 
-static const char *__doc_Goddard_Gas_equivalence_ratio_2 = R"doc()doc";
+static const char *__doc_Goddard_Gas_equivalence_ratio_2 =
+R"doc(Equivalence ratio of the current mixture as a blend of the given fuel
+and oxidizer [-]. */)doc";
 
 static const char *__doc_Goddard_Gas_equivalence_ratio_3 = R"doc()doc";
 
@@ -1194,7 +1198,13 @@ static const char *__doc_Goddard_Gas_expansion_properties =
 R"doc(Compute expansion-related thermodynamic derivatives at the current
 state: gamma_s, dlnV/dlnT|_P, dlnV/dlnP|_T, and cp.)doc";
 
-static const char *__doc_Goddard_Gas_fuel_fraction = R"doc()doc";
+static const char *__doc_Goddard_Gas_fuel_fraction =
+R"doc(Fuel fraction of the current mixture, as a blend of the given fuel and
+oxidizer compositions [-].
+
+Parameter ``basis``:
+    molar (default) or mass basis of the compositions and of the
+    result.)doc";
 
 static const char *__doc_Goddard_Gas_fuel_fraction_2 = R"doc()doc";
 
@@ -1382,10 +1392,11 @@ Parameter ``P``:
     Pressure [Pa] of the resulting state.
 
 Throws:
-    FmtError if the phase contains no single-element species for one
-    of the requested elements. @note All condensed amounts are set to
-    zero and any pinned transition is cleared, so the requested
-    element amounts are carried entirely by the gas phase.)doc";
+    std::invalid_argument if the phase contains no single-element
+    species for one of the requested elements. @note All condensed
+    amounts are set to zero and any pinned transition is cleared, so
+    the requested element amounts are carried entirely by the gas
+    phase.)doc";
 
 static const char *__doc_Goddard_Gas_set_equivalence_ratio = R"doc()doc";
 
@@ -1498,8 +1509,9 @@ R"doc(Newton iteration on temperature for the frozen
 composition and condensed amounts are held fixed.
 
 Throws:
-    FmtError if the solution lies outside the temperature range of a
-    present condensed species, as CEA reports for a frozen expansion.)doc";
+    std::runtime_error (FmtError) if the solution lies outside the
+    temperature range of a present condensed species, as CEA reports
+    for a frozen expansion.)doc";
 
 static const char *__doc_Goddard_Gas_solve_multiphase_TP =
 R"doc(One constant-temperature, constant-pressure multiphase Gibbs
@@ -1571,7 +1583,9 @@ Returns:
 
 static const char *__doc_Goddard_Gas_state_size = R"doc(Size of the state vector.)doc";
 
-static const char *__doc_Goddard_Gas_stoich_OF_ratio = R"doc()doc";
+static const char *__doc_Goddard_Gas_stoich_OF_ratio =
+R"doc(Stoichiometric oxidizer-to-fuel ratio of the given fuel and oxidizer
+[-]. */)doc";
 
 static const char *__doc_Goddard_Gas_stoich_OF_ratio_2 = R"doc()doc";
 
@@ -2649,8 +2663,9 @@ Returns:
     Station temperature [K].
 
 Throws:
-    FmtError if a present condensed species leaves its temperature
-    range, as CEA reports for a frozen expansion carried too far.)doc";
+    std::runtime_error (FmtError) if a present condensed species
+    leaves its temperature range, as CEA reports for a frozen
+    expansion carried too far.)doc";
 
 static const char *__doc_Goddard_Nozzle_m_gas = R"doc()doc";
 

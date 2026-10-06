@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "goddard/condensed.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
@@ -141,7 +142,8 @@ void CondensedPhaseSet::add_species(const AnyMap& root_node,
 
         auto found = nodes.find(name);
         if (found == nodes.end()) {
-            throw FmtError("Condensed species '{}' was not found in the data file.", name);
+            throw std::invalid_argument(std::format(
+                "Condensed species '{}' was not found in the data file.", name));
         }
 
         CondensedSpecies entry;
@@ -156,10 +158,10 @@ void CondensedPhaseSet::add_species(const AnyMap& root_node,
         for (const auto& element : composition) {
             size_t m = gas.elementIndex(element.first);
             if (m == Cantera::npos) {
-                throw FmtError(
+                throw std::invalid_argument(std::format(
                     "Condensed species '{}' contains element '{}', which is not present in the "
                     "gas phase.",
-                    name, element.first);
+                    name, element.first));
             }
             entry.element_atoms(static_cast<long>(m)) = element.second;
         }
