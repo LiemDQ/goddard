@@ -366,13 +366,6 @@ def test_conical_axisymmetric_analysis_converges():
     # this configuration in the C++ sweep, tools/moc_sweep.cpp), so 1% covers roundoff.
     assert y[-1] == pytest.approx(math.sqrt(4.0), rel=1e-2)
 
-    # TODO(Package E): CharacteristicNet.fronts is a C++ field (Package B, the inverse
-    # march's per-pass front record) not yet exposed in python/src/bind_moc.cpp as of this
-    # test. Skip cleanly, keyed on the attribute's absence, so this starts enforcing the
-    # instant the binding lands rather than silently staying green forever.
-    if not hasattr(result.net, "fronts"):
-        pytest.skip("CharacteristicNet.fronts not yet bound (Package E); "
-                     "remove this skip once bind_moc.cpp exposes net.fronts")
     assert len(result.net.fronts) > 0
 
 

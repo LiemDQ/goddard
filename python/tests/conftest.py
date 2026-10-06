@@ -26,7 +26,7 @@ def find_data_dir() -> str:
     project_root = os.path.dirname(os.path.dirname(here))
     data_dir = os.path.join(project_root, "data")
     if not os.path.isdir(data_dir):
-        pytest.skip(f"Data directory not found at {data_dir}")
+        pytest.skip(f"Data directory not found at {data_dir}", allow_module_level=True)
     return data_dir
 
 

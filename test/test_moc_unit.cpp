@@ -1,5 +1,8 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
+#include "goddard/moc_context.hpp"
+#include "goddard/moc_thermo.hpp"
+#include "goddard/moc_unit_processes.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include <cmath>
@@ -53,18 +56,34 @@ protected:
 };
 
 TEST_F(MocInteriorAlgebraicTest, UniformFlow) {
-    // Two parent points with identical M and theta -> child should match
-    double gamma = 1.4;
-    auto p1 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 0.5);
-    auto p2 = make_point(2.0, 5.0 * DEG, gamma, 0.0, 1.5);
+    // Two parents in the same uniform planar flow: the characteristics are straight lines, so
+    // the child carries the parents' state and sits where the C- line from the upper parent
+    // meets the C+ line from the lower parent.
+    const double gamma = 1.4;
+    const double mach = 2.0;
+    const double theta = 5.0 * DEG;
+    const CharacteristicPoint c_minus_parent = make_point(mach, theta, gamma, 0.0, 1.5);
+    const CharacteristicPoint c_plus_parent = make_point(mach, theta, gamma, 0.0, 0.5);
 
-    auto p3 = solver.options.gamma; // just checking it's set
-    (void)p3;
+    MocOptions options = solver.options;
+    NozzleProfile wall;
+    MocThermo thermo = MocThermo::perfect_gas(gamma);
+    MocLog log;
+    MocSolveContext ctx{options, wall, thermo, log};
+    PointResult child = solve_interior_point(ctx, c_minus_parent, c_plus_parent);
+    ASSERT_EQ(child.error, MocErrorCode::NONE);
 
-    // Call the public solve which dispatches to algebraic
-    // We need to access the private method, so we use solve_interior_point
-    // through a derived test or by making the solver's solve() produce known results.
-    // For now, test via the full solver with a known expansion.
+    EXPECT_NEAR(child.point.mach, mach, 1e-10);
+    EXPECT_NEAR(child.point.theta, theta, 1e-12);
+    EXPECT_NEAR(child.point.nu, c_minus_parent.nu, 1e-12);
+
+    const double mu = std::asin(1.0 / mach);
+    const double slope_minus = std::tan(theta - mu);
+    const double slope_plus = std::tan(theta + mu);
+    // Both parents sit at x = 0: y_upper + slope_minus x = y_lower + slope_plus x.
+    const double x_expected = (c_minus_parent.y - c_plus_parent.y) / (slope_plus - slope_minus);
+    EXPECT_NEAR(child.point.x, x_expected, 1e-10);
+    EXPECT_NEAR(child.point.y, c_minus_parent.y + slope_minus * x_expected, 1e-10);
 }
 
 TEST_F(MocInteriorAlgebraicTest, KMinusKPlusPreserved) {

@@ -1,5 +1,7 @@
 """Smoke tests for MoC bindings — no solver calls, just imports and construction."""
 import inspect
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -81,6 +83,11 @@ def test_import_plotting_without_matplotlib_at_import_time():
 
     assert hasattr(plotting, "plot_characteristic_net")
     assert hasattr(plotting, "plot_field")
+
+    # A fresh interpreter, so matplotlib imported by earlier tests doesn't hide a regression.
+    code = "import sys, goddard; sys.exit('matplotlib' in sys.modules)"
+    completed = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert completed.returncode == 0, f"import goddard imported matplotlib\n{completed.stderr}"
 
 
 def test_nozzle_geometry_construction():

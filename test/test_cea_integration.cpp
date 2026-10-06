@@ -177,24 +177,8 @@ TEST_F(CEAIntegrationTests, DemonstrateWorkflow) {
 // ============================================================================
 // RocketProblem Integration Tests
 // ============================================================================
-//
-// KNOWN ISSUES identified during test development:
-// 1. problem.cpp line 68-69: M_fuel incorrectly uses cantera_oxidizer_state
-//    (should be cantera_fuel_state)
-// 2. select_species in speciate.cpp filters species from root_node but doesn't
-//    update phase species lists, causing "species not found" errors
-// 3. State vectors saved from one Solution may be incompatible when restored
-//    to a Solution created via select_species due to different state sizes/ordering
-//
-// These tests are currently skipped pending fixes to the core simulation code.
-// ============================================================================
 
 TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
-    // SKIP: RocketProblem has known issues - see comments above
-    // TODO: Re-enable once problem.cpp and speciate.cpp issues are fixed
-    // GTEST_SKIP() << "RocketProblem has known issues with state handling and species selection. "
-    //              << "See comments in test file for details.";
-
     // Load H2 CEA reference data
     std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
