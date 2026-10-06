@@ -13,12 +13,44 @@ readme = "readme.md"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
-    "matplotlib",
-    "pandas"
 ]
 license = { file = "LICENSE" }
-urls ={ Repository = "https://github.com/LiemDQ/goddard", Issues = "https://github.com/LiemDQ/goddard/issues"}
+keywords = [
+    "rocket propulsion",
+    "combustion",
+    "chemical equilibrium",
+    "nozzle flow",
+    "method of characteristics",
+    "shock waves",
+    "detonation",
+    "compressible flow",
+    "thermodynamics",
+    "cantera",
+    "CEA",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Documentation = "https://liemdq.github.io/goddard/"
+Repository = "https://github.com/LiemDQ/goddard"
+Issues = "https://github.com/LiemDQ/goddard/issues"
+
 [project.optional-dependencies]
+# goddard.plotting imports matplotlib when a plot is drawn.
+plot = ["matplotlib"]
+test = ["pytest"]
 dev = ["pytest"]
 
 [tool.scikit-build]
