@@ -286,8 +286,8 @@ TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures(0), "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures(0), "O2:1");
+    chem_params.fuel_state = PhaseSpecification(300.0, pressures(0), "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(300.0, pressures(0), "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {6.0};
     RocketCaseParameters case_params;
@@ -394,8 +394,8 @@ TEST(RocketProblemIsochoric, ChamberIsConstantVolumeState) {
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(fuel_temperature, initial_pressure, "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(oxidizer_temperature, initial_pressure, "O2:1");
+    chem_params.fuel_state = PhaseSpecification(fuel_temperature, initial_pressure, "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(oxidizer_temperature, initial_pressure, "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {of_ratio};
 
@@ -487,8 +487,8 @@ TEST(RocketProblemIndexing, StationsMatchMixtureRatioAndPressure) {
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
+    chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = of_ratios;
 
@@ -536,8 +536,8 @@ TEST(RocketProblemIndexing, AccessorsSelectTheChamberPressure) {
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
+    chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressures[0], "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressures[0], "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {6.0};
 
@@ -596,8 +596,8 @@ RocketProblem make_h2o2_problem(const std::string& name, const std::vector<doubl
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures[0], "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures[0], "O2:1");
+    chem_params.fuel_state = PhaseSpecification(300.0, pressures[0], "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(300.0, pressures[0], "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = of_ratios;
 
@@ -939,9 +939,9 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     chem_params.thermo_file = nasa9_gas_file();
     chem_params.species = species_set(make_products());
     chem_params.reactant_file = reactant_file();
-    chem_params.cantera_fuel_state =
+    chem_params.fuel_state =
         PhaseSpecification(H2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"H2(L)", 1.0}});
-    chem_params.cantera_oxidizer_state =
+    chem_params.oxidizer_state =
         PhaseSpecification(O2_BOILING_POINT, CHAMBER_PRESSURE, Composition{{"O2(L)", 1.0}});
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {OF_RATIO};
@@ -1106,8 +1106,8 @@ TEST(FiniteAreaCombustorResults, InfiniteAreaHasNoCombustionEndStation) {
     ChemicalParameters chem_params;
     chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
     chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
-    chem_params.cantera_fuel_state = PhaseSpecification(reactant_temperature, pressure, "H2:1");
-    chem_params.cantera_oxidizer_state = PhaseSpecification(reactant_temperature, pressure, "O2:1");
+    chem_params.fuel_state = PhaseSpecification(reactant_temperature, pressure, "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(reactant_temperature, pressure, "O2:1");
     chem_params.mixture_type = MixtureRatioType::OF_RATIO;
     chem_params.OF_ratios = {of_ratio};
 

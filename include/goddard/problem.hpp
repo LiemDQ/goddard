@@ -30,9 +30,9 @@ struct ChemicalParameters {
      * (e.g. `H2(L)`, `RP-1`). CEA-style weight percentages must be converted to mole fractions
      * by the caller.
      */
-    PhaseSpecification cantera_fuel_state;
-    /** Oxidizer stream state; see `cantera_fuel_state` for how `composition` is interpreted. */
-    PhaseSpecification cantera_oxidizer_state;
+    PhaseSpecification fuel_state;
+    /** Oxidizer stream state; see `fuel_state` for how `composition` is interpreted. */
+    PhaseSpecification oxidizer_state;
     MixtureRatioType mixture_type;
     std::vector<double> mixtures;
     std::vector<double> OF_ratios;

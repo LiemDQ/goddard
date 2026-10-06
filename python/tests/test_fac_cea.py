@@ -149,9 +149,9 @@ def _build_problem(name, combustor_options, nozzle_options):
     chemistry = goddard.ChemicalParameters()
     chemistry.thermo_file = NASA9_GAS
     chemistry.species = set(PRODUCT_SPECIES)
-    chemistry.cantera_fuel_state = goddard.PhaseSpecification(
+    chemistry.fuel_state = goddard.PhaseSpecification(
         REACTANT_TEMPERATURE, INJECTOR_PRESSURE, {"H2": 1.0})
-    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(
+    chemistry.oxidizer_state = goddard.PhaseSpecification(
         REACTANT_TEMPERATURE, INJECTOR_PRESSURE, {"O2": 1.0})
     chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [OF_RATIO]

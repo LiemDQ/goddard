@@ -16,8 +16,8 @@ def build_h2o2_problem(name, pressures, area_ratios, of_ratios=(6.0,), nozzle_op
     chem_params = goddard.ChemicalParameters()
     chem_params.thermo_file = os.path.join(find_data_dir(), "h2o2.yaml")
     chem_params.species = H2O2_SPECIES
-    chem_params.cantera_fuel_state = goddard.PhaseSpecification(300.0, pressures[0], "H2:1")
-    chem_params.cantera_oxidizer_state = goddard.PhaseSpecification(300.0, pressures[0], "O2:1")
+    chem_params.fuel_state = goddard.PhaseSpecification(300.0, pressures[0], "H2:1")
+    chem_params.oxidizer_state = goddard.PhaseSpecification(300.0, pressures[0], "O2:1")
     chem_params.OF_ratios = list(of_ratios)
 
     case_params = goddard.RocketCaseParameters()

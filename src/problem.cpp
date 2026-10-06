@@ -82,8 +82,8 @@ RocketProblemResults RocketProblem::solve() {
     std::shared_ptr<Cantera::ThermoPhase> thermo = m_sln->thermo();
     std::vector<double> state(m_sln->thermo()->stateSize());
 
-    const auto& fuel_input = chemical_params.cantera_fuel_state;
-    const auto& ox_input = chemical_params.cantera_oxidizer_state;
+    const auto& fuel_input = chemical_params.fuel_state;
+    const auto& ox_input = chemical_params.oxidizer_state;
     const bool reactant_streams = !chemical_params.reactant_file.empty();
 
     Cantera::Composition fuel_comp;

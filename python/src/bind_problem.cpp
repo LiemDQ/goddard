@@ -2,36 +2,15 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/unordered_map.h>
-#include <nanobind/stl/unordered_set.h>
 #include <nanobind/stl/optional.h>
-#include <nanobind/stl/shared_ptr.h>
 #include "goddard/problem.hpp"
 #include "goddard/rocket_results.hpp"
-#include "goddard/speciate.hpp"
-#include "cantera/core.h"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
 
 void bind_problem(nb::module_& m) {
-    // Opaque handle to Cantera::Solution
-    nb::class_<Cantera::Solution>(m, "SolutionHandle",
-        "Opaque handle to an internal Cantera Solution object. "
-        "Obtain via RocketProblem.solution() or create_solution().");
-
-    // Factory function to create a Cantera Solution from a YAML file
-    m.def("create_solution", [](const std::string& yaml_file,
-                                const std::string& phase_name,
-                                const std::unordered_set<std::string>& species) {
-        auto root_node = Goddard::select_species(yaml_file, species);
-        const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", phase_name);
-        auto sln = Cantera::newSolution(phase_node, root_node);
-        sln->setSource(yaml_file);
-        return sln;
-    }, "yaml_file"_a, "phase_name"_a = "", "species"_a = std::unordered_set<std::string>{},
-       "Create a Cantera Solution handle from a YAML thermodynamic data file.");
-
     // RocketProblem
     nb::class_<Goddard::RocketProblem>(m, "RocketProblem")
         .def(nb::init<const Goddard::ChemicalParameters&,
@@ -41,7 +20,6 @@ void bind_problem(nb::module_& m) {
              "name"_a = "", "transport"_a = false,
              "ionized_species"_a = false, "trace"_a = 1e-6)
         .def("solve", &Goddard::RocketProblem::solve)
-        .def("solution", &Goddard::RocketProblem::solution)
         .def_rw("include_transport", &Goddard::RocketProblem::include_transport)
         .def_rw("include_ionized_species", &Goddard::RocketProblem::include_ionized_species)
         .def_rw("trace_cutoff", &Goddard::RocketProblem::trace_cutoff)

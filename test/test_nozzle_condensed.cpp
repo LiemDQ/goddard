@@ -363,8 +363,8 @@ TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecular
             composition[names[i]] = fractions[i];
         }
     }
-    chem_params.cantera_fuel_state = PhaseSpecification(298.15, Cantera::OneAtm, composition);
-    chem_params.cantera_oxidizer_state = chem_params.cantera_fuel_state;
+    chem_params.fuel_state = PhaseSpecification(298.15, Cantera::OneAtm, composition);
+    chem_params.oxidizer_state = chem_params.fuel_state;
     chem_params.mixture_type = MixtureRatioType::FUEL_FRAC;
     chem_params.OF_ratios = {1.0};
 

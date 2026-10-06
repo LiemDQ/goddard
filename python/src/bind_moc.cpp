@@ -767,12 +767,6 @@ void bind_moc(nb::module_& m) {
             new (self) Goddard::MocNozzle(std::move(options));
         }, "options"_a)
         .def("__init__", [](Goddard::MocNozzle* self,
-                            std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::MocOptions options) {
-            Goddard::Gas gas(std::move(sol), options.chemistry);
-            new (self) Goddard::MocNozzle(std::move(gas), std::move(options));
-        }, "solution"_a, "options"_a)
-        .def("__init__", [](Goddard::MocNozzle* self,
                             Goddard::Gas& gas,
                             Goddard::MocOptions options) {
             new (self) Goddard::MocNozzle(gas, std::move(options));

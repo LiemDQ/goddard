@@ -20,8 +20,8 @@ params = goddard.ChemicalParameters(
     thermo_file = "h2o2.yaml",
     species =  {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"},
     OF_ratios = [3.0, 6.0, 9.0],
-    cantera_fuel_state = fuel_state,
-    cantera_oxidizer_state = oxidizer_state
+    fuel_state = fuel_state,
+    oxidizer_state = oxidizer_state
 )
 
 

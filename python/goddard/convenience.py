@@ -11,7 +11,6 @@ from goddard._core import (
     GasChemistry,
     NozzleOptions,
     ExpansionType,
-    create_solution,
     MocFlowKind,
     MocMode,
     MocOptions,
@@ -215,19 +214,17 @@ def bezier_nozzle(area_ratio, theta_n_deg, theta_e_deg, *,
         length_frac=length_frac, n_points=n_points)
 
 
-def _build_nozzle(opts, gas, solution):
-    """Pick the MocNozzle constructor matching the supplied gas description."""
+def _build_nozzle(opts, gas):
+    """Build a MocNozzle from ``gas``, or a perfect-gas one when ``gas`` is None."""
     if gas is not None:
         return MocNozzle(gas, opts)
-    if solution is not None:
-        return MocNozzle(solution, opts)
     return MocNozzle(opts)
 
 
 def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
                flow_type=None, chemistry=None, throat_radius=1.0,
                exit_mach=None, geometry=None, log_level=None,
-               gas=None, solution=None):
+               gas=None):
     """Design a minimum-length nozzle using the Method of Characteristics.
 
     Args:
@@ -243,7 +240,6 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
         gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
 
     Returns:
         MocResult from the solver.
@@ -269,13 +265,13 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
     if log_level is not None:
         opts.log_level = log_level
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
 def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
                    gamma=1.4, flow_type=None, chemistry=None, throat_radius=1.0,
                    geometry=None, log_level=None, start_line=None,
-                   gas=None, solution=None):
+                   gas=None):
     """Design a Rao thrust-optimized nozzle using the Method of Characteristics.
 
     The solver generates the Rao contour from ``expansion_ratio`` and
@@ -298,7 +294,6 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``).
         gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
 
     Returns:
         MocResult from the solver.
@@ -325,13 +320,13 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
     if start_line is not None:
         opts.start_line = start_line
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
 def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
                  flow_type=None, chemistry=None, throat_radius=1.0,
                  geometry=None, log_level=None, start_line=None,
-                 gas=None, solution=None):
+                 gas=None):
     """Analyse an existing nozzle contour using the Method of Characteristics.
 
     Args:
@@ -351,7 +346,6 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
             ``kl_max_wall_angle_error``, or the contour's downstream curvature
             radius requests a centered fan).
         gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
 
     Returns:
         MocResult from the solver.
@@ -380,7 +374,7 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     if start_line is not None:
         opts.start_line = start_line
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
 def pass_diagnostics_table(result):

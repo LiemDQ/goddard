@@ -197,11 +197,6 @@ void bind_gas_properties(nb::module_& m) {
             &Goddard::Gas::set_reference_entropy,
             DOC(Goddard, Gas, get_reference_entropy))
 
-        // ---- Access to underlying Cantera objects ----
-
-        .def_prop_ro("solution", &Goddard::Gas::solution,
-            DOC(Goddard, Gas, solution))
-
         // ---- Chemistry mode ----
 
         .def_rw("chemistry", &Goddard::Gas::chemistry,

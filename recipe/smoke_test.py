@@ -38,8 +38,8 @@ def check_rocket_chamber():
     chemistry = goddard.ChemicalParameters()
     chemistry.thermo_file = "nasa9_gas.yaml"
     chemistry.species = PRODUCT_SPECIES
-    chemistry.cantera_fuel_state = goddard.PhaseSpecification(300.0, 101325.0, "H2:1")
-    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(300.0, 101325.0, "O2:1")
+    chemistry.fuel_state = goddard.PhaseSpecification(300.0, 101325.0, "H2:1")
+    chemistry.oxidizer_state = goddard.PhaseSpecification(300.0, 101325.0, "O2:1")
     chemistry.mixture_ratio_type = goddard.MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [OF_RATIO]
 

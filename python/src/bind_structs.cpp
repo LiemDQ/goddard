@@ -261,8 +261,8 @@ void bind_structs(nb::module_& m) {
         .def("__init__", [](Goddard::ChemicalParameters* self,
                             std::string thermo_file,
                             std::unordered_set<std::string> species,
-                            Goddard::PhaseSpecification cantera_fuel_state,
-                            Goddard::PhaseSpecification cantera_oxidizer_state,
+                            Goddard::PhaseSpecification fuel_state,
+                            Goddard::PhaseSpecification oxidizer_state,
                             Goddard::MixtureRatioType mixture_type,
                             std::vector<double> mixtures,
                             std::vector<double> OF_ratios,
@@ -276,8 +276,8 @@ void bind_structs(nb::module_& m) {
             new (self) Goddard::ChemicalParameters();
             self->thermo_file = std::move(thermo_file);
             self->species = std::move(species);
-            self->cantera_fuel_state = std::move(cantera_fuel_state);
-            self->cantera_oxidizer_state = std::move(cantera_oxidizer_state);
+            self->fuel_state = std::move(fuel_state);
+            self->oxidizer_state = std::move(oxidizer_state);
             self->mixture_type = mixture_type;
             self->mixtures = std::move(mixtures);
             self->OF_ratios = std::move(OF_ratios);
@@ -289,8 +289,8 @@ void bind_structs(nb::module_& m) {
             self->all_condensed_species = all_condensed_species;
         },  "thermo_file"_a = "",
             "species"_a = std::unordered_set<std::string>(),
-            "cantera_fuel_state"_a = Goddard::PhaseSpecification(),
-            "cantera_oxidizer_state"_a = Goddard::PhaseSpecification(),
+            "fuel_state"_a = Goddard::PhaseSpecification(),
+            "oxidizer_state"_a = Goddard::PhaseSpecification(),
             "mixture_type"_a = Goddard::MixtureRatioType::FUEL_FRAC,
             "mixtures"_a = std::vector<double>(),
             "OF_ratios"_a = std::vector<double>(),
@@ -302,8 +302,8 @@ void bind_structs(nb::module_& m) {
             "all_condensed_species"_a = false)
         .def_rw("thermo_file", &Goddard::ChemicalParameters::thermo_file)
         .def_rw("species", &Goddard::ChemicalParameters::species)
-        .def_rw("cantera_fuel_state", &Goddard::ChemicalParameters::cantera_fuel_state)
-        .def_rw("cantera_oxidizer_state", &Goddard::ChemicalParameters::cantera_oxidizer_state)
+        .def_rw("fuel_state", &Goddard::ChemicalParameters::fuel_state)
+        .def_rw("oxidizer_state", &Goddard::ChemicalParameters::oxidizer_state)
         .def_rw("mixture_ratio_type", &Goddard::ChemicalParameters::mixture_type)
         .def_rw("mixtures", &Goddard::ChemicalParameters::mixtures)
         .def_rw("OF_ratios", &Goddard::ChemicalParameters::OF_ratios)

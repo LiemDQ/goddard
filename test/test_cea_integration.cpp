@@ -61,7 +61,7 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     auto fuel_thermo = fuel->thermo();
     double fuel_temp = conditions.fuel_temp;
     Goddard::PhaseSpecification fuel_state{fuel_temp, 101325.0, "H2:1"};
-    params.cantera_fuel_state = fuel_state;
+    params.fuel_state = fuel_state;
     // double pressure_Pa = conditions.pressure_psia * 6894.76;
     
     // double fuel_MW = fuel_thermo->meanMolecularWeight();
@@ -72,7 +72,7 @@ Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
     auto ox_thermo = oxidizer->thermo();
     double ox_temp = conditions.oxidizer_temp;
     Goddard::PhaseSpecification ox_state{ox_temp, 101325.0, "O2:1"};
-    params.cantera_oxidizer_state = ox_state;
+    params.oxidizer_state = ox_state;
     // double ox_MW = ox_thermo->meanMolecularWeight();
     // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
     // ox_thermo->setState_HP(ox_energy, pressure_Pa);

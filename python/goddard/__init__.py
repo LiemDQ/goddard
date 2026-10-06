@@ -54,7 +54,6 @@ from goddard._core import (
     MocCrossings,
     ThrustCoefficient,
     # Classes
-    SolutionHandle,
     RocketProblem,
     RocketProblemResults,
     ThermoArray,
@@ -70,7 +69,6 @@ from goddard._core import (
     ConvergenceError,
     # Functions
     add_data_directory,
-    create_solution,
     equilibrium_derivatives,
     equilibrium_properties,
     frozen_properties,

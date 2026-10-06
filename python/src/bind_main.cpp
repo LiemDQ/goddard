@@ -38,7 +38,6 @@ NB_MODULE(_core, m) {
           "    path: Directory to add.");
 
     // Order matters: types must be registered before they are referenced.
-    // SolutionHandle (bind_problem) before Gas (bind_gas_properties),
     // Gas before solvers that accept it (bind_nozzle, bind_moc, etc.).
     bind_enums(m);
     bind_errors(m);

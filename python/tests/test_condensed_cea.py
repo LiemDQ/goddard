@@ -589,9 +589,9 @@ def beryllium_rocket_problem(beryllium_rocket):
     chemistry.reactant_file = NASA9_REACTANTS
     chemistry.condensed_file = NASA9_CONDENSED
     chemistry.condensed_species = set(condensed_names)
-    chemistry.cantera_fuel_state = goddard.PhaseSpecification(
+    chemistry.fuel_state = goddard.PhaseSpecification(
         298.15, BERYLLIUM_CHAMBER_PRESSURE, fuel_composition)
-    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(
+    chemistry.oxidizer_state = goddard.PhaseSpecification(
         298.15, BERYLLIUM_CHAMBER_PRESSURE, {"H2O2(L)": 1.0})
     chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [33.0 / 67.0]   # 67 % fuel by mass
@@ -708,9 +708,9 @@ def cryogenic_rocket():
     chemistry.thermo_file = NASA9_GAS
     chemistry.species = set(gas_names)
     chemistry.reactant_file = NASA9_REACTANTS
-    chemistry.cantera_fuel_state = goddard.PhaseSpecification(20.27, CRYOGENIC_PRESSURE,
+    chemistry.fuel_state = goddard.PhaseSpecification(20.27, CRYOGENIC_PRESSURE,
                                                               {"H2(L)": 1.0})
-    chemistry.cantera_oxidizer_state = goddard.PhaseSpecification(90.17, CRYOGENIC_PRESSURE,
+    chemistry.oxidizer_state = goddard.PhaseSpecification(90.17, CRYOGENIC_PRESSURE,
                                                                   {"O2(L)": 1.0})
     chemistry.mixture_ratio_type = MixtureRatioType.OF_RATIO
     chemistry.OF_ratios = [CRYOGENIC_OF_RATIO]
