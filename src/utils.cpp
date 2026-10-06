@@ -17,7 +17,7 @@ std::vector<double> save_thermo_state(const Cantera::ThermoPhase& thermo) {
 }
 
 Cantera::AnyMap load_root_node(const std::string& infile) {
-    size_t dot = infile.find_last_of('c');
+    size_t dot = infile.find_last_of('.');
     std::string extension;
     if (dot != Cantera::npos) {
         extension = Cantera::toLowerCopy(infile.substr(dot+1));

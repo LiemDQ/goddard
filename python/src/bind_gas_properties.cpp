@@ -22,7 +22,8 @@ void bind_gas_properties(nb::module_& m) {
 
         // YAML-based constructor. An empty `species` set takes the phase as the file
         // defines it; a non-empty one restricts the phase to those species via
-        // Gas::create_from_species. `species` follows `chemistry` so that existing
+        // Gas::create_from_species, which orders them as in the file, so the iteration order
+        // of the set does not matter. `species` follows `chemistry` so that existing
         // positional calls of the form Gas(file, phase, chemistry) keep working.
         // `condensed_file` attaches candidate condensed species from a second data file:
         // `all_condensed` offers every compatible species of that file, otherwise the names

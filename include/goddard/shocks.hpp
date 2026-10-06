@@ -273,7 +273,12 @@ public:
 
     /** Gas at the pre-shock state. */
     const Gas& pre_shock_state() const;
-    /** Gas at the state behind the most recently solved shock. */
+    /**
+     * Gas at the state behind the most recently solved shock.
+     *
+     * For PERFECT_GAS chemistry it is the pre-shock gas with its temperature and pressure
+     * multiplied by the perfect-gas jump ratios, and its composition unchanged.
+     */
     const Gas& post_shock_state() const;
 
 private:
@@ -283,6 +288,12 @@ private:
     double pre_shock_sound_speed() const;
     /** Record the current state as the post-shock state and restore the construction chemistry. */
     void store_post_shock_state();
+    /**
+     * Apply a perfect-gas jump to the gas, which must hold the pre-shock state: T and P are
+     * multiplied by the given ratios [-] and the composition is kept. An invalid jump leaves the
+     * gas unchanged.
+     */
+    void apply_perfect_gas_jump(bool valid, double temperature_ratio, double pressure_ratio);
 
     mutable Gas m_gas;
     GasChemistry m_chemistry;

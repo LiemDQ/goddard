@@ -61,14 +61,15 @@ KineticNozzle::KineticNozzle(
 {
 }
 
-// Gas constructors: use provided Gas, override chemistry to FROZEN
+// Gas constructors: use provided Gas, override chemistry to FROZEN. `options.chemistry` selects
+// the throat model; the throat Nozzle rejects KINETIC.
 KineticNozzle::KineticNozzle(
     const Gas& gas,
     NozzleProfile& prof,
     double mass_flow_rate,
     NozzleOptions options)
 : profile(prof), mdot(mass_flow_rate), opts(options),
-  m_throat_solver(gas),
+  m_throat_solver(gas, options),
   m_gas(gas)
 {
     check_no_condensed_phases(m_gas);
@@ -83,8 +84,10 @@ KineticNozzle::KineticNozzle(
     double mass_flow_rate,
     std::vector<double> inlet_state,
     NozzleOptions options)
+// m_throat_solver is initialized before m_inlet_state (declaration order), so it receives a copy
+// of `inlet_state` before the move.
 : profile(prof), mdot(mass_flow_rate), opts(options),
-  m_throat_solver(gas),
+  m_throat_solver(gas, inlet_state, options),
   m_inlet_state(std::move(inlet_state)),
   m_gas(gas)
 {
@@ -181,8 +184,13 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     for (int step = 0; step < max_steps; step++) {
         if (x >= x_exit) break;
 
-        double max_xstep = std::min(x_exit - x, dx_max);
-        double dt = std::min(dt_max, max_xstep/ u);
+        // A step that can cover the remaining length ends exactly at the exit; otherwise rounding
+        // can leave x a few ulps short and the loop would crawl towards x_exit until max_steps.
+        // The slack lets that step stretch slightly rather than leave a sliver for one more step.
+        const double slack = 1.0 + 1e-6;
+        const double remaining = x_exit - x;
+        const bool reaches_exit = remaining <= slack*dx_max && remaining <= slack*u*dt_max;
+        double dt = reaches_exit ? remaining/u : std::min(dt_max, dx_max/u);
 
         x += u * dt * 0.5;
 
@@ -204,6 +212,9 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
         x_old = x;
         u_old = u;
         x += u * dt * 0.5;
+        if (reaches_exit) {
+            x = x_exit;
+        }
 
         double dx = u*dt;
         double Da_min = std::numeric_limits<double>::max();
@@ -227,7 +238,7 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
         }
         stations.push_back({x, u, M, A_At, save_thermo_state(*thermo), damkohler, Da_min, freeze_idx});
     }
-    return {throat, stations};
+    return {throat, stations, x >= x_exit};
 }
 
 } // namespace Goddard

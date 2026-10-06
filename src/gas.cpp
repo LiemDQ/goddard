@@ -112,7 +112,8 @@ Gas Gas::create_from_species(
     GasChemistry chemistry)
 {
     Cantera::AnyMap root_node = load_root_node(infile);
-    Cantera::AnyMap phase_node = create_phase_node(name, species);
+    // File order, so that the species indices do not depend on the order of `species`.
+    Cantera::AnyMap phase_node = create_phase_node(name, species_in_file_order(root_node, species));
     adapt_phase_node_to_data(phase_node, root_node);
     return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
 }

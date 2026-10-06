@@ -83,6 +83,18 @@ public:
         const std::vector<std::string>& elements,
         GasChemistry chemistry = GasChemistry::FROZEN);
     
+    /**
+     * Create a `Gas` whose phase holds the named species of an input file.
+     *
+     * The phase lists the species in the order of the file, whatever the order of `species`, so
+     * species indices are reproducible.
+     *
+     * @param infile Cantera YAML input file.
+     * @param name Name of the new phase.
+     * @param species Species names, matched exactly.
+     * @param chemistry Chemistry model of the `Gas`.
+     * @throws std::invalid_argument if a species is not in the file.
+     */
     static Gas create_from_species(const std::string& infile, 
         const std::string& name,
         const std::vector<std::string>& species,

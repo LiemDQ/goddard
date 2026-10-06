@@ -24,12 +24,15 @@ void bind_kinetic_nozzle(nb::module_& m) {
     nb::class_<Goddard::KineticNozzleResults>(m, "KineticNozzleResults")
         .def(nb::init<>())
         .def_ro("throat",   &Goddard::KineticNozzleResults::throat)
-        .def_ro("stations", &Goddard::KineticNozzleResults::stations);
+        .def_ro("stations", &Goddard::KineticNozzleResults::stations)
+        // False if solve() stopped at max_steps before the exit of the profile.
+        .def_ro("reached_exit", &Goddard::KineticNozzleResults::reached_exit);
 
     // KineticNozzle — 1D kinetic nozzle solver using Cantera IdealGasMoleReactor
     // NozzleProfile is passed by value (it is copyable).
-    // The GasChemistry parameter selects the throat model: EQUILIBRIUM or FROZEN.
-    // KINETIC is not a valid throat model and will throw.
+    // `options.chemistry` (NozzleOptions) selects the throat model: EQUILIBRIUM or FROZEN.
+    // KINETIC is not a valid throat model and raises ValueError. The expansion itself is
+    // always finite-rate.
     nb::class_<Goddard::KineticNozzle>(m, "KineticNozzle")
     
         // Gas-based constructors
@@ -37,10 +40,11 @@ void bind_kinetic_nozzle(nb::module_& m) {
              [](Goddard::KineticNozzle* self,
                 Goddard::Gas gas,
                 Goddard::NozzleProfile profile,
-                double mdot) {
-                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot);
+                double mdot,
+                Goddard::NozzleOptions options) {
+                 new (self) Goddard::KineticNozzle(std::move(gas), profile, mdot, options);
              },
-             "gas"_a, "profile"_a, "mdot"_a)
+             "gas"_a, "profile"_a, "mdot"_a, "options"_a=Goddard::NozzleOptions{})
         .def("__init__",
              [](Goddard::KineticNozzle* self,
                 Goddard::Gas gas,

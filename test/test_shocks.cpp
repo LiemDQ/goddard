@@ -846,6 +846,63 @@ TEST(ShockSolverState, PostShockStateDiffers) {
         << "Post-shock temperature should be significantly higher";
 }
 
+TEST(ShockSolverState, PerfectGasPostShockStateFollowsJump) {
+    // For PERFECT_GAS, post_shock_state() must be the pre-shock gas with T2 = T1*(T2/T1) and
+    // P2 = P1*(P2/P1) from the returned jump, and an unchanged (frozen) composition. A reflected
+    // shock stores state 5: T5/T1 = (T2/T1)(T5/T2).
+    Goddard::setup_defaults();
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
+    const double T1 = sol->thermo()->temperature();
+    const double P1 = sol->thermo()->pressure();
+
+    Gas g(*sol, GasChemistry::PERFECT_GAS);
+    const std::vector<double> Y1 = g.mass_fractions();
+    const double a1 = g.speed_of_sound();
+    ShockSolver solver(g);
+
+    auto expect_post_shock = [&](double temperature_ratio, double pressure_ratio,
+                                 const std::string& label) {
+        ASSERT_GT(temperature_ratio, 1.0) << label;
+        const Gas& post = solver.post_shock_state();
+        EXPECT_NEAR(post.temperature(), T1*temperature_ratio,
+                    max_fp_error(T1*temperature_ratio, 1e-12, 1e-9)) << label;
+        EXPECT_NEAR(post.pressure(), P1*pressure_ratio,
+                    max_fp_error(P1*pressure_ratio, 1e-12, 1e-6)) << label;
+        const std::vector<double> Y2 = post.mass_fractions();
+        ASSERT_EQ(Y2.size(), Y1.size()) << label;
+        for (size_t k = 0; k < Y1.size(); k++) {
+            EXPECT_NEAR(Y2[k], Y1[k], 1e-14) << label << ": composition must stay frozen, species " << k;
+        }
+    };
+
+    ShockResult normal = solver.normal_shock(3.0);
+    ASSERT_TRUE(normal.valid);
+    expect_post_shock(normal.static_temperature_ratio, normal.static_pressure_ratio, "normal");
+
+    ShockResult from_velocity = solver.normal_shock_from_velocity(2.0*a1);
+    ASSERT_TRUE(from_velocity.valid);
+    expect_post_shock(from_velocity.static_temperature_ratio, from_velocity.static_pressure_ratio,
+                      "normal from velocity");
+
+    ReflectedShockResult reflected = solver.reflected_shock(3.0);
+    ASSERT_TRUE(reflected.valid);
+    expect_post_shock(
+        reflected.incident.static_temperature_ratio*reflected.reflected.static_temperature_ratio,
+        reflected.incident.static_pressure_ratio*reflected.reflected.static_pressure_ratio,
+        "reflected (state 5)");
+
+    ObliqueShockResult from_wave_angle = solver.oblique_shock_from_wave_angle(3.0, 40.0*DEG);
+    ASSERT_TRUE(from_wave_angle.valid);
+    expect_post_shock(from_wave_angle.shock.static_temperature_ratio,
+                      from_wave_angle.shock.static_pressure_ratio, "oblique from wave angle");
+
+    ObliqueShockResult from_deflection = solver.oblique_shock_from_deflection(3.0, 15.0*DEG, true);
+    ASSERT_TRUE(from_deflection.valid);
+    expect_post_shock(from_deflection.shock.static_temperature_ratio,
+                      from_deflection.shock.static_pressure_ratio, "oblique from deflection");
+}
+
 // ============================================================
 //  ShockSolver unsupported chemistry
 // ============================================================

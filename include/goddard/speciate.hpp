@@ -21,12 +21,40 @@ Cantera::AnyMap speciate(Cantera::AnyMap& root_node, const std::unordered_set<st
 Cantera::AnyMap speciate_from_yaml_string(const std::string& yaml_str, const std::unordered_set<std::string>& elements);
 
 /**
- * @brief Select only the given species from the input file. 
- * Note that the species name must be an exact match.
+ * Select only the given species from the input file.
+ *
+ * The species names must match exactly. The selected species keep their order in the file.
+ *
+ * @throws Cantera::CanteraError for a CTI or XML input file.
+ * @throws std::invalid_argument if a requested species is not in the file, listing the missing
+ * names.
  */
 Cantera::AnyMap select_species(const std::string& infile, const std::unordered_set<std::string>& species);
 
+/**
+ * Remove every species not in `species` from the `species` section of a root node, in place.
+ *
+ * @return the modified root node.
+ * @throws std::invalid_argument if a requested species is not in the root node, listing the
+ * missing names.
+ */
 Cantera::AnyMap select_species(Cantera::AnyMap& root_node, const std::unordered_set<std::string>& species);
+
+/**
+ * Order species names as they appear in the `species` section of a root node.
+ *
+ * Building a phase from the result gives the same species indices whatever the order of
+ * `species`, e.g. when it comes from an unordered set. If the root node has no `species` section
+ * the names are sorted instead.
+ *
+ * @param root_node Root node of a Cantera YAML input file.
+ * @param species Species names; a repeated name is kept once.
+ * @return the names in file order.
+ * @throws std::invalid_argument if a name is not in the `species` section, listing the missing
+ * names.
+ */
+std::vector<std::string> species_in_file_order(
+    const Cantera::AnyMap& root_node, const std::vector<std::string>& species);
 
 Cantera::AnyMap select_species_from_yaml_string(const std::string& yaml_str, const std::unordered_set<std::string>& species);
 

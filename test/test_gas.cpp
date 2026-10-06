@@ -2,11 +2,14 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/numerics.hpp"
+#include "goddard/utils.hpp"
 #include "goddard/config.h"
 
 #include <algorithm>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "cantera/core.h"
 #include "gtest/gtest.h"
@@ -350,4 +353,43 @@ TEST_F(ReactantGasTests, AssignedEnthalpyReactantIsTemperatureIndependent) {
     const double h_reference = fuel.enthalpy_mass();
     fuel.set_state_TPX(500.0, Cantera::OneAtm, "RP-1:1");
     EXPECT_NEAR(fuel.enthalpy_mass(), h_reference, 1e-9 * std::abs(h_reference));
+}
+
+// Species sets arrive unordered (Python passes a set), so the phase must not take their iteration
+// order: species indices would then differ between runs and processes.
+TEST(GasSpeciesOrderTests, CreateFromSpeciesUsesFileOrder) {
+    const std::string infile = "h2o2.yaml";
+    const std::vector<std::string> forward{"H2", "O2", "H2O", "OH", "H"};
+    const std::vector<std::string> reverse(forward.rbegin(), forward.rend());
+
+    // Expected: the requested species in the order of the file's `species` section.
+    const std::unordered_set<std::string> requested(forward.begin(), forward.end());
+    const Cantera::AnyMap root_node = load_root_node(infile);
+    std::vector<std::string> file_order;
+    for (const Cantera::AnyMap& node : root_node.at("species").asVector<Cantera::AnyMap>()) {
+        if (requested.count(node.at("name").asString())) {
+            file_order.push_back(node.at("name").asString());
+        }
+    }
+    ASSERT_EQ(file_order.size(), forward.size());
+    ASSERT_NE(file_order, forward) << "the request must not already be in file order";
+
+    // Sets built by inserting in different orders, as a binding would receive them.
+    const std::unordered_set<std::string> set_forward(forward.begin(), forward.end());
+    const std::unordered_set<std::string> set_reverse(reverse.begin(), reverse.end());
+
+    const std::vector<std::string> from_set_forward(set_forward.begin(), set_forward.end());
+    const std::vector<std::string> from_set_reverse(set_reverse.begin(), set_reverse.end());
+
+    const std::vector<std::vector<std::string>> requests{
+        forward, reverse, from_set_forward, from_set_reverse};
+    for (const std::vector<std::string>& request : requests) {
+        Gas gas = Gas::create_from_species(infile, "gas", request);
+        EXPECT_EQ(gas.species_names(), file_order);
+    }
+}
+
+TEST(GasSpeciesOrderTests, CreateFromSpeciesRejectsUnknownSpecies) {
+    EXPECT_THROW(Gas::create_from_species("h2o2.yaml", "gas", {"H2", "NOT_A_SPECIES"}),
+                 std::invalid_argument);
 }

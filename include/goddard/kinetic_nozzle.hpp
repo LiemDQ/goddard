@@ -21,6 +21,11 @@ struct KineticNozzleStation {
 struct KineticNozzleResults {
     ThroatCondition throat;
     std::vector<KineticNozzleStation> stations;
+    /**
+     * True if the integration reached the exit of the profile. False if it stopped after
+     * `max_steps` steps, in which case `stations` ends upstream of the exit.
+     */
+    bool reached_exit = false;
 };
 
 class KineticNozzle {

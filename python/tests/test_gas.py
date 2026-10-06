@@ -50,6 +50,35 @@ def test_yaml_construction_with_species(h2o2_yaml):
     assert g.temperature > 0
 
 
+def test_species_order_follows_file_not_set(h2o2_yaml):
+    """Species indices must not depend on the iteration order of the species set."""
+    ct = pytest.importorskip("cantera")
+    from goddard import Gas
+
+    names = ["H2", "O2", "H2O", "OH", "H"]
+    forward = set()
+    for name in names:
+        forward.add(name)
+    backward = set()
+    for name in reversed(names):
+        backward.add(name)
+    assert forward == backward
+
+    file_order = [sp.name for sp in ct.Species.list_from_file(h2o2_yaml)
+                  if sp.name in forward]
+    assert len(file_order) == len(names)
+
+    for species in (forward, backward):
+        g = Gas(h2o2_yaml, phase_name="gas", species=species)
+        assert list(g.species_names) == file_order
+
+
+def test_unknown_species_raises(h2o2_yaml):
+    from goddard import Gas
+    with pytest.raises(ValueError, match="NOT_A_SPECIES"):
+        Gas(h2o2_yaml, phase_name="gas", species={"H2", "NOT_A_SPECIES"})
+
+
 # ---------------------------------------------------------------------------
 # Property access (should be attributes, not method calls)
 # ---------------------------------------------------------------------------
