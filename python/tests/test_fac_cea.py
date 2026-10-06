@@ -355,7 +355,9 @@ def test_fac_pressure_ratio_exits(fac_pressure_ratio_rocket, exit_index, pressur
     exits = results.exits(0, case_name="fac_pi_p")
     label = f"pi_p {pressure_ratio}"
 
-    assert exits[exit_index].area_ratio == pressure_ratio  # the ratio requested, echoed back
+    # The station reports the area ratio the pressure-ratio exit reaches.
+    assert_close_rel(exits[exit_index].area_ratio, rocket["ae_at"][cea_index], 3e-4,
+                     f"{label} area_ratio")
 
     station = exits[exit_index].thermo
     assert_close_rel(station.pressure, INJECTOR_PRESSURE / pressure_ratio, 1e-3,

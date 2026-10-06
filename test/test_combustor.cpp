@@ -993,9 +993,10 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     Gas station_gas(Cantera::newSolution("h2o2.yaml", "ohmech"), GasChemistry::EQUILIBRIUM);
     auto equilibrium_station = [&station_gas](const std::vector<double>& state) {
         station_gas.restore_state(state);
-        const ExpansionProperties props = station_gas.expansion_properties();
-        return NozzleStation{props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
-            state, props.pinned_transition};
+        NozzleStation station;
+        station.thermo = station_gas.snapshot();
+        station.state = state;
+        return station;
     };
 
     FiniteAreaChamber fac{

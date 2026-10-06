@@ -17,27 +17,12 @@ RocketProblemResults::RocketProblemResults(
     Gas gas)
     : m_gas(std::move(gas))
 {
-    // Restore a stored station state and read every mixture property from it. The condensed
-    // amounts travel in the state vector, so the snapshot covers them.
-    auto read_thermo = [&](const std::vector<double>& state, GasChemistry chemistry) {
-        m_gas.chemistry = chemistry;
-        m_gas.restore_state(state);
-        return m_gas.snapshot();
-    };
-
-    // A station whose expansion derivatives the nozzle already solved for: take the rest of the
-    // state from a frozen snapshot, which is the same arithmetic but without a second solve of
-    // the equilibrium derivative system, and overwrite the derivatives with the stored ones.
-    auto read_station = [&](const std::vector<double>& state, double gamma,
-                            double dlV_dlP_T, double dlV_dlT_P, bool pinned) {
-        ThermodynamicState thermo_state = read_thermo(state, GasChemistry::FROZEN);
-        thermo_state.gamma_s = gamma;
-        thermo_state.dlV_dlP_T = dlV_dlP_T;
-        thermo_state.dlV_dlT_P = dlV_dlT_P;
-        thermo_state.pinned_transition = pinned;
-        thermo_state.speed_of_sound = gas_sonic_velocity(
-            thermo_state.temperature, thermo_state.molecular_weight, gamma);
-        return thermo_state;
+    // The nozzle stores each station's mixture state. Its `stagnation_enthalpy` is set to the
+    // reference of the operating point (see `RocketProblemResults::stagnation`).
+    auto station_thermo = [&](const ThermodynamicState& thermo) {
+        ThermodynamicState result = thermo;
+        result.stagnation_enthalpy = m_gas.get_stagnation_enthalpy();
+        return result;
     };
 
     for (auto& [name, case_result] : case_results) {
@@ -92,9 +77,7 @@ RocketProblemResults::RocketProblemResults(
                     s.pressure_index  = p_idx;
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
-                    s.thermo          = read_station(nozzle.inlet.state, nozzle.inlet.gamma_s,
-                                                         nozzle.inlet.dlV_dlP_T, nozzle.inlet.dlV_dlT_P,
-                                                         nozzle.inlet.pinned_transition);
+                    s.thermo          = station_thermo(nozzle.inlet.thermo);
                     m_stations.push_back(std::move(s));
                 }
 
@@ -111,9 +94,7 @@ RocketProblemResults::RocketProblemResults(
                         s.pressure_index  = p_idx;
                         s.expansion_index = 0;
                         s.area_ratio      = 0.0;
-                        s.thermo          = read_station(fac.stagnation.state, fac.stagnation.gamma_s,
-                                                         fac.stagnation.dlV_dlP_T, fac.stagnation.dlV_dlT_P,
-                                                         fac.stagnation.pinned_transition);
+                        s.thermo          = station_thermo(fac.stagnation.thermo);
                         m_stations.push_back(std::move(s));
                     }
 
@@ -127,8 +108,7 @@ RocketProblemResults::RocketProblemResults(
                         s.pressure_index  = p_idx;
                         s.expansion_index = 0;
                         s.area_ratio      = fac.contraction_ratio;
-                        s.thermo          = read_station(ce.state, ce.gamma_s, ce.dlV_dlP_T,
-                                                         ce.dlV_dlT_P, ce.pinned_transition);
+                        s.thermo          = station_thermo(ce.thermo);
                         m_stations.push_back(std::move(s));
                     }
                 }
@@ -143,8 +123,7 @@ RocketProblemResults::RocketProblemResults(
                     s.pressure_index  = p_idx;
                     s.expansion_index = 0;
                     s.area_ratio      = 1.0;
-                    s.thermo          = read_station(tc.state, tc.gamma_s, tc.dlV_dlP_T,
-                                                     tc.dlV_dlT_P, tc.pinned_transition);
+                    s.thermo          = station_thermo(tc.thermo);
                     m_stations.push_back(std::move(s));
                 }
 
@@ -157,10 +136,12 @@ RocketProblemResults::RocketProblemResults(
                     s.of_index        = of_idx;
                     s.pressure_index  = p_idx;
                     s.expansion_index = exp_idx;
-                    s.area_ratio      = (exp_idx < case_result.expansion_ratios.size())
-                                        ? case_result.expansion_ratios[exp_idx] : 0.0;
-                    s.thermo          = read_station(exp.state, exp.gamma_s, exp.dlV_dlP_T,
-                                                     exp.dlV_dlT_P, exp.pinned_transition);
+                    // Area-ratio exits report the requested ratio exactly; pressure-ratio exits the
+                    // solved one.
+                    s.area_ratio      = (case_result.expansion_type != ExpansionType::PRESSURE_RATIO
+                                         && exp_idx < case_result.expansion_ratios.size())
+                                        ? case_result.expansion_ratios[exp_idx] : exp.area_ratio;
+                    s.thermo          = station_thermo(exp.thermo);
                     m_stations.push_back(std::move(s));
                 }
             }

@@ -371,17 +371,23 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     }
 
     ExpansionProperties final_props = m_gas.expansion_properties();
+    NozzleStation throat = station_at_current_state(final_props, H_inlet, 0.0);
 
-    return {
-        m_gas.speed_of_sound(),
-        H_inlet,
-        P_inlet,
-        S_inlet,
-        gamma_s,
-        final_props.dlogV_dlogP_T,
-        final_props.dlogV_dlogT_P,
-        m_gas.save_state(),
-        final_props.pinned_transition};
+    ThroatCondition condition;
+    condition.speed_of_sound = m_gas.speed_of_sound();
+    condition.H_stagnation = H_inlet;
+    condition.P_inlet = P_inlet;
+    condition.S_inlet = S_inlet;
+    condition.gamma_s = gamma_s;
+    condition.dlV_dlP_T = final_props.dlogV_dlogP_T;
+    condition.dlV_dlT_P = final_props.dlogV_dlogT_P;
+    condition.state = std::move(throat.state);
+    condition.pinned_transition = final_props.pinned_transition;
+    condition.thermo = std::move(throat.thermo);
+    condition.velocity = throat.velocity;
+    condition.mach = throat.mach;
+    condition.area_ratio = 1.0;
+    return condition;
 }
 
 double Nozzle::get_gamma_s() {
@@ -463,13 +469,8 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
             result.iterations, abstol, std::abs(result.step));
     }
 
-    ExpansionProperties final_props = m_gas.expansion_properties();
-    return {
-            final_props.gamma_s,
-            final_props.dlogV_dlogP_T,
-            final_props.dlogV_dlogT_P,
-            m_gas.save_state(),
-            final_props.pinned_transition};
+    return station_at_current_state(m_gas.expansion_properties(), throat_condition.H_stagnation,
+        A_mdot_throat);
 }
 
 NozzleStation Nozzle::solve_supersonic_area_expansion(const ThroatCondition& throat_condition,
@@ -550,13 +551,8 @@ NozzleStation Nozzle::iterate_area_expansion(
             result.iterations, abstol, std::abs(result.step));
     }
 
-    ExpansionProperties final_props = m_gas.expansion_properties();
-    return {
-            final_props.gamma_s,
-            final_props.dlogV_dlogP_T,
-            final_props.dlogV_dlogT_P,
-            m_gas.save_state(),
-            final_props.pinned_transition};
+    return station_at_current_state(m_gas.expansion_properties(), throat_condition.H_stagnation,
+        A_mdot_thrt);
 }
 
 NozzleStation Nozzle::solve_pressure_ratio(
@@ -571,13 +567,8 @@ NozzleStation Nozzle::solve_pressure_ratio(
         m_gas.equilibrate_SP(throat_condition.S_inlet, P_exit);
 
         //pressure ratio for equilibrium nozzle does not require iteration
-        ExpansionProperties final_props = m_gas.expansion_properties();
-        return {
-            final_props.gamma_s,
-            final_props.dlogV_dlogP_T,
-            final_props.dlogV_dlogT_P,
-            m_gas.save_state(),
-            final_props.pinned_transition};
+        return station_at_current_state(m_gas.expansion_properties(),
+            throat_condition.H_stagnation, throat_area_per_mdot(throat_condition));
     } else {
         m_gas.restore_state(frozen_state);
 
@@ -587,9 +578,8 @@ NozzleStation Nozzle::solve_pressure_ratio(
         if (T_exit < 0) {
             throw std::runtime_error("Negative temperature returned in pressure ratio loop. This branch should be unreachable.");
         } else {
-            ExpansionProperties props = m_gas.expansion_properties();
-            return {props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P,
-                    m_gas.save_state(), props.pinned_transition};
+            return station_at_current_state(m_gas.expansion_properties(),
+                throat_condition.H_stagnation, throat_area_per_mdot(throat_condition));
         }
     }
 }
@@ -650,9 +640,40 @@ bool Nozzle::set_station_chemistry(int station) {
 NozzleStation Nozzle::station_at_state(const std::vector<double>& state, int station) {
     m_gas.restore_state(state);
     set_station_chemistry(station);
-    const ExpansionProperties props = m_gas.expansion_properties();
-    return {props.gamma_s, props.dlogV_dlogP_T, props.dlogV_dlogT_P, state,
-        props.pinned_transition};
+    // The flow is at rest here: its own enthalpy is the stagnation enthalpy.
+    return station_at_current_state(m_gas.expansion_properties(), m_gas.enthalpy_mass(), 0.0);
+}
+
+NozzleStation Nozzle::station_at_current_state(const ExpansionProperties& props,
+    double H_stagnation, double area_per_mdot_throat) {
+    // A frozen snapshot reads the state without solving the equilibrium derivative system a
+    // second time; the derivatives come from `props`, in the chemistry of the station.
+    const GasChemistry chemistry = m_gas.chemistry;
+    m_gas.chemistry = GasChemistry::FROZEN;
+    ThermodynamicState thermo = m_gas.snapshot();
+    m_gas.chemistry = chemistry;
+    thermo.gamma_s = props.gamma_s;
+    thermo.dlV_dlP_T = props.dlogV_dlogP_T;
+    thermo.dlV_dlT_P = props.dlogV_dlogT_P;
+    thermo.pinned_transition = props.pinned_transition;
+    thermo.stagnation_enthalpy = H_stagnation;
+    thermo.speed_of_sound = gas_sonic_velocity(thermo.temperature, thermo.molecular_weight,
+        props.gamma_s);
+
+    NozzleStation result;
+    result.velocity = std::sqrt(std::max(0.0, 2.0 * (H_stagnation - thermo.enthalpy)));
+    result.mach = result.velocity / thermo.speed_of_sound;
+    if (area_per_mdot_throat > 0.0 && result.velocity > 0.0) {
+        result.area_ratio = m_gas.area_per_mdot(result.velocity) / area_per_mdot_throat;
+    }
+    result.thermo = std::move(thermo);
+    result.state = m_gas.save_state();
+    return result;
+}
+
+double Nozzle::throat_area_per_mdot(const ThroatCondition& throat) {
+    return throat.thermo.temperature * Cantera::GasConstant
+        / (throat.thermo.pressure * throat.velocity * throat.thermo.molecular_weight);
 }
 
 void Nozzle::throw_invalid_expansion_ratio(double expansion, double min) const {

@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <string>
 #include <vector>
 #include "goddard/nozzle.hpp"
 #include "goddard/gas.hpp"
@@ -7,15 +8,26 @@
 
 namespace Goddard {
 
+/** One station of a kinetic nozzle integration. */
 struct KineticNozzleStation {
+    /** Axial position, in the length unit of the profile. */
     double x;
+    /** Flow velocity [m/s]. */
     double velocity;
+    /** Mach number [-], with the frozen speed of sound. */
     double mach;
+    /** Area ratio A/A_t [-]. */
     double area_ratio;
-    std::vector<double> state; // Cantera thermo state
-    std::vector<double> damkohler; // per-species Damkohler
-    double Da_min; // Minimum damkohler number
-    int min_Da_species; // Index of species with lowest Damkohler
+    /** Mixture state at the station, with frozen derivatives. */
+    ThermodynamicState thermo;
+    /** Raw state vector, for `Gas::restore_state`. */
+    std::vector<double> state;
+    /** Damkohler number of each species [-]; 0 for trace species. */
+    std::vector<double> damkohler;
+    /** Smallest non-zero Damkohler number [-]. */
+    double Da_min;
+    /** Name of the species with the smallest non-zero Damkohler number; empty if there is none. */
+    std::string min_Da_species;
 };
 
 struct KineticNozzleResults {

@@ -387,9 +387,7 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_FALSE(nozzle_result.expansions.empty());
 
-    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = std::sqrt(2.0 * (nozzle_result.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
-        / gas_sonic_velocity(*gas->thermo(), nozzle_result.expansions[0].gamma_s);
+        double mach_1d = nozzle_result.expansions[0].mach;
 
     // 2D MoC vs 1D: expect within ~10% (2D effects + design mode differences)
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
@@ -416,9 +414,7 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
     ASSERT_FALSE(nozzle_result.expansions.empty());
 
-    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = std::sqrt(2.0 * (nozzle_result.throat.H_stagnation - gas->thermo()->enthalpy_mass()))
-        / gas_sonic_velocity(*gas->thermo(), nozzle_result.expansions[0].gamma_s);
+        double mach_1d = nozzle_result.expansions[0].mach;
 
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
         << "Axisymmetric equilibrium MoC exit Mach should be in the same ballpark as 1D";

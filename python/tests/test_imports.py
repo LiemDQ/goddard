@@ -36,7 +36,7 @@ def test_import_station_type():
 def test_import_structs():
     from goddard import (
         CombustorOptions, NozzleOptions, ThroatCondition,
-        NozzleResult, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
+        NozzleStation, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
         ChemicalParameters, ThermodynamicState, RocketPerformance,
         ExpansionProperties, EquilibriumDerivatives,
     )

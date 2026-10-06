@@ -137,3 +137,15 @@ def test_unimplemented_mixture_lists_raise(attribute):
     problem.chemical_params = chem_params
     with pytest.raises(NotImplementedError):
         problem.solve()
+
+
+def test_pressure_ratio_exit_reports_area_ratio():
+    """A pressure-ratio exit reports Ae/At in area_ratio, matching its performance entry."""
+    nozzle_options = goddard.pressure_ratio(10.0, 100.0)
+    results = build_h2o2_problem("pressure_exits", [20.0 * BAR], [], nozzle_options=nozzle_options).solve()
+    exits = results.exits()
+    assert len(exits) == 2
+    for index, station in enumerate(exits):
+        assert station.area_ratio > 1.0
+        assert station.area_ratio == pytest.approx(results.performance(exit_index=index).area_ratio, rel=1e-6)
+    assert exits[1].area_ratio > exits[0].area_ratio

@@ -651,7 +651,6 @@ def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressur
     assert len(exits) == len(BERYLLIUM_PRESSURE_RATIOS)
 
     station = exits[exit_index].thermo
-    assert exits[exit_index].area_ratio == pressure_ratio   # pressure ratio on this expansion type
     index = exit_index + 2                                  # CEA: 0 chamber, 1 throat, then pi_p
     label = f"pi_p {pressure_ratio}"
 
@@ -668,6 +667,9 @@ def test_beryllium_rocket_stations(beryllium_rocket_problem, exit_index, pressur
     performance = results.performance(0, exit_index=exit_index, case_name="ex13")
     assert_close_rel(performance.area_ratio, rocket["ae_at"][index], 1e-4,
                      f"{label} area_ratio")
+    # The station reports the area ratio the pressure-ratio exit reaches.
+    assert_close_rel(exits[exit_index].area_ratio, rocket["ae_at"][index], 1e-4,
+                     f"{label} station area_ratio")
     assert_close_rel(performance.pressure_ratio, rocket["P"][0] / rocket["P"][index], 1e-5,
                      f"{label} pressure_ratio")
     assert_close_rel(performance.cstar, rocket["c_star"][index], 5e-5, f"{label} c*")

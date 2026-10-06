@@ -506,17 +506,25 @@ TEST_F(KineticNozzleTests, DamkohlerMinIsMinimumOfNonZeroEntries) {
     }
 }
 
-TEST_F(KineticNozzleTests, FreezingSpeciesIndexIsValid) {
-    // min_Da_species must be a valid species index
+TEST_F(KineticNozzleTests, FreezingSpeciesIsAProductSpecies) {
     ASSERT_GT(s_results.stations.size(), 0u);
 
-    int n_species = static_cast<int>(s_gas->thermo()->nSpecies());
     for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
-        EXPECT_GE(s_results.stations[i].min_Da_species, 0)
-            << "min_Da_species must be non-negative at station " << i;
-        EXPECT_LT(s_results.stations[i].min_Da_species, n_species)
-            << "min_Da_species out of range at station " << i;
+        const KineticNozzleStation& station = s_results.stations[i];
+        ASSERT_FALSE(station.min_Da_species.empty()) << "station " << i;
+        const size_t k = s_gas->thermo()->speciesIndex(station.min_Da_species);
+        ASSERT_NE(k, Cantera::npos) << "unknown species " << station.min_Da_species;
+        EXPECT_DOUBLE_EQ(station.damkohler[k], station.Da_min) << "station " << i;
     }
+}
+
+TEST_F(KineticNozzleTests, StationThermoMatchesState) {
+    ASSERT_GT(s_results.stations.size(), 0u);
+    const KineticNozzleStation& exit_station = s_results.stations.back();
+    s_gas->thermo()->restoreState(exit_station.state);
+    EXPECT_DOUBLE_EQ(exit_station.thermo.temperature, s_gas->thermo()->temperature());
+    EXPECT_DOUBLE_EQ(exit_station.thermo.pressure, s_gas->thermo()->pressure());
+    EXPECT_NEAR(exit_station.mach, exit_station.velocity / exit_station.thermo.speed_of_sound, 1e-12);
 }
 
 TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {

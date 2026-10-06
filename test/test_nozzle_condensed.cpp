@@ -240,7 +240,7 @@ TEST_F(PropellantNozzleTests, FrozenExpansionHoldsTheCondensedAmounts) {
     for (const NozzleStation& station : results.expansions) {
         Gas exit = at_state(station.state, GasChemistry::FROZEN);
         EXPECT_EQ(exit.condensed_moles(), throat_moles);
-        EXPECT_FALSE(station.pinned_transition);
+        EXPECT_FALSE(station.thermo.pinned_transition);
     }
 }
 
@@ -329,7 +329,7 @@ TEST_F(BerylliumNozzleTests, PressureRatioStationFollowsTheSolidPolymorph) {
     EXPECT_NEAR(station.pressure(), 20.68419 * BAR, 1e-6 * 20.68419 * BAR);
     EXPECT_NEAR(station.temperature(), 2453.58, 0.1);  // CEA; observed 0.05 K
     EXPECT_GT(condensed_moles_of(station, "BeO(b)"), 0.0);
-    EXPECT_FALSE(results.expansions[0].pinned_transition);
+    EXPECT_FALSE(results.expansions[0].thermo.pinned_transition);
 }
 
 

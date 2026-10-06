@@ -1,5 +1,6 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/string.h>
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/gas.hpp"
@@ -15,6 +16,7 @@ void bind_kinetic_nozzle(nb::module_& m) {
         .def_ro("velocity",       &Goddard::KineticNozzleStation::velocity)
         .def_ro("mach",           &Goddard::KineticNozzleStation::mach)
         .def_ro("area_ratio",     &Goddard::KineticNozzleStation::area_ratio)
+        .def_ro("thermo",         &Goddard::KineticNozzleStation::thermo)
         .def_ro("state",          &Goddard::KineticNozzleStation::state)
         .def_ro("damkohler",      &Goddard::KineticNozzleStation::damkohler)
         .def_ro("Da_min",         &Goddard::KineticNozzleStation::Da_min)

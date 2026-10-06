@@ -294,7 +294,14 @@ def test_nozzle_from_gas(h2o2_yaml):
     assert len(result.expansions) == 1
     # A gas-only mixture can never sit at a condensed phase transition.
     assert result.throat.pinned_transition is False
-    assert result.expansions[0].pinned_transition is False
+    assert result.expansions[0].thermo.pinned_transition is False
+
+    station = result.expansions[0]
+    assert station.area_ratio == pytest.approx(5.0, rel=1e-4)
+    assert result.throat.mach == pytest.approx(1.0, abs=1e-4)
+    assert station.mach > 1.0
+    assert station.thermo.temperature < result.throat.thermo.temperature
+    assert station.velocity == pytest.approx(station.mach * station.thermo.speed_of_sound)
 
 
 # ---------------------------------------------------------------------------

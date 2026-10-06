@@ -54,15 +54,39 @@ struct ThroatCondition {
      * Always false for a mixture without condensed phases.
      */
     bool pinned_transition = false;
+    /** Mixture state at the throat; see `NozzleStation::thermo`. */
+    ThermodynamicState thermo;
+    /** Flow velocity at the throat [m/s]. */
+    double velocity = 0.0;
+    /** Mach number at the throat [-]: 1 to within the throat solve's tolerance. */
+    double mach = 0.0;
+    /** Area ratio A/A_t [-]: 1 by definition. */
+    double area_ratio = 1.0;
 };
 
+/**
+ * One solved nozzle station.
+ */
 struct NozzleStation {
-    double gamma_s;
-    double dlV_dlP_T;
-    double dlV_dlT_P;
+    /**
+     * Mixture state at the station. `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P`, `speed_of_sound` and
+     * `pinned_transition` are in the chemistry of the station: frozen downstream of the freezing
+     * station, equilibrium otherwise. `pinned_transition` is true when the station sits exactly at
+     * a condensed phase transition (see `ThroatCondition::pinned_transition`).
+     */
+    ThermodynamicState thermo;
+    /** Flow velocity [m/s], from the enthalpy drop below the stagnation enthalpy. */
+    double velocity = 0.0;
+    /** Mach number [-], from `velocity` and `thermo.speed_of_sound`. */
+    double mach = 0.0;
+    /**
+     * Area ratio A/A_t [-], from the mass flux relative to the throat. 0 for a station where the
+     * flow is at rest (the chamber of an infinite-area combustor, the injector face and the
+     * stagnation state of a finite-area one).
+     */
+    double area_ratio = 0.0;
+    /** Raw state vector, for `Gas::restore_state`. */
     std::vector<double> state;
-    /** True when the station sits at a condensed phase transition; see `ThroatCondition`. */
-    bool pinned_transition = false;
 };
 
 struct NozzleResults {
@@ -225,6 +249,19 @@ class Nozzle {
         const std::vector<double>& composition,
         int station,
         double abstol = 0.5e-5);
+
+    /**
+     * Station at the current gas state, with derivatives `props` already solved for it.
+     *
+     * @param H_stagnation Stagnation enthalpy the velocity is measured from [J/kg].
+     * @param area_per_mdot_throat Throat area per mass flow rate [m^2 s/kg]; 0 when there is no
+     * throat yet, which leaves `area_ratio` at 0.
+     */
+    NozzleStation station_at_current_state(const ExpansionProperties& props, double H_stagnation,
+        double area_per_mdot_throat);
+
+    /** Throat area per mass flow rate [m^2 s/kg], from the throat state and velocity. */
+    static double throat_area_per_mdot(const ThroatCondition& throat);
 
     /** True when station `station` is in equilibrium, from `NozzleOptions::frozen_NFZ`. */
     bool is_equilibrium_station(int station) const;

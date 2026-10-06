@@ -69,9 +69,6 @@ injector-face state, and the finite-area chamber is solved afterwards
 by `Nozzle::solve_finite_area_chamber`.
 
 Throws:
-    NotImplementedError if `options.type` is `CombustorType::NONE`.
-
-Throws:
     std::invalid_argument for a finite-area type with
     `contraction_ratio` <= 1 or `mass_flux` <= 0, or combined with
     `CombustionProcess::ISOCHORIC`.)doc";
@@ -332,21 +329,13 @@ static const char *__doc_Goddard_CharacteristicPoint_y = R"doc(< Radial (or tran
 
 static const char *__doc_Goddard_ChemicalParameters = R"doc()doc";
 
-static const char *__doc_Goddard_ChemicalParameters_OF_ratios = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_OF_ratios =
+R"doc(Mixture ratios of the problem, interpreted through
+`CombustorOptions::mixture_type` of each case (O/F ratios by default).)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_all_condensed_species =
 R"doc(Offer every species of `condensed_file` whose elements the product
 phase has. */)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_cantera_fuel_state =
-R"doc(Fuel stream state. `composition` is always a **mole-fraction** map.
-Its keys are product species names when `reactant_file` is empty, and
-species of `reactant_file` otherwise (e.g. `H2(L)`, `RP-1`). CEA-style
-weight percentages must be converted to mole fractions by the caller.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_cantera_oxidizer_state =
-R"doc(Oxidizer stream state; see `cantera_fuel_state` for how `composition`
-is interpreted. */)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_condensed_file =
 R"doc(Cantera YAML file holding candidate condensed product species, e.g.
@@ -356,13 +345,27 @@ static const char *__doc_Goddard_ChemicalParameters_condensed_species =
 R"doc(Condensed species of `condensed_file` to offer as candidates. Ignored
 if `all_condensed_species`. */)doc";
 
-static const char *__doc_Goddard_ChemicalParameters_fuel_weight_percentages = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_fuel_state =
+R"doc(Fuel stream state. `composition` is always a **mole-fraction** map.
+Its keys are product species names when `reactant_file` is empty, and
+species of `reactant_file` otherwise (e.g. `H2(L)`, `RP-1`). CEA-style
+weight percentages must be converted to mole fractions by the caller.)doc";
 
-static const char *__doc_Goddard_ChemicalParameters_mixture_type = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_fuel_weight_percentages =
+R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
+if non-empty. */)doc";
 
-static const char *__doc_Goddard_ChemicalParameters_mixtures = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_mixtures =
+R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
+if non-empty. */)doc";
 
-static const char *__doc_Goddard_ChemicalParameters_phi_ratios = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_oxidizer_state =
+R"doc(Oxidizer stream state; see `fuel_state` for how `composition` is
+interpreted. */)doc";
+
+static const char *__doc_Goddard_ChemicalParameters_phi_ratios =
+R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
+if non-empty. */)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_reactant_file =
 R"doc(Cantera YAML file holding the reactant species, e.g.
@@ -421,8 +424,6 @@ static const char *__doc_Goddard_CombustorType_FINITE_CONTRACTION_RATIO = R"doc(
 static const char *__doc_Goddard_CombustorType_FINITE_MASS_FLUX = R"doc()doc";
 
 static const char *__doc_Goddard_CombustorType_INFINITE_AREA = R"doc()doc";
-
-static const char *__doc_Goddard_CombustorType_NONE = R"doc()doc";
 
 static const char *__doc_Goddard_Combustor_Combustor = R"doc()doc";
 
@@ -1587,23 +1588,27 @@ static const char *__doc_Goddard_KineticNozzleResults_stations = R"doc()doc";
 
 static const char *__doc_Goddard_KineticNozzleResults_throat = R"doc()doc";
 
-static const char *__doc_Goddard_KineticNozzleStation = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation = R"doc(One station of a kinetic nozzle integration. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_Da_min = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_Da_min = R"doc(Smallest non-zero Damkohler number [-]. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_area_ratio = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_area_ratio = R"doc(Area ratio A/A_t [-]. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_damkohler = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_damkohler = R"doc(Damkohler number of each species [-]; 0 for trace species. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_mach = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_mach = R"doc(Mach number [-], with the frozen speed of sound. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_min_Da_species = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_min_Da_species =
+R"doc(Name of the species with the smallest non-zero Damkohler number; empty
+if there is none. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_state = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_velocity = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_thermo = R"doc(Mixture state at the station, with frozen derivatives. */)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_x = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleStation_velocity = R"doc(Flow velocity [m/s]. */)doc";
+
+static const char *__doc_Goddard_KineticNozzleStation_x = R"doc(Axial position, in the length unit of the profile. */)doc";
 
 static const char *__doc_Goddard_KineticNozzle_KineticNozzle = R"doc()doc";
 
@@ -1944,8 +1949,9 @@ static const char *__doc_Goddard_MocOptions = R"doc(Options for method of charac
 static const char *__doc_Goddard_MocOptions_chemistry = R"doc()doc";
 
 static const char *__doc_Goddard_MocOptions_exit_mach =
-R"doc(Target exit Mach number, for the design modes. Not read by the solver;
-the design target is set through theta_max.)doc";
+R"doc(Target exit Mach number, for the design modes. Not implemented: the
+design target is set through theta_max, and `validate_moc_options`
+raises NotImplementedError if this is non-zero.)doc";
 
 static const char *__doc_Goddard_MocOptions_flow_type = R"doc()doc";
 
@@ -2231,15 +2237,12 @@ depend on it.)doc";
 
 static const char *__doc_Goddard_NozzleGeometry_upstream_wall_curvature_radius =
 R"doc(Wall radius of curvature upstream of the throat, as a multiple of
-`throat_radius`.)doc";
+`throat_radius`. Not implemented: `validate_moc_options` raises
+NotImplementedError for any other value.)doc";
 
 static const char *__doc_Goddard_NozzleOptions = R"doc()doc";
 
 static const char *__doc_Goddard_NozzleOptions_chemistry = R"doc()doc";
-
-static const char *__doc_Goddard_NozzleOptions_dt_max = R"doc()doc";
-
-static const char *__doc_Goddard_NozzleOptions_dx_max = R"doc()doc";
 
 static const char *__doc_Goddard_NozzleOptions_expansion_ratios = R"doc()doc";
 
@@ -2256,12 +2259,6 @@ frozen as well.
 For an infinite-area combustor CEA's `nfz` is `frozen_NFZ + 1`. For a
 finite-area combustor the count starts at the combustion end, so `nfz`
 is `frozen_NFZ + 3`; 1 is the throat in both cases.)doc";
-
-static const char *__doc_Goddard_NozzleOptions_gamma = R"doc()doc";
-
-static const char *__doc_Goddard_NozzleOptions_max_steps = R"doc()doc";
-
-static const char *__doc_Goddard_NozzleOptions_solver = R"doc()doc";
 
 static const char *__doc_Goddard_NozzleProfile =
 R"doc(Geometric representation of a nozzle wall profile. Used as both input
@@ -2559,21 +2556,29 @@ otherwise equilibrium.)doc";
 
 static const char *__doc_Goddard_NozzleResults_throat = R"doc()doc";
 
-static const char *__doc_Goddard_NozzleStation = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation = R"doc(One solved nozzle station.)doc";
 
-static const char *__doc_Goddard_NozzleStation_converged = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation_area_ratio =
+R"doc(Area ratio A/A_t [-], from the mass flux relative to the throat. 0 for
+a station where the flow is at rest (the chamber of an infinite-area
+combustor, the injector face and the stagnation state of a finite-area
+one).)doc";
 
-static const char *__doc_Goddard_NozzleStation_dlV_dlP_T = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation_mach = R"doc(Mach number [-], from `velocity` and `thermo.speed_of_sound`. */)doc";
 
-static const char *__doc_Goddard_NozzleStation_dlV_dlT_P = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`. */)doc";
 
-static const char *__doc_Goddard_NozzleStation_gamma_s = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation_thermo =
+R"doc(Mixture state at the station. `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P`,
+`speed_of_sound` and `pinned_transition` are in the chemistry of the
+station: frozen downstream of the freezing station, equilibrium
+otherwise. `pinned_transition` is true when the station sits exactly
+at a condensed phase transition (see
+`ThroatCondition::pinned_transition`).)doc";
 
-static const char *__doc_Goddard_NozzleStation_pinned_transition =
-R"doc(True when the station sits at a condensed phase transition; see
-`ThroatCondition`. */)doc";
-
-static const char *__doc_Goddard_NozzleStation_state = R"doc()doc";
+static const char *__doc_Goddard_NozzleStation_velocity =
+R"doc(Flow velocity [m/s], from the enthalpy drop below the stagnation
+enthalpy. */)doc";
 
 static const char *__doc_Goddard_Nozzle_Nozzle = R"doc()doc";
 
@@ -2726,9 +2731,24 @@ static const char *__doc_Goddard_Nozzle_solve_supersonic_area_expansion = R"doc(
 
 static const char *__doc_Goddard_Nozzle_solve_throat_conditions = R"doc()doc";
 
+static const char *__doc_Goddard_Nozzle_station_at_current_state =
+R"doc(Station at the current gas state, with derivatives `props` already
+solved for it.
+
+Parameter ``H_stagnation``:
+    Stagnation enthalpy the velocity is measured from [J/kg].
+
+Parameter ``area_per_mdot_throat``:
+    Throat area per mass flow rate [m^2 s/kg]; 0 when there is no
+    throat yet, which leaves `area_ratio` at 0.)doc";
+
 static const char *__doc_Goddard_Nozzle_station_at_state =
 R"doc(Station at `state` with derivatives in the chemistry of station
 `station`. Leaves the gas at `state`.)doc";
+
+static const char *__doc_Goddard_Nozzle_throat_area_per_mdot =
+R"doc(Throat area per mass flow rate [m^2 s/kg], from the throat state and
+velocity. */)doc";
 
 static const char *__doc_Goddard_Nozzle_throw_invalid_expansion_ratio = R"doc()doc";
 
@@ -2924,8 +2944,6 @@ static const char *__doc_Goddard_RocketCaseParameters_name = R"doc()doc";
 
 static const char *__doc_Goddard_RocketCaseParameters_nozzle_options = R"doc()doc";
 
-static const char *__doc_Goddard_RocketCaseParameters_problem_type = R"doc()doc";
-
 static const char *__doc_Goddard_RocketPerformance = R"doc()doc";
 
 static const char *__doc_Goddard_RocketPerformance_CF = R"doc()doc";
@@ -2969,8 +2987,6 @@ static const char *__doc_Goddard_RocketProblemCaseResult_inlet_states = R"doc()d
 static const char *__doc_Goddard_RocketProblemCaseResult_nozzle_states = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_pressures = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_problem_type = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_process = R"doc()doc";
 
@@ -3138,9 +3154,9 @@ static const char *__doc_Goddard_RocketProblem_RocketProblem = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblem_chemical_params = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblem_include_ionized_species = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_include_ionized_species = R"doc(Not implemented: `solve` raises `NotImplementedError` if true. */)doc";
 
-static const char *__doc_Goddard_RocketProblem_include_transport = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_include_transport = R"doc(Not implemented: `solve` raises `NotImplementedError` if true. */)doc";
 
 static const char *__doc_Goddard_RocketProblem_m_condensed_prototype =
 R"doc(Product gas carrying the candidate condensed species, built once so
@@ -3169,33 +3185,15 @@ static const char *__doc_Goddard_RocketProblem_solve = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblem_thermo = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblem_trace_cutoff = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_area_ratio = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_cantera_state = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_dlv_dlp_t = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_dlv_dlt_p = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_gamma_s = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_name = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_pressure_ratio = R"doc()doc";
-
-static const char *__doc_Goddard_RocketState_speed_of_sound = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_trace_cutoff = R"doc(Not implemented: `solve` raises `NotImplementedError` if non-zero. */)doc";
 
 static const char *__doc_Goddard_RocketStation = R"doc()doc";
 
-static const char *__doc_Goddard_RocketStation_area_ratio = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_area_ratio =
+R"doc(A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1
+for THROAT, Ae/At for EXIT (also for pressure-ratio exits). */)doc";
 
 static const char *__doc_Goddard_RocketStation_case_name = R"doc()doc";
-
-static const char *__doc_Goddard_RocketStation_converged = R"doc()doc";
 
 static const char *__doc_Goddard_RocketStation_expansion_index = R"doc()doc";
 
@@ -3429,8 +3427,6 @@ static const char *__doc_Goddard_SolverOptions = R"doc()doc";
 static const char *__doc_Goddard_SolverOptions_abstol = R"doc()doc";
 
 static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc()doc";
-
-static const char *__doc_Goddard_SolverOptions_reltol = R"doc()doc";
 
 static const char *__doc_Goddard_StationType = R"doc()doc";
 
@@ -3702,13 +3698,17 @@ static const char *__doc_Goddard_ThroatCondition_P_inlet = R"doc()doc";
 
 static const char *__doc_Goddard_ThroatCondition_S_inlet = R"doc()doc";
 
-static const char *__doc_Goddard_ThroatCondition_converged = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_area_ratio = R"doc(Area ratio A/A_t [-]: 1 by definition. */)doc";
 
 static const char *__doc_Goddard_ThroatCondition_dlV_dlP_T = R"doc()doc";
 
 static const char *__doc_Goddard_ThroatCondition_dlV_dlT_P = R"doc()doc";
 
 static const char *__doc_Goddard_ThroatCondition_gamma_s = R"doc()doc";
+
+static const char *__doc_Goddard_ThroatCondition_mach =
+R"doc(Mach number at the throat [-]: 1 to within the throat solve's
+tolerance. */)doc";
 
 static const char *__doc_Goddard_ThroatCondition_pinned_transition =
 R"doc(True when the throat sits exactly at a condensed phase transition, so
@@ -3720,6 +3720,10 @@ for a mixture without condensed phases.)doc";
 static const char *__doc_Goddard_ThroatCondition_speed_of_sound = R"doc()doc";
 
 static const char *__doc_Goddard_ThroatCondition_state = R"doc()doc";
+
+static const char *__doc_Goddard_ThroatCondition_thermo = R"doc(Mixture state at the throat; see `NozzleStation::thermo`. */)doc";
+
+static const char *__doc_Goddard_ThroatCondition_velocity = R"doc(Flow velocity at the throat [m/s]. */)doc";
 
 static const char *__doc_Goddard_ThrustCoefficient =
 R"doc(Thrust performance obtained by integrating over a solved exit plane.
@@ -4106,8 +4110,13 @@ construction. This is programmer error, not a numerical failure, so it
 throws rather than returning a MocFailure -- solve()'s "never throws
 for numerical failures" contract is unaffected.
 
-Mode-dependent fields (theta_max, exit_mach) are deliberately not
-checked: they are legitimately left unset in ANALYSIS mode.)doc";
+theta_max is mode-dependent and deliberately not checked: it is
+legitimately left unset in ANALYSIS mode.
+
+Throws:
+    NotImplementedError for MocMode::DESIGN_CENTERLINE, a non-zero
+    exit_mach, or a non-default
+    geometry.upstream_wall_curvature_radius.)doc";
 
 #if defined(__GNUG__)
 #pragma GCC diagnostic pop

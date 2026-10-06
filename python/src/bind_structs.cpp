@@ -71,36 +71,6 @@ void bind_structs(nb::module_& m) {
 
     // ThroatCondition
     nb::class_<Goddard::ThroatCondition>(m, "ThroatCondition")
-        .def(nb::init<>())
-        .def("__init__", [](Goddard::ThroatCondition* self,
-                            double speed_of_sound,
-                            double H_stagnation,
-                            double P_inlet,
-                            double S_inlet,
-                            double gamma_s,
-                            double dlV_dlP_T,
-                            double dlV_dlT_P,
-                            std::vector<double> state,
-                            bool pinned_transition) {
-            new (self) Goddard::ThroatCondition();
-            self->speed_of_sound = speed_of_sound;
-            self->H_stagnation = H_stagnation;
-            self->P_inlet = P_inlet;
-            self->S_inlet = S_inlet;
-            self->gamma_s = gamma_s;
-            self->dlV_dlP_T = dlV_dlP_T;
-            self->dlV_dlT_P = dlV_dlT_P;
-            self->state = std::move(state);
-            self->pinned_transition = pinned_transition;
-        },  "speed_of_sound"_a = 0.0,
-            "H_stagnation"_a = 0.0,
-            "P_inlet"_a = 0.0,
-            "S_inlet"_a = 0.0,
-            "gamma_s"_a = 0.0,
-            "dlV_dlP_T"_a = 0.0,
-            "dlV_dlT_P"_a = 0.0,
-            "state"_a = std::vector<double>(),
-            "pinned_transition"_a = false)
         .def_ro("speed_of_sound", &Goddard::ThroatCondition::speed_of_sound)
         .def_ro("H_stagnation", &Goddard::ThroatCondition::H_stagnation)
         .def_ro("P_inlet", &Goddard::ThroatCondition::P_inlet)
@@ -108,36 +78,24 @@ void bind_structs(nb::module_& m) {
         .def_ro("gamma_s", &Goddard::ThroatCondition::gamma_s)
         .def_ro("dlV_dlP_T", &Goddard::ThroatCondition::dlV_dlP_T)
         .def_ro("dlV_dlT_P", &Goddard::ThroatCondition::dlV_dlT_P)
-        .def_ro("state", &Goddard::ThroatCondition::state)
         .def_ro("pinned_transition", &Goddard::ThroatCondition::pinned_transition,
-             DOC(Goddard, ThroatCondition, pinned_transition));
+             DOC(Goddard, ThroatCondition, pinned_transition))
+        .def_ro("thermo", &Goddard::ThroatCondition::thermo, DOC(Goddard, ThroatCondition, thermo))
+        .def_ro("velocity", &Goddard::ThroatCondition::velocity, DOC(Goddard, ThroatCondition, velocity))
+        .def_ro("mach", &Goddard::ThroatCondition::mach, DOC(Goddard, ThroatCondition, mach))
+        .def_ro("area_ratio", &Goddard::ThroatCondition::area_ratio,
+             DOC(Goddard, ThroatCondition, area_ratio))
+        .def_ro("state", &Goddard::ThroatCondition::state,
+             "Raw state vector, for Gas.restore_state.");
 
-    // NozzleResult
-    nb::class_<Goddard::NozzleStation>(m, "NozzleResult")
-        .def(nb::init<>())
-        .def("__init__", [](Goddard::NozzleStation* self,
-                            double gamma_s,
-                            double dlV_dlP_T,
-                            double dlV_dlT_P,
-                            std::vector<double> state,
-                            bool pinned_transition) {
-            new (self) Goddard::NozzleStation();
-            self->gamma_s = gamma_s;
-            self->dlV_dlP_T = dlV_dlP_T;
-            self->dlV_dlT_P = dlV_dlT_P;
-            self->state = std::move(state);
-            self->pinned_transition = pinned_transition;
-        },  "gamma_s"_a = 0.0,
-            "dlV_dlP_T"_a = 0.0,
-            "dlV_dlT_P"_a = 0.0,
-            "state"_a = std::vector<double>(),
-            "pinned_transition"_a = false)
-        .def_ro("gamma_s", &Goddard::NozzleStation::gamma_s)
-        .def_ro("dlV_dlP_T", &Goddard::NozzleStation::dlV_dlP_T)
-        .def_ro("dlV_dlT_P", &Goddard::NozzleStation::dlV_dlT_P)
-        .def_ro("state", &Goddard::NozzleStation::state)
-        .def_ro("pinned_transition", &Goddard::NozzleStation::pinned_transition,
-             DOC(Goddard, NozzleStation, pinned_transition));
+    // NozzleStation
+    nb::class_<Goddard::NozzleStation>(m, "NozzleStation", DOC(Goddard, NozzleStation))
+        .def_ro("thermo", &Goddard::NozzleStation::thermo, DOC(Goddard, NozzleStation, thermo))
+        .def_ro("velocity", &Goddard::NozzleStation::velocity, DOC(Goddard, NozzleStation, velocity))
+        .def_ro("mach", &Goddard::NozzleStation::mach, DOC(Goddard, NozzleStation, mach))
+        .def_ro("area_ratio", &Goddard::NozzleStation::area_ratio,
+             DOC(Goddard, NozzleStation, area_ratio))
+        .def_ro("state", &Goddard::NozzleStation::state, DOC(Goddard, NozzleStation, state));
 
     // NozzleResults
     nb::class_<Goddard::NozzleResults>(m, "NozzleResults")

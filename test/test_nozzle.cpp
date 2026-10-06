@@ -72,6 +72,38 @@ TEST_F(NozzleTests, PerfectGasNozzleIsNotImplemented) {
     EXPECT_THROW({ Nozzle nozzle(*gas, options); }, NotImplementedError);
 }
 
+TEST_F(NozzleTests, StationsCarryStateVelocityMachAndArea) {
+    Nozzle nozzle(*gas, options);
+    NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
+
+    // The chamber is at rest.
+    EXPECT_EQ(results.inlet.velocity, 0.0);
+    EXPECT_EQ(results.inlet.mach, 0.0);
+    EXPECT_EQ(results.inlet.area_ratio, 0.0);
+
+    // Throat: sonic, by definition at A/A_t = 1.
+    EXPECT_NEAR(results.throat.mach, 1.0, 1e-4);
+    EXPECT_EQ(results.throat.area_ratio, 1.0);
+    EXPECT_NEAR(results.throat.velocity, results.throat.speed_of_sound, 1e-4 * results.throat.velocity);
+
+    const NozzleStation& exit_station = results.expansions.front();
+    EXPECT_NEAR(exit_station.area_ratio, 10.0, 1e-3);
+    EXPECT_GT(exit_station.mach, 1.0);
+    EXPECT_NEAR(exit_station.mach, exit_station.velocity / exit_station.thermo.speed_of_sound, 1e-12);
+    // Energy: h + u^2/2 equals the chamber enthalpy.
+    EXPECT_NEAR(exit_station.thermo.enthalpy + 0.5 * exit_station.velocity * exit_station.velocity,
+        results.inlet.thermo.enthalpy, 1e-6 * std::abs(results.inlet.thermo.enthalpy) + 1.0);
+
+    gas->thermo()->restoreState(exit_station.state);
+    EXPECT_DOUBLE_EQ(exit_station.thermo.temperature, gas->thermo()->temperature());
+    EXPECT_DOUBLE_EQ(exit_station.thermo.pressure, gas->thermo()->pressure());
+
+    // A pressure-ratio station reports the area ratio it reaches.
+    NozzleResults by_pressure = nozzle.solve(ExpansionType::PRESSURE_RATIO,
+        results.inlet.thermo.pressure / exit_station.thermo.pressure);
+    EXPECT_NEAR(by_pressure.expansions.front().area_ratio, 10.0, 1e-3);
+}
+
 TEST_F(NozzleTests, NozzleStateManagement) {
     Nozzle nozzle(*gas, options);
 
@@ -138,8 +170,8 @@ TEST_F(NozzleTests, EquilibriumConverge) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
     NozzleStation result = results.expansions.front();
 
-    EXPECT_GT(result.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
-    EXPECT_LT(result.gamma_s, 2.0) << "Specific heat ratio should be physically reasonable";
+    EXPECT_GT(result.thermo.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
+    EXPECT_LT(result.thermo.gamma_s, 2.0) << "Specific heat ratio should be physically reasonable";
 }
 
 TEST_F(NozzleTests, FrozenConverge) {
@@ -149,8 +181,8 @@ TEST_F(NozzleTests, FrozenConverge) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
     NozzleStation result = results.expansions.front();
 
-    EXPECT_GT(result.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
-    EXPECT_LT(result.gamma_s, 2.0) << "Specific heat ratio should be physically reasonable";
+    EXPECT_GT(result.thermo.gamma_s, 1.0) << "Specific heat ratio should be greater than 1";
+    EXPECT_LT(result.thermo.gamma_s, 2.0) << "Specific heat ratio should be physically reasonable";
 }
 
 // Test supersonic area expansion
@@ -163,7 +195,7 @@ TEST_F(NozzleTests, EquilibriumSupersonicAreaExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for area ratio " << ratio;
         EXPECT_EQ(result.state.size(), gas->thermo()->stateSize())
             << "State vector should have correct size";
@@ -180,7 +212,7 @@ TEST_F(NozzleTests, FrozenSupersonicAreaExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for area ratio " << ratio;
     }
 }
@@ -233,7 +265,7 @@ TEST_F(NozzleTests, EquilibriumSubsonicAreaExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for area ratio " << ratio;
     }
 }
@@ -248,7 +280,7 @@ TEST_F(NozzleTests, FrozenSubsonicAreaExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for area ratio " << ratio;
     }
 }
@@ -289,14 +321,14 @@ TEST_F(NozzleTests, RepeatedSolveStationsIsIndependent) {
 
     ASSERT_EQ(first.size(), second.size());
     for (std::size_t i = 0; i < first.size(); i++) {
-        EXPECT_DOUBLE_EQ(first[i].gamma_s, second[i].gamma_s) << "station " << i;
+        EXPECT_DOUBLE_EQ(first[i].thermo.gamma_s, second[i].thermo.gamma_s) << "station " << i;
         ASSERT_EQ(first[i].state.size(), second[i].state.size());
         for (std::size_t k = 0; k < first[i].state.size(); k++) {
             EXPECT_DOUBLE_EQ(first[i].state[k], second[i].state[k]) << "station " << i;
         }
     }
     // The first expansion station is in equilibrium, the second frozen.
-    EXPECT_LT(first[0].gamma_s, first[1].gamma_s);
+    EXPECT_LT(first[0].thermo.gamma_s, first[1].thermo.gamma_s);
 }
 
 // Test pressure ratio expansion
@@ -311,7 +343,7 @@ TEST_F(NozzleTests, EquilibriumPressureRatioExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for pressure ratio " << ratio;
 
         // Verify pressure ratio
@@ -344,7 +376,7 @@ TEST_F(NozzleTests, FrozenPressureRatioExpansion) {
         NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, ratio);
         NozzleStation result = results.expansions.front();
 
-        EXPECT_GT(result.gamma_s, 1.0)
+        EXPECT_GT(result.thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for pressure ratio " << ratio;
         
         gas->thermo()->restoreState(result.state);
@@ -372,7 +404,7 @@ TEST_F(NozzleTests, EquilibriumBatchSolve) {
         << "Should have one result per expansion ratio";
 
     for (size_t i = 0; i < results.expansions.size(); i++) {
-        EXPECT_GT(results.expansions[i].gamma_s, 1.0)
+        EXPECT_GT(results.expansions[i].thermo.gamma_s, 1.0)
             << "gamma_s should be > 1 for expansion " << i;
     }
 }
@@ -410,8 +442,8 @@ TEST_F(NozzleTests, GammaDifferencesBetweenEquilibriumAndFrozen) {
 
     // Frozen gamma should generally be different from equilibrium gamma
     // They may be close but shouldn't be exactly equal for most cases
-    EXPECT_GT(eq_result.gamma_s, 1.0);
-    EXPECT_GT(frozen_result.gamma_s, 1.0);
+    EXPECT_GT(eq_result.thermo.gamma_s, 1.0);
+    EXPECT_GT(frozen_result.thermo.gamma_s, 1.0);
 }
 
 // Test invalid expansion ratios
@@ -511,7 +543,7 @@ TEST_F(NozzleDifferentGasTests, H2O2EquilibriumNozzle) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
     NozzleStation result = results.expansions.front();
 
-    EXPECT_GT(result.gamma_s, 1.0);
+    EXPECT_GT(result.thermo.gamma_s, 1.0);
 }
 
 TEST_F(NozzleDifferentGasTests, H2O2FrozenNozzle) {
@@ -521,7 +553,7 @@ TEST_F(NozzleDifferentGasTests, H2O2FrozenNozzle) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 15.0);
     NozzleStation result = results.expansions.front();
 
-    EXPECT_GT(result.gamma_s, 1.0);
+    EXPECT_GT(result.thermo.gamma_s, 1.0);
 }
 
 // ============================================================
@@ -576,9 +608,9 @@ TEST_F(NozzleTests, ProfileSolveMatchesAreaRatioSolve) {
 
 
     // The last profile station should match the area-ratio solve
-    EXPECT_NEAR(profile_results.expansions.back().gamma_s,
-                ar_results.expansions.front().gamma_s,
-                max_fp_error(ar_results.expansions.front().gamma_s, 1e-6, 1e-10));
+    EXPECT_NEAR(profile_results.expansions.back().thermo.gamma_s,
+                ar_results.expansions.front().thermo.gamma_s,
+                max_fp_error(ar_results.expansions.front().thermo.gamma_s, 1e-6, 1e-10));
 }
 
 TEST_F(NozzleTests, ProfileSolveFrozen) {

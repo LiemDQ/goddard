@@ -23,7 +23,7 @@ from goddard._core import (
     CombustorOptions,
     NozzleOptions,
     ThroatCondition,
-    NozzleResult,
+    NozzleStation,
     NozzleResults,
     FiniteAreaChamber,
     RocketCaseParameters,

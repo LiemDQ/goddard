@@ -236,7 +236,12 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
                 freeze_idx = static_cast<int>(k);
             }
         }
-        stations.push_back({x, u, M, A_At, save_thermo_state(*thermo), damkohler, Da_min, freeze_idx});
+        ThermodynamicState station_thermo = m_gas.snapshot();
+        station_thermo.stagnation_enthalpy = H0;
+        const std::string freezing_species = (Da_min < std::numeric_limits<double>::max())
+            ? m_gas.thermo()->speciesName(static_cast<size_t>(freeze_idx)) : std::string();
+        stations.push_back({x, u, M, A_At, std::move(station_thermo), save_thermo_state(*thermo),
+            damkohler, Da_min, freezing_species});
     }
     return {throat, stations, x >= x_exit};
 }
