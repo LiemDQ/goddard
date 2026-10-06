@@ -19,11 +19,16 @@ Generated files (written into ``data/``):
                             ``RP-1``, ``AL(cr)``, ``CH4``, ``O2``, ...) resolves from
                             one file; no equation-of-state entries
 
+Every species' thermo node carries ``reference-pressure: 100000.0`` (1 bar, CEA's
+standard state); see ``REFERENCE_PRESSURE``.
+
 Provenance of the committed data:
     source      data/nasa9.dat (CEA 2002 thermo.inp, dated 9/09/04)
     commit      ef6511352aa98964f62fdb18360cd933f37890a3
     generated   2026-09-15
+    regenerated 2026-10-05, adding reference-pressure (1 bar) to every species
     command     python scripts/parse_nasa_data.py --input data/nasa9.dat --outdir data
+                (PyYAML is required: run it in the pixi ``docs`` environment)
 
 Determinism: species are emitted in source-file order, ``yaml.safe_dump`` is called
 with ``sort_keys=False``, and floats are written with ``repr`` (shortest round-trip
@@ -91,6 +96,16 @@ UNSUPPORTED_ELEMENTS = frozenset({"RN"})
 # and a large one makes the (P - P0) * M / (rho * R * T) term it adds to the chemical
 # potential negligible: 2.8e-5 for AL2O3(L) at 70 bar and 3000 K, i.e. 0.7 J/mol.
 CONDENSED_DENSITY = 1.0e6
+
+# Reference pressure [Pa] written into every species' thermo node. CEA's thermo.inp is
+# referenced to the standard-state pressure of 1 bar; Cantera assumes 1 atm for NASA9
+# and constant-cp thermo unless told otherwise, which leaves enthalpies unchanged but
+# shifts every equilibrium constant by (1.01325)^(sum of gaseous stoichiometric
+# coefficients), so equilibria at given (T, P) come out more dissociated than CEA's.
+# Cantera rejects a phase whose species disagree on the reference pressure, so the
+# constant-cp reactants, which share an ideal-gas phase with NASA9 species when loaded
+# from nasa9_reactants.yaml, carry the same value.
+REFERENCE_PRESSURE = 1.0e5
 
 
 class Nasa9Interval:
@@ -385,6 +400,7 @@ def species_node(
         # CEA assigned-enthalpy reactant: h(T) = h_formation, cp = 0, s = 0.
         node["thermo"] = {
             "model": "constant-cp",
+            "reference-pressure": REFERENCE_PRESSURE,
             "T0": record.assigned_temperature,
             "h0": f"{format_float(record.heat_of_formation)} J/mol",
             "s0": 0.0,
@@ -395,6 +411,7 @@ def species_node(
         temperature_ranges.extend(interval.T_max for interval in record.intervals)
         node["thermo"] = {
             "model": "NASA9",
+            "reference-pressure": REFERENCE_PRESSURE,
             "temperature-ranges": temperature_ranges,
             "data": [list(interval.coefficients) for interval in record.intervals],
         }
@@ -475,6 +492,10 @@ PROVENANCE = [
     "",
     "The only species dropped in the conversion are Rn and Rn+: Cantera's element",
     "table has no atomic weight for radon, which has no stable isotope.",
+    "",
+    "Every species carries reference-pressure: 100000.0 (1 bar), the standard-state",
+    "pressure of CEA's data; Cantera would otherwise assume 1 atm (regenerated with",
+    "this setting on 2026-10-05).",
 ]
 
 CONDENSED_HEADER = [
@@ -485,11 +506,11 @@ CONDENSED_HEADER = [
     "1.0e6 kg/m^3}. Gordon & McBride neglect the volume of condensed phases",
     "altogether: the NASA9 polynomials below give the standard-state properties",
     "at 1 bar and no pressure correction is intended. Cantera's StoichSubstance",
-    "does add (P - P0) * M / (rho * R * T) to the chemical potential, so the",
-    "density is chosen large enough to make that term negligible: 2.8e-5 for",
-    "AL2O3(L) at 70 bar and 3000 K, which is 0.7 J/mol against fit uncertainties",
-    "of kilojoules per mole. The value is a numerical placeholder and must not be",
-    "read as a physical density.",
+    "does add (P - P0) * M / (rho * R * T) to the chemical potential, P0 being",
+    "the 1 bar reference pressure, so the density is chosen large enough to make",
+    "that term negligible: 2.8e-5 for AL2O3(L) at 70 bar and 3000 K, which is",
+    "0.7 J/mol against fit uncertainties of kilojoules per mole. The value is a",
+    "numerical placeholder and must not be read as a physical density.",
 ]
 
 REACTANTS_HEADER = [

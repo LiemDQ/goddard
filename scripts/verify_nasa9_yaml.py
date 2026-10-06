@@ -11,9 +11,11 @@ It checks four things:
 1. Round trip. Every species in the three generated files is read back with
    ``ct.Species.list_from_file`` and compared field by field against the record parsed
    from ``data/nasa9.dat``: name, composition, temperature ranges and all nine NASA9
-   coefficients per interval, with exact float equality. The one quantity that cannot
-   be exact is the constant-cp ``h0``, which Cantera converts from J/mol to J/kmol;
-   its deviation is reported in units in the last place.
+   coefficients per interval, with exact float equality, and the reference pressure,
+   which must be CEA's 1 bar (``generator.REFERENCE_PRESSURE``) rather than Cantera's
+   1 atm default. The one quantity that cannot be exact is the constant-cp ``h0``,
+   which Cantera converts from J/mol to J/kmol; its deviation is reported in units in
+   the last place. The script exits with status 1 if any round-trip value mismatches.
 2. pycea cross-check. Cantera and pycea read the same source data, so their enthalpy
    and heat capacity must agree to round-off once the two gas constants are divided
    out (Cantera 3.2 uses R = 8314.462618 J/kmol/K, CEA 2002 uses 8314.51), and once
@@ -120,7 +122,7 @@ def expected_records() -> dict[str, list]:
     }
 
 
-def check_round_trip(element_map: dict[str, str]) -> None:
+def check_round_trip(element_map: dict[str, str]) -> int:
     section("1. Round trip: nasa9.dat vs. the generated YAML, exact float equality")
     total_species = 0
     total_values = 0
@@ -152,6 +154,13 @@ def check_round_trip(element_map: dict[str, str]) -> None:
                     f"!= {expected_composition}"
                 )
             file_values += len(expected_composition)
+
+            if species.thermo.reference_pressure != generator.REFERENCE_PRESSURE:
+                mismatches.append(
+                    f"{name}/{record.name}: reference pressure "
+                    f"{species.thermo.reference_pressure!r} != {generator.REFERENCE_PRESSURE!r}"
+                )
+            file_values += 1
 
             coefficients = list(species.thermo.coeffs)
             if record.is_constant_cp:
@@ -210,6 +219,7 @@ def check_round_trip(element_map: dict[str, str]) -> None:
           f"(J/mol -> J/kmol conversion inside Cantera)")
     for problem in mismatches[:20]:
         print("  ! " + problem)
+    return len(mismatches)
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +391,8 @@ def check_counts() -> None:
 
     solution = ct.Solution(GAS_FILE, "gas")
     print(f"\nct.Solution('data/nasa9_gas.yaml', 'gas'): {solution.n_species} species, "
-          f"{solution.n_elements} elements, T = {solution.T} K, P = {solution.P:.1f} Pa")
+          f"{solution.n_elements} elements, T = {solution.T} K, P = {solution.P:.1f} Pa, "
+          f"reference pressure = {solution.reference_pressure:.1f} Pa")
     print(f"elements: {' '.join(sorted(solution.element_names))}")
 
     reactant_phase = ct.Solution(
@@ -394,7 +405,8 @@ def check_counts() -> None:
     )
     reactant_phase.TPX = 20.27, 101325.0, "H2(L):1"
     print(f"reactant phase from nasa9_reactants.yaml: {reactant_phase.n_species} species, "
-          f"h(H2(L), 20.27 K) = {reactant_phase.enthalpy_mole:.6e} J/kmol")
+          f"h(H2(L), 20.27 K) = {reactant_phase.enthalpy_mole:.6e} J/kmol, "
+          f"reference pressure = {reactant_phase.reference_pressure:.1f} Pa")
 
 
 # ---------------------------------------------------------------------------
@@ -453,17 +465,22 @@ def check_spot_values() -> None:
 
     reference = ct.Solution(thermo="fixed-stoichiometry", species=[condensed["AL2O3(L)"]])
     reference.TP = 3000.0, 70e5
-    correction = (reference.P - ct.one_atm) / reference.density / (ct.gas_constant / reference.mean_molecular_weight * reference.T)
-    print(f"(P - P0) V / (R T) for AL2O3(L) at 70 bar, 3000 K: {correction:.2e}")
+    correction = (
+        (reference.P - reference.reference_pressure)
+        / reference.density
+        / (ct.gas_constant / reference.mean_molecular_weight * reference.T)
+    )
+    print(f"(P - P0) V / (R T) for AL2O3(L) at 70 bar, 3000 K, "
+          f"P0 = {reference.reference_pressure:g} Pa: {correction:.2e}")
 
 
 def main() -> int:
     element_map = check_element_map()
-    check_round_trip(element_map)
+    round_trip_mismatches = check_round_trip(element_map)
     check_counts()
     check_spot_values()
     check_against_pycea(element_map)
-    return 0
+    return 1 if round_trip_mismatches else 0
 
 
 if __name__ == "__main__":
