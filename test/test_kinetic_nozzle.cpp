@@ -61,6 +61,12 @@ protected:
         check_interval = std::max(s_results.stations.size()/num_checks,1ul);
     }
     
+    // Temperature [K] of a saved Cantera state; leaves s_gas in that state.
+    static double temperature_of(const std::vector<double>& state) {
+        s_gas->thermo()->restoreState(state);
+        return s_gas->thermo()->temperature();
+    }
+
     size_t check_interval = 1;
     NozzleOptions opts;
     static std::shared_ptr<Cantera::Solution> s_gas;
@@ -104,6 +110,75 @@ TEST_F(KineticNozzleTests, KineticThroatModelThrows) {
     EXPECT_THROW(
         { KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts); },
         std::invalid_argument);
+}
+
+TEST_F(KineticNozzleTests, GasConstructorKineticThroatModelThrows) {
+    // The Gas constructors must forward the options to the throat Nozzle, which rejects KINETIC.
+    opts.chemistry = GasChemistry::KINETIC;
+    Gas gas(*s_gas);
+    EXPECT_THROW(
+        { KineticNozzle nozzle(gas, s_profile, s_mdot, opts); },
+        std::invalid_argument);
+    EXPECT_THROW(
+        { KineticNozzle nozzle(gas, s_profile, s_mdot, s_inlet_state, opts); },
+        std::invalid_argument);
+}
+
+TEST_F(KineticNozzleTests, GasConstructorUsesThroatModelFromOptions) {
+    // The Gas constructor must honour options.chemistry: its throat equals the throat of a
+    // Nozzle with the same options, and the frozen throat is colder than the equilibrium one,
+    // because equilibrium recombination between chamber and throat releases heat.
+    std::vector<double> throat_temperatures;
+    for (GasChemistry throat_model : {GasChemistry::EQUILIBRIUM, GasChemistry::FROZEN}) {
+        opts.chemistry = throat_model;
+        s_gas->thermo()->restoreState(s_inlet_state);
+        Nozzle reference(Gas(*s_gas), opts);
+        double T_reference = temperature_of(reference.solve_throat_conditions().state);
+
+        s_gas->thermo()->restoreState(s_inlet_state);
+        KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, opts);
+        // One step is enough: only the throat is checked.
+        KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
+        ASSERT_TRUE(results.throat.converged);
+        double T_throat = temperature_of(results.throat.state);
+
+        EXPECT_NEAR(T_throat, T_reference, max_fp_error(T_reference, 1e-10, 1e-8))
+            << "KineticNozzle(Gas) throat must match Nozzle with the same throat model";
+        throat_temperatures.push_back(T_throat);
+    }
+    EXPECT_GT(throat_temperatures[0], throat_temperatures[1] + 1.0)
+        << "Equilibrium throat T (" << throat_temperatures[0]
+        << " K) must exceed frozen throat T (" << throat_temperatures[1] << " K)";
+}
+
+TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
+    // The inlet_state overload must expand from the supplied state, not from the Gas's
+    // current state. A colder inlet (same composition, 3000 K instead of the ~3500 K chamber)
+    // gives a colder throat, equal to that of a Nozzle started from the same state.
+    s_gas->thermo()->restoreState(s_inlet_state);
+    Nozzle default_nozzle(Gas(*s_gas), opts);
+    double T_throat_current = temperature_of(default_nozzle.solve_throat_conditions().state);
+
+    s_gas->thermo()->restoreState(s_inlet_state);
+    s_gas->thermo()->setState_TP(3000.0, s_gas->thermo()->pressure());
+    std::vector<double> cold_state(s_gas->thermo()->stateSize());
+    s_gas->thermo()->saveState(cold_state);
+    s_gas->thermo()->restoreState(s_inlet_state);
+
+    Nozzle cold_reference(Gas(*s_gas), cold_state, opts);
+    double T_throat_reference = temperature_of(cold_reference.solve_throat_conditions().state);
+
+    // The Gas holds the chamber state; only the supplied state is cold.
+    s_gas->thermo()->restoreState(s_inlet_state);
+    KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, cold_state, opts);
+    KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
+    ASSERT_TRUE(results.throat.converged);
+    double T_throat = temperature_of(results.throat.state);
+
+    EXPECT_NEAR(T_throat, T_throat_reference, max_fp_error(T_throat_reference, 1e-10, 1e-8))
+        << "Throat must follow from the supplied inlet state";
+    EXPECT_LT(T_throat, T_throat_current - 100.0)
+        << "A 500 K colder inlet must give a clearly colder throat than the Gas's own state";
 }
 
 // ---------------------------------------------------------------------------

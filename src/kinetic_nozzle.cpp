@@ -61,14 +61,15 @@ KineticNozzle::KineticNozzle(
 {
 }
 
-// Gas constructors: use provided Gas, override chemistry to FROZEN
+// Gas constructors: use provided Gas, override chemistry to FROZEN. `options.chemistry` selects
+// the throat model; the throat Nozzle rejects KINETIC.
 KineticNozzle::KineticNozzle(
     const Gas& gas,
     NozzleProfile& prof,
     double mass_flow_rate,
     NozzleOptions options)
 : profile(prof), mdot(mass_flow_rate), opts(options),
-  m_throat_solver(gas),
+  m_throat_solver(gas, options),
   m_gas(gas)
 {
     check_no_condensed_phases(m_gas);
@@ -83,8 +84,10 @@ KineticNozzle::KineticNozzle(
     double mass_flow_rate,
     std::vector<double> inlet_state,
     NozzleOptions options)
+// m_throat_solver is initialized before m_inlet_state (declaration order), so it receives a copy
+// of `inlet_state` before the move.
 : profile(prof), mdot(mass_flow_rate), opts(options),
-  m_throat_solver(gas),
+  m_throat_solver(gas, inlet_state, options),
   m_inlet_state(std::move(inlet_state)),
   m_gas(gas)
 {
