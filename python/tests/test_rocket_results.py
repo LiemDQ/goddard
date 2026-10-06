@@ -95,3 +95,20 @@ def test_frozen_nfz_defaults_to_the_chamber_everywhere():
     assert goddard.NozzleOptions().frozen_NFZ == 0
     assert goddard.NozzleOptions(chemistry=goddard.GasChemistry.FROZEN).frozen_NFZ == 0
     assert goddard.frozen_nozzle(10.0).frozen_NFZ == 0
+
+
+# ---------------------------------------------------------------------------
+# Combustor helpers accept numpy arrays
+# ---------------------------------------------------------------------------
+
+def test_combustor_helpers_accept_numpy_pressures():
+    """A numpy array of pressures must not be tested for truth value (ambiguous for size > 1)."""
+    np = pytest.importorskip("numpy")
+    pressures = np.array([20.0 * BAR, 50.0 * BAR])
+
+    for opts in (goddard.infinite_area_combustor(pressures),
+                 goddard.finite_mass_flux_combustor(1000.0, pressures),
+                 goddard.finite_contraction_ratio_combustor(2.0, pressures)):
+        assert list(opts.pressures) == pytest.approx(list(pressures))
+
+    assert list(goddard.infinite_area_combustor().pressures) == []

@@ -64,13 +64,14 @@ def infinite_area_combustor(pressures=None, process=CombustionProcess.ISOBARIC):
     """Create CombustorOptions for infinite area combustor.
 
     Args:
-        pressures: List of pressures [Pa]. Chamber pressures for isobaric combustion,
-            initial reactant pressures for isochoric combustion. Defaults to empty list.
+        pressures: Pressures [Pa], as a list or a 1-D numpy array. Chamber pressures for
+            isobaric combustion, initial reactant pressures for isochoric combustion.
+            Defaults to an empty list.
         process: CombustionProcess, isobaric (HP) or isochoric (UV). Defaults to ISOBARIC.
     """
     opts = CombustorOptions()
     opts.type = CombustorType.INFINITE_AREA
-    opts.pressures = pressures or []
+    opts.pressures = list(pressures) if pressures is not None else []
     opts.process = process
     return opts
 
@@ -83,12 +84,12 @@ def finite_mass_flux_combustor(mass_flux, pressures=None):
 
     Args:
         mass_flux: Mass flux through the chamber, mdot/A_c [kg/(m^2 s)].
-        pressures: List of injector-face pressures [Pa].
+        pressures: Injector-face pressures [Pa], as a list or a 1-D numpy array.
     """
     opts = CombustorOptions()
     opts.type = CombustorType.FINITE_MASS_FLUX
     opts.mass_flux = mass_flux
-    opts.pressures = pressures or []
+    opts.pressures = list(pressures) if pressures is not None else []
     return opts
 
 
@@ -99,12 +100,12 @@ def finite_contraction_ratio_combustor(contraction_ratio, pressures=None):
 
     Args:
         contraction_ratio: Chamber contraction ratio, A_c/A_t [-], greater than 1.
-        pressures: List of injector-face pressures [Pa].
+        pressures: Injector-face pressures [Pa], as a list or a 1-D numpy array.
     """
     opts = CombustorOptions()
     opts.type = CombustorType.FINITE_CONTRACTION_RATIO
     opts.contraction_ratio = contraction_ratio
-    opts.pressures = pressures or []
+    opts.pressures = list(pressures) if pressures is not None else []
     return opts
 
 
