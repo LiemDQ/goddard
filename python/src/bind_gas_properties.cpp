@@ -109,8 +109,9 @@ void bind_gas_properties(nb::module_& m) {
         .def_prop_ro("mean_molecular_weight", &Goddard::Gas::molecular_weight, DOC(Goddard, Gas, molecular_weight))
         .def_prop_ro("gamma_s", &Goddard::Gas::gamma_s, DOC(Goddard, Gas, gamma_s))
         .def_prop_ro("speed_of_sound", &Goddard::Gas::speed_of_sound, DOC(Goddard, Gas, speed_of_sound))
-        .def_prop_ro("num_species", &Goddard::Gas::num_species)
-        .def_prop_ro("species_names", &Goddard::Gas::species_names)
+        .def_prop_ro("num_species", &Goddard::Gas::num_species, DOC(Goddard, Gas, num_species))
+        .def_prop_ro("species_names", &Goddard::Gas::species_names,
+             DOC(Goddard, Gas, species_names))
         .def_prop_ro("mole_fractions", &Goddard::Gas::mole_fractions, DOC(Goddard, Gas, mole_fractions))
         .def_prop_ro("mass_fractions", &Goddard::Gas::mass_fractions, DOC(Goddard, Gas, mass_fractions))
         .def_prop_ro("element_names", &Goddard::Gas::element_names, DOC(Goddard, Gas, element_names))
@@ -221,13 +222,13 @@ void bind_gas_properties(nb::module_& m) {
                 const std::string& oxidizer, const std::string& basis) {
                  gas.set_equivalence_ratio(phi, fuel, oxidizer, to_basis(basis));
              }, "phi"_a, "fuel"_a, "oxidizer"_a, "basis"_a = "mole",
-             DOC(Goddard, Gas, set_fuel_fraction))
+             DOC(Goddard, Gas, set_equivalence_ratio))
         .def("set_OF_ratio",
              [](Goddard::Gas& gas, double OF, const std::string& fuel,
                 const std::string& oxidizer, const std::string& basis) {
                  gas.set_OF_ratio(OF, fuel, oxidizer, to_basis(basis));
              }, "OF"_a, "fuel"_a, "oxidizer"_a, "basis"_a = "mole",
-             DOC(Goddard, Gas, set_fuel_fraction))
+             DOC(Goddard, Gas, set_OF_ratio))
 
         .def("report", &Goddard::Gas::report, "show_thermo"_a = true, "threshold"_a = -1e-14,
              DOC(Goddard, Gas, report))
@@ -267,8 +268,7 @@ void bind_gas_properties(nb::module_& m) {
 
         // ---- Chemistry mode ----
 
-        .def_rw("chemistry", &Goddard::Gas::chemistry,
-            "GasChemistry mode (PERFECT_GAS, FROZEN, EQUILIBRIUM, KINETIC).");
+        .def_rw("chemistry", &Goddard::Gas::chemistry, DOC(Goddard, Gas, chemistry));
 
     gas_class.def("__repr__", [](const Goddard::Gas& self) {
         return std::format("<Gas '{}' T={:.6g} K P={:.6g} Pa species={} condensed={} chemistry={}>",

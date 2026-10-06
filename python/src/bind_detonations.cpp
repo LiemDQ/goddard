@@ -12,8 +12,8 @@ using namespace nb::literals;
 
 void bind_detonations(nb::module_& m) {
     nb::enum_<Goddard::DetonationBranch>(m, "DetonationBranch", DOC(Goddard, DetonationBranch))
-        .value("OVERDRIVEN", Goddard::DetonationBranch::OVERDRIVEN)
-        .value("UNDERDRIVEN", Goddard::DetonationBranch::UNDERDRIVEN);
+        .value("OVERDRIVEN", Goddard::DetonationBranch::OVERDRIVEN, DOC(Goddard, DetonationBranch, OVERDRIVEN))
+        .value("UNDERDRIVEN", Goddard::DetonationBranch::UNDERDRIVEN, DOC(Goddard, DetonationBranch, UNDERDRIVEN));
 
     // DetonationResult
     nb::class_<Goddard::DetonationResult>(m, "DetonationResult", DOC(Goddard, DetonationResult))

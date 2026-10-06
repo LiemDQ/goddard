@@ -7,7 +7,12 @@ namespace Goddard {
 
 /** Which family a characteristic belongs to: C+ (PLUS) or C- (MINUS). */
 enum class CharacteristicFamily {
-    UNSPECIFIED, PLUS, MINUS
+    /// No family assigned, or any family where used as a filter.
+    UNSPECIFIED,
+    /// Left-running C+ characteristic, along theta + mu.
+    PLUS,
+    /// Right-running C- characteristic, along theta - mu.
+    MINUS
 };
 
 /**

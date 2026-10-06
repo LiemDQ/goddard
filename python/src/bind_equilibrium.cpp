@@ -9,29 +9,50 @@ using namespace nb::literals;
 
 void bind_equilibrium(nb::module_& m) {
     // ExpansionProperties
-    nb::class_<Goddard::ExpansionProperties>(m, "ExpansionProperties")
-        .def_ro("dlV_dlT_P", &Goddard::ExpansionProperties::dlV_dlT_P)
-        .def_ro("dlV_dlP_T", &Goddard::ExpansionProperties::dlV_dlP_T)
-        .def_ro("spec_heat_p", &Goddard::ExpansionProperties::spec_heat_p)
-        .def_ro("gamma_s", &Goddard::ExpansionProperties::gamma_s)
-        .def_ro("spec_heat_v", &Goddard::ExpansionProperties::spec_heat_v)
-        .def_ro("gas_moles", &Goddard::ExpansionProperties::gas_moles)
-        .def_ro("total_moles", &Goddard::ExpansionProperties::total_moles)
-        .def_ro("density", &Goddard::ExpansionProperties::density)
-        .def_ro("speed_of_sound", &Goddard::ExpansionProperties::speed_of_sound)
-        .def_ro("frozen_spec_heat_p", &Goddard::ExpansionProperties::frozen_spec_heat_p)
-        .def_ro("frozen_gamma", &Goddard::ExpansionProperties::frozen_gamma)
-        .def_ro("pinned_transition", &Goddard::ExpansionProperties::pinned_transition);
+    nb::class_<Goddard::ExpansionProperties>(m, "ExpansionProperties",
+            DOC(Goddard, ExpansionProperties))
+        .def_ro("dlV_dlT_P", &Goddard::ExpansionProperties::dlV_dlT_P,
+             DOC(Goddard, ExpansionProperties, dlV_dlT_P))
+        .def_ro("dlV_dlP_T", &Goddard::ExpansionProperties::dlV_dlP_T,
+             DOC(Goddard, ExpansionProperties, dlV_dlP_T))
+        .def_ro("spec_heat_p", &Goddard::ExpansionProperties::spec_heat_p,
+             DOC(Goddard, ExpansionProperties, spec_heat_p))
+        .def_ro("gamma_s", &Goddard::ExpansionProperties::gamma_s,
+             DOC(Goddard, ExpansionProperties, gamma_s))
+        .def_ro("spec_heat_v", &Goddard::ExpansionProperties::spec_heat_v,
+             DOC(Goddard, ExpansionProperties, spec_heat_v))
+        .def_ro("gas_moles", &Goddard::ExpansionProperties::gas_moles,
+             DOC(Goddard, ExpansionProperties, gas_moles))
+        .def_ro("total_moles", &Goddard::ExpansionProperties::total_moles,
+             DOC(Goddard, ExpansionProperties, total_moles))
+        .def_ro("density", &Goddard::ExpansionProperties::density,
+             DOC(Goddard, ExpansionProperties, density))
+        .def_ro("speed_of_sound", &Goddard::ExpansionProperties::speed_of_sound,
+             DOC(Goddard, ExpansionProperties, speed_of_sound))
+        .def_ro("frozen_spec_heat_p", &Goddard::ExpansionProperties::frozen_spec_heat_p,
+             DOC(Goddard, ExpansionProperties, frozen_spec_heat_p))
+        .def_ro("frozen_gamma", &Goddard::ExpansionProperties::frozen_gamma,
+             DOC(Goddard, ExpansionProperties, frozen_gamma))
+        .def_ro("pinned_transition", &Goddard::ExpansionProperties::pinned_transition,
+             DOC(Goddard, ExpansionProperties, pinned_transition));
 
     // EquilibriumDerivatives
-    nb::class_<Goddard::EquilibriumDerivatives>(m, "EquilibriumDerivatives")
-        .def_ro("dpi_dlogT_P", &Goddard::EquilibriumDerivatives::dpi_dlogT_P)
-        .def_ro("dlogn_dlogT_P", &Goddard::EquilibriumDerivatives::dlogn_dlogT_P)
-        .def_ro("dpi_dlogP_T", &Goddard::EquilibriumDerivatives::dpi_dlogP_T)
-        .def_ro("dlogn_dlogP_T", &Goddard::EquilibriumDerivatives::dlogn_dlogP_T)
-        .def_ro("dn_condensed_dlogT_P", &Goddard::EquilibriumDerivatives::dn_condensed_dlogT_P)
-        .def_ro("dn_condensed_dlogP_T", &Goddard::EquilibriumDerivatives::dn_condensed_dlogP_T)
-        .def_ro("pinned_transition", &Goddard::EquilibriumDerivatives::pinned_transition);
+    nb::class_<Goddard::EquilibriumDerivatives>(m, "EquilibriumDerivatives",
+            DOC(Goddard, EquilibriumDerivatives))
+        .def_ro("dpi_dlogT_P", &Goddard::EquilibriumDerivatives::dpi_dlogT_P,
+             DOC(Goddard, EquilibriumDerivatives, dpi_dlogT_P))
+        .def_ro("dlogn_dlogT_P", &Goddard::EquilibriumDerivatives::dlogn_dlogT_P,
+             DOC(Goddard, EquilibriumDerivatives, dlogn_dlogT_P))
+        .def_ro("dpi_dlogP_T", &Goddard::EquilibriumDerivatives::dpi_dlogP_T,
+             DOC(Goddard, EquilibriumDerivatives, dpi_dlogP_T))
+        .def_ro("dlogn_dlogP_T", &Goddard::EquilibriumDerivatives::dlogn_dlogP_T,
+             DOC(Goddard, EquilibriumDerivatives, dlogn_dlogP_T))
+        .def_ro("dn_condensed_dlogT_P", &Goddard::EquilibriumDerivatives::dn_condensed_dlogT_P,
+             DOC(Goddard, EquilibriumDerivatives, dn_condensed_dlogT_P))
+        .def_ro("dn_condensed_dlogP_T", &Goddard::EquilibriumDerivatives::dn_condensed_dlogP_T,
+             DOC(Goddard, EquilibriumDerivatives, dn_condensed_dlogP_T))
+        .def_ro("pinned_transition", &Goddard::EquilibriumDerivatives::pinned_transition,
+             DOC(Goddard, EquilibriumDerivatives, pinned_transition));
 
     // Mixture-aware free functions. They take a Gas, so they account for condensed products.
     m.def("equilibrium_derivatives",

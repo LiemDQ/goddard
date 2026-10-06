@@ -4,11 +4,19 @@ namespace Goddard {
 
 using Composition = Cantera::Composition;
 
+/** Chemistry model used for derived properties such as `gamma_s` and for flow solvers. */
 enum class GasChemistry {
-    PERFECT_GAS,    // constant gamma, no Cantera dependency
-    FROZEN,         // composition fixed, variable thermodynamic properties via Cantera
-    EQUILIBRIUM,    // full chemical equilibrium at each point via Cantera
-    KINETIC         // finite-rate chemistry via Cantera kinetics
+    /**
+     * Calorically perfect gas: the flow solvers hold the ratio of specific heats constant.
+     * `Gas` property getters treat it as FROZEN.
+     */
+    PERFECT_GAS,
+    /// Composition held fixed; thermodynamic properties vary with temperature.
+    FROZEN,
+    /// Composition at chemical equilibrium at every state (shifting equilibrium).
+    EQUILIBRIUM,
+    /// Finite-rate chemistry from the reaction mechanism.
+    KINETIC
 };
 
 /**
@@ -23,8 +31,16 @@ enum class EquilibriumProperty {
     ENTROPY     //!< Specific entropy [J/(kg.K) of mixture] is held fixed (the SP problem).
 };
 
+/** Convergence settings of an iterative solver (shock and detonation jumps, MoC unit processes). */
 struct SolverOptions {
+    /**
+     * Absolute convergence tolerance. The quantity it bounds depends on the solver: the Newton
+     * step in log(P) and log(T) [-] for shock and detonation jumps, the wave angle bracket or
+     * deflection residual [rad] for oblique shock searches, and the corrector residuals and
+     * point validity checks of the MoC unit processes.
+     */
     double abstol = 1e-6;
+    /// Maximum number of iterations [-].
     int max_iterations = 100;
 };
 

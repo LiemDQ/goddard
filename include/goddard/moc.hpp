@@ -94,15 +94,31 @@ struct NozzleGeometry {
  *  NozzleGeometry::downstream_wall_curvature_radius or planar flow selects the fan) and
  *  additionally falls back to the fan when the Kliegel-Levine series misses the wall
  *  angle by more than kl_max_wall_angle_error. */
-enum class MocStartLine { AUTO, KLIEGEL_LEVINE, CENTERED_FAN };
+enum class MocStartLine {
+    /// Choose from the geometry, and fall back to the fan if Kliegel-Levine fails.
+    AUTO,
+    /**
+     * Kliegel-Levine transonic series for a throat with a circular-arc wall. Axisymmetric flow
+     * with a positive downstream wall curvature radius only.
+     */
+    KLIEGEL_LEVINE,
+    /// Centered Prandtl-Meyer expansion fan at a sharp throat corner.
+    CENTERED_FAN
+};
 
 /**
  * Options for method of characteristics simulations.
  */
 struct MocOptions {
     // -- Problem definition --
+    /// Planar or axisymmetric flow.
     MocFlowKind flow_type = MocFlowKind::PLANAR;
+    /**
+     * Thermodynamic model: PERFECT_GAS with constant `gamma`, or FROZEN / EQUILIBRIUM from the
+     * `Gas` given to the `MocNozzle` constructor.
+     */
     GasChemistry chemistry = GasChemistry::PERFECT_GAS;
+    /// Design a contour or analyze a given one.
     MocMode mode = MocMode::DESIGN_MIN_LENGTH;
 
     /// Number of C+ lines seeded from the initial expansion fan.
@@ -524,6 +540,7 @@ struct MocResult {
     double min_theta_x = 0.0; ///< Axial position of min_theta, in the unit of NozzleGeometry::throat_radius.
     double min_theta_y = 0.0; ///< Radial position of min_theta, in the unit of NozzleGeometry::throat_radius.
 
+    /// Flow state across the exit plane, for `compute_thrust_coefficient`.
     ExitPlane exit_plane;
 };
 

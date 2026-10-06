@@ -14,16 +14,24 @@
 
 namespace Goddard {
 
+/** Chamber model of a rocket combustor. */
 enum class CombustorType {
+    /// Infinite-area chamber: the combustion state is the stagnation state of the nozzle.
     INFINITE_AREA,
+    /// Finite-area chamber given by its mass flux mdot/A_c (`CombustorOptions::mass_flux`).
     FINITE_MASS_FLUX,
+    /// Finite-area chamber given by its contraction ratio A_c/A_t (`CombustorOptions::contraction_ratio`).
     FINITE_CONTRACTION_RATIO
 };
 
+/** How a mixture ratio value is interpreted. */
 enum class MixtureRatioType {
-    FUEL_FRAC, // fuel fraction
-    OF_RATIO,  // oxidizer-to-fuel
-    PHI_RATIO, // equivalence ratio
+    /// Fuel mass fraction m_fuel/(m_fuel + m_ox) [-], in [0, 1].
+    FUEL_FRAC,
+    /// Oxidizer-to-fuel mass ratio m_ox/m_fuel [-].
+    OF_RATIO,
+    /// Equivalence ratio [-]: the fuel-to-oxidizer ratio over its stoichiometric value.
+    PHI_RATIO,
 };
 
 /**
@@ -34,13 +42,19 @@ enum class CombustionProcess {
     ISOCHORIC, ///< Constant internal energy and specific volume (UV).
 };
 
+/** Settings of a combustor solve. */
 struct CombustorOptions {
+    /// Chamber model.
     CombustorType type = CombustorType::INFINITE_AREA;
+    /// How the mixture ratios passed to the solver are interpreted.
     MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
     /**
      * Pressures [Pa]. For `CombustionProcess::ISOBARIC` these are the chamber pressures. For
      * `CombustionProcess::ISOCHORIC` they are the initial pressures of the unburnt reactants;
-     * the chamber pressure is the result of the constant-volume combustion.
+     * the chamber pressure is the result of the constant-volume combustion. Read by
+     * `RocketProblem`; the `Combustor::solve` overloads take their pressures as an argument.
+     *
+     * In Python, assign a whole list: item assignment and append act on a copy.
      */
     std::vector<double> pressures;
     /** Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)]. */
@@ -62,10 +76,14 @@ struct CombustorOptions {
  */
 class BaseCombustor {
     public:
-    /** @param gas product gas. The solver works on its own copy of `gas`; the caller's `Gas` is not modified. */
+    /**
+     * @param gas product gas. The solver works on its own copy of `gas`; the caller's `Gas` is
+     * not modified.
+     */
     explicit BaseCombustor(const Gas& gas);
     virtual ~BaseCombustor() = default;
 
+    /** Names of the gas-phase product species, in phase order. */
     inline std::vector<std::string> get_combustion_species() {return m_gas.thermo()->speciesNames();}
 
     protected:
@@ -127,6 +145,14 @@ class Combustor : public BaseCombustor {
      * Solve with the `solve` overloads that take reactant temperatures.
      */
     Combustor(Gas gas, const std::string& fuel, const std::string& oxidizer);
+    /**
+     * Construct from fuel and oxidizer mole-fraction maps of product species of `gas`.
+     * Solve with the `solve` overloads that take reactant temperatures.
+     *
+     * @param gas Product gas. The solver works on its own copy.
+     * @param fuel Fuel composition, mole fractions by species name.
+     * @param oxidizer Oxidizer composition, mole fractions by species name.
+     */
     Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer);
 
     /**
@@ -155,7 +181,7 @@ class Combustor : public BaseCombustor {
      *                  pressures for `ISOCHORIC`.
      * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
      * @param options Combustor settings.
-     * @return Array of combustion states.
+     * @return Array of combustion states with shape (temperatures, pressures, mixture ratios).
      */
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
         const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options = {});
@@ -205,8 +231,21 @@ class Combustor : public BaseCombustor {
     ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});
 
+    /**
+     * Unburnt reactant mole fractions [-] for each mixture ratio, from the compositions given to
+     * the composition constructor.
+     *
+     * @param mixture_ratios Mixture ratios, interpreted according to `type`.
+     * @param type How `mixture_ratios` are interpreted.
+     * @return Array with one row per mixture ratio and one column per product species.
+     * @throws std::invalid_argument if a mixture ratio is out of range or gives negative fractions.
+     */
     Eigen::ArrayXXd generate_mole_fraction_matrix(
         const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type) const;
+    /**
+     * Unburnt reactant mass fractions [-] for each mixture ratio; see
+     * `generate_mole_fraction_matrix`.
+     */
     Eigen::ArrayXXd generate_mass_fraction_matrix(
         const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type) const;
 
@@ -225,25 +264,80 @@ class Combustor : public BaseCombustor {
 };
 
 /**
- * @brief Handles isobaric combustion with fuel, oxidizer, and recirculated flue gas streams.
+ * @brief Combustion of fuel, oxidizer and recirculated flue gas streams.
  * The recirculation ratio is defined as r = m_flue / (m_fuel + m_ox).
  * The flue gas state is user-supplied (fixed), not iteratively solved.
  */
 class DilutedCombustor : public BaseCombustor {
     public:
+    /**
+     * Construct from fuel, oxidizer and flue gas compositions given as mole-fraction strings of
+     * product species of `gas`, e.g. "H2:1".
+     */
     DilutedCombustor(Gas gas, const std::string& fuel, const std::string& oxidizer, const std::string& flue);
+    /**
+     * Construct from fuel, oxidizer and flue gas mole-fraction maps of product species of `gas`.
+     *
+     * @param gas Product gas. The solver works on its own copy.
+     * @param fuel Fuel composition, mole fractions by species name.
+     * @param oxidizer Oxidizer composition, mole fractions by species name.
+     * @param flue Recirculated flue gas composition, mole fractions by species name.
+     */
     DilutedCombustor(Gas gas, const Composition& fuel, const Composition& oxidizer, const Composition& flue);
 
+    /**
+     * Burn the diluted mixture with every stream at the same temperature, over a grid of
+     * temperatures, pressures and mixture ratios.
+     *
+     * @param temperatures Reactant temperatures [K], applied to all three streams.
+     * @param pressures Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+     *                  pressures for `ISOCHORIC`.
+     * @param mixture_ratios Fuel/oxidizer mixture ratios of the fresh feed, interpreted according
+     *                       to `options.mixture_type`.
+     * @param recirculation_ratio Flue gas mass over fresh feed mass, m_flue/(m_fuel + m_ox) [-].
+     * @param options Combustor settings.
+     * @return Array of combustion states with shape (temperatures, pressures, mixture ratios).
+     */
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
         const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio,
         const CombustorOptions& options = {});
+    /**
+     * Burn the diluted mixture with each stream at its own temperature, over a grid of
+     * pressures and mixture ratios. The mixture enthalpy is the mass-weighted blend of the
+     * stream enthalpies.
+     *
+     * @param fuel_temperature Fuel temperature [K].
+     * @param oxidizer_temperature Oxidizer temperature [K].
+     * @param flue_temperature Flue gas temperature [K].
+     * @param pressures Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+     *                  pressures for `ISOCHORIC`.
+     * @param mixture_ratios Fuel/oxidizer mixture ratios of the fresh feed, interpreted according
+     *                       to `options.mixture_type`.
+     * @param recirculation_ratio Flue gas mass over fresh feed mass, m_flue/(m_fuel + m_ox) [-].
+     * @param options Combustor settings.
+     * @return Array of combustion states with shape (mixture ratios, pressures).
+     */
     ThermoArray solve(double fuel_temperature, double oxidizer_temperature, double flue_temperature,
         const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         double recirculation_ratio, const CombustorOptions& options = {});
 
+    /**
+     * Unburnt mole fractions [-] of the fresh feed blended with flue gas, for each mixture ratio.
+     *
+     * @param mixture_ratios Fuel/oxidizer mixture ratios of the fresh feed, interpreted according
+     *                       to `type`.
+     * @param type How `mixture_ratios` are interpreted.
+     * @param recirculation_ratio Flue gas mass over fresh feed mass [-].
+     * @return Array with one row per mixture ratio and one column per product species.
+     * @throws std::invalid_argument if a mixture ratio is out of range or gives negative fractions.
+     */
     Eigen::ArrayXXd generate_mole_fraction_matrix(
         const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type,
         double recirculation_ratio) const;
+    /**
+     * Unburnt mass fractions [-] of the fresh feed blended with flue gas; see
+     * `generate_mole_fraction_matrix`.
+     */
     Eigen::ArrayXXd generate_mass_fraction_matrix(
         const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type,
         double recirculation_ratio) const;

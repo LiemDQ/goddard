@@ -40,21 +40,36 @@ struct RocketPerformance {
     double ivac_s() const { return ivac / STANDARD_GRAVITY; }
 };
 
+/** Kind of a station of a rocket problem. */
 enum class StationType {
-    CHAMBER,        ///< Chamber state. For a finite-area combustor, the injector face.
-    STAGNATION,     ///< Finite-area combustor only: stagnation state "inf" at P_inf.
-    COMBUSTION_END, ///< Finite-area combustor only: end of the constant-area chamber.
+    /// Chamber state. For a finite-area combustor, the injector face.
+    CHAMBER,
+    /// Finite-area combustor only: stagnation state "inf" at P_inf.
+    STAGNATION,
+    /// Finite-area combustor only: end of the constant-area chamber.
+    COMBUSTION_END,
+    /// Sonic throat.
     THROAT,
+    /// Nozzle exit station, one per expansion ratio.
     EXIT
 };
 
+/** One station of one operating point of a rocket problem. */
 struct RocketStation {
+    /// Name of the case the station belongs to.
     std::string case_name;
+    /// Kind of station.
     StationType type;
-    std::size_t of_index;        // index into the case's OF_ratios vector
-    std::size_t pressure_index;  // index into the case's pressures vector
-    std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
-    /** A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1 for THROAT, Ae/At for EXIT (also for pressure-ratio exits). */
+    /// Index into the case's mixture ratios (`ChemicalParameters::OF_ratios`) [-].
+    std::size_t of_index;
+    /// Index into the case's pressures (`CombustorOptions::pressures`) [-].
+    std::size_t pressure_index;
+    /// Index into the case's `NozzleOptions::expansion_ratios` [-]; only meaningful for EXIT.
+    std::size_t expansion_index;
+    /**
+     * A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1 for THROAT, Ae/At
+     * for EXIT (also for pressure-ratio exits).
+     */
     double area_ratio;
     /**
      * Mixture state of the station. Its `stagnation_enthalpy` [J/kg] is the enthalpy of the
@@ -84,6 +99,10 @@ struct RocketProblemCaseResult {
     MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
 };
 
+/**
+ * Results of a `RocketProblem`: a flat list of stations over every case, mixture ratio and
+ * pressure, with accessors by operating point and a CEA-style report.
+ */
 class RocketProblemResults {
 
 public:
@@ -98,11 +117,17 @@ public:
     RocketProblemResults(std::unordered_map<std::string, RocketProblemCaseResult>&& case_results,
                          Gas gas);
 
-    // Direct access to the flat station list.
+    /** Every station of every case, as one flat list. */
     const std::vector<RocketStation>& stations() const { return m_stations; }
 
-    // All stations of a given type, optionally filtered to a single case.
-    // If case_name is empty and there is exactly one case, that case is used.
+    /**
+     * All stations of one type in one case.
+     *
+     * @param type Station type.
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     * @throws std::runtime_error if the case does not exist, or if `case_name` is empty and the
+     * results hold several cases.
+     */
     std::vector<RocketStation> stations_of_type(StationType type, const std::string& case_name = "") const;
 
     /**
@@ -177,18 +202,34 @@ public:
                                   std::size_t exit_index = 0,
                                   const std::string& case_name = "") const;
 
-    // List all case names.
+    /** Names of all cases, in no particular order. */
     std::vector<std::string> case_names() const;
 
-    // The OF ratios used for a case.
-    // If case_name is empty and there is exactly one case, that case is used.
+    /**
+     * Mixture ratios of a case [-], interpreted through its `CombustorOptions::mixture_type`.
+     *
+     * @param case_name Case to read. May be empty when the results hold a single case.
+     */
     const std::vector<double>& of_ratios(const std::string& case_name = "") const;
 
-    // Generate a CEA-style formatted text report.
-    // If case_name is empty, all cases are reported in sorted order.
+    /**
+     * CEA-style formatted text report.
+     *
+     * @param case_name Case to report. Empty reports every case, sorted by name.
+     */
     std::string report(const std::string& case_name = "") const;
 
-    // Compute performance metrics from individual thermo states.
+    /**
+     * Rocket performance from the stagnation, throat and exit states.
+     *
+     * c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit velocity follows from
+     * the enthalpy drop h_0 - h_e, the area ratio from mass conservation, and CF = u_e / c*.
+     *
+     * @param chamber Stagnation state the nozzle expands from (the chamber of an infinite-area
+     * combustor).
+     * @param throat Throat state.
+     * @param exit Exit state.
+     */
     static RocketPerformance calculate_performance(
         const ThermodynamicState& chamber,
         const ThermodynamicState& throat,

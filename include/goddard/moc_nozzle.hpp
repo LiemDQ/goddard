@@ -25,6 +25,12 @@ namespace Goddard {
 class MocNozzle {
 public:
 
+    /**
+     * Solver for PERFECT_GAS chemistry, with no `Gas`. FROZEN and EQUILIBRIUM chemistry need
+     * the `Gas` constructor.
+     *
+     * @throws std::invalid_argument if `opts` is self-inconsistent.
+     */
     MocNozzle(MocOptions opts): options(std::move(opts)) { validate_moc_options(options); }
 
     /** Solver for real-gas chemistry. The solver works on its own copy of `gas`. */

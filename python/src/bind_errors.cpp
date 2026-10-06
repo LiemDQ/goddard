@@ -8,6 +8,13 @@ void bind_errors(nb::module_& m) {
     // tolerance and last residual as attributes (-1 when the solver does not report them).
     nb::exception<Goddard::ConvergenceError> convergence_error(m, "ConvergenceError",
                                                                PyExc_RuntimeError);
+    // error.hpp is not scanned for docstrings, so the class doc is written here.
+    convergence_error.attr("__doc__") =
+        "An iterative solve did not converge.\n\n"
+        "Attributes:\n"
+        "    iterations: Iterations performed before giving up; -1 if not reported.\n"
+        "    tolerance: Convergence tolerance the solver applied; -1 if not reported.\n"
+        "    residual: Last residual or step size; -1 if not reported.";
 
     // Translators registered later are tried first, so this one takes over from the
     // message-only translator of nb::exception.

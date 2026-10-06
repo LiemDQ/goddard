@@ -195,7 +195,9 @@ public:
      */
     std::vector<double> mass_fractions() const;
 
+    /** Number of gas-phase species [-]. Candidate condensed species are not counted. */
     size_t num_species() const;
+    /** Names of the gas-phase species, in phase order. */
     std::vector<std::string> species_names() const;
 
     // Chemistry-aware derived properties
@@ -326,6 +328,11 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
 
+    /**
+     * Set the composition from an equivalence ratio phi [-] of the given fuel and oxidizer,
+     * keeping temperature and pressure. Makes the new state the reference, as
+     * `set_fuel_fraction` does.
+     */
     void set_equivalence_ratio(
         double phi,
         const std::string& fuel_comp, 
@@ -337,6 +344,11 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
 
+    /**
+     * Set the composition from an oxidizer-to-fuel mass ratio O/F [-] of the given fuel and
+     * oxidizer, keeping temperature and pressure. Makes the new state the reference, as
+     * `set_fuel_fraction` does.
+     */
     void set_OF_ratio(
         double OF,
         const std::string& fuel_comp, 
@@ -581,6 +593,10 @@ public:
         return m_sol != nullptr;
     }
 
+    /**
+     * Chemistry model of derived properties: `gamma_s`, `speed_of_sound`,
+     * `expansion_properties` and `stagnation_pressure` follow it.
+     */
     GasChemistry chemistry;
 
 private:

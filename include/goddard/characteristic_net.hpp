@@ -9,7 +9,12 @@ namespace Goddard {
 
 /** How a characteristic chain stopped being marched. */
 enum class ChainTermination {
-    NOT_TERMINATED, WALL, AXIS
+    /// Not terminated at a boundary: still active, or stopped when the march ended.
+    NOT_TERMINATED,
+    /// Ended on the nozzle wall.
+    WALL,
+    /// Ended on the axis (centerline).
+    AXIS
 };
 
 /**

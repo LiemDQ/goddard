@@ -30,7 +30,7 @@ shared utilities for stream mixing and equilibration.)doc";
 static const char *__doc_Goddard_BaseCombustor_BaseCombustor =
 R"doc(Parameter ``gas``:
     product gas. The solver works on its own copy of `gas`; the
-    caller's `Gas` is not modified. */)doc";
+    caller's `Gas` is not modified.)doc";
 
 static const char *__doc_Goddard_BaseCombustor_combust =
 R"doc(Equilibrate reactant states in place and return them.
@@ -39,7 +39,7 @@ Throws:
     NotImplementedError for `CombustionProcess::ISOCHORIC` when
     `states` carries candidate condensed species.)doc";
 
-static const char *__doc_Goddard_BaseCombustor_get_combustion_species = R"doc()doc";
+static const char *__doc_Goddard_BaseCombustor_get_combustion_species = R"doc(Names of the gas-phase product species, in phase order.)doc";
 
 static const char *__doc_Goddard_BaseCombustor_m_gas = R"doc()doc";
 
@@ -97,21 +97,23 @@ static const char *__doc_Goddard_ChainMetadata_origin_point_idx = R"doc(Index in
 
 static const char *__doc_Goddard_ChainMetadata_termination = R"doc(How this chain stopped being marched.)doc";
 
-static const char *__doc_Goddard_ChainTermination = R"doc(How a characteristic chain stopped being marched. */)doc";
+static const char *__doc_Goddard_ChainTermination = R"doc(How a characteristic chain stopped being marched.)doc";
 
-static const char *__doc_Goddard_ChainTermination_AXIS = R"doc()doc";
+static const char *__doc_Goddard_ChainTermination_AXIS = R"doc(Ended on the axis (centerline).)doc";
 
-static const char *__doc_Goddard_ChainTermination_NOT_TERMINATED = R"doc()doc";
+static const char *__doc_Goddard_ChainTermination_NOT_TERMINATED =
+R"doc(Not terminated at a boundary: still active, or stopped when the march
+ended.)doc";
 
-static const char *__doc_Goddard_ChainTermination_WALL = R"doc()doc";
+static const char *__doc_Goddard_ChainTermination_WALL = R"doc(Ended on the nozzle wall.)doc";
 
-static const char *__doc_Goddard_CharacteristicFamily = R"doc(Which family a characteristic belongs to: C+ (PLUS) or C- (MINUS). */)doc";
+static const char *__doc_Goddard_CharacteristicFamily = R"doc(Which family a characteristic belongs to: C+ (PLUS) or C- (MINUS).)doc";
 
-static const char *__doc_Goddard_CharacteristicFamily_MINUS = R"doc()doc";
+static const char *__doc_Goddard_CharacteristicFamily_MINUS = R"doc(Right-running C- characteristic, along theta - mu.)doc";
 
-static const char *__doc_Goddard_CharacteristicFamily_PLUS = R"doc()doc";
+static const char *__doc_Goddard_CharacteristicFamily_PLUS = R"doc(Left-running C+ characteristic, along theta + mu.)doc";
 
-static const char *__doc_Goddard_CharacteristicFamily_UNSPECIFIED = R"doc()doc";
+static const char *__doc_Goddard_CharacteristicFamily_UNSPECIFIED = R"doc(No family assigned, or any family where used as a filter.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet =
 R"doc(The method-of-characteristics flow field mesh: every solved point, the
@@ -173,7 +175,7 @@ Returns:
 
 static const char *__doc_Goddard_CharacteristicNet_axis_point_indices =
 R"doc(Indices into `points` of the points lying on the centerline, in march
-order. */)doc";
+order.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_axis_points =
 R"doc(Every point at `axis_point_indices`, in march order. Kernel-
@@ -185,7 +187,7 @@ R"doc(Each entry is the chain of point indices along one characteristic.
 Note that wall and axis points terminate a chain, and also start the
 next chain.)doc";
 
-static const char *__doc_Goddard_CharacteristicNet_chain_metadata = R"doc(Metadata for each chain in `c_chains`, in the same order. */)doc";
+static const char *__doc_Goddard_CharacteristicNet_chain_metadata = R"doc(Metadata for each chain in `c_chains`, in the same order.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_create_chain =
 R"doc(Create a new characteristic with `pt_idx` as the starting point, and
@@ -194,7 +196,7 @@ add it to the tracking lists.
 Returns:
     Index of the chain)doc";
 
-static const char *__doc_Goddard_CharacteristicNet_empty = R"doc(True when the net holds no points at all. */)doc";
+static const char *__doc_Goddard_CharacteristicNet_empty = R"doc(True when the net holds no points at all.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_fronts =
 R"doc(Point indices of every marching front, axis to wall, in order.
@@ -204,7 +206,7 @@ exit plane once the march has completed. Empty for the chain-pairing
 ladder (minimum-length design), which has no synchronized front -- its
 topology lives entirely in `c_chains`.)doc";
 
-static const char *__doc_Goddard_CharacteristicNet_has_active_chains = R"doc(True while at least one chain is still being marched. */)doc";
+static const char *__doc_Goddard_CharacteristicNet_has_active_chains = R"doc(True while at least one chain is still being marched.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_leading_axis_point = R"doc(Get the leading axis point.)doc";
 
@@ -260,13 +262,13 @@ R"doc(Add a point where the C+ characteristic hits the wall without emitting
 a reflected C- characteristic. This is used when designing minimum
 length nozzles.)doc";
 
-static const char *__doc_Goddard_CharacteristicNet_terminate_chain = R"doc(Mark a chain as inactive. */)doc";
+static const char *__doc_Goddard_CharacteristicNet_terminate_chain = R"doc(Mark a chain as inactive.)doc";
 
-static const char *__doc_Goddard_CharacteristicNet_update_and_terminate_chain = R"doc(Mark a chain as inactive while updating the last point. */)doc";
+static const char *__doc_Goddard_CharacteristicNet_update_and_terminate_chain = R"doc(Mark a chain as inactive while updating the last point.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_wall_point_indices =
 R"doc(Indices into `points` of the points lying on the nozzle wall, in march
-order. */)doc";
+order.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_wall_points =
 R"doc(Every point at `wall_point_indices`, in march order. Kernel-
@@ -280,8 +282,7 @@ the invariant that `wall_x`/`wall_y` stay parallel to
 appends to `wall_point_indices` appends to these too.)doc";
 
 static const char *__doc_Goddard_CharacteristicNet_wall_y =
-R"doc(Radial coordinates of the wall points, in length units. See `wall_x`.
-*/)doc";
+R"doc(Radial coordinates of the wall points, in length units. See `wall_x`.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint =
 R"doc(One node of the characteristic mesh: the flow state at a point, plus
@@ -294,59 +295,65 @@ equilibrium chemistry they are dimensional SI.
 Plain data: the thermodynamic state is filled in by MocThermo (see
 moc_thermo.hpp), not by a method on this type.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_K_minus = R"doc(< Riemann invariant carried along the C- characteristic.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_K_minus = R"doc(Riemann invariant carried along the C- characteristic.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_K_plus = R"doc(< Riemann invariant carried along the C+ characteristic.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_K_plus = R"doc(Riemann invariant carried along the C+ characteristic.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_V = R"doc(< Velocity in m/s; equal to the Mach number for perfect gas.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_V = R"doc(Velocity in m/s; equal to the Mach number for perfect gas.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_cantera_state =
 R"doc(Serialized Cantera state; empty for perfect-gas solves. Internal
 detail.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_gamma_s = R"doc(< Local isentropic exponent.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_gamma_s = R"doc(Local isentropic exponent.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_mach = R"doc(< Local Mach number.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_mach = R"doc(Local Mach number.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_mu =
 R"doc(Mach angle asin(1/M), in radians. Sets the characteristic slopes theta
 +/- mu.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_nu = R"doc(< Prandtl-Meyer angle (or generalized PM function), in radians.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_nu = R"doc(Prandtl-Meyer angle (or generalized PM function), in radians.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_pressure =
-R"doc(< Static pressure; Pa, or normalized by the stagnation pressure for
+R"doc(Static pressure; Pa, or normalized by the stagnation pressure for
 perfect gas.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_temperature =
-R"doc(< Static temperature; K, or normalized by the stagnation temperature
+R"doc(Static temperature; K, or normalized by the stagnation temperature
 for perfect gas.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_theta = R"doc(< Flow angle, in radians.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_theta = R"doc(Flow angle, in radians.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_update_Ks = R"doc(Set K_plus/K_minus from the current theta and nu. */)doc";
+static const char *__doc_Goddard_CharacteristicPoint_update_Ks = R"doc(Set K_plus/K_minus from the current theta and nu.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_x = R"doc(< Axial position, in length units.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_x = R"doc(Axial position, in length units.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_y = R"doc(< Radial (or transverse) position, in length units.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_y = R"doc(Radial (or transverse) position, in length units.)doc";
 
-static const char *__doc_Goddard_ChemicalParameters = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters =
+R"doc(Thermodynamic data, reactants and mixture ratios of a `RocketProblem`.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_OF_ratios =
 R"doc(Mixture ratios of the problem, interpreted through
-`CombustorOptions::mixture_type` of each case (O/F ratios by default).)doc";
+`CombustorOptions::mixture_type` of each case (O/F ratios by default).
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_all_condensed_species =
 R"doc(Offer every species of `condensed_file` whose elements the product
-phase has. */)doc";
+phase has.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_condensed_file =
 R"doc(Cantera YAML file holding candidate condensed product species, e.g.
-`data/nasa9_condensed.yaml`. */)doc";
+`data/nasa9_condensed.yaml`.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_condensed_species =
 R"doc(Condensed species of `condensed_file` to offer as candidates. Ignored
-if `all_condensed_species`. */)doc";
+if `all_condensed_species`.
+
+In Python, assign a whole set: adding to the attribute acts on a copy.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_fuel_state =
 R"doc(Fuel stream state. `composition` is always a **mole-fraction** map.
@@ -356,19 +363,28 @@ weight percentages must be converted to mole fractions by the caller.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_fuel_weight_percentages =
 R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty. */)doc";
+if non-empty.
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_mixtures =
 R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty. */)doc";
+if non-empty.
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_oxidizer_state =
 R"doc(Oxidizer stream state; see `fuel_state` for how `composition` is
-interpreted. */)doc";
+interpreted.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_phi_ratios =
 R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty. */)doc";
+if non-empty.
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_ChemicalParameters_reactant_file =
 R"doc(Cantera YAML file holding the reactant species, e.g.
@@ -380,17 +396,24 @@ transferred to the products, so reactants need not be product species.
 When empty, the reactant compositions refer to product species and the
 combustor blends them in the product phase, as before.)doc";
 
-static const char *__doc_Goddard_ChemicalParameters_species = R"doc()doc";
+static const char *__doc_Goddard_ChemicalParameters_species =
+R"doc(Gas-phase product species of `thermo_file` to include, names matched
+exactly. Every product species must be listed: species not named are
+dropped from the phase.
 
-static const char *__doc_Goddard_ChemicalParameters_thermo_file = R"doc()doc";
+In Python, assign a whole set: adding to the attribute acts on a copy.)doc";
+
+static const char *__doc_Goddard_ChemicalParameters_thermo_file =
+R"doc(Cantera YAML file holding the gas-phase product species, e.g.
+`nasa9_gas.yaml`.)doc";
 
 static const char *__doc_Goddard_CombustionProcess =
 R"doc(Thermodynamic constraint held fixed while the reactants burn to
 equilibrium.)doc";
 
-static const char *__doc_Goddard_CombustionProcess_ISOBARIC = R"doc(< Constant enthalpy and pressure (HP).)doc";
+static const char *__doc_Goddard_CombustionProcess_ISOBARIC = R"doc(Constant enthalpy and pressure (HP).)doc";
 
-static const char *__doc_Goddard_CombustionProcess_ISOCHORIC = R"doc(< Constant internal energy and specific volume (UV).)doc";
+static const char *__doc_Goddard_CombustionProcess_ISOCHORIC = R"doc(Constant internal energy and specific volume (UV).)doc";
 
 static const char *__doc_Goddard_Combustor =
 R"doc(Combustion of a fuel and an oxidizer.
@@ -402,23 +425,25 @@ temperatures; - as reactant `Gas` streams carrying their own state
 (the third constructor), burnt with the `solve` overload that takes
 only pressures and mixture ratios.)doc";
 
-static const char *__doc_Goddard_CombustorOptions = R"doc()doc";
+static const char *__doc_Goddard_CombustorOptions = R"doc(Settings of a combustor solve.)doc";
 
 static const char *__doc_Goddard_CombustorOptions_contraction_ratio =
-R"doc(Contraction ratio A_c/A_t [-] of a `FINITE_CONTRACTION_RATIO` chamber.
-*/)doc";
+R"doc(Contraction ratio A_c/A_t [-] of a `FINITE_CONTRACTION_RATIO` chamber.)doc";
 
 static const char *__doc_Goddard_CombustorOptions_mass_flux =
-R"doc(Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)].
-*/)doc";
+R"doc(Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)].)doc";
 
-static const char *__doc_Goddard_CombustorOptions_mixture_type = R"doc()doc";
+static const char *__doc_Goddard_CombustorOptions_mixture_type = R"doc(How the mixture ratios passed to the solver are interpreted.)doc";
 
 static const char *__doc_Goddard_CombustorOptions_pressures =
 R"doc(Pressures [Pa]. For `CombustionProcess::ISOBARIC` these are the
 chamber pressures. For `CombustionProcess::ISOCHORIC` they are the
 initial pressures of the unburnt reactants; the chamber pressure is
-the result of the constant-volume combustion.)doc";
+the result of the constant-volume combustion. Read by `RocketProblem`;
+the `Combustor::solve` overloads take their pressures as an argument.
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_CombustorOptions_process =
 R"doc(Combustion constraint. With `ISOCHORIC` in a `RocketProblem`, the
@@ -426,22 +451,40 @@ constant-volume equilibrium state is used as the stagnation state of a
 steady isentropic nozzle expansion, so the reported performance is
 that idealization. It is not a Chapman-Jouguet detonation model.)doc";
 
-static const char *__doc_Goddard_CombustorOptions_type = R"doc()doc";
+static const char *__doc_Goddard_CombustorOptions_type = R"doc(Chamber model.)doc";
 
-static const char *__doc_Goddard_CombustorType = R"doc()doc";
+static const char *__doc_Goddard_CombustorType = R"doc(Chamber model of a rocket combustor.)doc";
 
-static const char *__doc_Goddard_CombustorType_FINITE_CONTRACTION_RATIO = R"doc()doc";
+static const char *__doc_Goddard_CombustorType_FINITE_CONTRACTION_RATIO =
+R"doc(Finite-area chamber given by its contraction ratio A_c/A_t
+(`CombustorOptions::contraction_ratio`).)doc";
 
-static const char *__doc_Goddard_CombustorType_FINITE_MASS_FLUX = R"doc()doc";
+static const char *__doc_Goddard_CombustorType_FINITE_MASS_FLUX =
+R"doc(Finite-area chamber given by its mass flux mdot/A_c
+(`CombustorOptions::mass_flux`).)doc";
 
-static const char *__doc_Goddard_CombustorType_INFINITE_AREA = R"doc()doc";
+static const char *__doc_Goddard_CombustorType_INFINITE_AREA =
+R"doc(Infinite-area chamber: the combustion state is the stagnation state of
+the nozzle.)doc";
 
 static const char *__doc_Goddard_Combustor_Combustor =
 R"doc(Construct from fuel and oxidizer compositions, given as product
 species of `gas`. Solve with the `solve` overloads that take reactant
 temperatures.)doc";
 
-static const char *__doc_Goddard_Combustor_Combustor_2 = R"doc()doc";
+static const char *__doc_Goddard_Combustor_Combustor_2 =
+R"doc(Construct from fuel and oxidizer mole-fraction maps of product species
+of `gas`. Solve with the `solve` overloads that take reactant
+temperatures.
+
+Parameter ``gas``:
+    Product gas. The solver works on its own copy.
+
+Parameter ``fuel``:
+    Fuel composition, mole fractions by species name.
+
+Parameter ``oxidizer``:
+    Oxidizer composition, mole fractions by species name.)doc";
 
 static const char *__doc_Goddard_Combustor_Combustor_3 =
 R"doc(Construct from reactant streams given as `Gas` objects.
@@ -466,9 +509,27 @@ Parameter ``fuel``:
 Parameter ``oxidizer``:
     Oxidizer stream at its own state.)doc";
 
-static const char *__doc_Goddard_Combustor_generate_mass_fraction_matrix = R"doc()doc";
+static const char *__doc_Goddard_Combustor_generate_mass_fraction_matrix =
+R"doc(Unburnt reactant mass fractions [-] for each mixture ratio; see
+`generate_mole_fraction_matrix`.)doc";
 
-static const char *__doc_Goddard_Combustor_generate_mole_fraction_matrix = R"doc()doc";
+static const char *__doc_Goddard_Combustor_generate_mole_fraction_matrix =
+R"doc(Unburnt reactant mole fractions [-] for each mixture ratio, from the
+compositions given to the composition constructor.
+
+Parameter ``mixture_ratios``:
+    Mixture ratios, interpreted according to `type`.
+
+Parameter ``type``:
+    How `mixture_ratios` are interpreted.
+
+Returns:
+    Array with one row per mixture ratio and one column per product
+    species.
+
+Throws:
+    std::invalid_argument if a mixture ratio is out of range or gives
+    negative fractions.)doc";
 
 static const char *__doc_Goddard_Combustor_m_fuel_composition = R"doc()doc";
 
@@ -497,7 +558,8 @@ Parameter ``options``:
     Combustor settings.
 
 Returns:
-    Array of combustion states.)doc";
+    Array of combustion states with shape (temperatures, pressures,
+    mixture ratios).)doc";
 
 static const char *__doc_Goddard_Combustor_solve_2 =
 R"doc(Burn the fuel and oxidizer compositions given to the composition
@@ -572,7 +634,7 @@ the stream does not have are zero.)doc";
 
 static const char *__doc_Goddard_CondensedPhaseSet =
 R"doc(Candidate condensed species of a `Gas`. Implementation detail; see
-`condensed.hpp`. */)doc";
+`condensed.hpp`.)doc";
 
 static const char *__doc_Goddard_CondensedPhaseSet_2 = R"doc()doc";
 
@@ -585,10 +647,10 @@ CJ speed the two roots merge, and below it there is no steady
 solution. Both branches therefore take a drive factor u1/u_CJ > 1.)doc";
 
 static const char *__doc_Goddard_DetonationBranch_OVERDRIVEN =
-R"doc(< Strong root: higher pressure, products subsonic relative to the
+R"doc(Strong root: higher pressure, products subsonic relative to the
 wave.)doc";
 
-static const char *__doc_Goddard_DetonationBranch_UNDERDRIVEN = R"doc(< Weak root: lower pressure, products supersonic relative to the wave.)doc";
+static const char *__doc_Goddard_DetonationBranch_UNDERDRIVEN = R"doc(Weak root: lower pressure, products supersonic relative to the wave.)doc";
 
 static const char *__doc_Goddard_DetonationResult =
 R"doc(Jump conditions across a planar detonation, in the frame of the wave.
@@ -601,33 +663,33 @@ releases no heat) has `valid = false` and every other field set to -1.)doc";
 
 static const char *__doc_Goddard_DetonationResult_density_ratio =
 R"doc(Density ratio rho2/rho1 [-]. It is also the ratio u1/u2 of the
-velocities relative to the wave. */)doc";
+velocities relative to the wave.)doc";
 
 static const char *__doc_Goddard_DetonationResult_drive_factor =
 R"doc(Wave speed over the CJ speed of the mixture [-]. 1 for a CJ
-detonation. */)doc";
+detonation.)doc";
 
 static const char *__doc_Goddard_DetonationResult_mach_in =
 R"doc(Wave Mach number u1/a1, with the frozen sound speed of the unburned
-gas [-]. */)doc";
+gas [-].)doc";
 
 static const char *__doc_Goddard_DetonationResult_mach_out =
 R"doc(Mach number of the products relative to the wave, u2/a2, with the
 equilibrium sound speed [-]. 1 for a CJ detonation, below 1 when
 overdriven and above 1 when under-driven.)doc";
 
-static const char *__doc_Goddard_DetonationResult_molecular_weight_ratio = R"doc(Molecular weight ratio M2/M1 [-], with M = 1/n the gas molar mass. */)doc";
+static const char *__doc_Goddard_DetonationResult_molecular_weight_ratio = R"doc(Molecular weight ratio M2/M1 [-], with M = 1/n the gas molar mass.)doc";
 
-static const char *__doc_Goddard_DetonationResult_static_pressure_ratio = R"doc(Static pressure ratio P2/P1 [-]. */)doc";
+static const char *__doc_Goddard_DetonationResult_static_pressure_ratio = R"doc(Static pressure ratio P2/P1 [-].)doc";
 
-static const char *__doc_Goddard_DetonationResult_static_temperature_ratio = R"doc(Static temperature ratio T2/T1 [-]. */)doc";
+static const char *__doc_Goddard_DetonationResult_static_temperature_ratio = R"doc(Static temperature ratio T2/T1 [-].)doc";
 
 static const char *__doc_Goddard_DetonationResult_total_pressure_ratio =
 R"doc(Stagnation pressure ratio P02/P01 [-], in the frame of the wave. P01
 is the frozen stagnation pressure of the unburned gas and P02 the
 equilibrium stagnation pressure of the products.)doc";
 
-static const char *__doc_Goddard_DetonationResult_valid = R"doc(False if the inputs admit no detonation. */)doc";
+static const char *__doc_Goddard_DetonationResult_valid = R"doc(False if the inputs admit no detonation.)doc";
 
 static const char *__doc_Goddard_DetonationResult_velocity =
 R"doc(Wave speed relative to the unburned gas [m/s]. NaN from the perfect-
@@ -745,7 +807,7 @@ independent copy.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_pre_detonation_state =
 R"doc(Gas at the unburned state, with the chemistry it had at construction.
-An independent copy. */)doc";
+An independent copy.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_reflected_detonation =
 R"doc(Detonation reflected as a shock from the closed end of a tube, with
@@ -765,11 +827,11 @@ Returns:
     incident detonation and reflected shock; invalid if the incident
     detonation is invalid)doc";
 
-static const char *__doc_Goddard_DetonationSolver_reset = R"doc(Restore the unburned state and the construction chemistry. */)doc";
+static const char *__doc_Goddard_DetonationSolver_reset = R"doc(Restore the unburned state and the construction chemistry.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_solve_chapman_jouguet =
 R"doc(Solve the CJ detonation from the unburned state and store it with its
-states. */)doc";
+states.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_solve_driven =
 R"doc(Overdriven or under-driven detonation at `velocity`, whose drive
@@ -778,7 +840,7 @@ the post and von Neumann states.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_store_unburned_states =
 R"doc(Record the unburned state as both the post and the von Neumann state,
-for an invalid result. */)doc";
+for an invalid result.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_von_neumann_state =
 R"doc(Gas behind the leading frozen shock of the most recent solve, with
@@ -786,18 +848,55 @@ FROZEN chemistry. After an invalid result it is the unburned state. An
 independent copy.)doc";
 
 static const char *__doc_Goddard_DilutedCombustor =
-R"doc(Handles isobaric combustion with fuel, oxidizer, and recirculated flue
-gas streams. The recirculation ratio is defined as r = m_flue /
-(m_fuel + m_ox). The flue gas state is user-supplied (fixed), not
-iteratively solved.)doc";
+R"doc(Combustion of fuel, oxidizer and recirculated flue gas streams. The
+recirculation ratio is defined as r = m_flue / (m_fuel + m_ox). The
+flue gas state is user-supplied (fixed), not iteratively solved.)doc";
 
-static const char *__doc_Goddard_DilutedCombustor_DilutedCombustor = R"doc()doc";
+static const char *__doc_Goddard_DilutedCombustor_DilutedCombustor =
+R"doc(Construct from fuel, oxidizer and flue gas compositions given as mole-
+fraction strings of product species of `gas`, e.g. "H2:1".)doc";
 
-static const char *__doc_Goddard_DilutedCombustor_DilutedCombustor_2 = R"doc()doc";
+static const char *__doc_Goddard_DilutedCombustor_DilutedCombustor_2 =
+R"doc(Construct from fuel, oxidizer and flue gas mole-fraction maps of
+product species of `gas`.
 
-static const char *__doc_Goddard_DilutedCombustor_generate_mass_fraction_matrix = R"doc()doc";
+Parameter ``gas``:
+    Product gas. The solver works on its own copy.
 
-static const char *__doc_Goddard_DilutedCombustor_generate_mole_fraction_matrix = R"doc()doc";
+Parameter ``fuel``:
+    Fuel composition, mole fractions by species name.
+
+Parameter ``oxidizer``:
+    Oxidizer composition, mole fractions by species name.
+
+Parameter ``flue``:
+    Recirculated flue gas composition, mole fractions by species name.)doc";
+
+static const char *__doc_Goddard_DilutedCombustor_generate_mass_fraction_matrix =
+R"doc(Unburnt mass fractions [-] of the fresh feed blended with flue gas;
+see `generate_mole_fraction_matrix`.)doc";
+
+static const char *__doc_Goddard_DilutedCombustor_generate_mole_fraction_matrix =
+R"doc(Unburnt mole fractions [-] of the fresh feed blended with flue gas,
+for each mixture ratio.
+
+Parameter ``mixture_ratios``:
+    Fuel/oxidizer mixture ratios of the fresh feed, interpreted
+    according to `type`.
+
+Parameter ``type``:
+    How `mixture_ratios` are interpreted.
+
+Parameter ``recirculation_ratio``:
+    Flue gas mass over fresh feed mass [-].
+
+Returns:
+    Array with one row per mixture ratio and one column per product
+    species.
+
+Throws:
+    std::invalid_argument if a mixture ratio is out of range or gives
+    negative fractions.)doc";
 
 static const char *__doc_Goddard_DilutedCombustor_m_flue_composition = R"doc()doc";
 
@@ -805,17 +904,71 @@ static const char *__doc_Goddard_DilutedCombustor_m_fuel_composition = R"doc()do
 
 static const char *__doc_Goddard_DilutedCombustor_m_oxidizer_composition = R"doc()doc";
 
-static const char *__doc_Goddard_DilutedCombustor_solve = R"doc()doc";
+static const char *__doc_Goddard_DilutedCombustor_solve =
+R"doc(Burn the diluted mixture with every stream at the same temperature,
+over a grid of temperatures, pressures and mixture ratios.
 
-static const char *__doc_Goddard_DilutedCombustor_solve_2 = R"doc()doc";
+Parameter ``temperatures``:
+    Reactant temperatures [K], applied to all three streams.
 
-static const char *__doc_Goddard_EquilibriumDerivatives = R"doc()doc";
+Parameter ``pressures``:
+    Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+    pressures for `ISOCHORIC`.
 
-static const char *__doc_Goddard_EquilibriumDerivatives_dlogn_dlogP_T = R"doc((d log n / d log P)_T [-]. */)doc";
+Parameter ``mixture_ratios``:
+    Fuel/oxidizer mixture ratios of the fresh feed, interpreted
+    according to `options.mixture_type`.
+
+Parameter ``recirculation_ratio``:
+    Flue gas mass over fresh feed mass, m_flue/(m_fuel + m_ox) [-].
+
+Parameter ``options``:
+    Combustor settings.
+
+Returns:
+    Array of combustion states with shape (temperatures, pressures,
+    mixture ratios).)doc";
+
+static const char *__doc_Goddard_DilutedCombustor_solve_2 =
+R"doc(Burn the diluted mixture with each stream at its own temperature, over
+a grid of pressures and mixture ratios. The mixture enthalpy is the
+mass-weighted blend of the stream enthalpies.
+
+Parameter ``fuel_temperature``:
+    Fuel temperature [K].
+
+Parameter ``oxidizer_temperature``:
+    Oxidizer temperature [K].
+
+Parameter ``flue_temperature``:
+    Flue gas temperature [K].
+
+Parameter ``pressures``:
+    Pressures [Pa]: chamber pressures for `ISOBARIC`, initial reactant
+    pressures for `ISOCHORIC`.
+
+Parameter ``mixture_ratios``:
+    Fuel/oxidizer mixture ratios of the fresh feed, interpreted
+    according to `options.mixture_type`.
+
+Parameter ``recirculation_ratio``:
+    Flue gas mass over fresh feed mass, m_flue/(m_fuel + m_ox) [-].
+
+Parameter ``options``:
+    Combustor settings.
+
+Returns:
+    Array of combustion states with shape (mixture ratios, pressures).)doc";
+
+static const char *__doc_Goddard_EquilibriumDerivatives =
+R"doc(Derivatives of the equilibrium composition with respect to log T and
+log P (Gordon & McBride, RP-1311 eqs. 2.56-2.66). pi_i = -lambda_i/(R
+T), with lambda_i the Lagrange multiplier of the balance of element i.)doc";
+
+static const char *__doc_Goddard_EquilibriumDerivatives_dlogn_dlogP_T = R"doc((d log n / d log P)_T [-].)doc";
 
 static const char *__doc_Goddard_EquilibriumDerivatives_dlogn_dlogT_P =
-R"doc((d log n / d log T)_P [-], n being the moles of gas per kg of mixture.
-*/)doc";
+R"doc((d log n / d log T)_P [-], n being the moles of gas per kg of mixture.)doc";
 
 static const char *__doc_Goddard_EquilibriumDerivatives_dn_condensed_dlogP_T =
 R"doc((d n_k / d log P)_T [kmol per kg of mixture], same ordering as
@@ -830,9 +983,9 @@ R"doc((d n_k / d log T)_P [kmol per kg of mixture], one entry per condensed
 species that is currently present, in `Gas::condensed_species_names()`
 order restricted to those species. Empty for a gas-only mixture.)doc";
 
-static const char *__doc_Goddard_EquilibriumDerivatives_dpi_dlogP_T = R"doc((d pi_i / d log P)_T [-], one entry per element of the gas phase. */)doc";
+static const char *__doc_Goddard_EquilibriumDerivatives_dpi_dlogP_T = R"doc((d pi_i / d log P)_T [-], one entry per element of the gas phase.)doc";
 
-static const char *__doc_Goddard_EquilibriumDerivatives_dpi_dlogT_P = R"doc((d pi_i / d log T)_P [-], one entry per element of the gas phase. */)doc";
+static const char *__doc_Goddard_EquilibriumDerivatives_dpi_dlogT_P = R"doc((d pi_i / d log T)_P [-], one entry per element of the gas phase.)doc";
 
 static const char *__doc_Goddard_EquilibriumDerivatives_pinned_transition =
 R"doc(True when the mixture sits exactly at a condensed phase transition
@@ -852,19 +1005,19 @@ on temperature.)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_T_default =
 R"doc(Temperature [K] used to start the HP/SP root find when no better guess
-is available. */)doc";
+is available.)doc";
 
-static const char *__doc_Goddard_EquilibriumOptions_T_max = R"doc(Highest temperature [K] the HP/SP root find will consider. */)doc";
+static const char *__doc_Goddard_EquilibriumOptions_T_max = R"doc(Highest temperature [K] the HP/SP root find will consider.)doc";
 
-static const char *__doc_Goddard_EquilibriumOptions_T_min = R"doc(Lowest temperature [K] the HP/SP root find will consider. */)doc";
+static const char *__doc_Goddard_EquilibriumOptions_T_min = R"doc(Lowest temperature [K] the HP/SP root find will consider.)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_T_rel_tol =
 R"doc(Relative convergence tolerance on temperature for the HP/SP outer root
-find [-]. */)doc";
+find [-].)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_max_bracket_steps =
 R"doc(Maximum number of doubling steps used to bracket the HP/SP temperature
-root. */)doc";
+root.)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_max_steps =
 R"doc(Maximum number of steps of the inner Gibbs solve. The Cantera default
@@ -873,7 +1026,7 @@ condensed phase converges slowly.)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_rtol =
 R"doc(Relative tolerance of the inner constant-T, constant-P Gibbs solve
-[-]. */)doc";
+[-].)doc";
 
 static const char *__doc_Goddard_EquilibriumProperty =
 R"doc(Property held constant together with pressure by the multiphase
@@ -885,11 +1038,11 @@ dimensional root find on temperature over constant-temperature,
 constant-pressure solves. This enum selects which of the two.)doc";
 
 static const char *__doc_Goddard_EquilibriumProperty_ENTHALPY =
-R"doc(//!< Specific enthalpy [J/kg of mixture] is held fixed (the HP
+R"doc(Specific enthalpy [J/kg of mixture] is held fixed (the HP
 problem).)doc";
 
 static const char *__doc_Goddard_EquilibriumProperty_ENTROPY =
-R"doc(//!< Specific entropy [J/(kg.K) of mixture] is held fixed (the SP
+R"doc(Specific entropy [J/(kg.K) of mixture] is held fixed (the SP
 problem).)doc";
 
 static const char *__doc_Goddard_ExitPlane =
@@ -897,65 +1050,72 @@ R"doc(Flow state sampled across the nozzle exit plane, as parallel arrays
 ordered from the axis outward. This is what
 compute_thrust_coefficient() integrates over.)doc";
 
-static const char *__doc_Goddard_ExitPlane_gamma_s = R"doc(< Local isentropic exponent.)doc";
+static const char *__doc_Goddard_ExitPlane_gamma_s = R"doc(Local isentropic exponent.)doc";
 
-static const char *__doc_Goddard_ExitPlane_mach = R"doc(< Local Mach number.)doc";
+static const char *__doc_Goddard_ExitPlane_mach = R"doc(Local Mach number.)doc";
 
 static const char *__doc_Goddard_ExitPlane_pressure =
-R"doc(< Static pressure; Pa for frozen/equilibrium, normalized by the
+R"doc(Static pressure; Pa for frozen/equilibrium, normalized by the
 stagnation pressure for perfect gas.)doc";
 
 static const char *__doc_Goddard_ExitPlane_temperature =
-R"doc(< Static temperature; K for frozen/equilibrium, normalized by the
+R"doc(Static temperature; K for frozen/equilibrium, normalized by the
 stagnation temperature for perfect gas.)doc";
 
-static const char *__doc_Goddard_ExitPlane_theta = R"doc(< Local flow angle, in radians.)doc";
+static const char *__doc_Goddard_ExitPlane_theta = R"doc(Local flow angle, in radians.)doc";
 
 static const char *__doc_Goddard_ExitPlane_velocity =
-R"doc(< Dimensional V (m/s) for frozen/equilibrium; equal to the Mach number
+R"doc(Dimensional V (m/s) for frozen/equilibrium; equal to the Mach number
 for perfect gas.)doc";
 
 static const char *__doc_Goddard_ExitPlane_y =
-R"doc(< Radial (or transverse) station, in the unit of
+R"doc(Radial (or transverse) station, in the unit of
 NozzleGeometry::throat_radius.)doc";
 
-static const char *__doc_Goddard_ExpansionProperties = R"doc()doc";
+static const char *__doc_Goddard_ExpansionProperties =
+R"doc(Thermodynamic derivatives that govern an isentropic expansion, per kg
+of mixture. Computed at equilibrium (`equilibrium_properties`) or at
+frozen composition (`frozen_properties`); the `frozen_*` fields are at
+frozen composition in both cases.)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_density = R"doc(Mixture density [kg/m^3], P / (gas_moles * R * T). */)doc";
+static const char *__doc_Goddard_ExpansionProperties_density = R"doc(Mixture density [kg/m^3], P / (gas_moles * R * T).)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_dlV_dlP_T = R"doc((d log V / d log P)_T [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_dlV_dlP_T = R"doc((d log V / d log P)_T [-].)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_dlV_dlT_P = R"doc((d log V / d log T)_P [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_dlV_dlT_P = R"doc((d log V / d log T)_P [-].)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_frozen_gamma = R"doc(Frozen-composition ratio of specific heats cp/cv [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_frozen_gamma = R"doc(Frozen-composition ratio of specific heats cp/cv [-].)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_frozen_spec_heat_p = R"doc(Frozen-composition constant-pressure specific heat [J/(kg.K)]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_frozen_spec_heat_p = R"doc(Frozen-composition constant-pressure specific heat [J/(kg.K)].)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_gamma_s = R"doc(Isentropic exponent -(d log P / d log V)_s [-]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_gamma_s = R"doc(Isentropic exponent -(d log P / d log V)_s [-].)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_gas_moles = R"doc(Moles of gas per kg of mixture [kmol/kg] (CEA's 1/M). */)doc";
+static const char *__doc_Goddard_ExpansionProperties_gas_moles = R"doc(Moles of gas per kg of mixture [kmol/kg] (CEA's 1/M).)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_pinned_transition = R"doc(True when the mixture sits exactly at a condensed phase transition. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_pinned_transition = R"doc(True when the mixture sits exactly at a condensed phase transition.)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_spec_heat_p = R"doc(Equilibrium constant-pressure specific heat [J/(kg.K)]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_spec_heat_p =
+R"doc(Constant-pressure specific heat [J/(kg.K)], equilibrium or frozen as
+computed.)doc";
 
-static const char *__doc_Goddard_ExpansionProperties_spec_heat_v = R"doc(Equilibrium constant-volume specific heat [J/(kg.K)]. */)doc";
+static const char *__doc_Goddard_ExpansionProperties_spec_heat_v =
+R"doc(Constant-volume specific heat [J/(kg.K)], equilibrium or frozen as
+computed.)doc";
 
 static const char *__doc_Goddard_ExpansionProperties_speed_of_sound =
-R"doc(Equilibrium speed of sound [m/s], sqrt(gas_moles * R * T * gamma_s).
-*/)doc";
+R"doc(Equilibrium speed of sound [m/s], sqrt(gas_moles * R * T * gamma_s).)doc";
 
 static const char *__doc_Goddard_ExpansionProperties_total_moles =
 R"doc(Moles of gas plus condensed species per kg of mixture [kmol/kg] (CEA's
-1/MW). */)doc";
+1/MW).)doc";
 
-static const char *__doc_Goddard_ExpansionType = R"doc()doc";
+static const char *__doc_Goddard_ExpansionType = R"doc(How the ratios of nozzle stations are interpreted.)doc";
 
-static const char *__doc_Goddard_ExpansionType_PRESSURE_RATIO = R"doc()doc";
+static const char *__doc_Goddard_ExpansionType_PRESSURE_RATIO = R"doc(Pressure ratio P_inlet/P [-], chamber over station pressure.)doc";
 
-static const char *__doc_Goddard_ExpansionType_SUBSONIC_AREA_RATIO = R"doc()doc";
+static const char *__doc_Goddard_ExpansionType_SUBSONIC_AREA_RATIO = R"doc(Area ratio A/A_t [-] upstream of the throat (subsonic branch).)doc";
 
-static const char *__doc_Goddard_ExpansionType_SUPERSONIC_AREA_RATIO = R"doc()doc";
+static const char *__doc_Goddard_ExpansionType_SUPERSONIC_AREA_RATIO = R"doc(Area ratio A/A_t [-] downstream of the throat (supersonic branch).)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber =
 R"doc(Converged chamber of a finite-area combustor.
@@ -967,29 +1127,29 @@ the injector enthalpy and pressure P_inf < P_inj.)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_combustion_end =
 R"doc(Combustion-end station, the subsonic point at area ratio
-`contraction_ratio`. */)doc";
+`contraction_ratio`.)doc";
 
-static const char *__doc_Goddard_FiniteAreaChamber_contraction_ratio = R"doc(Contraction ratio A_c/A_t [-]; solved for in mass-flux mode. */)doc";
+static const char *__doc_Goddard_FiniteAreaChamber_contraction_ratio = R"doc(Contraction ratio A_c/A_t [-]; solved for in mass-flux mode.)doc";
 
-static const char *__doc_Goddard_FiniteAreaChamber_injector = R"doc(Injector-face station; always in equilibrium. */)doc";
+static const char *__doc_Goddard_FiniteAreaChamber_injector = R"doc(Injector-face station; always in equilibrium.)doc";
 
-static const char *__doc_Goddard_FiniteAreaChamber_injector_pressure = R"doc(Injector-face pressure P_inj [Pa]. */)doc";
+static const char *__doc_Goddard_FiniteAreaChamber_injector_pressure = R"doc(Injector-face pressure P_inj [Pa].)doc";
 
-static const char *__doc_Goddard_FiniteAreaChamber_iterations = R"doc(Number of momentum-balance iterations [-]. */)doc";
+static const char *__doc_Goddard_FiniteAreaChamber_iterations = R"doc(Number of momentum-balance iterations [-].)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_mass_flux =
 R"doc(Mass flux through the chamber, mdot/A_c [kg/(m^2 s)]; derived in
-contraction-ratio mode. */)doc";
+contraction-ratio mode.)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_stagnation =
 R"doc(Stagnation station "inf": equilibrium at the injector enthalpy and
-P_inf. */)doc";
+P_inf.)doc";
 
-static const char *__doc_Goddard_FiniteAreaChamber_stagnation_pressure = R"doc(Stagnation pressure P_inf [Pa]. */)doc";
+static const char *__doc_Goddard_FiniteAreaChamber_stagnation_pressure = R"doc(Stagnation pressure P_inf [Pa].)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_throat =
 R"doc(Throat solved from the stagnation state; `throat.P_inlet` is P_inf
-[Pa]. */)doc";
+[Pa].)doc";
 
 static const char *__doc_Goddard_Gas =
 R"doc(Forward declaration. `equilibrium.hpp` is included by `gas.hpp` for
@@ -1006,15 +1166,23 @@ cheap to copy.)doc";
 
 static const char *__doc_Goddard_Gas_3 = R"doc()doc";
 
-static const char *__doc_Goddard_GasChemistry = R"doc()doc";
+static const char *__doc_Goddard_GasChemistry =
+R"doc(Chemistry model used for derived properties such as `gamma_s` and for
+flow solvers.)doc";
 
-static const char *__doc_Goddard_GasChemistry_EQUILIBRIUM = R"doc()doc";
+static const char *__doc_Goddard_GasChemistry_EQUILIBRIUM =
+R"doc(Composition at chemical equilibrium at every state (shifting
+equilibrium).)doc";
 
-static const char *__doc_Goddard_GasChemistry_FROZEN = R"doc()doc";
+static const char *__doc_Goddard_GasChemistry_FROZEN =
+R"doc(Composition held fixed; thermodynamic properties vary with
+temperature.)doc";
 
-static const char *__doc_Goddard_GasChemistry_KINETIC = R"doc()doc";
+static const char *__doc_Goddard_GasChemistry_KINETIC = R"doc(Finite-rate chemistry from the reaction mechanism.)doc";
 
-static const char *__doc_Goddard_GasChemistry_PERFECT_GAS = R"doc()doc";
+static const char *__doc_Goddard_GasChemistry_PERFECT_GAS =
+R"doc(Calorically perfect gas: the flow solvers hold the ratio of specific
+heats constant. `Gas` property getters treat it as FROZEN.)doc";
 
 static const char *__doc_Goddard_Gas_Gas =
 R"doc(@note The created `Gas` will reference the same `Solution` object
@@ -1035,7 +1203,7 @@ static const char *__doc_Goddard_Gas_Gas_5 = R"doc(Create `Gas` from input data 
 
 static const char *__doc_Goddard_Gas_add_all_condensed_species =
 R"doc(Add every species of `infile` whose elements are a subset of this
-phase's elements. */)doc";
+phase's elements.)doc";
 
 static const char *__doc_Goddard_Gas_add_condensed_species =
 R"doc(@name Condensed species
@@ -1074,13 +1242,15 @@ Returns:
 
 static const char *__doc_Goddard_Gas_at_phase_transition =
 R"doc(True if the mixture sits exactly at a condensed phase transition (a
-pinned state). */)doc";
+pinned state).)doc";
 
 static const char *__doc_Goddard_Gas_check_for_valid_cantera = R"doc()doc";
 
-static const char *__doc_Goddard_Gas_chemistry = R"doc()doc";
+static const char *__doc_Goddard_Gas_chemistry =
+R"doc(Chemistry model of derived properties: `gamma_s`, `speed_of_sound`,
+`expansion_properties` and `stagnation_pressure` follow it.)doc";
 
-static const char *__doc_Goddard_Gas_clear_phase_transition = R"doc(Clear the pinned phase transition, if any. */)doc";
+static const char *__doc_Goddard_Gas_clear_phase_transition = R"doc(Clear the pinned phase transition, if any.)doc";
 
 static const char *__doc_Goddard_Gas_clone =
 R"doc(Create a new Gas with a deep copy of the underlying Solution object
@@ -1092,19 +1262,19 @@ same `Solution` and the same condensed species set.)doc";
 
 static const char *__doc_Goddard_Gas_condensed_cp_R =
 R"doc(Reference-state molar heat capacity divided by R [-] of each *present*
-condensed species. */)doc";
+condensed species.)doc";
 
 static const char *__doc_Goddard_Gas_condensed_enthalpy_RT =
 R"doc(Reference-state molar enthalpy divided by R*T [-] of each *present*
-condensed species. */)doc";
+condensed species.)doc";
 
-static const char *__doc_Goddard_Gas_condensed_molar_masses = R"doc(Molar mass [kg/kmol] of each *present* condensed species. */)doc";
+static const char *__doc_Goddard_Gas_condensed_molar_masses = R"doc(Molar mass [kg/kmol] of each *present* condensed species.)doc";
 
 static const char *__doc_Goddard_Gas_condensed_moles =
 R"doc(Amount of each candidate condensed species [kmol per kg of mixture],
-in candidate order. */)doc";
+in candidate order.)doc";
 
-static const char *__doc_Goddard_Gas_condensed_species_names = R"doc(Names of all candidate condensed species, in candidate order. */)doc";
+static const char *__doc_Goddard_Gas_condensed_species_names = R"doc(Names of all candidate condensed species, in candidate order.)doc";
 
 static const char *__doc_Goddard_Gas_condensed_stoich_coeffs =
 R"doc(Stoichiometric coefficients of the *present* condensed species: a |C|
@@ -1115,7 +1285,7 @@ static const char *__doc_Goddard_Gas_copy_state = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_cp_mass =
 R"doc(Constant-pressure specific heat [J/(kg.K) of mixture]: w_g cp_gas +
-sum_k n_k cp_k(T). */)doc";
+sum_k n_k cp_k(T).)doc";
 
 static const char *__doc_Goddard_Gas_create = R"doc()doc";
 
@@ -1158,19 +1328,18 @@ mixture.)doc";
 
 static const char *__doc_Goddard_Gas_density =
 R"doc(Current mass density [kg/m^3] of the mixture: rho_gas /
-gas_mass_fraction(). */)doc";
+gas_mass_fraction().)doc";
 
 static const char *__doc_Goddard_Gas_element_moles =
 R"doc(Amount of each element [kmol per kg of mixture], gas plus condensed,
 in the element order of `element_names()`.)doc";
 
-static const char *__doc_Goddard_Gas_element_names = R"doc(Element names of the gas phase, in the phase's element order. */)doc";
+static const char *__doc_Goddard_Gas_element_names = R"doc(Element names of the gas phase, in the phase's element order.)doc";
 
-static const char *__doc_Goddard_Gas_enthalpy_mass = R"doc(Specific enthalpy [J/kg of mixture]: w_g h_gas + sum_k n_k H_k(T). */)doc";
+static const char *__doc_Goddard_Gas_enthalpy_mass = R"doc(Specific enthalpy [J/kg of mixture]: w_g h_gas + sum_k n_k H_k(T).)doc";
 
 static const char *__doc_Goddard_Gas_entropy_mass =
-R"doc(Specific entropy [J/(kg.K) of mixture]: w_g s_gas + sum_k n_k S_k(T).
-*/)doc";
+R"doc(Specific entropy [J/(kg.K) of mixture]: w_g s_gas + sum_k n_k S_k(T).)doc";
 
 static const char *__doc_Goddard_Gas_equilibrate =
 R"doc(Equilibrate the gas mixture, holding two thermodynamic properties
@@ -1233,16 +1402,15 @@ Throws:
     ConvergenceError if the solve fails after all restart strategies.)doc";
 
 static const char *__doc_Goddard_Gas_equilibrium_options =
-R"doc(Settings for the equilibrium solvers used by `equilibrate_TP/HP/SP`.
-*/)doc";
+R"doc(Settings for the equilibrium solvers used by `equilibrate_TP/HP/SP`.)doc";
 
 static const char *__doc_Goddard_Gas_equivalence_ratio =
 R"doc(Equivalence ratio of the current mixture, from its element composition
-[-]. */)doc";
+[-].)doc";
 
 static const char *__doc_Goddard_Gas_equivalence_ratio_2 =
 R"doc(Equivalence ratio of the current mixture as a blend of the given fuel
-and oxidizer [-]. */)doc";
+and oxidizer [-].)doc";
 
 static const char *__doc_Goddard_Gas_equivalence_ratio_3 = R"doc()doc";
 
@@ -1272,9 +1440,9 @@ shifting equilibrium.)doc";
 
 static const char *__doc_Goddard_Gas_gas_mass_fraction =
 R"doc(Gas mass fraction w_g = 1 - sum_k n_k M_k [-]. 1 for a gas-only
-mixture. */)doc";
+mixture.)doc";
 
-static const char *__doc_Goddard_Gas_get_reference_entropy = R"doc(Get the stored reference specific entropy [J/(kg.K)]. */)doc";
+static const char *__doc_Goddard_Gas_get_reference_entropy = R"doc(Get the stored reference specific entropy [J/(kg.K)].)doc";
 
 static const char *__doc_Goddard_Gas_get_stagnation_enthalpy =
 R"doc(Get the stored reference stagnation enthalpy [J/kg].
@@ -1284,11 +1452,11 @@ value.)doc";
 
 static const char *__doc_Goddard_Gas_has_cantera_sln = R"doc(True if underlying Cantera Solution object has been initialized.)doc";
 
-static const char *__doc_Goddard_Gas_has_condensed_candidates = R"doc(True if any candidate condensed species is attached. */)doc";
+static const char *__doc_Goddard_Gas_has_condensed_candidates = R"doc(True if any candidate condensed species is attached.)doc";
 
 static const char *__doc_Goddard_Gas_has_condensed_phases =
 R"doc(True if any candidate condensed species is present in a nonzero
-amount. */)doc";
+amount.)doc";
 
 static const char *__doc_Goddard_Gas_isenthalpic_velocity =
 R"doc(Velocity that produces a given stagnation enthalpy from the current
@@ -1333,11 +1501,11 @@ static const char *__doc_Goddard_Gas_m_S0 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_m_condensed =
 R"doc(Candidate condensed species and their amounts. Null means the `Gas` is
-gas-only. */)doc";
+gas-only.)doc";
 
 static const char *__doc_Goddard_Gas_m_equilibrium_solve_count =
 R"doc(Constant-T, constant-P solves used by the most recent `equilibrate_*`
-call. */)doc";
+call.)doc";
 
 static const char *__doc_Goddard_Gas_m_sol = R"doc()doc";
 
@@ -1364,7 +1532,7 @@ remains CEA's "M" = 1/n, the gas-phase value.)doc";
 
 static const char *__doc_Goddard_Gas_mole_fractions =
 R"doc(Mole fractions of the *gas* phase [-]. Condensed amounts are reported
-separately. */)doc";
+separately.)doc";
 
 static const char *__doc_Goddard_Gas_molecular_weight =
 R"doc(Molecular weight [kg/kmol], CEA's "M" = 1/n with n the moles of *gas*
@@ -1375,7 +1543,9 @@ condensed phase is present. See `mixture_molecular_weight()` for CEA's
 
 static const char *__doc_Goddard_Gas_name = R"doc()doc";
 
-static const char *__doc_Goddard_Gas_num_species = R"doc()doc";
+static const char *__doc_Goddard_Gas_num_species =
+R"doc(Number of gas-phase species [-]. Candidate condensed species are not
+counted.)doc";
 
 static const char *__doc_Goddard_Gas_pinned_polymorphs =
 R"doc(Indices of the two coexisting polymorphs at a pinned phase transition,
@@ -1383,7 +1553,7 @@ lower-temperature polymorph first. The indices refer to the condensed
 species that are currently *present* (nonzero moles), in candidate
 order. `{-1, -1}` when no group is pinned.)doc";
 
-static const char *__doc_Goddard_Gas_pressure = R"doc(Current pressure [Pa]. */)doc";
+static const char *__doc_Goddard_Gas_pressure = R"doc(Current pressure [Pa].)doc";
 
 static const char *__doc_Goddard_Gas_report = R"doc(Generate report string of underlying Cantera `ThermoPhase` object.)doc";
 
@@ -1410,7 +1580,10 @@ exactly as before.
 restore from the fact that two polymorphs of one group are present
 simultaneously.)doc";
 
-static const char *__doc_Goddard_Gas_set_OF_ratio = R"doc()doc";
+static const char *__doc_Goddard_Gas_set_OF_ratio =
+R"doc(Set the composition from an oxidizer-to-fuel mass ratio O/F [-] of the
+given fuel and oxidizer, keeping temperature and pressure. Makes the
+new state the reference, as `set_fuel_fraction` does.)doc";
 
 static const char *__doc_Goddard_Gas_set_OF_ratio_2 = R"doc()doc";
 
@@ -1450,7 +1623,10 @@ Throws:
     the requested element amounts are carried entirely by the gas
     phase.)doc";
 
-static const char *__doc_Goddard_Gas_set_equivalence_ratio = R"doc()doc";
+static const char *__doc_Goddard_Gas_set_equivalence_ratio =
+R"doc(Set the composition from an equivalence ratio phi [-] of the given
+fuel and oxidizer, keeping temperature and pressure. Makes the new
+state the reference, as `set_fuel_fraction` does.)doc";
 
 static const char *__doc_Goddard_Gas_set_equivalence_ratio_2 = R"doc()doc";
 
@@ -1502,7 +1678,7 @@ Throws:
     std::invalid_argument if either name is not a candidate of this
     `Gas` or the two are not polymorphs of one another.)doc";
 
-static const char *__doc_Goddard_Gas_set_reference_entropy = R"doc(Set the stored reference specific entropy [J/(kg.K)]. */)doc";
+static const char *__doc_Goddard_Gas_set_reference_entropy = R"doc(Set the stored reference specific entropy [J/(kg.K)].)doc";
 
 static const char *__doc_Goddard_Gas_set_stagnation_enthalpy =
 R"doc(Set the stored reference stagnation enthalpy [J/kg].
@@ -1511,37 +1687,35 @@ The reference value is used by isenthalpic_velocity() and other
 stagnation helpers and must be set explicitly. It does not change when
 the thermodynamic state of `Gas` changes.)doc";
 
-static const char *__doc_Goddard_Gas_set_state_HP = R"doc(Set state from specific enthalpy [J/kg] and pressure [Pa]. */)doc";
+static const char *__doc_Goddard_Gas_set_state_HP = R"doc(Set state from specific enthalpy [J/kg] and pressure [Pa].)doc";
 
-static const char *__doc_Goddard_Gas_set_state_SP = R"doc(Set state from specific entropy [J/(kg.K)] and pressure [Pa]. */)doc";
+static const char *__doc_Goddard_Gas_set_state_SP = R"doc(Set state from specific entropy [J/(kg.K)] and pressure [Pa].)doc";
 
-static const char *__doc_Goddard_Gas_set_state_TD = R"doc(Set state from temperature [K] and density [kg/m^3]. */)doc";
+static const char *__doc_Goddard_Gas_set_state_TD = R"doc(Set state from temperature [K] and density [kg/m^3].)doc";
 
-static const char *__doc_Goddard_Gas_set_state_TP = R"doc(Set state from temperature [K] and pressure [Pa]. */)doc";
+static const char *__doc_Goddard_Gas_set_state_TP = R"doc(Set state from temperature [K] and pressure [Pa].)doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPX =
 R"doc(Set state from temperature [K], pressure [Pa], and mole-fraction
-composition string. */)doc";
+composition string.)doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPX_2 =
-R"doc(Set state from temperature [K], pressure [Pa], and mole-fraction map.
-*/)doc";
+R"doc(Set state from temperature [K], pressure [Pa], and mole-fraction map.)doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPX_3 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPY =
 R"doc(Set state from temperature [K], pressure [Pa], and mass-fraction
-composition string. */)doc";
+composition string.)doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPY_2 =
-R"doc(Set state from temperature [K], pressure [Pa], and mass-fraction map.
-*/)doc";
+R"doc(Set state from temperature [K], pressure [Pa], and mass-fraction map.)doc";
 
 static const char *__doc_Goddard_Gas_set_state_TPY_3 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_set_state_UV =
 R"doc(Set state from specific internal energy [J/kg] and specific volume
-[m^3/kg]. */)doc";
+[m^3/kg].)doc";
 
 static const char *__doc_Goddard_Gas_snapshot =
 R"doc(Return a ThermodynamicState struct containing all current properties.
@@ -1553,7 +1727,7 @@ the gas species.)doc";
 
 static const char *__doc_Goddard_Gas_solution =
 R"doc(Underlying Cantera Solution handle. Pass to solver constructors that
-accept one. */)doc";
+accept one.)doc";
 
 static const char *__doc_Goddard_Gas_solve_frozen_XP =
 R"doc(Newton iteration on temperature for the frozen
@@ -1604,11 +1778,10 @@ Parameter ``P``:
 Returns:
     The number of constant-T, constant-P solves used.)doc";
 
-static const char *__doc_Goddard_Gas_species_names = R"doc()doc";
+static const char *__doc_Goddard_Gas_species_names = R"doc(Names of the gas-phase species, in phase order.)doc";
 
 static const char *__doc_Goddard_Gas_speed_of_sound =
-R"doc(Speed of sound [m/s] at the current state, consistent with gamma_s().
-*/)doc";
+R"doc(Speed of sound [m/s] at the current state, consistent with gamma_s().)doc";
 
 static const char *__doc_Goddard_Gas_stagnation_enthalpy =
 R"doc(Stagnation (total) enthalpy h0 = h + v^2/2.
@@ -1637,58 +1810,108 @@ static const char *__doc_Goddard_Gas_state_size = R"doc(Size of the state vector
 
 static const char *__doc_Goddard_Gas_stoich_OF_ratio =
 R"doc(Stoichiometric oxidizer-to-fuel ratio of the given fuel and oxidizer
-[-]. */)doc";
+[-].)doc";
 
 static const char *__doc_Goddard_Gas_stoich_OF_ratio_2 = R"doc()doc";
 
-static const char *__doc_Goddard_Gas_temperature = R"doc(Current temperature [K]. */)doc";
+static const char *__doc_Goddard_Gas_temperature = R"doc(Current temperature [K].)doc";
 
 static const char *__doc_Goddard_Gas_thermo = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_transport = R"doc()doc";
 
-static const char *__doc_Goddard_KineticNozzle = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle =
+R"doc(Supersonic nozzle expansion with finite-rate chemistry.
 
-static const char *__doc_Goddard_KineticNozzleResults = R"doc()doc";
+The throat is solved with the chemistry of `NozzleOptions::chemistry`
+(EQUILIBRIUM or FROZEN). From there a Lagrangian reactor is marched
+along the profile, its volume following the area change, and the
+velocity follows from the stagnation enthalpy. The first point of the
+profile is taken as the throat. Profile coordinates are in metres: the
+solver advances x by u dt. Condensed species are not supported.)doc";
+
+static const char *__doc_Goddard_KineticNozzleResults = R"doc(Result of a `KineticNozzle::solve`.)doc";
 
 static const char *__doc_Goddard_KineticNozzleResults_reached_exit =
 R"doc(True if the integration reached the exit of the profile. False if it
 stopped after `max_steps` steps, in which case `stations` ends
 upstream of the exit.)doc";
 
-static const char *__doc_Goddard_KineticNozzleResults_stations = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleResults_stations = R"doc(Stations downstream of the throat, one per integration step.)doc";
 
-static const char *__doc_Goddard_KineticNozzleResults_throat = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzleResults_throat =
+R"doc(Throat the integration starts from, solved with the chemistry of
+`NozzleOptions::chemistry`.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation = R"doc(One station of a kinetic nozzle integration. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation = R"doc(One station of a kinetic nozzle integration.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_Da_min = R"doc(Smallest non-zero Damkohler number [-]. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_Da_min = R"doc(Smallest non-zero Damkohler number [-].)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_area_ratio = R"doc(Area ratio A/A_t [-]. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_area_ratio = R"doc(Area ratio A/A_t [-].)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_damkohler = R"doc(Damkohler number of each species [-]; 0 for trace species. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_damkohler = R"doc(Damkohler number of each species [-]; 0 for trace species.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_mach = R"doc(Mach number [-], with the frozen speed of sound. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_mach = R"doc(Mach number [-], with the frozen speed of sound.)doc";
 
 static const char *__doc_Goddard_KineticNozzleStation_min_Da_species =
 R"doc(Name of the species with the smallest non-zero Damkohler number; empty
-if there is none. */)doc";
+if there is none.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_thermo = R"doc(Mixture state at the station, with frozen derivatives. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_thermo = R"doc(Mixture state at the station, with frozen derivatives.)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_velocity = R"doc(Flow velocity [m/s]. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_velocity = R"doc(Flow velocity [m/s].)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_x = R"doc(Axial position, in the length unit of the profile. */)doc";
+static const char *__doc_Goddard_KineticNozzleStation_x = R"doc(Axial position [m].)doc";
 
 static const char *__doc_Goddard_KineticNozzle_KineticNozzle = R"doc()doc";
 
 static const char *__doc_Goddard_KineticNozzle_KineticNozzle_2 = R"doc()doc";
 
-static const char *__doc_Goddard_KineticNozzle_KineticNozzle_3 = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle_KineticNozzle_3 =
+R"doc(Parameter ``gas``:
+    gas at the inlet (chamber) state, with a reaction mechanism. The
+    solver works on its own copy of `gas`; the caller's `Gas` is not
+    modified.
 
-static const char *__doc_Goddard_KineticNozzle_KineticNozzle_4 = R"doc()doc";
+Parameter ``profile``:
+    Diverging wall contour starting at the throat [m].
+
+Parameter ``mass_flow_rate``:
+    Mass flow rate [kg/s].
+
+Parameter ``options``:
+    Throat chemistry (EQUILIBRIUM or FROZEN).
+
+Throws:
+    std::invalid_argument for KINETIC throat chemistry.
+
+Throws:
+    NotImplementedError if `gas` holds condensed species.)doc";
+
+static const char *__doc_Goddard_KineticNozzle_KineticNozzle_4 =
+R"doc(Parameter ``gas``:
+    product gas with a reaction mechanism; only its phase definition
+    is used. The solver works on its own copy.
+
+Parameter ``profile``:
+    Diverging wall contour starting at the throat [m].
+
+Parameter ``mass_flow_rate``:
+    Mass flow rate [kg/s].
+
+Parameter ``inlet_state``:
+    Inlet (chamber) state vector, as returned by `Gas::save_state`.
+
+Parameter ``options``:
+    Throat chemistry (EQUILIBRIUM or FROZEN).
+
+Throws:
+    std::invalid_argument for KINETIC throat chemistry.
+
+Throws:
+    NotImplementedError if the inlet state holds condensed species.)doc";
 
 static const char *__doc_Goddard_KineticNozzle_m_gas = R"doc()doc";
 
@@ -1696,21 +1919,39 @@ static const char *__doc_Goddard_KineticNozzle_m_inlet_state = R"doc()doc";
 
 static const char *__doc_Goddard_KineticNozzle_m_throat_solver = R"doc()doc";
 
-static const char *__doc_Goddard_KineticNozzle_mdot = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle_mdot = R"doc(Mass flow rate [kg/s].)doc";
 
-static const char *__doc_Goddard_KineticNozzle_opts = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle_opts = R"doc(Throat chemistry (EQUILIBRIUM or FROZEN).)doc";
 
-static const char *__doc_Goddard_KineticNozzle_profile = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle_profile = R"doc(Wall contour [m]; its first point is the throat.)doc";
 
-static const char *__doc_Goddard_KineticNozzle_solve = R"doc()doc";
+static const char *__doc_Goddard_KineticNozzle_solve =
+R"doc(Solve the throat, then integrate the finite-rate expansion from the
+throat to the end of the profile. Each step is limited by both
+`dt_max` and `dx_max`.
 
-static const char *__doc_Goddard_MixtureRatioType = R"doc()doc";
+Parameter ``dt_max``:
+    Largest time step [s].
 
-static const char *__doc_Goddard_MixtureRatioType_FUEL_FRAC = R"doc()doc";
+Parameter ``dx_max``:
+    Largest axial step [m].
 
-static const char *__doc_Goddard_MixtureRatioType_OF_RATIO = R"doc()doc";
+Parameter ``max_steps``:
+    Largest number of steps [-]; see
+    `KineticNozzleResults::reached_exit`.
 
-static const char *__doc_Goddard_MixtureRatioType_PHI_RATIO = R"doc()doc";
+Throws:
+    std::runtime_error if the reactor integration fails.)doc";
+
+static const char *__doc_Goddard_MixtureRatioType = R"doc(How a mixture ratio value is interpreted.)doc";
+
+static const char *__doc_Goddard_MixtureRatioType_FUEL_FRAC = R"doc(Fuel mass fraction m_fuel/(m_fuel + m_ox) [-], in [0, 1].)doc";
+
+static const char *__doc_Goddard_MixtureRatioType_OF_RATIO = R"doc(Oxidizer-to-fuel mass ratio m_ox/m_fuel [-].)doc";
+
+static const char *__doc_Goddard_MixtureRatioType_PHI_RATIO =
+R"doc(Equivalence ratio [-]: the fuel-to-oxidizer ratio over its
+stoichiometric value.)doc";
 
 static const char *__doc_Goddard_MocCrossings =
 R"doc(Result of scanning a characteristic net for intersections between
@@ -1723,15 +1964,15 @@ so a converged solve reporting a nonzero count has produced a field
 the method cannot represent -- regardless of whether every unit
 process succeeded.)doc";
 
-static const char *__doc_Goddard_MocCrossings_count = R"doc(< Number of same-family characteristic crossings found.)doc";
+static const char *__doc_Goddard_MocCrossings_count = R"doc(Number of same-family characteristic crossings found.)doc";
 
-static const char *__doc_Goddard_MocCrossings_first_family = R"doc(< Family that crossed there.)doc";
+static const char *__doc_Goddard_MocCrossings_first_family = R"doc(Family that crossed there.)doc";
 
 static const char *__doc_Goddard_MocCrossings_first_x =
-R"doc(< Position of the most upstream crossing, in the unit of
+R"doc(Position of the most upstream crossing, in the unit of
 NozzleGeometry::throat_radius.)doc";
 
-static const char *__doc_Goddard_MocCrossings_first_y = R"doc(< See `first_x`.)doc";
+static const char *__doc_Goddard_MocCrossings_first_y = R"doc(See `first_x`.)doc";
 
 static const char *__doc_Goddard_MocErrorCode =
 R"doc(Classification of the numerical/physical failure modes that can occur
@@ -1739,43 +1980,43 @@ while resolving a single unit process (interior/wall/axis point solve)
 or marching the method-of-characteristics net as a whole.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_INITIALIZATION_FAILED =
-R"doc(< Construction of the initial data line (transonic start line) failed
+R"doc(Construction of the initial data line (transonic start line) failed
 to converge.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_MAX_ITERATIONS_REACHED =
-R"doc(< The characteristic kernel reached its iteration safety cap before
+R"doc(The characteristic kernel reached its iteration safety cap before
 all chains terminated.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_NEGATIVE_NU =
-R"doc(< Prandtl-Meyer angle (or generalized PM function) nu is negative
+R"doc(Prandtl-Meyer angle (or generalized PM function) nu is negative
 beyond tolerance.)doc";
 
-static const char *__doc_Goddard_MocErrorCode_NEGATIVE_THETA = R"doc(< Flow angle theta is negative beyond tolerance.)doc";
+static const char *__doc_Goddard_MocErrorCode_NEGATIVE_THETA = R"doc(Flow angle theta is negative beyond tolerance.)doc";
 
-static const char *__doc_Goddard_MocErrorCode_NONE = R"doc(< No error; the point/solve is valid.)doc";
+static const char *__doc_Goddard_MocErrorCode_NONE = R"doc(No error; the point/solve is valid.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_NONFINITE_VALUE =
-R"doc(< One of the point's numeric fields (x, y, theta, nu, mach, mu) is NaN
+R"doc(One of the point's numeric fields (x, y, theta, nu, mach, mu) is NaN
 or infinite.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_NON_DOWNSTREAM_POINT =
-R"doc(< The computed intersection lies at or behind (upstream of) one of its
+R"doc(The computed intersection lies at or behind (upstream of) one of its
 parent points.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_PM_INVERSION_FAILED =
-R"doc(< The Prandtl-Meyer inversion (nu -> Mach), or an equivalent Mach
+R"doc(The Prandtl-Meyer inversion (nu -> Mach), or an equivalent Mach
 rootfind, failed to converge.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_SUBSONIC_MACH =
-R"doc(< Mach number is below 1.0; the supersonic compatibility relations no
+R"doc(Mach number is below 1.0; the supersonic compatibility relations no
 longer apply.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_TABLE_RANGE_EXCEEDED =
-R"doc(< A PrandtlMeyerTable lookup (by nu, Mach, or velocity) fell outside
+R"doc(A PrandtlMeyerTable lookup (by nu, Mach, or velocity) fell outside
 the tabulated range.)doc";
 
 static const char *__doc_Goddard_MocErrorCode_WALL_QUERY_OUT_OF_BOUNDS =
-R"doc(< A wall-profile query (e.g. theta_at) fell outside the profile's
+R"doc(A wall-profile query (e.g. theta_at) fell outside the profile's
 domain.)doc";
 
 static const char *__doc_Goddard_MocFailure =
@@ -1784,32 +2025,32 @@ MocNozzle problem. When MocResult::converged is false, this identifies
 what went wrong and where, instead of the failure being silently
 swallowed or thrown as an exception.)doc";
 
-static const char *__doc_Goddard_MocFailure_code = R"doc(< Failure classification; NONE if no failure occurred.)doc";
+static const char *__doc_Goddard_MocFailure_code = R"doc(Failure classification; NONE if no failure occurred.)doc";
 
 static const char *__doc_Goddard_MocFailure_kernel_pass =
-R"doc(< Kernel marching pass on which the failure occurred; -1 for pre-
+R"doc(Kernel marching pass on which the failure occurred; -1 for pre-
 kernel (initialization) failures.)doc";
 
-static const char *__doc_Goddard_MocFailure_message = R"doc(< Human-readable description of the failure.)doc";
+static const char *__doc_Goddard_MocFailure_message = R"doc(Human-readable description of the failure.)doc";
 
 static const char *__doc_Goddard_MocFailure_x =
-R"doc(< x-coordinate of the failing point (or a parent's, if the point
+R"doc(x-coordinate of the failing point (or a parent's, if the point
 itself could not be computed), in the unit of
 NozzleGeometry::throat_radius.)doc";
 
 static const char *__doc_Goddard_MocFailure_y =
-R"doc(< y-coordinate of the failing point (or a parent's, if the point
+R"doc(y-coordinate of the failing point (or a parent's, if the point
 itself could not be computed), in the unit of
 NozzleGeometry::throat_radius.)doc";
 
 static const char *__doc_Goddard_MocFlowKind =
 R"doc(Dimensionality of the flow field the characteristics are marched
-through. */)doc";
+through.)doc";
 
-static const char *__doc_Goddard_MocFlowKind_AXISYMMETRIC = R"doc(< Flow about a centerline; the source term is singular on the axis.)doc";
+static const char *__doc_Goddard_MocFlowKind_AXISYMMETRIC = R"doc(Flow about a centerline; the source term is singular on the axis.)doc";
 
 static const char *__doc_Goddard_MocFlowKind_PLANAR =
-R"doc(< Two-dimensional flow; the compatibility relations have no source
+R"doc(Two-dimensional flow; the compatibility relations have no source
 term.)doc";
 
 static const char *__doc_Goddard_MocFrontShear =
@@ -1827,15 +2068,15 @@ converging planar solve on the same geometry gives x7.9 and x44.6, a
 ratio near 5.6. The sign differs because planar's wall end outruns its
 axis end; what matters is the magnitude of the disparity.)doc";
 
-static const char *__doc_Goddard_MocFrontShear_axis_growth = R"doc(< Late mean axial step at the axis end / early mean.)doc";
+static const char *__doc_Goddard_MocFrontShear_axis_growth = R"doc(Late mean axial step at the axis end / early mean.)doc";
 
 static const char *__doc_Goddard_MocFrontShear_shear_ratio =
-R"doc(< max(axis_growth, wall_growth) / min(...); 1 means the ends kept
+R"doc(max(axis_growth, wall_growth) / min(...); 1 means the ends kept
 pace.)doc";
 
-static const char *__doc_Goddard_MocFrontShear_valid = R"doc(< False when there were too few passes to form both windows.)doc";
+static const char *__doc_Goddard_MocFrontShear_valid = R"doc(False when there were too few passes to form both windows.)doc";
 
-static const char *__doc_Goddard_MocFrontShear_wall_growth = R"doc(< Same at the wall end.)doc";
+static const char *__doc_Goddard_MocFrontShear_wall_growth = R"doc(Same at the wall end.)doc";
 
 static const char *__doc_Goddard_MocInitDiagnostics =
 R"doc(Properties of the initial data line, measured once before the march
@@ -1870,11 +2111,11 @@ R"doc(K+ = theta - nu of the topmost interior point (the data line point
 just below the wall end), after the wall-consistency correction. A
 large negative value here over-expands the first wall solve.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_mach_axis = R"doc(< Mach at the data line's axis end.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_mach_axis = R"doc(Mach at the data line's axis end.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_mach_ratio = R"doc(< mach_wall / mach_axis; 1 for a constant-Mach line.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_mach_ratio = R"doc(mach_wall / mach_axis; 1 for a constant-Mach line.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_mach_wall = R"doc(< Mach at its wall end.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_mach_wall = R"doc(Mach at its wall end.)doc";
 
 static const char *__doc_Goddard_MocInitDiagnostics_mass_flow_error =
 R"doc(Relative error of the mass flow integrated across the data line
@@ -1892,11 +2133,11 @@ its endpoints, as a fraction of its height. A value <= 0 means the
 line is crossed by its own characteristics, i.e. it is not a valid
 Cauchy surface for the march.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_mu_axis = R"doc(< Mach angle at the axis end, radians.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_mu_axis = R"doc(Mach angle at the axis end, radians.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_mu_wall = R"doc(< Mach angle at the wall end, radians.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_mu_wall = R"doc(Mach angle at the wall end, radians.)doc";
 
-static const char *__doc_Goddard_MocInitDiagnostics_points = R"doc(< Points on the initial data line.)doc";
+static const char *__doc_Goddard_MocInitDiagnostics_points = R"doc(Points on the initial data line.)doc";
 
 static const char *__doc_Goddard_MocInitDiagnostics_shift_over_transonic_length =
 R"doc(MocOptions::initial_line_axial_shift divided by sqrt(R), the transonic
@@ -1940,26 +2181,25 @@ R"doc(|theta at the line's wall end - the contour's own angle there|, in
 radians.)doc";
 
 static const char *__doc_Goddard_MocLogLevel =
-R"doc(How much diagnostic output a solve collects into MocResult::messages.
-*/)doc";
+R"doc(How much diagnostic output a solve collects into MocResult::messages.)doc";
 
-static const char *__doc_Goddard_MocLogLevel_DEBUG = R"doc(< also collect (and echo live to stderr) a verbose kernel trace --)doc";
+static const char *__doc_Goddard_MocLogLevel_DEBUG = R"doc(also collect (and echo live to stderr) a verbose kernel trace --)doc";
 
-static const char *__doc_Goddard_MocLogLevel_NORMAL = R"doc(< Default: only MocLog::warning()/MocLog::info() messages collected.)doc";
+static const char *__doc_Goddard_MocLogLevel_NORMAL = R"doc(Default: only MocLog::warning()/MocLog::info() messages collected.)doc";
 
 static const char *__doc_Goddard_MocMode =
 R"doc(What the solver is being asked to do: derive a wall contour, or
 resolve the flow through a contour that is already known.)doc";
 
-static const char *__doc_Goddard_MocMode_ANALYSIS = R"doc(< Wall contour is input; the flow field is solved through it.)doc";
+static const char *__doc_Goddard_MocMode_ANALYSIS = R"doc(Wall contour is input; the flow field is solved through it.)doc";
 
 static const char *__doc_Goddard_MocMode_DESIGN_CENTERLINE =
-R"doc(< Optimal nozzle from prescribed centerline values. @warning Currently
+R"doc(Optimal nozzle from prescribed centerline values. @warning Currently
 unimplemented; throws NotImplementedError.)doc";
 
-static const char *__doc_Goddard_MocMode_DESIGN_MIN_LENGTH = R"doc(< Minimum length nozzle with uniform exit flow.)doc";
+static const char *__doc_Goddard_MocMode_DESIGN_MIN_LENGTH = R"doc(Minimum length nozzle with uniform exit flow.)doc";
 
-static const char *__doc_Goddard_MocMode_DESIGN_RAO = R"doc(< Rao-type length-optimized thrust nozzle.)doc";
+static const char *__doc_Goddard_MocMode_DESIGN_RAO = R"doc(Rao-type length-optimized thrust nozzle.)doc";
 
 static const char *__doc_Goddard_MocNozzle =
 R"doc(Main class for performing 2D nozzle supersonic flow simulations using
@@ -1979,13 +2219,18 @@ kernels by MocMode -- DirectMarch for DESIGN_MIN_LENGTH, InverseMarch
 for ANALYSIS and DESIGN_RAO (moc_direct_march.hpp,
 moc_inverse_march.hpp) -- and assembles the result.)doc";
 
-static const char *__doc_Goddard_MocNozzle_MocNozzle = R"doc()doc";
+static const char *__doc_Goddard_MocNozzle_MocNozzle =
+R"doc(Solver for PERFECT_GAS chemistry, with no `Gas`. FROZEN and
+EQUILIBRIUM chemistry need the `Gas` constructor.
+
+Throws:
+    std::invalid_argument if `opts` is self-inconsistent.)doc";
 
 static const char *__doc_Goddard_MocNozzle_MocNozzle_2 =
 R"doc(Solver for real-gas chemistry. The solver works on its own copy of
-`gas`. */)doc";
+`gas`.)doc";
 
-static const char *__doc_Goddard_MocNozzle_is_solved = R"doc(True once solve() has run to completion on this instance. */)doc";
+static const char *__doc_Goddard_MocNozzle_is_solved = R"doc(True once solve() has run to completion on this instance.)doc";
 
 static const char *__doc_Goddard_MocNozzle_m_gas = R"doc()doc";
 
@@ -2020,14 +2265,16 @@ NotImplementedError for MocMode::DESIGN_CENTERLINE.)doc";
 
 static const char *__doc_Goddard_MocOptions = R"doc(Options for method of characteristics simulations.)doc";
 
-static const char *__doc_Goddard_MocOptions_chemistry = R"doc()doc";
+static const char *__doc_Goddard_MocOptions_chemistry =
+R"doc(Thermodynamic model: PERFECT_GAS with constant `gamma`, or FROZEN /
+EQUILIBRIUM from the `Gas` given to the `MocNozzle` constructor.)doc";
 
 static const char *__doc_Goddard_MocOptions_exit_mach =
 R"doc(Target exit Mach number, for the design modes. Not implemented: the
 design target is set through theta_max, and `validate_moc_options`
 raises NotImplementedError if this is non-zero.)doc";
 
-static const char *__doc_Goddard_MocOptions_flow_type = R"doc()doc";
+static const char *__doc_Goddard_MocOptions_flow_type = R"doc(Planar or axisymmetric flow.)doc";
 
 static const char *__doc_Goddard_MocOptions_front_tilt_decay =
 R"doc(Inverse march only: fraction of the marching front's shape retained
@@ -2093,7 +2340,7 @@ in radians. Caps the step length on a curving contour (e.g. a throat
 expansion arc) so the wall point sampling stays fine enough to resolve
 the turn.)doc";
 
-static const char *__doc_Goddard_MocOptions_mode = R"doc()doc";
+static const char *__doc_Goddard_MocOptions_mode = R"doc(Design a contour or analyze a given one.)doc";
 
 static const char *__doc_Goddard_MocOptions_nozzle_profile =
 R"doc(Wall contour to march against in MocMode::ANALYSIS, in the length unit
@@ -2106,7 +2353,7 @@ static const char *__doc_Goddard_MocOptions_num_characteristics = R"doc(Number o
 
 static const char *__doc_Goddard_MocOptions_solver_options = R"doc(Tolerances for the iterative unit processes.)doc";
 
-static const char *__doc_Goddard_MocOptions_start_line = R"doc(Which initial data line to build; see MocStartLine. */)doc";
+static const char *__doc_Goddard_MocOptions_start_line = R"doc(Which initial data line to build; see MocStartLine.)doc";
 
 static const char *__doc_Goddard_MocOptions_theta_max = R"doc(Maximum wall angle (radians), for MocMode::DESIGN_MIN_LENGTH.)doc";
 
@@ -2131,23 +2378,23 @@ These are the quantities that expose it.
 Every length here (spacings, positions, step_dx) is in the unit of
 NozzleGeometry::throat_radius.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_front_axis_spacing = R"doc(< Arc length of the bottom-most front segment.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_front_axis_spacing = R"doc(Arc length of the bottom-most front segment.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_front_axis_x = R"doc(< x of the front's lowest (nearest-axis) point.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_front_axis_x = R"doc(x of the front's lowest (nearest-axis) point.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_front_points = R"doc(< Number of rungs on the front at the start of the pass.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_front_points = R"doc(Number of rungs on the front at the start of the pass.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_front_wall_spacing = R"doc(< Arc length of the top-most front segment.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_front_wall_spacing = R"doc(Arc length of the top-most front segment.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_front_wall_x = R"doc(< x of the front's highest (nearest-wall) point.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_front_wall_x = R"doc(x of the front's highest (nearest-wall) point.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_max_spacing = R"doc(< Longest front-segment arc length. The void shows up here.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_max_spacing = R"doc(Longest front-segment arc length. The void shows up here.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_mean_spacing = R"doc(< Mean front-segment arc length.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_mean_spacing = R"doc(Mean front-segment arc length.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_min_spacing = R"doc(< Shortest front-segment arc length.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_min_spacing = R"doc(Shortest front-segment arc length.)doc";
 
-static const char *__doc_Goddard_MocPassDiagnostics_pass = R"doc(< Kernel pass this record describes.)doc";
+static const char *__doc_Goddard_MocPassDiagnostics_pass = R"doc(Kernel pass this record describes.)doc";
 
 static const char *__doc_Goddard_MocPassDiagnostics_step_dx =
 R"doc(Inverse march only: axial step length taken this pass. 0 for minimum-
@@ -2168,10 +2415,10 @@ the unit of NozzleGeometry::throat_radius, recorded here as
 `throat_radius`. Coordinates quoted inside `messages` are in throat
 radii.)doc";
 
-static const char *__doc_Goddard_MocResult_area_ratio = R"doc(< Exit area divided by throat area.)doc";
+static const char *__doc_Goddard_MocResult_area_ratio = R"doc(Exit area divided by throat area.)doc";
 
 static const char *__doc_Goddard_MocResult_converged =
-R"doc(< True iff failure.code == MocErrorCode::NONE and the kernel completed
+R"doc(True iff failure.code == MocErrorCode::NONE and the kernel completed
 without hitting the iteration cap.)doc";
 
 static const char *__doc_Goddard_MocResult_crossings =
@@ -2193,15 +2440,15 @@ the exit plane when it converges (1.0); on a solve that fails partway,
 this is instead the fraction of the target exit radius the net's last
 wall point actually reached.)doc";
 
-static const char *__doc_Goddard_MocResult_exit_mach = R"doc(< Mach number at the exit plane.)doc";
+static const char *__doc_Goddard_MocResult_exit_mach = R"doc(Mach number at the exit plane.)doc";
 
-static const char *__doc_Goddard_MocResult_exit_plane = R"doc()doc";
+static const char *__doc_Goddard_MocResult_exit_plane = R"doc(Flow state across the exit plane, for `compute_thrust_coefficient`.)doc";
 
-static const char *__doc_Goddard_MocResult_failure = R"doc(< Populated when converged is false; MocErrorCode::NONE otherwise.)doc";
+static const char *__doc_Goddard_MocResult_failure = R"doc(Populated when converged is false; MocErrorCode::NONE otherwise.)doc";
 
 static const char *__doc_Goddard_MocResult_init_diagnostics = R"doc(Properties of the initial data line, measured before the march begins.)doc";
 
-static const char *__doc_Goddard_MocResult_messages = R"doc(< Warnings and error information collected during the solve.)doc";
+static const char *__doc_Goddard_MocResult_messages = R"doc(Warnings and error information collected during the solve.)doc";
 
 static const char *__doc_Goddard_MocResult_min_theta =
 R"doc(Smallest flow angle anywhere in the net (radians) and where it occurs.
@@ -2214,26 +2461,26 @@ nozzles with a circular-arc throat are known to form such a shock
 scheme.)doc";
 
 static const char *__doc_Goddard_MocResult_min_theta_x =
-R"doc(< Axial position of min_theta, in the unit of
+R"doc(Axial position of min_theta, in the unit of
 NozzleGeometry::throat_radius.)doc";
 
 static const char *__doc_Goddard_MocResult_min_theta_y =
-R"doc(< Radial position of min_theta, in the unit of
+R"doc(Radial position of min_theta, in the unit of
 NozzleGeometry::throat_radius.)doc";
 
 static const char *__doc_Goddard_MocResult_net =
-R"doc(< The solved characteristic mesh. Populated even when the march fails
+R"doc(The solved characteristic mesh. Populated even when the march fails
 partway.)doc";
 
 static const char *__doc_Goddard_MocResult_nozzle_length =
-R"doc(< Distance from throat to exit plane, in the unit of
+R"doc(Distance from throat to exit plane, in the unit of
 NozzleGeometry::throat_radius.)doc";
 
 static const char *__doc_Goddard_MocResult_pass_diagnostics =
 R"doc(Per-pass marching-front geometry; one entry per kernel pass, in order.
 Recorded by the inverse march only; empty for minimum-length design.)doc";
 
-static const char *__doc_Goddard_MocResult_profile = R"doc(< Wall contour: computed in design mode, echoed back in analysis mode.)doc";
+static const char *__doc_Goddard_MocResult_profile = R"doc(Wall contour: computed in design mode, echoed back in analysis mode.)doc";
 
 static const char *__doc_Goddard_MocResult_reached_exit_plane =
 R"doc(True when the net actually reached the exit plane; false only for a
@@ -2252,33 +2499,43 @@ selects the fan) and additionally falls back to the fan when the
 Kliegel-Levine series misses the wall angle by more than
 kl_max_wall_angle_error.)doc";
 
-static const char *__doc_Goddard_MocStartLine_AUTO = R"doc()doc";
+static const char *__doc_Goddard_MocStartLine_AUTO =
+R"doc(Choose from the geometry, and fall back to the fan if Kliegel-Levine
+fails.)doc";
 
-static const char *__doc_Goddard_MocStartLine_CENTERED_FAN = R"doc()doc";
+static const char *__doc_Goddard_MocStartLine_CENTERED_FAN = R"doc(Centered Prandtl-Meyer expansion fan at a sharp throat corner.)doc";
 
-static const char *__doc_Goddard_MocStartLine_KLIEGEL_LEVINE = R"doc()doc";
+static const char *__doc_Goddard_MocStartLine_KLIEGEL_LEVINE =
+R"doc(Kliegel-Levine transonic series for a throat with a circular-arc wall.
+Axisymmetric flow with a positive downstream wall curvature radius
+only.)doc";
 
 static const char *__doc_Goddard_MocStepLimiter =
 R"doc(What limited the length of the last inverse-march step
-(MocPassDiagnostics::step_limiter). */)doc";
+(MocPassDiagnostics::step_limiter).)doc";
 
 static const char *__doc_Goddard_MocStepLimiter_CFL =
-R"doc(< Bounded by the domain-of-dependence CFL condition
+R"doc(Bounded by the domain-of-dependence CFL condition
 (MocOptions::inverse_cfl).)doc";
 
 static const char *__doc_Goddard_MocStepLimiter_EXIT =
-R"doc(< Bounded by the distance remaining to the exit plane; the front this
+R"doc(Bounded by the distance remaining to the exit plane; the front this
 step builds is the last one.)doc";
 
-static const char *__doc_Goddard_MocStepLimiter_NONE = R"doc(< No step has been taken yet.)doc";
+static const char *__doc_Goddard_MocStepLimiter_NONE = R"doc(No step has been taken yet.)doc";
 
 static const char *__doc_Goddard_MocStepLimiter_WALL_FOOT =
-R"doc(< Bounded so the top interior point's C- foot stays below the previous
+R"doc(Bounded so the top interior point's C- foot stays below the previous
 wall point.)doc";
 
-static const char *__doc_Goddard_MocStepLimiter_WALL_TURN = R"doc(< Bounded by MocOptions::max_wall_turn_per_step on a curving contour.)doc";
+static const char *__doc_Goddard_MocStepLimiter_WALL_TURN = R"doc(Bounded by MocOptions::max_wall_turn_per_step on a curving contour.)doc";
 
-static const char *__doc_Goddard_Nozzle = R"doc()doc";
+static const char *__doc_Goddard_Nozzle =
+R"doc(One-dimensional isentropic nozzle expansion with equilibrium or frozen
+chemistry.
+
+Solves the sonic throat from the inlet (chamber) state, then stations
+given by area ratio, pressure ratio or a wall profile.)doc";
 
 static const char *__doc_Goddard_NozzleGeometry =
 R"doc(Throat and contour geometry the solver is anchored to.
@@ -2314,16 +2571,23 @@ R"doc(Wall radius of curvature upstream of the throat, as a multiple of
 `throat_radius`. Not implemented: `validate_moc_options` raises
 NotImplementedError for any other value.)doc";
 
-static const char *__doc_Goddard_NozzleOptions = R"doc()doc";
+static const char *__doc_Goddard_NozzleOptions = R"doc(Settings of a nozzle expansion.)doc";
 
-static const char *__doc_Goddard_NozzleOptions_chemistry = R"doc()doc";
+static const char *__doc_Goddard_NozzleOptions_chemistry =
+R"doc(Chemistry of the expansion: EQUILIBRIUM, or FROZEN downstream of
+station `frozen_NFZ`. `Nozzle` rejects KINETIC (use `KineticNozzle`)
+and does not implement PERFECT_GAS.)doc";
 
 static const char *__doc_Goddard_NozzleOptions_expansion_ratios =
 R"doc(Station ratios, interpreted by `expansion_type`: area ratios A/A_t
 [-], or pressure ratios P_inlet/P [-] (chamber over station pressure,
-as CEA's `pi/p`).)doc";
+as CEA's `pi/p`). Read by `RocketProblem`; the `Nozzle::solve`
+overloads take their ratios as an argument.
 
-static const char *__doc_Goddard_NozzleOptions_expansion_type = R"doc()doc";
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
+
+static const char *__doc_Goddard_NozzleOptions_expansion_type = R"doc(How `expansion_ratios` are interpreted. Read by `RocketProblem`.)doc";
 
 static const char *__doc_Goddard_NozzleOptions_frozen_NFZ =
 R"doc(Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber
@@ -2486,7 +2750,7 @@ Parameter ``n_points``:
 
 static const char *__doc_Goddard_NozzleProfile_length =
 R"doc(Get the length of the nozzle, measured from the throat, in length
-units. */)doc";
+units.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_load_profile_csv =
 R"doc(Read a profile from a two-column (x, y) CSV file.
@@ -2494,7 +2758,7 @@ R"doc(Read a profile from a two-column (x, y) CSV file.
 Parameter ``filename``:
     Path to the CSV file.)doc";
 
-static const char *__doc_Goddard_NozzleProfile_max_theta = R"doc(Find the maximum wall angle across all segments, in radians. */)doc";
+static const char *__doc_Goddard_NozzleProfile_max_theta = R"doc(Find the maximum wall angle across all segments, in radians.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_populate_throat_expansion_curve =
 R"doc(Populate profile with expansion curve from the throat, taking into
@@ -2503,7 +2767,7 @@ account curvature radius at the throat.
 .. warning::
     Appends to the existing profile!)doc";
 
-static const char *__doc_Goddard_NozzleProfile_push_back = R"doc(Append a wall point, given as an (x, y) pair in length units. */)doc";
+static const char *__doc_Goddard_NozzleProfile_push_back = R"doc(Append a wall point, given as an (x, y) pair in length units.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_radius_at =
 R"doc(Interpolate the wall radius at a given axial position.
@@ -2539,7 +2803,7 @@ Parameter ``factor``:
 Throws:
     std::invalid_argument if `factor` is not positive.)doc";
 
-static const char *__doc_Goddard_NozzleProfile_size = R"doc(Number of points on the profile. */)doc";
+static const char *__doc_Goddard_NozzleProfile_size = R"doc(Number of points on the profile.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_slope_at =
 R"doc(Interpolate wall slope dy/dx at a given axial position. Only used in
@@ -2606,32 +2870,31 @@ Returns:
 
 static const char *__doc_Goddard_NozzleProfile_throat_index =
 R"doc(Index into `x`/`y` of the throat, i.e. the origin `length()` is
-measured from. */)doc";
+measured from.)doc";
 
-static const char *__doc_Goddard_NozzleProfile_x = R"doc(Axial coordinates of the wall points, ascending (length units). */)doc";
+static const char *__doc_Goddard_NozzleProfile_x = R"doc(Axial coordinates of the wall points, ascending (length units).)doc";
 
 static const char *__doc_Goddard_NozzleProfile_x_max =
-R"doc(Axial coordinate of the last (most downstream) point, in length units.
-*/)doc";
+R"doc(Axial coordinate of the last (most downstream) point, in length units.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_x_min =
-R"doc(Axial coordinate of the first (most upstream) point, in length units.
-*/)doc";
+R"doc(Axial coordinate of the first (most upstream) point, in length units.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_y =
 R"doc(Wall radius (axisymmetric) or half-height (planar) at each point in
-`x` (length units). */)doc";
+`x` (length units).)doc";
 
-static const char *__doc_Goddard_NozzleResults = R"doc()doc";
+static const char *__doc_Goddard_NozzleResults =
+R"doc(Result of a `Nozzle::solve`: inlet, throat and the requested stations.)doc";
 
-static const char *__doc_Goddard_NozzleResults_expansions = R"doc()doc";
+static const char *__doc_Goddard_NozzleResults_expansions = R"doc(One station per requested ratio or profile point, in order.)doc";
 
 static const char *__doc_Goddard_NozzleResults_inlet =
 R"doc(Nozzle inlet (chamber) station. Its derivatives are in the chemistry
 of station 0: frozen only for FROZEN chemistry with `frozen_NFZ` == 0,
 otherwise equilibrium.)doc";
 
-static const char *__doc_Goddard_NozzleResults_throat = R"doc()doc";
+static const char *__doc_Goddard_NozzleResults_throat = R"doc(Sonic throat.)doc";
 
 static const char *__doc_Goddard_NozzleStation = R"doc(One solved nozzle station.)doc";
 
@@ -2641,9 +2904,9 @@ a station where the flow is at rest (the chamber of an infinite-area
 combustor, the injector face and the stagnation state of a finite-area
 one).)doc";
 
-static const char *__doc_Goddard_NozzleStation_mach = R"doc(Mach number [-], from `velocity` and `thermo.speed_of_sound`. */)doc";
+static const char *__doc_Goddard_NozzleStation_mach = R"doc(Mach number [-], from `velocity` and `thermo.speed_of_sound`.)doc";
 
-static const char *__doc_Goddard_NozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`. */)doc";
+static const char *__doc_Goddard_NozzleStation_state = R"doc(Raw state vector, for `Gas::restore_state`.)doc";
 
 static const char *__doc_Goddard_NozzleStation_thermo =
 R"doc(Mixture state at the station. `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P`,
@@ -2655,7 +2918,7 @@ at a condensed phase transition (see
 
 static const char *__doc_Goddard_NozzleStation_velocity =
 R"doc(Flow velocity [m/s], from the enthalpy drop below the stagnation
-enthalpy. */)doc";
+enthalpy.)doc";
 
 static const char *__doc_Goddard_Nozzle_Nozzle =
 R"doc(Parameter ``gas``:
@@ -2671,15 +2934,30 @@ Throws:
 Throws:
     NotImplementedError for PERFECT_GAS chemistry.)doc";
 
-static const char *__doc_Goddard_Nozzle_Nozzle_2 = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_Nozzle_2 =
+R"doc(Parameter ``gas``:
+    product gas; only its phase definition is used. The solver works
+    on its own copy.
 
-static const char *__doc_Goddard_Nozzle_get_gamma_s = R"doc()doc";
+Parameter ``state``:
+    inlet (chamber) state vector, as returned by `Gas::save_state`.
 
-static const char *__doc_Goddard_Nozzle_get_inlet_state = R"doc(Inlet (chamber) state vector. */)doc";
+Parameter ``options``:
+    chemistry, freezing station and stations to solve.
+
+Throws:
+    std::invalid_argument for KINETIC chemistry.
+
+Throws:
+    NotImplementedError for PERFECT_GAS chemistry.)doc";
+
+static const char *__doc_Goddard_Nozzle_get_gamma_s = R"doc(Isentropic exponent of the solver's gas at its current state [-].)doc";
+
+static const char *__doc_Goddard_Nozzle_get_inlet_state = R"doc(Inlet (chamber) state vector.)doc";
 
 static const char *__doc_Goddard_Nozzle_is_equilibrium_station =
 R"doc(True when station `station` is in equilibrium, from
-`NozzleOptions::frozen_NFZ`. */)doc";
+`NozzleOptions::frozen_NFZ`.)doc";
 
 static const char *__doc_Goddard_Nozzle_iterate_area_expansion = R"doc()doc";
 
@@ -2723,11 +3001,11 @@ static const char *__doc_Goddard_Nozzle_m_inlet_state = R"doc()doc";
 
 static const char *__doc_Goddard_Nozzle_m_opts = R"doc()doc";
 
-static const char *__doc_Goddard_Nozzle_reset_state = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_reset_state = R"doc(Restore the solver's gas to the inlet state.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_inlet_state =
 R"doc(Set the inlet (chamber) state the next solve expands from, and make it
-the reference. */)doc";
+the reference.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_station_chemistry =
 R"doc(Set the gas chemistry for station `station`.
@@ -2735,11 +3013,36 @@ R"doc(Set the gas chemistry for station `station`.
 Returns:
     True for an equilibrium station.)doc";
 
-static const char *__doc_Goddard_Nozzle_solve = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_solve =
+R"doc(Solve the throat and one station.
 
-static const char *__doc_Goddard_Nozzle_solve_2 = R"doc()doc";
+Parameter ``expansion_type``:
+    How `ratio` is interpreted.
 
-static const char *__doc_Goddard_Nozzle_solve_3 = R"doc()doc";
+Parameter ``ratio``:
+    Area ratio A/A_t [-] or pressure ratio P_inlet/P [-].)doc";
+
+static const char *__doc_Goddard_Nozzle_solve_2 =
+R"doc(Solve the throat and one station per ratio.
+
+Parameter ``expansion_type``:
+    How `ratios` are interpreted.
+
+Parameter ``ratios``:
+    Area ratios A/A_t [-] or pressure ratios P_inlet/P [-].)doc";
+
+static const char *__doc_Goddard_Nozzle_solve_3 =
+R"doc(Solve the throat and supersonic stations along a wall profile.
+
+The first point of the profile (`x_min`) is taken as the throat, and
+the stations are spaced evenly in x up to the last point. The area is
+that of an axisymmetric nozzle.
+
+Parameter ``profile``:
+    Diverging wall contour starting at the throat.
+
+Parameter ``num_stations``:
+    Number of stations [-].)doc";
 
 static const char *__doc_Goddard_Nozzle_solve_finite_area_chamber =
 R"doc(Solve the chamber of a finite-area combustor.
@@ -2821,7 +3124,15 @@ static const char *__doc_Goddard_Nozzle_solve_subsonic_area_expansion = R"doc()d
 
 static const char *__doc_Goddard_Nozzle_solve_supersonic_area_expansion = R"doc()doc";
 
-static const char *__doc_Goddard_Nozzle_solve_throat_conditions = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_solve_throat_conditions =
+R"doc(Solve the sonic throat by isentropic expansion from the inlet state.
+
+Parameter ``abstol``:
+    Tolerance on |1 - 1/M^2| at the throat [-].
+
+Throws:
+    ConvergenceError if the throat iteration does not converge in 5
+    iterations.)doc";
 
 static const char *__doc_Goddard_Nozzle_station_at_current_state =
 R"doc(Station at the current gas state, with derivatives `props` already
@@ -2840,39 +3151,58 @@ R"doc(Station at `state` with derivatives in the chemistry of station
 
 static const char *__doc_Goddard_Nozzle_throat_area_per_mdot =
 R"doc(Throat area per mass flow rate [m^2 s/kg], from the throat state and
-velocity. */)doc";
+velocity.)doc";
 
 static const char *__doc_Goddard_Nozzle_throw_invalid_expansion_ratio = R"doc()doc";
 
 static const char *__doc_Goddard_ObliqueShockResult =
 R"doc(Oblique shock: wave and deflection angles, and the jump across the
-normal component. */)doc";
+normal component.)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_beta = R"doc(Wave angle between the shock and the upstream flow [rad]. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_beta = R"doc(Wave angle between the shock and the upstream flow [rad].)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_mach_in = R"doc(Upstream Mach number [-]. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_mach_in = R"doc(Upstream Mach number [-].)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_mach_out = R"doc(Downstream Mach number, including the tangential velocity [-]. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_mach_out = R"doc(Downstream Mach number, including the tangential velocity [-].)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_shock = R"doc(Jump across the normal component of the flow. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_shock = R"doc(Jump across the normal component of the flow.)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_theta = R"doc(Flow deflection angle [rad]. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_theta = R"doc(Flow deflection angle [rad].)doc";
 
-static const char *__doc_Goddard_ObliqueShockResult_valid = R"doc(False if the inputs admit no attached oblique shock. */)doc";
+static const char *__doc_Goddard_ObliqueShockResult_valid = R"doc(False if the inputs admit no attached oblique shock.)doc";
 
-static const char *__doc_Goddard_PhaseSpecification = R"doc(Convenience class for initializing a thermodynamic state.)doc";
+static const char *__doc_Goddard_PhaseSpecification = R"doc(Temperature, pressure and composition of a reactant stream.)doc";
 
-static const char *__doc_Goddard_PhaseSpecification_P = R"doc()doc";
+static const char *__doc_Goddard_PhaseSpecification_P = R"doc(Pressure [Pa].)doc";
 
 static const char *__doc_Goddard_PhaseSpecification_PhaseSpecification = R"doc()doc";
 
-static const char *__doc_Goddard_PhaseSpecification_PhaseSpecification_2 = R"doc()doc";
+static const char *__doc_Goddard_PhaseSpecification_PhaseSpecification_2 =
+R"doc(Parameter ``T``:
+    Temperature [K].
 
-static const char *__doc_Goddard_PhaseSpecification_PhaseSpecification_3 = R"doc()doc";
+Parameter ``P``:
+    Pressure [Pa].
 
-static const char *__doc_Goddard_PhaseSpecification_T = R"doc()doc";
+Parameter ``comp``:
+    Mole fractions as a composition string, e.g. "H2:2, O2:1".)doc";
 
-static const char *__doc_Goddard_PhaseSpecification_composition = R"doc()doc";
+static const char *__doc_Goddard_PhaseSpecification_PhaseSpecification_3 =
+R"doc(Parameter ``T``:
+    Temperature [K].
+
+Parameter ``P``:
+    Pressure [Pa].
+
+Parameter ``comp``:
+    Mole fractions by species name.)doc";
+
+static const char *__doc_Goddard_PhaseSpecification_T = R"doc(Temperature [K].)doc";
+
+static const char *__doc_Goddard_PhaseSpecification_composition =
+R"doc(Mole fractions [-] by species name; normalized when the state is set.
+
+In Python, assign a whole dict: item assignment acts on a copy.)doc";
 
 static const char *__doc_Goddard_PointMembership =
 R"doc(The chains one point belongs to.
@@ -3003,14 +3333,14 @@ at equilibrium.)doc";
 
 static const char *__doc_Goddard_ReflectedDetonationResult_incident =
 R"doc(Incident detonation, state 1 to state 2, in the frame of the
-detonation. */)doc";
+detonation.)doc";
 
 static const char *__doc_Goddard_ReflectedDetonationResult_reflected =
 R"doc(Reflected shock, state 2 to state 5, in the reflected-shock frame.
 `mach_in` is the reflected-shock Mach number relative to the products,
 with their equilibrium sound speed.)doc";
 
-static const char *__doc_Goddard_ReflectedDetonationResult_valid = R"doc(False if the incident detonation or the reflected shock is invalid. */)doc";
+static const char *__doc_Goddard_ReflectedDetonationResult_valid = R"doc(False if the incident detonation or the reflected shock is invalid.)doc";
 
 static const char *__doc_Goddard_ReflectedShockResult =
 R"doc(Incident and reflected normal shocks at the closed end of a shock
@@ -3020,47 +3350,49 @@ State 1 is the gas at rest ahead of the incident shock, state 2 the
 gas behind it, and state 5 the gas brought back to rest behind the
 shock reflected from the end wall.)doc";
 
-static const char *__doc_Goddard_ReflectedShockResult_incident = R"doc(Incident shock, state 1 to state 2, in the incident-shock frame. */)doc";
+static const char *__doc_Goddard_ReflectedShockResult_incident = R"doc(Incident shock, state 1 to state 2, in the incident-shock frame.)doc";
 
 static const char *__doc_Goddard_ReflectedShockResult_reflected =
 R"doc(Reflected shock, state 2 to state 5, in the reflected-shock frame.
 `mach_in` is the reflected-shock Mach number relative to gas 2.)doc";
 
-static const char *__doc_Goddard_ReflectedShockResult_valid = R"doc(False if either shock is invalid. */)doc";
+static const char *__doc_Goddard_ReflectedShockResult_valid = R"doc(False if either shock is invalid.)doc";
 
-static const char *__doc_Goddard_RocketCaseParameters = R"doc()doc";
+static const char *__doc_Goddard_RocketCaseParameters = R"doc(Combustor and nozzle settings of one case of a `RocketProblem`.)doc";
 
-static const char *__doc_Goddard_RocketCaseParameters_combustor_options = R"doc()doc";
+static const char *__doc_Goddard_RocketCaseParameters_combustor_options = R"doc(Chamber model, pressures [Pa] and combustion process.)doc";
 
-static const char *__doc_Goddard_RocketCaseParameters_name = R"doc()doc";
+static const char *__doc_Goddard_RocketCaseParameters_name = R"doc(Case name, the key of the case in `RocketProblemResults`.)doc";
 
-static const char *__doc_Goddard_RocketCaseParameters_nozzle_options = R"doc()doc";
+static const char *__doc_Goddard_RocketCaseParameters_nozzle_options = R"doc(Nozzle chemistry, freezing station and exit stations.)doc";
 
-static const char *__doc_Goddard_RocketPerformance = R"doc(Rocket performance of one exit, as CEA reports it. */)doc";
+static const char *__doc_Goddard_RocketPerformance = R"doc(Rocket performance of one exit, as CEA reports it.)doc";
 
-static const char *__doc_Goddard_RocketPerformance_CF = R"doc(Thrust coefficient at optimum expansion [-]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_CF = R"doc(Thrust coefficient at optimum expansion [-].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_area_ratio = R"doc(Exit area over throat area, Ae/At [-]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_area_ratio = R"doc(Exit area over throat area, Ae/At [-].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_cstar = R"doc(Characteristic velocity c* [m/s]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_cstar = R"doc(Characteristic velocity c* [m/s].)doc";
 
 static const char *__doc_Goddard_RocketPerformance_isp =
 R"doc(Specific impulse at optimum expansion, as an effective exhaust
-velocity [m/s]. */)doc";
+velocity [m/s].)doc";
 
 static const char *__doc_Goddard_RocketPerformance_isp_s =
 R"doc(Specific impulse at optimum expansion in seconds, `isp /
-STANDARD_GRAVITY` [s]. */)doc";
+STANDARD_GRAVITY` [s].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_ivac = R"doc(Vacuum specific impulse, as an effective exhaust velocity [m/s]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_ivac = R"doc(Vacuum specific impulse, as an effective exhaust velocity [m/s].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_ivac_s = R"doc(Vacuum specific impulse in seconds, `ivac / STANDARD_GRAVITY` [s]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_ivac_s = R"doc(Vacuum specific impulse in seconds, `ivac / STANDARD_GRAVITY` [s].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_mach_number = R"doc(Exit Mach number [-]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_mach_number = R"doc(Exit Mach number [-].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc(Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-]. */)doc";
+static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc(Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-].)doc";
 
-static const char *__doc_Goddard_RocketProblem = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem =
+R"doc(CEA-style rocket problem: combustion followed by an isentropic nozzle
+expansion, for every case, mixture ratio and chamber pressure.)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult = R"doc()doc";
 
@@ -3076,17 +3408,15 @@ static const char *__doc_Goddard_RocketProblemCaseResult_expansion_type = R"doc(
 
 static const char *__doc_Goddard_RocketProblemCaseResult_finite_area_chambers =
 R"doc(Finite-area chambers, indexed like `nozzle_states`; empty for
-`INFINITE_AREA`. */)doc";
+`INFINITE_AREA`.)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_frozen_NFZ =
-R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.
-*/)doc";
+R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_inlet_states = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_mixture_type =
-R"doc(How `OF_ratios` are interpreted; see `CombustorOptions::mixture_type`.
-*/)doc";
+R"doc(How `OF_ratios` are interpreted; see `CombustorOptions::mixture_type`.)doc";
 
 static const char *__doc_Goddard_RocketProblemCaseResult_nozzle_states = R"doc()doc";
 
@@ -3094,9 +3424,15 @@ static const char *__doc_Goddard_RocketProblemCaseResult_pressures = R"doc()doc"
 
 static const char *__doc_Goddard_RocketProblemCaseResult_process = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblemResults = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults =
+R"doc(Results of a `RocketProblem`: a flat list of stations over every case,
+mixture ratio and pressure, with accessors by operating point and a
+CEA-style report.)doc";
 
-static const char *__doc_Goddard_RocketProblemResults_2 = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_2 =
+R"doc(Results of a `RocketProblem`: a flat list of stations over every case,
+mixture ratio and pressure, with accessors by operating point and a
+CEA-style report.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_CaseMeta = R"doc()doc";
 
@@ -3109,8 +3445,7 @@ static const char *__doc_Goddard_RocketProblemResults_CaseMeta_expansion_ratios 
 static const char *__doc_Goddard_RocketProblemResults_CaseMeta_expansion_type = R"doc()doc";
 
 static const char *__doc_Goddard_RocketProblemResults_CaseMeta_frozen_NFZ =
-R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.
-*/)doc";
+R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_CaseMeta_mass_flux =
 R"doc(Mass flux mdot/Ac [kg/(m^2 s)] of each operating point, row-major over
@@ -3137,9 +3472,24 @@ Parameter ``gas``:
     candidate condensed species, so each station's state vector is
     read back with the condensed amounts it was saved with.)doc";
 
-static const char *__doc_Goddard_RocketProblemResults_calculate_performance = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_calculate_performance =
+R"doc(Rocket performance from the stagnation, throat and exit states.
 
-static const char *__doc_Goddard_RocketProblemResults_case_names = R"doc()doc";
+c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit
+velocity follows from the enthalpy drop h_0 - h_e, the area ratio from
+mass conservation, and CF = u_e / c*.
+
+Parameter ``chamber``:
+    Stagnation state the nozzle expands from (the chamber of an
+    infinite-area combustor).
+
+Parameter ``throat``:
+    Throat state.
+
+Parameter ``exit``:
+    Exit state.)doc";
+
+static const char *__doc_Goddard_RocketProblemResults_case_names = R"doc(Names of all cases, in no particular order.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_chamber =
 R"doc(Chamber station of one operating point. For a finite-area combustor,
@@ -3190,11 +3540,16 @@ Throws:
 
 static const char *__doc_Goddard_RocketProblemResults_m_case_meta = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblemResults_m_gas = R"doc(Product mixture used to read the stored station states back. */)doc";
+static const char *__doc_Goddard_RocketProblemResults_m_gas = R"doc(Product mixture used to read the stored station states back.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_m_stations = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblemResults_of_ratios = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_of_ratios =
+R"doc(Mixture ratios of a case [-], interpreted through its
+`CombustorOptions::mixture_type`.
+
+Parameter ``case_name``:
+    Case to read. May be empty when the results hold a single case.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_performance =
 R"doc(Rocket performance of one operating point at one exit station, from
@@ -3216,7 +3571,11 @@ Throws:
     std::runtime_error if the case or a station does not exist, or if
     `exit_index` is out of range.)doc";
 
-static const char *__doc_Goddard_RocketProblemResults_report = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_report =
+R"doc(CEA-style formatted text report.
+
+Parameter ``case_name``:
+    Case to report. Empty reports every case, sorted by name.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_resolve_case = R"doc()doc";
 
@@ -3237,9 +3596,20 @@ Parameter ``case_name``:
 Throws:
     std::runtime_error if the case or the station does not exist.)doc";
 
-static const char *__doc_Goddard_RocketProblemResults_stations = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_stations = R"doc(Every station of every case, as one flat list.)doc";
 
-static const char *__doc_Goddard_RocketProblemResults_stations_of_type = R"doc()doc";
+static const char *__doc_Goddard_RocketProblemResults_stations_of_type =
+R"doc(All stations of one type in one case.
+
+Parameter ``type``:
+    Station type.
+
+Parameter ``case_name``:
+    Case to read. May be empty when the results hold a single case.
+
+Throws:
+    std::runtime_error if the case does not exist, or if `case_name`
+    is empty and the results hold several cases.)doc";
 
 static const char *__doc_Goddard_RocketProblemResults_throat =
 R"doc(Throat station of one operating point.
@@ -3276,11 +3646,14 @@ Parameter ``ionized_species``:
 Parameter ``trace``:
     Not implemented; `solve` raises NotImplementedError if non-zero.)doc";
 
-static const char *__doc_Goddard_RocketProblem_chemical_params = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_chemical_params =
+R"doc(Thermodynamic data, reactants and mixture ratios. The product phase is
+built from it by the constructor; later changes affect only the
+reactants and mixture ratios.)doc";
 
-static const char *__doc_Goddard_RocketProblem_include_ionized_species = R"doc(Not implemented: `solve` raises `NotImplementedError` if true. */)doc";
+static const char *__doc_Goddard_RocketProblem_include_ionized_species = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
 
-static const char *__doc_Goddard_RocketProblem_include_transport = R"doc(Not implemented: `solve` raises `NotImplementedError` if true. */)doc";
+static const char *__doc_Goddard_RocketProblem_include_transport = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
 
 static const char *__doc_Goddard_RocketProblem_m_condensed_prototype =
 R"doc(Product gas carrying the candidate condensed species, built once so
@@ -3289,7 +3662,11 @@ that every `Gas` handed to a solver shares the same set. Empty when no
 
 static const char *__doc_Goddard_RocketProblem_m_sln = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblem_problem_cases = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_problem_cases =
+R"doc(Cases to solve.
+
+In Python, assign a whole list: item assignment and append act on a
+copy.)doc";
 
 static const char *__doc_Goddard_RocketProblem_product_gas =
 R"doc(Product `Gas` for one solver stage. Every returned `Gas` references
@@ -3301,29 +3678,43 @@ results set their own.)doc";
 
 static const char *__doc_Goddard_RocketProblem_reactant_gas =
 R"doc(Reactant stream `Gas` built from `ChemicalParameters::reactant_file`
-and set to `state`. */)doc";
+and set to `state`.)doc";
 
 static const char *__doc_Goddard_RocketProblem_solution = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblem_solve = R"doc()doc";
+static const char *__doc_Goddard_RocketProblem_solve =
+R"doc(Solve every case.
+
+Returns:
+    Stations and performance of every case, mixture ratio and
+    pressure.
+
+Throws:
+    NotImplementedError if an unimplemented option is set
+    (`include_transport`, `include_ionized_species`, `trace_cutoff`,
+    `mixtures`, `phi_ratios`, `fuel_weight_percentages`).)doc";
 
 static const char *__doc_Goddard_RocketProblem_thermo = R"doc()doc";
 
-static const char *__doc_Goddard_RocketProblem_trace_cutoff = R"doc(Not implemented: `solve` raises `NotImplementedError` if non-zero. */)doc";
+static const char *__doc_Goddard_RocketProblem_trace_cutoff = R"doc(Not implemented: `solve` raises `NotImplementedError` if non-zero.)doc";
 
-static const char *__doc_Goddard_RocketStation = R"doc()doc";
+static const char *__doc_Goddard_RocketStation = R"doc(One station of one operating point of a rocket problem.)doc";
 
 static const char *__doc_Goddard_RocketStation_area_ratio =
 R"doc(A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1
-for THROAT, Ae/At for EXIT (also for pressure-ratio exits). */)doc";
+for THROAT, Ae/At for EXIT (also for pressure-ratio exits).)doc";
 
-static const char *__doc_Goddard_RocketStation_case_name = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_case_name = R"doc(Name of the case the station belongs to.)doc";
 
-static const char *__doc_Goddard_RocketStation_expansion_index = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_expansion_index =
+R"doc(Index into the case's `NozzleOptions::expansion_ratios` [-]; only
+meaningful for EXIT.)doc";
 
-static const char *__doc_Goddard_RocketStation_of_index = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_of_index =
+R"doc(Index into the case's mixture ratios (`ChemicalParameters::OF_ratios`)
+[-].)doc";
 
-static const char *__doc_Goddard_RocketStation_pressure_index = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_pressure_index = R"doc(Index into the case's pressures (`CombustorOptions::pressures`) [-].)doc";
 
 static const char *__doc_Goddard_RocketStation_thermo =
 R"doc(Mixture state of the station. Its `stagnation_enthalpy` [J/kg] is the
@@ -3331,7 +3722,7 @@ enthalpy of the stagnation state of the station's operating point (see
 `RocketProblemResults::stagnation`), which the adiabatic expansion
 conserves.)doc";
 
-static const char *__doc_Goddard_RocketStation_type = R"doc()doc";
+static const char *__doc_Goddard_RocketStation_type = R"doc(Kind of station.)doc";
 
 static const char *__doc_Goddard_ShockResult =
 R"doc(Jump conditions across one normal shock, in the frame of that shock.
@@ -3345,7 +3736,7 @@ and every other field set to -1.)doc";
 
 static const char *__doc_Goddard_ShockResult_density_ratio =
 R"doc(Density ratio rho_out/rho_in [-]. It is also the ratio of upstream to
-downstream normal velocity. */)doc";
+downstream normal velocity.)doc";
 
 static const char *__doc_Goddard_ShockResult_mach_in =
 R"doc(Upstream Mach number relative to the shock [-]. For the incident shock
@@ -3354,15 +3745,15 @@ state.)doc";
 
 static const char *__doc_Goddard_ShockResult_mach_out =
 R"doc(Downstream Mach number relative to the shock [-], with the sound speed
-of the solver's chemistry. */)doc";
+of the solver's chemistry.)doc";
 
-static const char *__doc_Goddard_ShockResult_static_pressure_ratio = R"doc(Static pressure ratio P_out/P_in [-]. */)doc";
+static const char *__doc_Goddard_ShockResult_static_pressure_ratio = R"doc(Static pressure ratio P_out/P_in [-].)doc";
 
-static const char *__doc_Goddard_ShockResult_static_temperature_ratio = R"doc(Static temperature ratio T_out/T_in [-]. */)doc";
+static const char *__doc_Goddard_ShockResult_static_temperature_ratio = R"doc(Static temperature ratio T_out/T_in [-].)doc";
 
-static const char *__doc_Goddard_ShockResult_total_pressure_ratio = R"doc(Stagnation pressure ratio P0_out/P0_in [-]. */)doc";
+static const char *__doc_Goddard_ShockResult_total_pressure_ratio = R"doc(Stagnation pressure ratio P0_out/P0_in [-].)doc";
 
-static const char *__doc_Goddard_ShockResult_valid = R"doc(False if the inputs admit no shock. */)doc";
+static const char *__doc_Goddard_ShockResult_valid = R"doc(False if the inputs admit no shock.)doc";
 
 static const char *__doc_Goddard_ShockSolver =
 R"doc(Normal, reflected and oblique shocks in a real gas, following Gordon &
@@ -3490,9 +3881,9 @@ composition unchanged.
 
 The result is an independent copy: later solves do not change it.)doc";
 
-static const char *__doc_Goddard_ShockSolver_pre_shock_sound_speed = R"doc(Frozen sound speed of the pre-shock state [m/s]. */)doc";
+static const char *__doc_Goddard_ShockSolver_pre_shock_sound_speed = R"doc(Frozen sound speed of the pre-shock state [m/s].)doc";
 
-static const char *__doc_Goddard_ShockSolver_pre_shock_state = R"doc(Gas at the pre-shock state: an independent copy. */)doc";
+static const char *__doc_Goddard_ShockSolver_pre_shock_state = R"doc(Gas at the pre-shock state: an independent copy.)doc";
 
 static const char *__doc_Goddard_ShockSolver_reflected_shock =
 R"doc(Incident and reflected shocks in a shock tube, both with the solver's
@@ -3543,36 +3934,44 @@ Parameter ``incident_chemistry``:
 Parameter ``reflected_chemistry``:
     FROZEN or EQUILIBRIUM, for state 5)doc";
 
-static const char *__doc_Goddard_ShockSolver_reset = R"doc(Restore the pre-shock state and the construction chemistry. */)doc";
+static const char *__doc_Goddard_ShockSolver_reset = R"doc(Restore the pre-shock state and the construction chemistry.)doc";
 
 static const char *__doc_Goddard_ShockSolver_store_post_shock_state =
 R"doc(Record the current state as the post-shock state and restore the
-construction chemistry. */)doc";
+construction chemistry.)doc";
 
-static const char *__doc_Goddard_SolverOptions = R"doc()doc";
+static const char *__doc_Goddard_SolverOptions =
+R"doc(Convergence settings of an iterative solver (shock and detonation
+jumps, MoC unit processes).)doc";
 
-static const char *__doc_Goddard_SolverOptions_abstol = R"doc()doc";
+static const char *__doc_Goddard_SolverOptions_abstol =
+R"doc(Absolute convergence tolerance. The quantity it bounds depends on the
+solver: the Newton step in log(P) and log(T) [-] for shock and
+detonation jumps, the wave angle bracket or deflection residual [rad]
+for oblique shock searches, and the corrector residuals and point
+validity checks of the MoC unit processes.)doc";
 
-static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc()doc";
+static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc(Maximum number of iterations [-].)doc";
 
-static const char *__doc_Goddard_StationType = R"doc()doc";
+static const char *__doc_Goddard_StationType = R"doc(Kind of a station of a rocket problem.)doc";
 
-static const char *__doc_Goddard_StationType_CHAMBER = R"doc(< Chamber state. For a finite-area combustor, the injector face.)doc";
+static const char *__doc_Goddard_StationType_CHAMBER = R"doc(Chamber state. For a finite-area combustor, the injector face.)doc";
 
-static const char *__doc_Goddard_StationType_COMBUSTION_END = R"doc(< Finite-area combustor only: end of the constant-area chamber.)doc";
+static const char *__doc_Goddard_StationType_COMBUSTION_END = R"doc(Finite-area combustor only: end of the constant-area chamber.)doc";
 
-static const char *__doc_Goddard_StationType_EXIT = R"doc()doc";
+static const char *__doc_Goddard_StationType_EXIT = R"doc(Nozzle exit station, one per expansion ratio.)doc";
 
-static const char *__doc_Goddard_StationType_STAGNATION = R"doc(< Finite-area combustor only: stagnation state "inf" at P_inf.)doc";
+static const char *__doc_Goddard_StationType_STAGNATION = R"doc(Finite-area combustor only: stagnation state "inf" at P_inf.)doc";
 
-static const char *__doc_Goddard_StationType_THROAT = R"doc()doc";
+static const char *__doc_Goddard_StationType_THROAT = R"doc(Sonic throat.)doc";
 
 static const char *__doc_Goddard_ThermoArray =
-R"doc(Wrapper around `Cantera::SolutionArray` with a higher-level API for
-broadcasting thermodynamic operations. Supports up to 3D arrays.
+R"doc(Array of thermodynamic states with up to three dimensions, for
+broadcasting thermodynamic operations. Wraps `Cantera::SolutionArray`.
 
-If the third dimension is used, it is assumed to be used to set a
-composition.)doc";
+If the third dimension is used, it indexes compositions. Entries are
+stored with the first dimension varying fastest; `flat_index` converts
+indices (i, j, k) to a storage location.)doc";
 
 static const char *__doc_Goddard_ThermoArray_HP = R"doc(Set the enthalpy and pressure of the array.)doc";
 
@@ -3648,15 +4047,23 @@ static const char *__doc_Goddard_ThermoArray_check_dimensionality = R"doc()doc";
 
 static const char *__doc_Goddard_ThermoArray_check_ndim = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_condensed_species_names = R"doc(Names of the candidate condensed species, in candidate order. */)doc";
+static const char *__doc_Goddard_ThermoArray_condensed_species_names = R"doc(Names of the candidate condensed species, in candidate order.)doc";
 
-static const char *__doc_Goddard_ThermoArray_enthalpy_mass = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_enthalpy_mass =
+R"doc(Specific enthalpy of the gas phase [J/kg] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_enthalpy_mole = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_enthalpy_mole =
+R"doc(Molar enthalpy of the gas phase [J/kmol] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_entropy_mass = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_entropy_mass =
+R"doc(Specific entropy of the gas phase [J/(kg.K)] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_entropy_mole = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_entropy_mole =
+R"doc(Molar entropy of the gas phase [J/(kmol.K)] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
 static const char *__doc_Goddard_ThermoArray_equilibrate =
 R"doc(Equilibrate every entry, holding the two properties named by `XY`
@@ -3686,11 +4093,15 @@ R"doc(State vector of the entry at flat location `loc`: the Cantera state of
 the gas phase followed by one entry per candidate condensed species
 (kmol per kg of mixture), exactly as `Gas::save_state()` lays it out.)doc";
 
-static const char *__doc_Goddard_ThermoArray_internal_energy_mass = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_internal_energy_mass =
+R"doc(Specific internal energy of the gas phase [J/kg] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_internal_energy_mole = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_internal_energy_mole =
+R"doc(Molar internal energy of the gas phase [J/kmol] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_is_shape_set = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_is_shape_set = R"doc(True once the array has a shape.)doc";
 
 static const char *__doc_Goddard_ThermoArray_m_condensed = R"doc()doc";
 
@@ -3702,15 +4113,19 @@ static const char *__doc_Goddard_ThermoArray_m_solution = R"doc()doc";
 
 static const char *__doc_Goddard_ThermoArray_m_states = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_mean_molecular_weight = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_mean_molecular_weight =
+R"doc(Mean molecular weight of the gas phase [kg/kmol] of every entry; see
+`temperature` for the shape and `slice`.)doc";
 
-static const char *__doc_Goddard_ThermoArray_ndim = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_ndim = R"doc(Number of dimensions, 1 to 3 [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray_num_condensed =
 R"doc(Number of candidate condensed species carried by the array. Zero for a
-gas-only array. */)doc";
+gas-only array.)doc";
 
-static const char *__doc_Goddard_ThermoArray_pressure = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_pressure =
+R"doc(Pressure [Pa] of every entry; see `temperature` for the shape and
+`slice`.)doc";
 
 static const char *__doc_Goddard_ThermoArray_reshape = R"doc()doc";
 
@@ -3735,12 +4150,14 @@ entry are set to zero.
 Throws:
     std::invalid_argument if the vector has neither length.)doc";
 
-static const char *__doc_Goddard_ThermoArray_shape = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_shape = R"doc(Extent of each dimension [-].)doc";
 
-static const char *__doc_Goddard_ThermoArray_size = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_size = R"doc(Number of entries [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray_temperature =
-R"doc(Property getters. The result has shape (n0, 1) for a 1-D array and
+R"doc(Temperature [K] of every entry.
+
+Property getters: the result has shape (n0, 1) for a 1-D array and
 (n0, n1) for 2-D and 3-D arrays, where element (i, j) is the entry at
 `flat_index(i, j, slice)`. `slice` selects the index along the third
 dimension and must be 0 for arrays with fewer than 3 dimensions.
@@ -3767,31 +4184,42 @@ static const char *__doc_Goddard_ThermoArray_update_states_with_mass_composition
 
 static const char *__doc_Goddard_ThermoArray_update_states_with_mole_composition = R"doc()doc";
 
-static const char *__doc_Goddard_ThermodynamicState = R"doc(Convenience class containing relevant thermodynamic results)doc";
+static const char *__doc_Goddard_ThermodynamicState =
+R"doc(Snapshot of the thermodynamic state of a mixture (see
+`Gas::snapshot`).
 
-static const char *__doc_Goddard_ThermodynamicState_composition = R"doc()doc";
+Specific quantities are per kg of mixture (gas plus condensed phases).
+`gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in the
+chemistry the state was taken with: equilibrium or frozen.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_cp = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_composition =
+R"doc(Mass fractions of the mixture [-] by species name, condensed species
+included. Species with a zero fraction are omitted.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_density = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_cp =
+R"doc(Constant-pressure specific heat at frozen composition [J/(kg.K)], as
+`Gas::cp_mass`. `Gas::snapshot` sets it to 0 at a pinned phase
+transition, as CEA prints.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_dlV_dlP_T = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_density = R"doc(Mixture density [kg/m^3].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_dlV_dlT_P = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_dlV_dlP_T = R"doc((d log V / d log P)_T [-].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_enthalpy = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_dlV_dlT_P = R"doc((d log V / d log T)_P [-].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_entropy = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_enthalpy = R"doc(Specific enthalpy [J/kg].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_gamma_s = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_entropy = R"doc(Specific entropy [J/(kg.K)].)doc";
+
+static const char *__doc_Goddard_ThermodynamicState_gamma_s = R"doc(Isentropic exponent -(d log P / d log V)_s [-].)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_gas_mass_fraction =
 R"doc(Mass fraction of the gas phase in the mixture [-]. 1 with no condensed
-phase present. */)doc";
+phase present.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_gibbs = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_gibbs = R"doc(Specific Gibbs energy [J/kg], h - T s.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_internal_energy = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_internal_energy = R"doc(Specific internal energy [J/kg], h - P/rho.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_mixture_molecular_weight =
 R"doc(Mixture molecular weight [kg/kmol], CEA's "MW": one kg of mixture
@@ -3799,7 +4227,9 @@ divided by the moles of gas *plus* condensed species it holds. Equal
 to `molecular_weight` (CEA's "M" = 1/n, which counts the gas alone)
 when no condensed phase is present.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_molecular_weight = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_molecular_weight =
+R"doc(Molecular weight [kg/kmol], CEA's "M" = 1/n with n the moles of gas
+per kg of mixture.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_pinned_transition =
 R"doc(True when the state sits exactly at a condensed phase transition with
@@ -3807,35 +4237,40 @@ both polymorphs present and the chemistry is shifting, so the
 equilibrium specific heat is infinite. CEA prints a specific heat of
 zero for such a station.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_pressure = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_pressure = R"doc(Pressure [Pa].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_speed_of_sound = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_speed_of_sound = R"doc(Speed of sound [m/s].)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_stagnation_enthalpy = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_stagnation_enthalpy = R"doc(Stagnation enthalpy [J/kg] the flow velocity is measured from.)doc";
 
-static const char *__doc_Goddard_ThermodynamicState_temperature = R"doc()doc";
+static const char *__doc_Goddard_ThermodynamicState_temperature = R"doc(Temperature [K].)doc";
 
 static const char *__doc_Goddard_ThroatCondition = R"doc()doc";
 
-static const char *__doc_Goddard_ThroatCondition_2 = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_2 =
+R"doc(Sonic throat of an isentropic expansion from the nozzle inlet state.
+Thermodynamic derivatives are in the chemistry of the throat station
+(see `NozzleOptions::frozen_NFZ`).)doc";
 
-static const char *__doc_Goddard_ThroatCondition_H_stagnation = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_H_stagnation = R"doc(Stagnation enthalpy [J/kg]: the specific enthalpy of the inlet state.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_P_inlet = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_P_inlet = R"doc(Inlet (chamber or stagnation) pressure [Pa].)doc";
 
-static const char *__doc_Goddard_ThroatCondition_S_inlet = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_S_inlet =
+R"doc(Inlet specific entropy [J/(kg.K)], held constant through the
+expansion.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_area_ratio = R"doc(Area ratio A/A_t [-]: 1 by definition. */)doc";
+static const char *__doc_Goddard_ThroatCondition_area_ratio = R"doc(Area ratio A/A_t [-]: 1 by definition.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_dlV_dlP_T = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_dlV_dlP_T = R"doc((d log V / d log P)_T at the throat [-].)doc";
 
-static const char *__doc_Goddard_ThroatCondition_dlV_dlT_P = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_dlV_dlT_P = R"doc((d log V / d log T)_P at the throat [-].)doc";
 
-static const char *__doc_Goddard_ThroatCondition_gamma_s = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_gamma_s = R"doc(Isentropic exponent -(d log P / d log V)_s at the throat [-].)doc";
 
 static const char *__doc_Goddard_ThroatCondition_mach =
 R"doc(Mach number at the throat [-]: 1 to within the throat solve's
-tolerance. */)doc";
+tolerance.)doc";
 
 static const char *__doc_Goddard_ThroatCondition_pinned_transition =
 R"doc(True when the throat sits exactly at a condensed phase transition, so
@@ -3844,25 +4279,24 @@ polymorphs coexist. The equilibrium specific heat is then infinite and
 `gamma_s` is -1 / `dlV_dlP_T`; `dlV_dlT_P` is infinite. Always false
 for a mixture without condensed phases.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_speed_of_sound = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_speed_of_sound = R"doc(Speed of sound at the throat [m/s].)doc";
 
-static const char *__doc_Goddard_ThroatCondition_state = R"doc()doc";
+static const char *__doc_Goddard_ThroatCondition_state = R"doc(Raw state vector of the throat, for `Gas::restore_state`.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_thermo = R"doc(Mixture state at the throat; see `NozzleStation::thermo`. */)doc";
+static const char *__doc_Goddard_ThroatCondition_thermo = R"doc(Mixture state at the throat; see `NozzleStation::thermo`.)doc";
 
-static const char *__doc_Goddard_ThroatCondition_velocity = R"doc(Flow velocity at the throat [m/s]. */)doc";
+static const char *__doc_Goddard_ThroatCondition_velocity = R"doc(Flow velocity at the throat [m/s].)doc";
 
 static const char *__doc_Goddard_ThrustCoefficient =
-R"doc(Thrust performance obtained by integrating over a solved exit plane.
-*/)doc";
+R"doc(Thrust performance obtained by integrating over a solved exit plane.)doc";
 
-static const char *__doc_Goddard_ThrustCoefficient_Cf = R"doc(< Thrust coefficient at the specified ambient pressure.)doc";
+static const char *__doc_Goddard_ThrustCoefficient_Cf = R"doc(Thrust coefficient at the specified ambient pressure.)doc";
 
-static const char *__doc_Goddard_ThrustCoefficient_Cf_vacuum = R"doc(< Vacuum thrust coefficient.)doc";
+static const char *__doc_Goddard_ThrustCoefficient_Cf_vacuum = R"doc(Vacuum thrust coefficient.)doc";
 
-static const char *__doc_Goddard_ThrustCoefficient_momentum_thrust = R"doc(< Momentum component, normalized by p0 * A_throat.)doc";
+static const char *__doc_Goddard_ThrustCoefficient_momentum_thrust = R"doc(Momentum component, normalized by p0 * A_throat.)doc";
 
-static const char *__doc_Goddard_ThrustCoefficient_pressure_thrust = R"doc(< Pressure component, normalized by p0 * A_throat.)doc";
+static const char *__doc_Goddard_ThrustCoefficient_pressure_thrust = R"doc(Pressure component, normalized by p0 * A_throat.)doc";
 
 static const char *__doc_Goddard_average_angle = R"doc()doc";
 
@@ -3965,19 +4399,18 @@ legitimately meet at reflection points.)doc";
 
 static const char *__doc_Goddard_get_cpR_vector =
 R"doc(Standard-state molar heat capacity of each gas species divided by R
-[-]. */)doc";
+[-].)doc";
 
 static const char *__doc_Goddard_get_enthalpyRT_vector =
-R"doc(Standard-state molar enthalpy of each gas species divided by R*T [-].
-*/)doc";
+R"doc(Standard-state molar enthalpy of each gas species divided by R*T [-].)doc";
 
 static const char *__doc_Goddard_get_equilibrium_gamma =
 R"doc(Isentropic exponent -(d log P / d log V)_s [-] of the gas phase at
-equilibrium. */)doc";
+equilibrium.)doc";
 
 static const char *__doc_Goddard_get_equilibrium_gamma_2 =
 R"doc(Isentropic exponent -(d log P / d log V)_s [-] of the mixture at
-equilibrium. */)doc";
+equilibrium.)doc";
 
 static const char *__doc_Goddard_get_frozen_properties =
 R"doc(Frozen-composition expansion properties: gas composition and condensed
@@ -3985,7 +4418,7 @@ amounts are held fixed, so the volume derivatives are +/-1 and the
 specific heats are the mixture's frozen ones. Condensed species are
 incompressible and so contribute equally to cp and cv.)doc";
 
-static const char *__doc_Goddard_get_mole_vector = R"doc(Amount of each gas species [kmol per kg of gas]. */)doc";
+static const char *__doc_Goddard_get_mole_vector = R"doc(Amount of each gas species [kmol per kg of gas].)doc";
 
 static const char *__doc_Goddard_get_stoichiometric_coeffs =
 R"doc(@name Gas-only helpers
@@ -4018,15 +4451,24 @@ polymorphs present) the two polymorphs share one element row, so they
 are merged into a single condensed unknown and only the pressure block
 is solved. The temperature derivatives are then undefined and are
 reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlV_dlT_P` are
-infinite, and `gamma_s = -1 / dlV_dlP_T`. @{)doc";
+infinite, and `gamma_s = -1 / dlV_dlP_T`. @{
+
+Equilibrium composition derivatives of the mixture at its current
+state (RP-1311 eqs. 2.56-2.66), condensed species included.)doc";
 
 static const char *__doc_Goddard_get_thermo_equilibrium_properties = R"doc()doc";
 
 static const char *__doc_Goddard_get_thermo_equilibrium_properties_2 = R"doc()doc";
 
-static const char *__doc_Goddard_get_thermo_equilibrium_properties_3 = R"doc()doc";
+static const char *__doc_Goddard_get_thermo_equilibrium_properties_3 =
+R"doc(Equilibrium expansion properties of the mixture from already solved
+`derivatives`.)doc";
 
-static const char *__doc_Goddard_get_thermo_equilibrium_properties_4 = R"doc()doc";
+static const char *__doc_Goddard_get_thermo_equilibrium_properties_4 =
+R"doc(Equilibrium expansion properties of the mixture at its current state:
+volume derivatives, specific heats, `gamma_s` and speed of sound,
+condensed species included. At a pinned phase transition the specific
+heats and `dlV_dlT_P` are infinite and `gamma_s = -1 / dlV_dlP_T`.)doc";
 
 static const char *__doc_Goddard_ideal_gas_D_to_P =
 R"doc(Get the pressure of an ideal gas from its density, temperature, and
@@ -4222,8 +4664,7 @@ Returns:
     recorded.)doc";
 
 static const char *__doc_Goddard_to_string =
-R"doc(Human-readable name for a MocStepLimiter, for log/diagnostic messages.
-*/)doc";
+R"doc(Human-readable name for a MocStepLimiter, for log/diagnostic messages.)doc";
 
 static const char *__doc_Goddard_to_string_2 = R"doc(Human-readable name for a MocErrorCode, for log/diagnostic messages.)doc";
 

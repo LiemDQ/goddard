@@ -11,12 +11,13 @@ namespace nb = nanobind;
 using namespace nb::literals;
 
 void bind_combustor(nb::module_& m) {
-    nb::class_<Goddard::BaseCombustor>(m, "BaseCombustor")
-        .def("get_combustion_species", &Goddard::BaseCombustor::get_combustion_species);
+    nb::class_<Goddard::BaseCombustor>(m, "BaseCombustor", DOC(Goddard, BaseCombustor))
+        .def("get_combustion_species", &Goddard::BaseCombustor::get_combustion_species,
+             DOC(Goddard, BaseCombustor, get_combustion_species));
 
-    nb::class_<Goddard::Combustor, Goddard::BaseCombustor>(m, "Combustor")
+    nb::class_<Goddard::Combustor, Goddard::BaseCombustor>(m, "Combustor", DOC(Goddard, Combustor))
         .def(nb::init<Goddard::Gas, const Goddard::Composition&, const Goddard::Composition&>(),
-             "gas"_a, "fuel"_a, "oxidizer"_a)
+             "gas"_a, "fuel"_a, "oxidizer"_a, DOC(Goddard, Combustor, Combustor, 2))
         .def("solve",
              nb::overload_cast<const Eigen::ArrayXd&,
                                const Eigen::ArrayXd&,
@@ -48,15 +49,19 @@ void bind_combustor(nb::module_& m) {
              DOC(Goddard, Combustor, solve, 3))
         .def("generate_mole_fraction_matrix",
              &Goddard::Combustor::generate_mole_fraction_matrix,
-             "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO)
+             "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO,
+             DOC(Goddard, Combustor, generate_mole_fraction_matrix))
         .def("generate_mass_fraction_matrix",
              &Goddard::Combustor::generate_mass_fraction_matrix,
-             "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO);
+             "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO,
+             DOC(Goddard, Combustor, generate_mass_fraction_matrix));
 
-    nb::class_<Goddard::DilutedCombustor, Goddard::BaseCombustor>(m, "DilutedCombustor")
+    nb::class_<Goddard::DilutedCombustor, Goddard::BaseCombustor>(m, "DilutedCombustor",
+            DOC(Goddard, DilutedCombustor))
         .def(nb::init<Goddard::Gas, const Goddard::Composition&, const Goddard::Composition&,
                        const Goddard::Composition&>(),
-             "gas"_a, "fuel"_a, "oxidizer"_a, "flue"_a)
+             "gas"_a, "fuel"_a, "oxidizer"_a, "flue"_a,
+             DOC(Goddard, DilutedCombustor, DilutedCombustor, 2))
         .def("solve",
              nb::overload_cast<const Eigen::ArrayXd&,
                                const Eigen::ArrayXd&,
@@ -66,7 +71,8 @@ void bind_combustor(nb::module_& m) {
                  &Goddard::DilutedCombustor::solve),
              "temperatures"_a, "pressures"_a, "mixture_ratios"_a,
              "recirculation_ratio"_a,
-             "options"_a = Goddard::CombustorOptions{})
+             "options"_a = Goddard::CombustorOptions{},
+             DOC(Goddard, DilutedCombustor, solve))
         .def("solve",
              nb::overload_cast<double, double, double,
                                const Eigen::ArrayXd&,
@@ -77,13 +83,16 @@ void bind_combustor(nb::module_& m) {
              "fuel_temperature"_a, "oxidizer_temperature"_a, "flue_temperature"_a,
              "pressures"_a, "mixture_ratios"_a,
              "recirculation_ratio"_a,
-             "options"_a = Goddard::CombustorOptions{})
+             "options"_a = Goddard::CombustorOptions{},
+             DOC(Goddard, DilutedCombustor, solve, 2))
         .def("generate_mole_fraction_matrix",
              &Goddard::DilutedCombustor::generate_mole_fraction_matrix,
              "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO,
-             "recirculation_ratio"_a = 0.0)
+             "recirculation_ratio"_a = 0.0,
+             DOC(Goddard, DilutedCombustor, generate_mole_fraction_matrix))
         .def("generate_mass_fraction_matrix",
              &Goddard::DilutedCombustor::generate_mass_fraction_matrix,
              "mixture_ratios"_a, "type"_a = Goddard::MixtureRatioType::OF_RATIO,
-             "recirculation_ratio"_a = 0.0);
+             "recirculation_ratio"_a = 0.0,
+             DOC(Goddard, DilutedCombustor, generate_mass_fraction_matrix));
 }

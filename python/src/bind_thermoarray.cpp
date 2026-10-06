@@ -8,12 +8,12 @@
 namespace nb = nanobind;
 
 void bind_thermoarray(nb::module_& m) {
-    nb::class_<Goddard::ThermoArray>(m, "ThermoArray")
-        .def_prop_ro("size", &Goddard::ThermoArray::size, "Number of entries.")
-        .def_prop_ro("ndim", &Goddard::ThermoArray::ndim, "Number of dimensions (1 to 3).")
-        .def_prop_ro("shape", &Goddard::ThermoArray::shape, "Extent of each dimension.")
+    nb::class_<Goddard::ThermoArray>(m, "ThermoArray", DOC(Goddard, ThermoArray))
+        .def_prop_ro("size", &Goddard::ThermoArray::size, DOC(Goddard, ThermoArray, size))
+        .def_prop_ro("ndim", &Goddard::ThermoArray::ndim, DOC(Goddard, ThermoArray, ndim))
+        .def_prop_ro("shape", &Goddard::ThermoArray::shape, DOC(Goddard, ThermoArray, shape))
         .def_prop_ro("is_shape_set", &Goddard::ThermoArray::is_shape_set,
-             "True once the array has a shape.")
+             DOC(Goddard, ThermoArray, is_shape_set))
         .def("flat_index", &Goddard::ThermoArray::flat_index,
              nb::arg("i"), nb::arg("j") = 0, nb::arg("k") = 0,
              DOC(Goddard, ThermoArray, flat_index))
@@ -25,13 +25,22 @@ void bind_thermoarray(nb::module_& m) {
              DOC(Goddard, ThermoArray, condensed_species_names))
         .def("get_condensed_moles", &Goddard::ThermoArray::get_condensed_moles, nb::arg("loc"),
              DOC(Goddard, ThermoArray, get_condensed_moles))
-        .def("temperature", &Goddard::ThermoArray::temperature, nb::arg("slice") = 0)
-        .def("pressure", &Goddard::ThermoArray::pressure, nb::arg("slice") = 0)
-        .def("enthalpy_mass", &Goddard::ThermoArray::enthalpy_mass, nb::arg("slice") = 0)
-        .def("enthalpy_mole", &Goddard::ThermoArray::enthalpy_mole, nb::arg("slice") = 0)
-        .def("entropy_mass", &Goddard::ThermoArray::entropy_mass, nb::arg("slice") = 0)
-        .def("entropy_mole", &Goddard::ThermoArray::entropy_mole, nb::arg("slice") = 0)
-        .def("internal_energy_mass", &Goddard::ThermoArray::internal_energy_mass, nb::arg("slice") = 0)
-        .def("internal_energy_mole", &Goddard::ThermoArray::internal_energy_mole, nb::arg("slice") = 0)
-        .def("mean_molecular_weight", &Goddard::ThermoArray::mean_molecular_weight, nb::arg("slice") = 0);
+        .def("temperature", &Goddard::ThermoArray::temperature, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, temperature))
+        .def("pressure", &Goddard::ThermoArray::pressure, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, pressure))
+        .def("enthalpy_mass", &Goddard::ThermoArray::enthalpy_mass, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, enthalpy_mass))
+        .def("enthalpy_mole", &Goddard::ThermoArray::enthalpy_mole, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, enthalpy_mole))
+        .def("entropy_mass", &Goddard::ThermoArray::entropy_mass, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, entropy_mass))
+        .def("entropy_mole", &Goddard::ThermoArray::entropy_mole, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, entropy_mole))
+        .def("internal_energy_mass", &Goddard::ThermoArray::internal_energy_mass, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, internal_energy_mass))
+        .def("internal_energy_mole", &Goddard::ThermoArray::internal_energy_mole, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, internal_energy_mole))
+        .def("mean_molecular_weight", &Goddard::ThermoArray::mean_molecular_weight, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, mean_molecular_weight));
 }

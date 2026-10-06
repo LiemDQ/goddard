@@ -15,12 +15,11 @@ class Gas;
 class CondensedPhaseSet;
 
 /**
- * @brief Wrapper around `Cantera::SolutionArray` with a higher-level API for 
- * broadcasting thermodynamic operations.
- * Supports up to 3D arrays.
- * 
- * If the third dimension is used, it is assumed to be used to set a composition. 
- * 
+ * @brief Array of thermodynamic states with up to three dimensions, for broadcasting
+ * thermodynamic operations. Wraps `Cantera::SolutionArray`.
+ *
+ * If the third dimension is used, it indexes compositions. Entries are stored with the first
+ * dimension varying fastest; `flat_index` converts indices (i, j, k) to a storage location.
 */
 class ThermoArray {
 	public:
@@ -56,11 +55,14 @@ class ThermoArray {
 	ThermoArray(const Gas& gas, const std::vector<long>& shape);
 
 	void reshape(const std::vector<long>& shape);
+	/** Extent of each dimension [-]. */
 	inline std::vector<long> shape() const {return m_states->apiShape();}
 
-	//Size of ThermoArray (number of entries)
+	/** Number of entries [-]. */
 	inline int size() const {return m_states->size();}
+	/** Number of dimensions, 1 to 3 [-]. */
 	inline int ndim() const {return m_states->apiNdim();}
+	/** True once the array has a shape. */
 	inline bool is_shape_set() const {return m_shape_is_set;}
 
 	/**
@@ -107,21 +109,52 @@ class ThermoArray {
 	void set_condensed_moles(int loc, const std::vector<double>& moles);
 
 	/**
-	 * Property getters. The result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D arrays,
-	 * where element (i, j) is the entry at `flat_index(i, j, slice)`. `slice` selects the index along the third
-	 * dimension and must be 0 for arrays with fewer than 3 dimensions.
+	 * Temperature [K] of every entry.
+	 *
+	 * Property getters: the result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D
+	 * arrays, where element (i, j) is the entry at `flat_index(i, j, slice)`. `slice` selects the
+	 * index along the third dimension and must be 0 for arrays with fewer than 3 dimensions.
 	 *
 	 * The values are those of the gas phase alone: condensed species are not included in the
 	 * energies, entropies or molecular weight.
 	 */
 	Eigen::ArrayXXd temperature(int slice = 0) const;
+	/** Pressure [Pa] of every entry; see `temperature` for the shape and `slice`. */
 	Eigen::ArrayXXd pressure(int slice = 0) const;
+	/**
+	 * Specific internal energy of the gas phase [J/kg] of every entry; see `temperature` for the
+	 * shape and `slice`.
+	 */
 	Eigen::ArrayXXd internal_energy_mass(int slice = 0) const;
+	/**
+	 * Molar internal energy of the gas phase [J/kmol] of every entry; see `temperature` for the
+	 * shape and `slice`.
+	 */
 	Eigen::ArrayXXd internal_energy_mole(int slice = 0) const;
+	/**
+	 * Specific enthalpy of the gas phase [J/kg] of every entry; see `temperature` for the shape
+	 * and `slice`.
+	 */
 	Eigen::ArrayXXd enthalpy_mass(int slice = 0) const;
+	/**
+	 * Molar enthalpy of the gas phase [J/kmol] of every entry; see `temperature` for the shape and
+	 * `slice`.
+	 */
 	Eigen::ArrayXXd enthalpy_mole(int slice = 0) const;
+	/**
+	 * Specific entropy of the gas phase [J/(kg.K)] of every entry; see `temperature` for the shape
+	 * and `slice`.
+	 */
 	Eigen::ArrayXXd entropy_mass(int slice = 0) const;
+	/**
+	 * Molar entropy of the gas phase [J/(kmol.K)] of every entry; see `temperature` for the shape
+	 * and `slice`.
+	 */
 	Eigen::ArrayXXd entropy_mole(int slice = 0) const;
+	/**
+	 * Mean molecular weight of the gas phase [kg/kmol] of every entry; see `temperature` for the
+	 * shape and `slice`.
+	 */
 	Eigen::ArrayXXd mean_molecular_weight(int slice = 0) const;
 
 

@@ -13,19 +13,32 @@
 
 namespace Goddard {
 
+/** How the ratios of nozzle stations are interpreted. */
 enum class ExpansionType {
+    /// Area ratio A/A_t [-] downstream of the throat (supersonic branch).
     SUPERSONIC_AREA_RATIO,
+    /// Area ratio A/A_t [-] upstream of the throat (subsonic branch).
     SUBSONIC_AREA_RATIO,
+    /// Pressure ratio P_inlet/P [-], chamber over station pressure.
     PRESSURE_RATIO
 };
 
 
+/** Settings of a nozzle expansion. */
 struct NozzleOptions {
+    /**
+     * Chemistry of the expansion: EQUILIBRIUM, or FROZEN downstream of station `frozen_NFZ`.
+     * `Nozzle` rejects KINETIC (use `KineticNozzle`) and does not implement PERFECT_GAS.
+     */
     GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
+    /// How `expansion_ratios` are interpreted. Read by `RocketProblem`.
     ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
     /**
      * Station ratios, interpreted by `expansion_type`: area ratios A/A_t [-], or pressure ratios
-     * P_inlet/P [-] (chamber over station pressure, as CEA's `pi/p`).
+     * P_inlet/P [-] (chamber over station pressure, as CEA's `pi/p`). Read by `RocketProblem`;
+     * the `Nozzle::solve` overloads take their ratios as an argument.
+     *
+     * In Python, assign a whole list: item assignment and append act on a copy.
      */
     std::vector<double> expansion_ratios;
     /**
@@ -42,14 +55,26 @@ struct NozzleOptions {
 };
 
 
+/**
+ * Sonic throat of an isentropic expansion from the nozzle inlet state. Thermodynamic
+ * derivatives are in the chemistry of the throat station (see `NozzleOptions::frozen_NFZ`).
+ */
 struct ThroatCondition {
+    /// Speed of sound at the throat [m/s].
     double speed_of_sound;
+    /// Stagnation enthalpy [J/kg]: the specific enthalpy of the inlet state.
     double H_stagnation;
+    /// Inlet (chamber or stagnation) pressure [Pa].
     double P_inlet;
+    /// Inlet specific entropy [J/(kg.K)], held constant through the expansion.
     double S_inlet;
+    /// Isentropic exponent -(d log P / d log V)_s at the throat [-].
     double gamma_s;
+    /// (d log V / d log P)_T at the throat [-].
     double dlV_dlP_T;
+    /// (d log V / d log T)_P at the throat [-].
     double dlV_dlT_P;
+    /// Raw state vector of the throat, for `Gas::restore_state`.
     std::vector<double> state;
     /**
      * True when the throat sits exactly at a condensed phase transition, so its temperature is
@@ -93,13 +118,16 @@ struct NozzleStation {
     std::vector<double> state;
 };
 
+/** Result of a `Nozzle::solve`: inlet, throat and the requested stations. */
 struct NozzleResults {
     /**
      * Nozzle inlet (chamber) station. Its derivatives are in the chemistry of station 0:
      * frozen only for FROZEN chemistry with `frozen_NFZ` == 0, otherwise equilibrium.
      */
     NozzleStation inlet;
+    /// Sonic throat.
     ThroatCondition throat;
+    /// One station per requested ratio or profile point, in order.
     std::vector<NozzleStation> expansions;
 };
 
@@ -131,20 +159,61 @@ struct FiniteAreaChamber {
     int iterations;
 };
 
+/**
+ * One-dimensional isentropic nozzle expansion with equilibrium or frozen chemistry.
+ *
+ * Solves the sonic throat from the inlet (chamber) state, then stations given by area ratio,
+ * pressure ratio or a wall profile.
+ */
 class Nozzle {
     public:
     /**
-     * @param gas gas at the inlet (chamber) state. The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
+     * @param gas gas at the inlet (chamber) state. The solver works on its own copy of `gas`;
+     * the caller's `Gas` is not modified.
      * @param options chemistry, freezing station and stations to solve.
      * @throws std::invalid_argument for KINETIC chemistry.
      * @throws NotImplementedError for PERFECT_GAS chemistry.
      */
     Nozzle(const Gas& gas, NozzleOptions options = {});
+    /**
+     * @param gas product gas; only its phase definition is used. The solver works on its own copy.
+     * @param state inlet (chamber) state vector, as returned by `Gas::save_state`.
+     * @param options chemistry, freezing station and stations to solve.
+     * @throws std::invalid_argument for KINETIC chemistry.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
     Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options = {});
 
+    /**
+     * Solve the throat and one station.
+     *
+     * @param expansion_type How `ratio` is interpreted.
+     * @param ratio Area ratio A/A_t [-] or pressure ratio P_inlet/P [-].
+     */
     NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
+    /**
+     * Solve the throat and one station per ratio.
+     *
+     * @param expansion_type How `ratios` are interpreted.
+     * @param ratios Area ratios A/A_t [-] or pressure ratios P_inlet/P [-].
+     */
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
+    /**
+     * Solve the throat and supersonic stations along a wall profile.
+     *
+     * The first point of the profile (`x_min`) is taken as the throat, and the stations are
+     * spaced evenly in x up to the last point. The area is that of an axisymmetric nozzle.
+     *
+     * @param profile Diverging wall contour starting at the throat.
+     * @param num_stations Number of stations [-].
+     */
     NozzleResults solve(const NozzleProfile& profile, int num_stations = 50);
+    /**
+     * Solve the sonic throat by isentropic expansion from the inlet state.
+     *
+     * @param abstol Tolerance on |1 - 1/M^2| at the throat [-].
+     * @throws ConvergenceError if the throat iteration does not converge in 5 iterations.
+     */
     ThroatCondition solve_throat_conditions(double abstol = 4e-4);
 
     /**
@@ -199,8 +268,10 @@ class Nozzle {
     FiniteAreaChamber solve_finite_area_chamber(const std::vector<double>& injector_state,
         CombustorType type, double value, double reltol = 1e-6);
 
+    /** Isentropic exponent of the solver's gas at its current state [-]. */
     double get_gamma_s();
 
+    /** Restore the solver's gas to the inlet state. */
     void reset_state();
     /** Set the inlet (chamber) state the next solve expands from, and make it the reference. */
     inline void set_inlet_state(const std::vector<double>& state) {

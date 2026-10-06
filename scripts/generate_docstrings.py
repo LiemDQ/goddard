@@ -20,6 +20,7 @@ only fall back to the stub when it is missing (``--stub --if-missing``).
 from __future__ import annotations
 
 import argparse
+import re
 import shlex
 import subprocess
 import sys
@@ -57,6 +58,21 @@ def fall_back(out_path: Path, reason: str) -> None:
         write_stub(out_path)
 
 
+_DOCSTRING = re.compile(r'R"doc\((.*?)\)doc"', re.DOTALL)
+_LEADING_MARKER = re.compile(r"^(?://[/!]<|[/!]?<)\s?")
+
+
+def clean_docstrings(text: str) -> str:
+    """Strip comment markers pybind11_mkdoc leaves in: the closing ``*/`` of a one-line
+    ``/** ... */`` comment and the ``<`` of a trailing ``///<`` or ``//!<`` comment."""
+    def clean(match: re.Match) -> str:
+        body = match.group(1)
+        body = re.sub(r"\s*\*/\s*$", "", body)
+        body = _LEADING_MARKER.sub("", body)
+        return f'R"doc({body})doc"'
+    return _DOCSTRING.sub(clean, text)
+
+
 def run_mkdoc(out_path: Path, include_dirs: list[str], headers: list[Path],
               extra_clang_args: list[str]) -> int:
     try:
@@ -86,6 +102,7 @@ def run_mkdoc(out_path: Path, include_dirs: list[str], headers: list[Path],
         tmp_path.unlink(missing_ok=True)
         fall_back(out_path, f"pybind11_mkdoc exited with {result.returncode}")
     else:
+        tmp_path.write_text(clean_docstrings(tmp_path.read_text()))
         tmp_path.replace(out_path)
         print(f"[generate_docstrings] wrote {out_path}", file=sys.stderr)
     return 0
