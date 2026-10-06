@@ -152,13 +152,31 @@ target_compile_options(_core PRIVATE
 target_compile_options(_core PRIVATE -fno-sanitize=all)
 target_link_options(_core PRIVATE -fno-sanitize=all)
 
-# Copy the built module into python/goddard/ for dev workflow (PYTHONPATH=python)
-add_custom_command(TARGET _core POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:_core>
-        ${PROJECT_SOURCE_DIR}/python/goddard/$<TARGET_FILE_NAME:_core>
-)
+# Copy the built module into python/goddard/ for dev workflow (PYTHONPATH=python). Package builds
+# (scikit-build-core sets SKBUILD) install it instead, and must not leave a copy in the source tree.
+if(NOT SKBUILD)
+    add_custom_command(TARGET _core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:_core>
+            ${PROJECT_SOURCE_DIR}/python/goddard/$<TARGET_FILE_NAME:_core>
+    )
+endif()
 
 # Install both the extension and the shared library into the same directory
 # so that $ORIGIN RPATH resolves libgoddard_lib.so at runtime.
 install(TARGETS _core goddard_lib LIBRARY DESTINATION goddard)
+
+# Type stub for package builds. stubgen imports the freshly built module from the build tree as the
+# top-level module `_core`; its BUILD_RPATH resolves libgoddard_lib.so there, so no
+# LD_LIBRARY_PATH is needed. Package builds have the sanitizers off, which the import requires;
+# development builds keep the docs-stubs pixi task instead.
+if(SKBUILD AND NOT CMAKE_CROSSCOMPILING)
+    nanobind_add_stub(
+        goddard_core_stub
+        MODULE _core
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/_core.pyi"
+        PYTHON_PATH "$<TARGET_FILE_DIR:_core>"
+        DEPENDS _core
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_core.pyi" DESTINATION goddard)
+endif()

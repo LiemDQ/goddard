@@ -27,6 +27,37 @@ cmake.build-type = "Release"
 # incrementally instead of configuring and compiling from scratch in a temporary directory.
 build-dir = "build-python/{wheel_tag}"
 wheel.packages = ["python/goddard"]
+# The sdist is the working tree minus .gitignore'd files, so local tool and shell files must be
+# excluded explicitly. Patterns use gitignore syntax relative to the project root. Wheels take the
+# package sources through the same exclusion: the /python/goddard/_core* entries drop dev-workflow
+# copies of the extension and its stub, which CMake installs from the build instead. (wheel.exclude
+# cannot do this, because it also matches the installed files at goddard/_core*.) Directories are
+# listed without a trailing slash so that the file walk skips them entirely.
+sdist.exclude = [
+    "/python/goddard/_core*.so",
+    "/python/goddard/_core.pyi",
+    "/.claude",
+    "/CLAUDE.md",
+    "/debug_probes",
+    "/instructions",
+    "/site",
+    "/build*",
+    "/examples/basic_MoC.ipynb",
+    "/.bash_profile",
+    "/.bashrc",
+    "/.profile",
+    "/.zprofile",
+    "/.zshrc",
+    "/.gitconfig",
+    "/.gitmodules",
+    "/.ripgreprc",
+    "/.mcp.json",
+    "/.idea",
+    "/.vscode",
+    "/.cache",
+    "/.pytest_cache",
+    "/.pixi",
+]
 # Package builds must not fail on compiler warnings introduced by a newer toolchain; the C++ CI job
 # builds with warnings as errors instead. They also skip the C++ test suite, and do not compile the
 # source tree's data/ path into the library (see DATA_DIR in CMakeLists.txt).
