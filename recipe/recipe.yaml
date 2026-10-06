@@ -16,7 +16,11 @@ build:
   number: 0
   skip:
     - not linux
-  script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  script:
+    env:
+      # One ninja job per core runs out of memory on small machines; pixi sets 6.
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ env.get("CMAKE_BUILD_PARALLEL_LEVEL", default="4") }}
+    content: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
 
 requirements:
   build:
