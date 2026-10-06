@@ -71,7 +71,20 @@ class BaseCombustor {
     protected:
     mutable Gas m_gas;
 
+    /**
+     * Equilibrate reactant states in place and return them.
+     *
+     * @throws NotImplementedError for `CombustionProcess::ISOCHORIC` when `states` carries
+     * candidate condensed species.
+     */
     ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
+
+    /**
+     * Array of reactant states with the given shape, carrying the candidate condensed species of
+     * `m_gas` with every amount set to zero (the reactants are all gas phase). Sets the condensed
+     * amounts of `m_gas` to zero as well.
+     */
+    ThermoArray reactant_states(const std::vector<long>& shape) const;
 
     /**
      * Check that the combustor options describe a supported combustor.

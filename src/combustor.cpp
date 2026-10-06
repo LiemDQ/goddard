@@ -47,6 +47,10 @@ void BaseCombustor::validate_options(const CombustorOptions& options) {
 
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
     validate_options(options);
+    if (options.process == CombustionProcess::ISOCHORIC && states.num_condensed() > 0) {
+        throw NotImplementedError(
+            "Constant-volume combustion with candidate condensed species is not implemented.");
+    }
     switch (options.process) {
         case CombustionProcess::ISOBARIC:
             try {
@@ -70,6 +74,15 @@ ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& 
             break;
     }
     return states;
+}
+
+ThermoArray BaseCombustor::reactant_states(const std::vector<long>& shape) const {
+    if (m_gas.has_condensed_candidates()) {
+        // The array starts every entry from the condensed amounts of `m_gas`, which may still
+        // hold the products of an earlier solve. The reactants are all in the gas phase.
+        m_gas.set_condensed_moles(std::vector<double>(m_gas.condensed_moles().size(), 0.0));
+    }
+    return ThermoArray(m_gas, shape);
 }
 
 void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
@@ -221,7 +234,8 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::Ar
 
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type);
 
-    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
+    ThermoArray combustion_states =
+        reactant_states({temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
     return combust(combustion_states, options);
@@ -260,14 +274,17 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
         enthalpies[i] = fuel_enthalpy * fuel_mass_frac + oxidizer_enthalpy * (1.0 - fuel_mass_frac);
     }
 
-    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
+    ThermoArray combustion_states = reactant_states({n_compositions, n_pressures});
 
+    // The bare gas-phase state: the reactants hold no condensed species.
+    std::vector<double> reactant_state(thermo->stateSize());
     for (long i = 0; i < n_compositions; i++) {
         Eigen::ArrayXd row = mass_fracs.row(i);
         for (long j = 0; j < n_pressures; j++) {
             thermo->setMassFractions(row.data());
             thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
+            thermo->saveState(reactant_state);
+            combustion_states.set_state(combustion_states.flat_index(i, j), reactant_state);
         }
     }
 
@@ -340,7 +357,8 @@ ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& temperatures, const Ei
 
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type, recirculation_ratio);
 
-    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
+    ThermoArray combustion_states =
+        reactant_states({temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
     return combust(combustion_states, options);
@@ -387,14 +405,17 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
                       + flue_enthalpy * w_dilution;
     }
 
-    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
+    ThermoArray combustion_states = reactant_states({n_compositions, n_pressures});
 
+    // The bare gas-phase state: the reactants hold no condensed species.
+    std::vector<double> reactant_state(thermo->stateSize());
     for (long i = 0; i < n_compositions; i++) {
         Eigen::ArrayXd row = mass_fracs.row(i);
         for (long j = 0; j < n_pressures; j++) {
             thermo->setMassFractions(row.data());
             thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
+            thermo->saveState(reactant_state);
+            combustion_states.set_state(combustion_states.flat_index(i, j), reactant_state);
         }
     }
 
