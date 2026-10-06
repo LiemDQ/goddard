@@ -1,3 +1,5 @@
+import pathlib
+
 from goddard._core import (
     # Enums
     CombustorType,
@@ -57,7 +59,6 @@ from goddard._core import (
     ThermoArray,
     Combustor,
     Nozzle,
-    ThermodynamicState,
     # MoC class + functions
     MocNozzle,
     compute_thrust_coefficient,
@@ -67,6 +68,7 @@ from goddard._core import (
     # Errors
     ConvergenceError,
     # Functions
+    add_data_directory,
     create_solution,
     equilibrium_derivatives,
     equilibrium_properties,
@@ -124,5 +126,11 @@ from goddard.convenience import (
 )
 
 from goddard import plotting
+
+# Thermodynamic data files shipped with the package (absent in a source checkout, where the
+# library registers the repository's data/ directory itself).
+data_dir = pathlib.Path(__file__).parent / "data"
+if data_dir.is_dir():
+    add_data_directory(str(data_dir))
 
 __version__ = "0.1.0"

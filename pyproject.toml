@@ -28,9 +28,12 @@ cmake.build-type = "Release"
 build-dir = "build-python/{wheel_tag}"
 wheel.packages = ["python/goddard"]
 # Package builds must not fail on compiler warnings introduced by a newer toolchain; the C++ CI job
-# builds with warnings as errors instead.
+# builds with warnings as errors instead. They also skip the C++ test suite, and do not compile the
+# source tree's data/ path into the library (see DATA_DIR in CMakeLists.txt).
 cmake.args = [
     "-Dgoddard_BUILD_PYTHON=ON",
+    "-Dgoddard_DEVELOPMENT_BUILD=OFF",
+    "-DBUILD_TESTING=OFF",
     "-Dgoddard_ENABLE_SANITIZER_ADDRESS=OFF",
     "-Dgoddard_ENABLE_SANITIZER_UNDEFINED=OFF",
     "-Dgoddard_WARNINGS_AS_ERRORS=OFF",

@@ -33,14 +33,24 @@ goddard_local_options()
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Install path" FORCE)
 endif()
-set(DATA_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/goddard/data")
-
-# for development builds, use source directory data
-# for installed builds, use the install directory
-if(goddard_DEVELOPMENT_BUILD)
-  set(DATA_DIR "${CMAKE_SOURCE_DIR}/data")
+# Python packages (scikit-build-core sets SKBUILD) install the data next to the extension module, at
+# a path relative to the wheel root; goddard/__init__.py registers it at import. Other installs use
+# <prefix>/share/goddard/data.
+if(SKBUILD)
+  set(DATA_INSTALL_DIR "goddard/data")
 else()
-  set(DATA_DIR "${DATA_INSTALL_DIR}")
+  set(DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/goddard/data")
+endif()
+
+# DATA_DIR is the data directory compiled into the library and registered by setup_defaults() when
+# it exists. Development builds and editable installs use the source tree. A wheel must not bake in
+# a path from the build machine, so it gets none and relies on goddard/__init__.py instead.
+if(goddard_DEVELOPMENT_BUILD OR SKBUILD_STATE STREQUAL "editable")
+  set(DATA_DIR "${CMAKE_SOURCE_DIR}/data")
+elseif(SKBUILD)
+  set(DATA_DIR "")
+else()
+  set(DATA_DIR "${CMAKE_INSTALL_PREFIX}/${DATA_INSTALL_DIR}")
 endif()
 
 configure_file(
@@ -81,9 +91,10 @@ if(goddard_BUILD_PYTHON)
 endif()
 
 
-#install data files
+# Install the thermodynamic data files. cea_results/ holds test reference data only.
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/"
         DESTINATION "${DATA_INSTALL_DIR}"
         FILES_MATCHING PATTERN "*.yaml"
+        PATTERN "cea_results" EXCLUDE
 )
 
