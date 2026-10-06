@@ -195,6 +195,29 @@ TEST_F(KineticNozzleTests, SolveReturnsStations) {
         << "Solve must produce at least one station";
 }
 
+TEST_F(KineticNozzleTests, FullSolveReachesExit) {
+    // The fixture allows 100000 steps for ~20000 steps of dx_max, so the integration must end
+    // exactly at the exit of the profile.
+    ASSERT_GT(s_results.stations.size(), 0u);
+    EXPECT_TRUE(s_results.reached_exit);
+    EXPECT_EQ(s_results.stations.back().x, s_profile.x_max())
+        << "The last step must land on the exit, not a rounding error short of it";
+}
+
+TEST_F(KineticNozzleTests, StepLimitedSolveReportsExitNotReached) {
+    // Stopping at max_steps must be reported rather than returned as if complete.
+    const int max_steps = 3;
+    double length = s_profile.x_max() - s_profile.x_min();
+    KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+    KineticNozzleResults truncated = nozzle.solve(1e-6, length/20000, max_steps);
+
+    EXPECT_FALSE(truncated.reached_exit);
+    EXPECT_EQ(truncated.stations.size(), static_cast<size_t>(max_steps));
+    ASSERT_FALSE(truncated.stations.empty());
+    EXPECT_LT(truncated.stations.back().x, s_profile.x_max());
+    EXPECT_LT(truncated.stations.size(), s_results.stations.size());
+}
+
 TEST_F(KineticNozzleTests, FirstStationMachIsApproximatelyOne) {
     // The solver starts at the throat (x_min), so the first station
     // should have Mach ≈ 1.0 (within the first step's integration error)

@@ -24,7 +24,9 @@ void bind_kinetic_nozzle(nb::module_& m) {
     nb::class_<Goddard::KineticNozzleResults>(m, "KineticNozzleResults")
         .def(nb::init<>())
         .def_ro("throat",   &Goddard::KineticNozzleResults::throat)
-        .def_ro("stations", &Goddard::KineticNozzleResults::stations);
+        .def_ro("stations", &Goddard::KineticNozzleResults::stations)
+        // False if solve() stopped at max_steps before the exit of the profile.
+        .def_ro("reached_exit", &Goddard::KineticNozzleResults::reached_exit);
 
     // KineticNozzle — 1D kinetic nozzle solver using Cantera IdealGasMoleReactor
     // NozzleProfile is passed by value (it is copyable).
