@@ -13,17 +13,35 @@ At a basic level, Goddard provides similar functionality as NASA's [Chemical Equ
 - **Thermochemical physics** — chemical equilibrium and kinetics with self-consistent thermodynamics.
 - **Compressible flow** — 1-D equilibrium, frozen, and kinetic nozzle expansions
 - **Method of Characteristics** — automated nozzle contour design and analysis of 2D & axisymmetric supersonic flows.
-- **Shock relations** — thermodynamically consistent normal, reflected, and (TBD) oblique shocks
+- **Shock relations** — thermodynamically consistent normal, reflected, and oblique shocks
+- **Detonations** — Chapman-Jouguet, overdriven, under-driven, and reflected detonations
 - **Thermodynamic data** — integrated with the NASA Glenn thermodynamic database, covering nearly 2,000 gaseous and condensed species.
 
 ## Quick start
 
-### Requirements
-
-* [Pixi](https://pixi.prefix.dev/latest/) package manager.
-* C++20 compiler.
-
 ### Installation
+
+#### conda-forge
+
+```bash
+conda install -c conda-forge goddard
+```
+
+The conda-forge package is pending acceptance.
+
+#### From source (PyPI sdist)
+
+PyPI hosts only the source distribution, so `pip install goddard` compiles Goddard against Cantera's C++ library. Run it in a conda environment that provides the build dependencies:
+
+```bash
+conda create -n goddard -c conda-forge python libcantera-devel=3.2 "eigen>=5" cxx-compiler cmake ninja
+conda activate goddard
+pip install goddard
+```
+
+#### Development setup
+
+Requires the [Pixi](https://pixi.prefix.dev/latest/) package manager and a C++20 compiler.
 
 ```bash
 # Clone and install with pixi

@@ -82,3 +82,63 @@ jobs:
 
       - name: clang-tidy and cppcheck
         run: pixi run lint-changed origin/${{ github.base_ref }}
+
+  package:
+    name: Package (sdist & conda)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.80.0
+          environments: package
+          cache: true
+
+      - name: Build sdist
+        run: pixi run -e package sdist
+
+      - name: Check sdist contents
+        # Local tool, shell and agent files and build trees must not reach the sdist (see
+        # sdist.exclude in pyproject.toml).
+        run: |
+          sdist=$(ls dist/goddard-*.tar.gz)
+          tar tzf "$sdist" > sdist-files.txt
+          echo "$(wc -l < sdist-files.txt) files in $sdist"
+          excluded='\.claude|CLAUDE\.md|debug_probes|instructions|site|build[^/]*|examples/basic_MoC\.ipynb|\.bash_profile|\.bashrc|\.profile|\.zprofile|\.zshrc|\.gitconfig|\.gitmodules|\.ripgreprc|\.mcp\.json|\.idea|\.vscode|\.cache|\.pytest_cache|\.pixi|python/goddard/_core[^/]*\.(so|pyi)'
+          if grep -E "^[^/]+/(${excluded})(/|$)" sdist-files.txt; then
+            echo "::error::The sdist contains the files listed above, which must be excluded."
+            exit 1
+          fi
+
+      - name: Build and test conda package
+        run: pixi run -e package conda-build
+
+  docstrings:
+    name: Docstrings header up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.80.0
+          environments: docs
+          cache: true
+
+      - name: Regenerate goddard_docstrings.h
+        run: pixi run -e docs docs-compile
+
+      - name: Compare with the committed header
+        run: |
+          git ls-files --error-unmatch python/src/goddard_docstrings.h
+          if ! git diff --exit-code python/src/goddard_docstrings.h; then
+            echo "::error::python/src/goddard_docstrings.h is out of date. Run 'pixi run -e docs docs-compile' and commit the header."
+            exit 1
+          fi
