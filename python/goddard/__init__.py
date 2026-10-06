@@ -1,6 +1,7 @@
 import pathlib
 
 from goddard._core import (
+    __version__,
     # Enums
     CombustorType,
     CombustionProcess,
@@ -132,5 +133,3 @@ from goddard import plotting
 data_dir = pathlib.Path(__file__).parent / "data"
 if data_dir.is_dir():
     add_data_directory(str(data_dir))
-
-__version__ = "0.1.0"

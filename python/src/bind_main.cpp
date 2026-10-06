@@ -1,6 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include "goddard/global.hpp"
+#include "goddard/config.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -22,6 +23,8 @@ void bind_detonations(nb::module_& m);
 
 NB_MODULE(_core, m) {
     m.doc() = "Goddard rocket engine simulation toolkit";
+    // From project(VERSION) in CMakeLists.txt, the single source of the version number.
+    m.attr("__version__") = GODDARD_VERSION;
 
     Goddard::setup_defaults();
 

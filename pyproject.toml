@@ -7,7 +7,7 @@ name = "goddard"
 authors = [
     {name = "Liem Dam-Quang", email="dq@liem.ca"}
 ]
-version = "0.1.0"
+dynamic = ["version"]
 description = "Reactive flow simulation toolkit"
 readme = "readme.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ urls ={ Repository = "https://github.com/LiemDQ/goddard", Issues = "https://gith
 dev = ["pytest"]
 
 [tool.scikit-build]
+metadata.version.provider = "scikit_build_core.metadata.regex"
+metadata.version.input = "CMakeLists.txt"
+# The VERSION argument of project(), the single source of the version number.
+metadata.version.regex = 'project\s*\([^)]*?\bVERSION\s+(?P<value>[0-9]+(?:\.[0-9]+)*)'
 cmake.build-type = "Release"
 # Persistent build directory so repeated editable installs (e.g. the test-python tasks) rebuild
 # incrementally instead of configuring and compiling from scratch in a temporary directory.
