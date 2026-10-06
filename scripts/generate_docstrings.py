@@ -11,9 +11,9 @@ macro that nanobind binding files can use::
 
 If ``pybind11_mkdoc`` (or its libclang dependency) is not available, OR if
 ``--stub`` is passed, the script writes a stub header that defines
-``DOC(...)`` as an empty string. This keeps the bindings compiling cleanly in
-environments that don't have the docs toolchain installed (e.g. plain
-``pixi run compile``).
+``DOC(...)`` as an empty string. The generated header is committed, so builds
+without the docs toolchain (e.g. plain ``pixi run compile``) use it as is and
+only fall back to the stub when it is missing (``--stub --if-missing``).
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ STUB_CONTENTS = """\
 #pragma once
 // Stub goddard_docstrings.h emitted by scripts/generate_docstrings.py.
 //
-// Generated when pybind11_mkdoc is unavailable or when -Dgoddard_BUILD_DOCSTRINGS=OFF.
-// DOC(...) expands to an empty string so binding sources compile cleanly without
-// embedded docstrings. To populate real docstrings, configure with
-// -Dgoddard_BUILD_DOCSTRINGS=ON (the `docs` pixi environment does this automatically).
+// Generated when pybind11_mkdoc is unavailable, or when the committed header is missing
+// and -Dgoddard_BUILD_DOCSTRINGS=OFF. DOC(...) expands to an empty string so binding
+// sources compile cleanly without embedded docstrings. To regenerate the real docstrings,
+// run `pixi run -e docs docs-compile` (it configures with -Dgoddard_BUILD_DOCSTRINGS=ON).
 
 #define DOC(...) ""
 """
@@ -88,9 +88,14 @@ def main() -> int:
                         help="Public C++ header to scan (repeatable)")
     parser.add_argument("--stub", action="store_true",
                         help="Always emit the stub header without invoking pybind11_mkdoc")
+    parser.add_argument("--if-missing", action="store_true",
+                        help="Do nothing if the output header already exists")
     parser.add_argument("--clang-arg", action="append", default=[], metavar="ARG",
                         help="Extra argument forwarded to libclang (repeatable)")
     args = parser.parse_args()
+
+    if args.if_missing and args.output.exists():
+        return 0
 
     if args.stub or not args.header:
         write_stub(args.output)

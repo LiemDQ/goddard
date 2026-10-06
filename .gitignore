@@ -143,8 +143,7 @@ venv.bak/
 # mkdocs documentation
 /site
 
-# Generated documentation artifacts
-python/src/goddard_docstrings.h
+# Generated documentation artifacts (python/src/goddard_docstrings.h is generated but committed)
 python/goddard/_core.pyi
 docs/examples/*.ipynb
 
