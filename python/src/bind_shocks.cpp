@@ -74,7 +74,7 @@ void bind_shocks(nb::module_& m) {
 
     // ShockSolver — chemistry-dispatched solver with state management
     nb::class_<Goddard::ShockSolver>(m, "ShockSolver", DOC(Goddard, ShockSolver))
-        .def(nb::init<Goddard::Gas, Goddard::SolverOptions>(),
+        .def(nb::init<const Goddard::Gas&, Goddard::SolverOptions>(),
              "gas"_a, "options"_a = Goddard::SolverOptions(), DOC(Goddard, ShockSolver, ShockSolver))
         .def("normal_shock", &Goddard::ShockSolver::normal_shock,
              "mach"_a, DOC(Goddard, ShockSolver, normal_shock))
@@ -105,8 +105,6 @@ void bind_shocks(nb::module_& m) {
              DOC(Goddard, ShockSolver, oblique_shock_from_deflection))
         .def("max_deflection", &Goddard::ShockSolver::max_deflection,
              "mach"_a, DOC(Goddard, ShockSolver, max_deflection))
-        .def("pre_shock_state", &Goddard::ShockSolver::pre_shock_state,
-             nb::rv_policy::reference_internal, DOC(Goddard, ShockSolver, pre_shock_state))
-        .def("post_shock_state", &Goddard::ShockSolver::post_shock_state,
-             nb::rv_policy::reference_internal, DOC(Goddard, ShockSolver, post_shock_state));
+        .def("pre_shock_state", &Goddard::ShockSolver::pre_shock_state, DOC(Goddard, ShockSolver, pre_shock_state))
+        .def("post_shock_state", &Goddard::ShockSolver::post_shock_state, DOC(Goddard, ShockSolver, post_shock_state));
 }

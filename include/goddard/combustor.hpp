@@ -62,7 +62,8 @@ struct CombustorOptions {
  */
 class BaseCombustor {
     public:
-    explicit BaseCombustor(Gas gas);
+    /** @param gas product gas. The solver works on its own copy of `gas`; the caller's `Gas` is not modified. */
+    explicit BaseCombustor(const Gas& gas);
     virtual ~BaseCombustor() = default;
 
     inline std::vector<std::string> get_combustion_species() {return m_gas.thermo()->speciesNames();}

@@ -141,9 +141,9 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
  *
  * Every result also reports the von Neumann state, the frozen shock at the same wave speed.
  *
- * @note The state accessors return the same `Gas`, which shares its `Solution` with the `Gas`
- * passed to the constructor. A reference from one accessor is changed by the next call to any
- * method of the solver.
+ * The solver works on its own copy of the `Gas` passed to the constructor, and the state
+ * accessors return independent copies, so neither the caller's `Gas` nor an earlier accessor
+ * result changes when the solver runs.
  */
 class DetonationSolver {
 public:
@@ -154,7 +154,7 @@ public:
      * are present
      * @throws ConvergenceError if the CJ detonation cannot be solved
      */
-    DetonationSolver(Gas gas, SolverOptions options = {});
+    DetonationSolver(const Gas& gas, SolverOptions options = {});
 
     /**
      * Chapman-Jouguet detonation: the slowest steady detonation, whose products leave at their
@@ -206,18 +206,18 @@ public:
     ReflectedDetonationResult reflected_detonation(double drive_factor = 1.0,
                                                    DetonationBranch branch = DetonationBranch::OVERDRIVEN);
 
-    /** Gas at the unburned state, with the chemistry it had at construction. */
-    const Gas& pre_detonation_state() const;
+    /** Gas at the unburned state, with the chemistry it had at construction. An independent copy. */
+    Gas pre_detonation_state() const;
     /**
      * Gas at the products of the most recent solve, with EQUILIBRIUM chemistry. After an invalid
-     * result it is the unburned state.
+     * result it is the unburned state. An independent copy.
      */
-    const Gas& post_detonation_state() const;
+    Gas post_detonation_state() const;
     /**
      * Gas behind the leading frozen shock of the most recent solve, with FROZEN chemistry. After
-     * an invalid result it is the unburned state.
+     * an invalid result it is the unburned state. An independent copy.
      */
-    const Gas& von_neumann_state() const;
+    Gas von_neumann_state() const;
 
 private:
     /** Restore the unburned state and the construction chemistry. */

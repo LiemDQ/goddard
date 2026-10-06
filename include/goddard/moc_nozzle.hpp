@@ -27,7 +27,8 @@ public:
 
     MocNozzle(MocOptions opts): options(std::move(opts)) { validate_moc_options(options); }
 
-    MocNozzle(Gas gas, MocOptions opts): options(std::move(opts)), m_gas(std::move(gas)) { validate_moc_options(options); }
+    /** Solver for real-gas chemistry. The solver works on its own copy of `gas`. */
+    MocNozzle(const Gas& gas, MocOptions opts): options(std::move(opts)), m_gas(gas.clone()) { validate_moc_options(options); }
 
     /**
      * March the characteristic net and return the solved flow field.

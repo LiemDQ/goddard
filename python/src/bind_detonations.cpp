@@ -61,7 +61,7 @@ void bind_detonations(nb::module_& m) {
 
     // DetonationSolver — real-gas detonations with state management
     nb::class_<Goddard::DetonationSolver>(m, "DetonationSolver", DOC(Goddard, DetonationSolver))
-        .def(nb::init<Goddard::Gas, Goddard::SolverOptions>(),
+        .def(nb::init<const Goddard::Gas&, Goddard::SolverOptions>(),
              "gas"_a, "options"_a = Goddard::SolverOptions(), DOC(Goddard, DetonationSolver, DetonationSolver))
         .def("chapman_jouguet", &Goddard::DetonationSolver::chapman_jouguet,
              DOC(Goddard, DetonationSolver, chapman_jouguet))
@@ -74,10 +74,7 @@ void bind_detonations(nb::module_& m) {
         .def("reflected_detonation", &Goddard::DetonationSolver::reflected_detonation,
              "drive_factor"_a = 1.0, "branch"_a = Goddard::DetonationBranch::OVERDRIVEN,
              DOC(Goddard, DetonationSolver, reflected_detonation))
-        .def("pre_detonation_state", &Goddard::DetonationSolver::pre_detonation_state,
-             nb::rv_policy::reference_internal, DOC(Goddard, DetonationSolver, pre_detonation_state))
-        .def("post_detonation_state", &Goddard::DetonationSolver::post_detonation_state,
-             nb::rv_policy::reference_internal, DOC(Goddard, DetonationSolver, post_detonation_state))
-        .def("von_neumann_state", &Goddard::DetonationSolver::von_neumann_state,
-             nb::rv_policy::reference_internal, DOC(Goddard, DetonationSolver, von_neumann_state));
+        .def("pre_detonation_state", &Goddard::DetonationSolver::pre_detonation_state, DOC(Goddard, DetonationSolver, pre_detonation_state))
+        .def("post_detonation_state", &Goddard::DetonationSolver::post_detonation_state, DOC(Goddard, DetonationSolver, post_detonation_state))
+        .def("von_neumann_state", &Goddard::DetonationSolver::von_neumann_state, DOC(Goddard, DetonationSolver, von_neumann_state));
 }

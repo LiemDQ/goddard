@@ -358,8 +358,8 @@ void check_shock_chemistry(GasChemistry chemistry) {
 
 // ===== ShockSolver =====
 
-ShockSolver::ShockSolver(Gas gas, SolverOptions options)
-    : m_gas(std::move(gas)), m_chemistry(m_gas.chemistry), m_options(options)
+ShockSolver::ShockSolver(const Gas& gas, SolverOptions options)
+    : m_gas(gas.clone()), m_chemistry(m_gas.chemistry), m_options(options)
 {
     if (m_chemistry == GasChemistry::KINETIC) {
         throw std::invalid_argument(
@@ -584,15 +584,15 @@ double ShockSolver::max_deflection(double mach) {
     return deflection;
 }
 
-const Gas& ShockSolver::pre_shock_state() const {
+Gas ShockSolver::pre_shock_state() const {
     reset();
-    return m_gas;
+    return m_gas.clone();
 }
 
-const Gas& ShockSolver::post_shock_state() const {
+Gas ShockSolver::post_shock_state() const {
     m_gas.restore_state(m_post_shock_state);
     m_gas.chemistry = m_chemistry;
-    return m_gas;
+    return m_gas.clone();
 }
 
 } //namespace Goddard

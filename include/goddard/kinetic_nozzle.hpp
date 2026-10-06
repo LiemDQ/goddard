@@ -57,7 +57,7 @@ public:
         std::vector<double> inlet_state,
         NozzleOptions options = {});
 
-    // Construct from Gas directly (chemistry is overridden to FROZEN internally)
+    // Construct from Gas directly (chemistry is overridden to FROZEN internally). The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
     KineticNozzle(
         const Gas& gas,
         NozzleProfile& profile,

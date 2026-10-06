@@ -133,6 +133,12 @@ struct FiniteAreaChamber {
 
 class Nozzle {
     public:
+    /**
+     * @param gas gas at the inlet (chamber) state. The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
+     * @param options chemistry, freezing station and stations to solve.
+     * @throws std::invalid_argument for KINETIC chemistry.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
     Nozzle(const Gas& gas, NozzleOptions options = {});
     Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options = {});
 

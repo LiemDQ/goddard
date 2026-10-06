@@ -263,8 +263,8 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
 
 // ===== DetonationSolver =====
 
-DetonationSolver::DetonationSolver(Gas gas, SolverOptions options)
-    : m_gas(std::move(gas)), m_chemistry(m_gas.chemistry), m_options(options)
+DetonationSolver::DetonationSolver(const Gas& gas, SolverOptions options)
+    : m_gas(gas.clone()), m_chemistry(m_gas.chemistry), m_options(options)
 {
     switch (m_chemistry) {
         case GasChemistry::PERFECT_GAS:
@@ -419,21 +419,21 @@ ReflectedDetonationResult DetonationSolver::reflected_detonation(double drive_fa
     return result;
 }
 
-const Gas& DetonationSolver::pre_detonation_state() const {
+Gas DetonationSolver::pre_detonation_state() const {
     reset();
-    return m_gas;
+    return m_gas.clone();
 }
 
-const Gas& DetonationSolver::post_detonation_state() const {
+Gas DetonationSolver::post_detonation_state() const {
     m_gas.restore_state(m_post_detonation_state);
     m_gas.chemistry = GasChemistry::EQUILIBRIUM;
-    return m_gas;
+    return m_gas.clone();
 }
 
-const Gas& DetonationSolver::von_neumann_state() const {
+Gas DetonationSolver::von_neumann_state() const {
     m_gas.restore_state(m_von_neumann_state);
     m_gas.chemistry = GasChemistry::FROZEN;
-    return m_gas;
+    return m_gas.clone();
 }
 
 } // namespace Goddard

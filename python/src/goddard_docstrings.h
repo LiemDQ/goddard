@@ -27,7 +27,10 @@ static const char *__doc_Goddard_BaseCombustor =
 R"doc(Base class for isobaric (HP) and isochoric (UV) combustion. Provides
 shared utilities for stream mixing and equilibration.)doc";
 
-static const char *__doc_Goddard_BaseCombustor_BaseCombustor = R"doc()doc";
+static const char *__doc_Goddard_BaseCombustor_BaseCombustor =
+R"doc(Parameter ``gas``:
+    product gas. The solver works on its own copy of `gas`; the
+    caller's `Gas` is not modified. */)doc";
 
 static const char *__doc_Goddard_BaseCombustor_combust =
 R"doc(Equilibrate reactant states in place and return them.
@@ -597,9 +600,10 @@ solved once, at construction.
 Every result also reports the von Neumann state, the frozen shock at
 the same wave speed.
 
-@note The state accessors return the same `Gas`, which shares its
-`Solution` with the `Gas` passed to the constructor. A reference from
-one accessor is changed by the next call to any method of the solver.)doc";
+The solver works on its own copy of the `Gas` passed to the
+constructor, and the state accessors return independent copies, so
+neither the caller's `Gas` nor an earlier accessor result changes when
+the solver runs.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_DetonationSolver =
 R"doc(Parameter ``gas``:
@@ -684,11 +688,12 @@ static const char *__doc_Goddard_DetonationSolver_m_von_neumann_state = R"doc()d
 
 static const char *__doc_Goddard_DetonationSolver_post_detonation_state =
 R"doc(Gas at the products of the most recent solve, with EQUILIBRIUM
-chemistry. After an invalid result it is the unburned state.)doc";
+chemistry. After an invalid result it is the unburned state. An
+independent copy.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_pre_detonation_state =
 R"doc(Gas at the unburned state, with the chemistry it had at construction.
-*/)doc";
+An independent copy. */)doc";
 
 static const char *__doc_Goddard_DetonationSolver_reflected_detonation =
 R"doc(Detonation reflected as a shock from the closed end of a tube, with
@@ -725,7 +730,8 @@ for an invalid result. */)doc";
 
 static const char *__doc_Goddard_DetonationSolver_von_neumann_state =
 R"doc(Gas behind the leading frozen shock of the most recent solve, with
-FROZEN chemistry. After an invalid result it is the unburned state.)doc";
+FROZEN chemistry. After an invalid result it is the unburned state. An
+independent copy.)doc";
 
 static const char *__doc_Goddard_DilutedCombustor =
 R"doc(Handles isobaric combustion with fuel, oxidizer, and recirculated flue
@@ -1909,7 +1915,9 @@ moc_inverse_march.hpp) -- and assembles the result.)doc";
 
 static const char *__doc_Goddard_MocNozzle_MocNozzle = R"doc()doc";
 
-static const char *__doc_Goddard_MocNozzle_MocNozzle_2 = R"doc()doc";
+static const char *__doc_Goddard_MocNozzle_MocNozzle_2 =
+R"doc(Solver for real-gas chemistry. The solver works on its own copy of
+`gas`. */)doc";
 
 static const char *__doc_Goddard_MocNozzle_is_solved = R"doc(True once solve() has run to completion on this instance. */)doc";
 
@@ -2583,7 +2591,19 @@ static const char *__doc_Goddard_NozzleStation_velocity =
 R"doc(Flow velocity [m/s], from the enthalpy drop below the stagnation
 enthalpy. */)doc";
 
-static const char *__doc_Goddard_Nozzle_Nozzle = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_Nozzle =
+R"doc(Parameter ``gas``:
+    gas at the inlet (chamber) state. The solver works on its own copy
+    of `gas`; the caller's `Gas` is not modified.
+
+Parameter ``options``:
+    chemistry, freezing station and stations to solve.
+
+Throws:
+    std::invalid_argument for KINETIC chemistry.
+
+Throws:
+    NotImplementedError for PERFECT_GAS chemistry.)doc";
 
 static const char *__doc_Goddard_Nozzle_Nozzle_2 = R"doc()doc";
 
@@ -3298,7 +3318,8 @@ mixture are oblique detonations and are not modelled.)doc";
 
 static const char *__doc_Goddard_ShockSolver_ShockSolver =
 R"doc(Parameter ``gas``:
-    pre-shock gas and chemistry model
+    pre-shock gas and chemistry model. The solver works on its own
+    copy of `gas`; the caller's `Gas` is not modified.
 
 Parameter ``options``:
     Newton tolerance on the log pressure and temperature ratios, and
@@ -3396,11 +3417,13 @@ R"doc(Gas at the state behind the most recently solved shock.
 
 For PERFECT_GAS chemistry it is the pre-shock gas with its temperature
 and pressure multiplied by the perfect-gas jump ratios, and its
-composition unchanged.)doc";
+composition unchanged.
+
+The result is an independent copy: later solves do not change it.)doc";
 
 static const char *__doc_Goddard_ShockSolver_pre_shock_sound_speed = R"doc(Frozen sound speed of the pre-shock state [m/s]. */)doc";
 
-static const char *__doc_Goddard_ShockSolver_pre_shock_state = R"doc(Gas at the pre-shock state. */)doc";
+static const char *__doc_Goddard_ShockSolver_pre_shock_state = R"doc(Gas at the pre-shock state: an independent copy. */)doc";
 
 static const char *__doc_Goddard_ShockSolver_reflected_shock =
 R"doc(Incident and reflected shocks in a shock tube, both with the solver's

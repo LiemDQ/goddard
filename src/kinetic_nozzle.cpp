@@ -70,7 +70,7 @@ KineticNozzle::KineticNozzle(
     NozzleOptions options)
 : profile(prof), mdot(mass_flow_rate), opts(options),
   m_throat_solver(gas, options),
-  m_gas(gas)
+  m_gas(gas.clone())
 {
     check_no_condensed_phases(m_gas);
     m_gas.chemistry = GasChemistry::FROZEN;
@@ -89,7 +89,7 @@ KineticNozzle::KineticNozzle(
 : profile(prof), mdot(mass_flow_rate), opts(options),
   m_throat_solver(gas, inlet_state, options),
   m_inlet_state(std::move(inlet_state)),
-  m_gas(gas)
+  m_gas(gas.clone())
 {
     m_gas.chemistry = GasChemistry::FROZEN;
     m_gas.restore_state(m_inlet_state);

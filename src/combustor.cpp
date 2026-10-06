@@ -61,8 +61,8 @@ void check_nonnegative_fractions(const Eigen::ArrayXXd& fractions,
 
 // ---- BaseCombustor ----
 
-BaseCombustor::BaseCombustor(Gas gas)
-    : m_gas(std::move(gas))
+BaseCombustor::BaseCombustor(const Gas& gas)
+    : m_gas(gas.clone())
 {}
 
 void BaseCombustor::validate_options(const CombustorOptions& options) {
@@ -170,7 +170,7 @@ Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidiz
 
 Combustor::Combustor(Gas products, Gas fuel, Gas oxidizer)
     : BaseCombustor(std::move(products)),
-      m_fuel_gas(std::move(fuel)), m_oxidizer_gas(std::move(oxidizer))
+      m_fuel_gas(fuel.clone()), m_oxidizer_gas(oxidizer.clone())
 {}
 
 Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {

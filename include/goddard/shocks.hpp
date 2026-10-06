@@ -178,11 +178,11 @@ ObliqueShockResult oblique_shock_from_deflection(
 class ShockSolver {
 public:
     /**
-     * @param gas pre-shock gas and chemistry model
+     * @param gas pre-shock gas and chemistry model. The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
      * @param options Newton tolerance on the log pressure and temperature ratios, and iteration limit
      * @throws std::invalid_argument for KINETIC chemistry
      */
-    ShockSolver(Gas gas, SolverOptions options = {});
+    ShockSolver(const Gas& gas, SolverOptions options = {});
 
     /**
      * Normal shock.
@@ -271,15 +271,17 @@ public:
      */
     double max_deflection(double mach);
 
-    /** Gas at the pre-shock state. */
-    const Gas& pre_shock_state() const;
+    /** Gas at the pre-shock state: an independent copy. */
+    Gas pre_shock_state() const;
     /**
      * Gas at the state behind the most recently solved shock.
      *
      * For PERFECT_GAS chemistry it is the pre-shock gas with its temperature and pressure
      * multiplied by the perfect-gas jump ratios, and its composition unchanged.
+     *
+     * The result is an independent copy: later solves do not change it.
      */
-    const Gas& post_shock_state() const;
+    Gas post_shock_state() const;
 
 private:
     /** Restore the pre-shock state and the construction chemistry. */
