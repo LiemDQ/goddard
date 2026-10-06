@@ -295,7 +295,7 @@ protected:
 
 TEST_F(BerylliumNozzleTests, ThroatIsPinnedAtTheBerylliaMeltingPoint) {
     Gas chamber = at_state(chamber_state);
-    EXPECT_NEAR(chamber.temperature(), 3018.6, 3.0);
+    EXPECT_NEAR(chamber.temperature(), 3018.89, 0.05);  // CEA; observed 0.02 K
 
     Gas nozzle_gas = products;
     nozzle_gas.chemistry = GasChemistry::EQUILIBRIUM;
@@ -311,8 +311,8 @@ TEST_F(BerylliumNozzleTests, ThroatIsPinnedAtTheBerylliaMeltingPoint) {
     Gas throat_gas = at_state(throat.state);
     EXPECT_NEAR(throat_gas.temperature(), 2851.0, 1e-6);
     EXPECT_TRUE(throat_gas.at_phase_transition());
-    // CEA's throat pressure for this expansion.
-    EXPECT_NEAR(throat_gas.pressure(), 127.2265 * BAR, 0.005 * 127.2265 * BAR);
+    // CEA's throat pressure for this expansion; observed error 1.6e-6.
+    EXPECT_NEAR(throat_gas.pressure(), 127.2265 * BAR, 1e-5 * 127.2265 * BAR);
     // An isentropic change at a pinned temperature is isothermal, so gamma_s reduces to the
     // isothermal compressibility.
     EXPECT_NEAR(throat.gamma_s, -1.0 / throat.dlV_dlP_T, 1e-10);
@@ -332,7 +332,7 @@ TEST_F(BerylliumNozzleTests, PressureRatioStationFollowsTheSolidPolymorph) {
     Gas station = at_state(results.expansions[0].state);
 
     EXPECT_NEAR(station.pressure(), 20.68419 * BAR, 1e-6 * 20.68419 * BAR);
-    EXPECT_NEAR(station.temperature(), 2453.5, 2.0);
+    EXPECT_NEAR(station.temperature(), 2453.58, 0.1);  // CEA; observed 0.05 K
     EXPECT_GT(condensed_moles_of(station, "BeO(b)"), 0.0);
     EXPECT_FALSE(results.expansions[0].pinned_transition);
 }

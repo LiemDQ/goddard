@@ -610,8 +610,8 @@ TEST_F(CryogenicRocketTests, ChamberMatchesCEAExampleEight) {
     ASSERT_EQ(states.size(), 1);
 
     products.restore_state(states.get_state(0));
-    EXPECT_NEAR(products.temperature(), CEA_CHAMBER_TEMPERATURE, 3.0);
-    EXPECT_NEAR(products.molecular_weight(), CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
+    EXPECT_NEAR(products.temperature(), CEA_CHAMBER_TEMPERATURE, 0.25);  // observed 0.09 K
+    EXPECT_NEAR(products.molecular_weight(), CEA_CHAMBER_MOLECULAR_WEIGHT, 0.002);  // observed 5.6e-4
     EXPECT_NEAR(products.pressure(), CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
 }
 
@@ -639,8 +639,8 @@ TEST_F(CryogenicRocketTests, RocketProblemReproducesTheChamber) {
     RocketProblemResults results = problem.solve();
 
     const RocketStation& chamber = results.chamber(0, "ex8");
-    EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 3.0);
-    EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.01);
+    EXPECT_NEAR(chamber.thermo.temperature, CEA_CHAMBER_TEMPERATURE, 0.25);
+    EXPECT_NEAR(chamber.thermo.molecular_weight, CEA_CHAMBER_MOLECULAR_WEIGHT, 0.002);
     EXPECT_NEAR(chamber.thermo.pressure, CHAMBER_PRESSURE, 1e-6 * CHAMBER_PRESSURE);
 }
 

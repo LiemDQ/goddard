@@ -834,8 +834,8 @@ TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAt1000K) {
     const Eigen::ArrayXd before = products.element_moles();
     products.equilibrate_TP(1000.0, BAR);
 
-    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.18459, 5e-3);
-    EXPECT_NEAR(products.molecular_weight(), 10.676, 0.05);
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.18459, 5e-5);
+    EXPECT_NEAR(products.molecular_weight(), 10.676, 2e-3);
     EXPECT_DOUBLE_EQ(products.temperature(), 1000.0);
     EXPECT_NEAR(products.pressure(), BAR, 1e-6 * BAR);
     expect_balances(products, before);
@@ -849,8 +849,8 @@ TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAt1500K) {
     const Eigen::ArrayXd before = products.element_moles();
     products.equilibrate_TP(1500.0, BAR);
 
-    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.16554, 5e-3);
-    EXPECT_NEAR(products.molecular_weight(), 9.639, 0.05);
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.16554, 5e-5);
+    EXPECT_NEAR(products.molecular_weight(), 9.639, 2e-3);
     expect_balances(products, before);
 }
 
@@ -862,8 +862,8 @@ TEST_F(MultiphaseTPTests, MethaneOxygenGraphiteAtFiftyBar) {
     const Eigen::ArrayXd before = products.element_moles();
     products.equilibrate_TP(1000.0, 50.0 * BAR);
 
-    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.09619, 5e-3);
-    EXPECT_NEAR(products.molecular_weight(), 18.087, 0.05);
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.09619, 5e-5);
+    EXPECT_NEAR(products.molecular_weight(), 18.087, 2e-3);
     expect_balances(products, before);
 }
 
@@ -895,8 +895,8 @@ TEST_F(MultiphaseHPTests, MethaneOxygenAtUnitMixtureRatioDepositsGraphite) {
     const Eigen::ArrayXd before = products.element_moles();
     products.equilibrate_HP(enthalpy, BAR);
 
-    EXPECT_NEAR(products.temperature(), 1039.24, 2.0);
-    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.03137, 3e-3);
+    EXPECT_NEAR(products.temperature(), 1039.24, 0.1);
+    EXPECT_NEAR(condensed_mole_fraction(products, "C(gr)"), 0.03137, 1e-4);
     EXPECT_NEAR(products.enthalpy_mass(), enthalpy, 1e-6 * std::abs(enthalpy));
     EXPECT_FALSE(products.at_phase_transition());
     EXPECT_GT(products.last_equilibrium_solve_count(), 0);
@@ -913,7 +913,7 @@ TEST_F(MultiphaseHPTests, MethaneOxygenAtMixtureRatioThreeHasNoGraphite) {
     const Eigen::ArrayXd before = products.element_moles();
     products.equilibrate_HP(enthalpy, BAR);
 
-    EXPECT_NEAR(products.temperature(), 3025.45, 3.0);
+    EXPECT_NEAR(products.temperature(), 3025.45, 0.1);
     EXPECT_FALSE(products.has_condensed_phases());
     expect_balances(products, before);
 }
@@ -926,7 +926,7 @@ TEST_F(MultiphaseHPTests, MethaneOxygenAtTwentyBar) {
     products.set_element_moles(elements, 2000.0, 20.0 * BAR);
     products.equilibrate_HP(reactants.enthalpy_mass(), 20.0 * BAR);
 
-    EXPECT_NEAR(products.temperature(), 3398.53, 3.0);
+    EXPECT_NEAR(products.temperature(), 3398.53, 0.1);
 }
 
 // ---- The water dew point (RP-1311 example 14 style) ----
@@ -978,11 +978,10 @@ TEST_F(DewPointTests, NothingCondensesAboveTheDewPoint) {
 
 TEST_F(DewPointTests, LiquidWaterJustBelowTheDewPoint) {
     // Within about a degree of the dew point the liquid fraction climbs by roughly 0.25 per kelvin,
-    // so this station is far more sensitive to the thermodynamic data than any other; CEA reports
-    // 0.2488 here. What it really exercises is convergence, see `NearTheDewPointNeedsManySteps`.
-    const double liquid = solve(304.0, "H2O(L)");
-    EXPECT_GT(liquid, 0.1);
-    EXPECT_LT(liquid, 0.5);
+    // so this station is far more sensitive to the thermodynamic data than any other: with the
+    // water data referenced to 1 atm rather than CEA's 1 bar it was off by 0.08. CEA reports
+    // 0.24884 here; observed error 4e-6. The next test covers convergence at this station.
+    EXPECT_NEAR(solve(304.0, "H2O(L)"), 0.24884, 2e-5);
 }
 
 TEST_F(DewPointTests, NearTheDewPointTheStepLimitDoesNotChangeTheAnswer) {
@@ -997,12 +996,12 @@ TEST_F(DewPointTests, NearTheDewPointTheStepLimitDoesNotChangeTheAnswer) {
 }
 
 TEST_F(DewPointTests, LiquidWaterAt300K) {
-    EXPECT_NEAR(solve(300.0, "H2O(L)"), 0.6995, 0.01);
+    EXPECT_NEAR(solve(300.0, "H2O(L)"), 0.6995, 3e-5);
 }
 
 TEST_F(DewPointTests, IceBelowFreezing) {
-    EXPECT_NEAR(solve(270.0, "H2O(cr)"), 0.8998, 5e-3);
-    EXPECT_NEAR(solve(250.0, "H2O(cr)"), 0.9077, 5e-3);
+    EXPECT_NEAR(solve(270.0, "H2O(cr)"), 0.8998, 5e-5);
+    EXPECT_NEAR(solve(250.0, "H2O(cr)"), 0.9077, 5e-5);
 }
 
 TEST_F(DewPointTests, ExactlyAtTheFreezingPointEitherPolymorphIsAccepted) {
@@ -1182,9 +1181,9 @@ TEST_F(BerylliumRocketTests, ChamberMatchesCea) {
 
     products.equilibrate_HP(reactants.enthalpy_mass(), 206.8419 * BAR);
 
-    EXPECT_NEAR(products.temperature(), 3018.89, 2.0);
-    EXPECT_NEAR(products.molecular_weight(), 16.6222, 5e-3);
-    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.19796, 2e-3);
+    EXPECT_NEAR(products.temperature(), 3018.89, 0.05);
+    EXPECT_NEAR(products.molecular_weight(), 16.6222, 1e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.19796, 2e-5);
     EXPECT_FALSE(products.at_phase_transition());
     expect_balances(products, before);
 }
@@ -1211,9 +1210,9 @@ TEST_F(BerylliumRocketTests, ExpansionFollowsTheBerylliaPolymorphs) {
     for (const Station& station : stations) {
         products.equilibrate_SP(entropy, station.pressure_bar * BAR);
 
-        EXPECT_NEAR(products.temperature(), station.temperature, 2.0)
+        EXPECT_NEAR(products.temperature(), station.temperature, 0.1)
             << "at " << station.pressure_bar << " bar";
-        EXPECT_NEAR(condensed_mole_fraction(products, station.species), station.mole_fraction, 2e-3)
+        EXPECT_NEAR(condensed_mole_fraction(products, station.species), station.mole_fraction, 5e-5)
             << "at " << station.pressure_bar << " bar";
         EXPECT_EQ(products.at_phase_transition(), station.pinned)
             << "at " << station.pressure_bar << " bar";
@@ -1227,24 +1226,24 @@ TEST_F(BerylliumRocketTests, PinnedStationsSplitTheBerylliaGroup) {
 
     ASSERT_TRUE(products.at_phase_transition());
     EXPECT_NEAR(products.temperature(), 2851.0, 1e-6);
-    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.18656, 2e-3);
-    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.01170, 2e-3);
-    EXPECT_NEAR(products.molecular_weight(), 16.6427, 5e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.18656, 5e-5);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.01170, 5e-5);
+    EXPECT_NEAR(products.molecular_weight(), 16.6427, 1e-3);
 
     products.equilibrate_SP(entropy, 68.9473 * BAR);
     EXPECT_NEAR(products.temperature(), 2851.0, 1e-6);
-    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.04510, 2e-3);
-    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.15288, 2e-3);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(L)"), 0.04510, 5e-5);
+    EXPECT_NEAR(condensed_mole_fraction(products, "BeO(b)"), 0.15288, 5e-5);
 }
 
 TEST_F(BerylliumRocketTests, DeepExpansionStations) {
     const double entropy = solve_chamber();
 
     products.equilibrate_SP(entropy, 0.6895 * BAR);
-    EXPECT_NEAR(products.temperature(), 1395.67, 2.0);
+    EXPECT_NEAR(products.temperature(), 1395.67, 0.1);
 
     products.equilibrate_SP(entropy, 0.2068 * BAR);
-    EXPECT_NEAR(products.temperature(), 1119.74, 2.0);
+    EXPECT_NEAR(products.temperature(), 1119.74, 0.1);
 }
 
 TEST_F(BerylliumRocketTests, WarmStartsCostFewerSolvesThanColdStarts) {

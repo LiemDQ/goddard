@@ -678,8 +678,10 @@ protected:
     static constexpr double OF_RATIO = 5.55157;
     static constexpr double INJECTOR_PRESSURE = 53.3172e5;  // Pa
     static constexpr double REACTANT_TEMPERATURE = 298.15;  // K
-    // Gordon-McBride and Cantera NASA9 data agree to about this relative level.
+    // Observed worst error 6.6e-5 (derived contraction ratio); pressures and c* agree to 4e-5.
     static constexpr double CEA_RELTOL = 2e-4;
+    // Observed worst error 0.09 K.
+    static constexpr double CEA_TEMPERATURE_TOL = 0.25;  // K
 
     FiniteAreaCombustorTests()
         : products(Gas::create_from_elements(fac_products_file(), "gas", {"H", "O"})) {
@@ -757,14 +759,11 @@ TEST_F(FiniteAreaCombustorTests, ContractionRatioMatchesCEA) {
     EXPECT_NEAR(pressure_of(chamber.stagnation.state), 49.16230e5, CEA_RELTOL * 49.16230e5);
     EXPECT_NEAR(pressure_of(chamber.combustion_end.state), 44.62730e5, CEA_RELTOL * 44.62730e5);
     EXPECT_NEAR(pressure_of(chamber.throat.state), 28.32907e5, CEA_RELTOL * 28.32907e5);
-    // The injector temperature itself differs from CEA (3498.17 K) by 1.5 K from the species
-    // data, so temperatures are compared as drops from the injector.
-    const double T_injector = temperature_of(injector_state);
-    EXPECT_NEAR(T_injector, 3498.17, 5e-4 * 3498.17);
-    EXPECT_NEAR(T_injector - temperature_of(chamber.stagnation.state), 3498.17 - 3488.69, 0.1);
-    EXPECT_NEAR(T_injector - temperature_of(chamber.combustion_end.state), 3498.17 - 3454.61, 0.1);
-    EXPECT_NEAR(T_injector - temperature_of(chamber.throat.state), 3498.17 - 3297.73, 0.5);
-    EXPECT_NEAR(mach_of(chamber.combustion_end.state), 0.41317, 1e-3 * 0.41317);
+    EXPECT_NEAR(temperature_of(injector_state), 3498.17, CEA_TEMPERATURE_TOL);
+    EXPECT_NEAR(temperature_of(chamber.stagnation.state), 3488.69, CEA_TEMPERATURE_TOL);
+    EXPECT_NEAR(temperature_of(chamber.combustion_end.state), 3454.61, CEA_TEMPERATURE_TOL);
+    EXPECT_NEAR(temperature_of(chamber.throat.state), 3297.73, CEA_TEMPERATURE_TOL);
+    EXPECT_NEAR(mach_of(chamber.combustion_end.state), 0.41317, 3e-4 * 0.41317);
     EXPECT_DOUBLE_EQ(chamber.contraction_ratio, 1.58);
     EXPECT_NEAR(chamber.throat.P_inlet, chamber.stagnation_pressure,
         1e-12 * chamber.stagnation_pressure);
@@ -796,7 +795,7 @@ TEST_F(FiniteAreaCombustorTests, MassFluxMatchesCEA) {
     EXPECT_NEAR(chamber.stagnation_pressure, 48.92327e5, CEA_RELTOL * 48.92327e5);
     EXPECT_NEAR(pressure_of(chamber.combustion_end.state), 44.09505e5, CEA_RELTOL * 44.09505e5);
     EXPECT_NEAR(pressure_of(chamber.throat.state), 28.19171e5, CEA_RELTOL * 28.19171e5);
-    EXPECT_NEAR(mach_of(chamber.combustion_end.state), 0.428209, 1e-3 * 0.428209);
+    EXPECT_NEAR(mach_of(chamber.combustion_end.state), 0.428209, 3e-4 * 0.428209);
     EXPECT_DOUBLE_EQ(chamber.mass_flux, 1333.9);
 
     // Continuity: mdot / A_c = rho_t a_t / (A_c / A_t).
