@@ -5,6 +5,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/error.hpp"
 #include "goddard/config.h"
+#include "goddard/format.hpp"
 #include <algorithm>
 #include <memory>
 #include <iostream>
@@ -586,6 +587,92 @@ TEST(RocketProblemIndexing, AccessorsSelectTheChamberPressure) {
               results.chamber(0, 1, "pressures").thermo.pressure);
 }
 
+namespace {
+
+/** H2/O2 RocketProblem on h2o2.yaml with gaseous reactants at 300 K (composition path). */
+RocketProblem make_h2o2_problem(const std::string& name, const std::vector<double>& of_ratios,
+                                const std::vector<double>& pressures,
+                                const NozzleOptions& nozzle_options) {
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.cantera_fuel_state = PhaseSpecification(300.0, pressures[0], "H2:1");
+    chem_params.cantera_oxidizer_state = PhaseSpecification(300.0, pressures[0], "O2:1");
+    chem_params.mixture_type = MixtureRatioType::OF_RATIO;
+    chem_params.OF_ratios = of_ratios;
+
+    RocketCaseParameters case_params;
+    case_params.name = name;
+    case_params.problem_type = "rocket";
+    case_params.combustor_options.pressures = pressures;
+    case_params.nozzle_options = nozzle_options;
+    return RocketProblem(chem_params, {case_params}, "ohmech");
+}
+
+} // namespace
+
+TEST(RocketProblemIndexing, StationsCarryTheStagnationEnthalpyOfTheirOperatingPoint) {
+    // The expansion is adiabatic, so every station of an operating point shares the stagnation
+    // enthalpy of its chamber (infinite-area combustor: the chamber is the stagnation state).
+    // The operating points differ in mixture ratio, so their chamber enthalpies differ.
+    NozzleOptions nozzle_options;
+    nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    nozzle_options.expansion_ratios = {5.0, 20.0};
+    RocketProblem problem = make_h2o2_problem("h0", {4.0, 6.0},
+        {20.0 * Cantera::OneBar, 50.0 * Cantera::OneBar}, nozzle_options);
+    RocketProblemResults results = problem.solve();
+
+    ASSERT_NE(results.chamber(0, 0, "h0").thermo.enthalpy, results.chamber(1, 0, "h0").thermo.enthalpy);
+    for (const RocketStation& station : results.stations()) {
+        const double chamber_enthalpy =
+            results.chamber(station.of_index, station.pressure_index, "h0").thermo.enthalpy;
+        EXPECT_NEAR(station.thermo.stagnation_enthalpy, chamber_enthalpy,
+                    max_fp_error(chamber_enthalpy, 1e-9, 1e-6))
+            << "of_index = " << station.of_index << ", pressure_index = " << station.pressure_index
+            << ", station type = " << static_cast<int>(station.type)
+            << ", expansion_index = " << station.expansion_index;
+    }
+}
+
+TEST(RocketProblemReport, FrozenReportPrintsTheCompositionOfTheFrozenFlow) {
+    // Frozen at the throat (frozen_NFZ = 1): the exits keep the throat composition, which differs
+    // from the chamber composition because the flow is in equilibrium up to the throat. The
+    // report's single composition block must show the frozen (exit) composition.
+    NozzleOptions nozzle_options;
+    nozzle_options.chemistry = GasChemistry::FROZEN;
+    nozzle_options.frozen_NFZ = 1;
+    nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    nozzle_options.expansion_ratios = {5.0, 20.0};
+    RocketProblem problem = make_h2o2_problem("frozen", {6.0}, {50.0 * Cantera::OneBar},
+                                              nozzle_options);
+    RocketProblemResults results = problem.solve();
+    const std::string report = results.report("frozen");
+
+    EXPECT_NE(report.find("FROZEN AT THE THROAT"), std::string::npos) << report;
+
+    const RocketStation& chamber = results.chamber(0, 0, "frozen");
+    const RocketStation& throat = results.throat(0, 0, "frozen");
+    const std::vector<RocketStation> exits = results.exits(0, 0, "frozen");
+    ASSERT_EQ(exits.size(), 2u);
+
+    // The report pads each species name to 16 characters before its mass fraction.
+    auto composition_entry = [](const std::string& species, double mass_fraction) {
+        return species + std::string(16 - species.size(), ' ')
+            + format_mass_fraction(mass_fraction, 10);
+    };
+    const std::string species = "OH";
+    const double frozen_fraction = exits.back().thermo.composition.at(species);
+    const double chamber_fraction = chamber.thermo.composition.at(species);
+    EXPECT_NEAR(frozen_fraction, throat.thermo.composition.at(species), 1e-12)
+        << "the exits keep the throat composition";
+    ASSERT_NE(composition_entry(species, frozen_fraction),
+              composition_entry(species, chamber_fraction))
+        << "the chamber and frozen OH fractions must differ for this test to discriminate";
+    EXPECT_NE(report.find(composition_entry(species, frozen_fraction)), std::string::npos) << report;
+    EXPECT_EQ(report.find(composition_entry(species, chamber_fraction)), std::string::npos) << report;
+}
+
 // ---- Reactant streams given as Gas objects ----
 
 namespace {
@@ -952,7 +1039,8 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
         ExpansionType::SUPERSONIC_AREA_RATIO,
         CombustionProcess::ISOBARIC,
         CombustorType::FINITE_CONTRACTION_RATIO,
-        {fac}
+        {fac},
+        /*frozen_NFZ=*/0
     };
 
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;

@@ -39,6 +39,11 @@ struct RocketStation {
     std::size_t pressure_index;  // index into the case's pressures vector
     std::size_t expansion_index; // index into expansion_ratios; only meaningful for EXIT
     double area_ratio;           // 0.0 for CHAMBER/STAGNATION, A_c/A_t for COMBUSTION_END, 1.0 for THROAT, >1 for EXIT
+    /**
+     * Mixture state of the station. Its `stagnation_enthalpy` [J/kg] is the enthalpy of the
+     * stagnation state of the station's operating point (see `RocketProblemResults::stagnation`),
+     * which the adiabatic expansion conserves.
+     */
     ThermodynamicState thermo;
     bool converged;
 };
@@ -58,6 +63,8 @@ struct RocketProblemCaseResult {
     CombustorType combustor_type = CombustorType::INFINITE_AREA;
     /** Finite-area chambers, indexed like `nozzle_states`; empty for `INFINITE_AREA`. */
     std::vector<FiniteAreaChamber> finite_area_chambers;
+    /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
+    int frozen_NFZ = 0;
 };
 
 class RocketProblemResults {
@@ -187,6 +194,8 @@ private:
          * from a station's `ThermodynamicState`, so it is captured here for the report.
          */
         std::vector<double> mass_flux;
+        /** Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`. */
+        int frozen_NFZ = 0;
     };
     std::unordered_map<std::string, CaseMeta> m_case_meta;
     /** Product mixture used to read the stored station states back. */

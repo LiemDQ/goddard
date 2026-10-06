@@ -178,7 +178,8 @@ RocketProblemResults RocketProblem::solve() {
             params.nozzle_options.expansion_type,
             params.combustor_options.process,
             params.combustor_options.type,
-            std::move(finite_area_chambers)
+            std::move(finite_area_chambers),
+            params.nozzle_options.frozen_NFZ
         });
     }
     

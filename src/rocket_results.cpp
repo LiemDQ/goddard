@@ -49,7 +49,8 @@ RocketProblemResults::RocketProblemResults(
             case_result.expansion_type,
             case_result.process,
             case_result.combustor_type,
-            {}
+            {},
+            case_result.frozen_NFZ
         };
 
         const std::size_t N_of = case_result.OF_ratios.size();
@@ -65,6 +66,14 @@ RocketProblemResults::RocketProblemResults(
                     static_cast<long>(of_idx), static_cast<long>(p_idx)));
 
                 const NozzleResults& nozzle = case_result.nozzle_states[state_idx];
+
+                // Reference stagnation state of this operating point, reported as the
+                // `stagnation_enthalpy` of each of its stations: the "inf" state of a finite-area
+                // combustor, the chamber otherwise.
+                m_gas.restore_state(is_fac
+                    ? case_result.finite_area_chambers[state_idx].stagnation.state
+                    : nozzle.inlet.state);
+                m_gas.set_current_state_as_reference();
 
                 switch (case_result.chemistry) {
                     case GasChemistry::EQUILIBRIUM:
@@ -365,6 +374,7 @@ std::string build_report_page(
     double of_ratio,
     double display_pressure_pa,
     double initial_pressure_pa,
+    int frozen_NFZ,
     const FacReportInfo* fac = nullptr)
 {
     std::string page;
@@ -384,12 +394,24 @@ std::string build_report_page(
             page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING EQUILIBRIUM\n\n";
             page += "      COMPOSITION DURING EXPANSION FROM " + combustor_description + "\n\n";
             break;
-        case GasChemistry::FROZEN:
-            page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n\n";
+        case GasChemistry::FROZEN: {
+            // Nozzle station numbering: 0 is the chamber (the combustion end for a finite-area
+            // combustor), 1 the throat, k >= 2 the (k-1)th exit.
+            std::string freezing_station;
+            if (frozen_NFZ <= 0) {
+                freezing_station = (fac != nullptr) ? "THE COMBUSTION END" : "THE CHAMBER";
+            } else if (frozen_NFZ == 1) {
+                freezing_station = "THE THROAT";
+            } else {
+                freezing_station = "EXIT " + std::to_string(frozen_NFZ - 1);
+            }
+            page += "         THEORETICAL ROCKET PERFORMANCE ASSUMING FROZEN COMPOSITION\n";
+            page += "                      FROZEN AT " + freezing_station + "\n\n";
             if (process == CombustionProcess::ISOCHORIC) {
                 page += "      EXPANSION FROM " + combustor_description + "\n\n";
             }
             break;
+        }
         default: break;
     }
 
@@ -570,9 +592,11 @@ std::string build_report_page(
             table.add_row(species, vals);
         }
     } else {
-        const auto& chamber_comp = states[0].composition;
+        // The composition the flow keeps downstream of the freezing station, which the last
+        // station always has.
+        const auto& frozen_comp = states.back().composition;
         std::vector<std::pair<std::string, double>> species_list;
-        for (const auto& [name, frac] : chamber_comp) {
+        for (const auto& [name, frac] : frozen_comp) {
             if (frac > 1e-10) species_list.push_back({name, frac});
         }
         std::sort(species_list.begin(), species_list.end());
@@ -700,6 +724,7 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                     meta.of_ratios[of_idx],
                     thermo_states[0].pressure,
                     meta.pressures[p_idx],
+                    meta.frozen_NFZ,
                     fac_ptr);
             }
         }
