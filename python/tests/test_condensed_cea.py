@@ -505,7 +505,10 @@ def test_beryllium_chamber(beryllium_rocket):
     assert_close_abs(condensed_mole_fraction(products, "BeO(L)"),
                      rocket["X"]["BeO(L)"][0], 1e-5, "chamber X[BeO(L)]")
     assert not products.at_phase_transition
-    assert_close_rel(products.enthalpy_mass, stream.enthalpy_mass, 1e-9, "chamber enthalpy")
+    # The HP root on ln T may stop on its bracket width (EquilibriumOptions.T_rel_tol = 1e-9)
+    # rather than on the residual, which leaves |dh| up to cp T T_rel_tol: 7.5e-3 J/kg, or 7.7e-9
+    # relative, at this chamber. Which exit is taken depends on the inner-solve noise.
+    assert_close_rel(products.enthalpy_mass, stream.enthalpy_mass, 1e-8, "chamber enthalpy")
 
 
 def test_beryllium_pinned_stations(beryllium_rocket):
