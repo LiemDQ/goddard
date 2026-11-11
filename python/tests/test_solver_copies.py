@@ -72,6 +72,7 @@ def test_detonation_solver_leaves_gas_unchanged(h2o2_yaml):
     before = snapshot(gas)
 
     solver = goddard.DetonationSolver(gas)
+    assert solver.chapman_jouguet().status.ok
     products = solver.post_detonation_state()
     von_neumann = solver.von_neumann_state()
     assert_unchanged(gas, before)

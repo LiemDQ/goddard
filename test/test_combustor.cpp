@@ -6,6 +6,8 @@
 #include "goddard/error.hpp"
 #include "goddard/config.h"
 #include "goddard/format.hpp"
+#include "status_test_helpers.hpp"
+#include <limits>
 #include <algorithm>
 #include <memory>
 #include <iostream>
@@ -57,6 +59,8 @@ class H2O2CombustorTests: public ::testing::Test {
 };
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
 
 TEST_F(H2O2CombustorTests, moleFracMatrixIsCorrect) {
     Eigen::ArrayXXd mole_fracs = combustor->generate_mole_fraction_matrix(
@@ -324,6 +328,72 @@ TEST_F(H2O2CombustorTests, outOfRangeMixtureRatiosAreRejectedInReleaseBuilds) {
     Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
     Combustor stream_combustor(products, fuel, oxidizer);
     EXPECT_THROW(stream_combustor.solve(pressures, negative_ratio, options), std::invalid_argument);
+}
+
+TEST_F(H2O2CombustorTests, nonpositiveTemperaturesAndPressuresAreRejected) {
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    Eigen::ArrayXd bad_pressures(2);
+    bad_pressures << 10.0 * Cantera::OneBar, 0.0;
+    Eigen::ArrayXd bad_temperatures(2);
+    bad_temperatures << 300.0, -10.0;
+    Eigen::ArrayXd ratios(1);
+    ratios << 6.0;
+
+    EXPECT_THROW(combustor->solve(0.0, 300.0, pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(combustor->solve(300.0, -1.0, pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(combustor->solve(300.0, 300.0, bad_pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(combustor->solve(bad_temperatures, pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(combustor->solve(temperatures, bad_pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(combustor->solve(300.0, std::numeric_limits<double>::quiet_NaN(), pressures, ratios, options),
+                 std::invalid_argument);
+
+    DilutedCombustor diluted(gas, fuel_comp, oxidizer_comp, Composition{{"N2", 1.0}});
+    EXPECT_THROW(diluted.solve(300.0, 300.0, 0.0, pressures, ratios, 0.1, options), std::invalid_argument);
+    EXPECT_THROW(diluted.solve(temperatures, bad_pressures, ratios, 0.1, options), std::invalid_argument);
+}
+
+TEST_F(H2O2CombustorTests, unsolvableOperatingPointsAreReportedInTheArrayStatuses) {
+    // A 1e5 K fuel stream has an enthalpy that no combustion temperature can match. Nothing is
+    // thrown: every point records the failure and its properties are NaN.
+    Eigen::ArrayXd pressures(2);
+    pressures << 10.0 * Cantera::OneBar, 20.0 * Cantera::OneBar;
+    Eigen::ArrayXd ratios(2);
+    ratios << 4.0, 6.0;
+
+    ThermoArray states = combustor->solve(1.0e5, 300.0, pressures, ratios, options);
+    EXPECT_EQ(states.num_failed(), 4);
+    EXPECT_FALSE(states.ok().any());
+    EXPECT_TRUE(failed_with(states.status(), FailureReason::THERMO_FAILURE));
+    EXPECT_NE(states.status_at(0).stage.find("combustion at O/F = 4"), std::string::npos)
+        << states.status_at(0).describe();
+    EXPECT_TRUE(states.temperature().isNaN().all());
+
+    // A good fuel temperature on the same combustor solves every point
+    ThermoArray good = combustor->solve(300.0, 300.0, pressures, ratios, options);
+    EXPECT_EQ(good.num_failed(), 0);
+    EXPECT_TRUE(good.temperature().isFinite().all());
+}
+
+TEST_F(H2O2CombustorTests, compositionOverloadsRejectACombustorBuiltFromStreams) {
+    Eigen::ArrayXd temperatures(1);
+    temperatures << 300.0;
+    Eigen::ArrayXd pressures(1);
+    pressures << 10.0 * Cantera::OneBar;
+    Eigen::ArrayXd ratios(1);
+    ratios << 6.0;
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+
+    EXPECT_THROW(stream_combustor.solve(temperatures, pressures, ratios, options), std::invalid_argument);
+    EXPECT_THROW(stream_combustor.solve(300.0, 300.0, pressures, ratios, options), std::invalid_argument);
 }
 
 // ---- Isochoric combustion ----
@@ -870,6 +940,150 @@ TEST_F(H2O2CombustorTests, reactantGasPathRejectsUnsupportedInputs) {
     EXPECT_THROW(combustor->solve(pressures, OF_ratios, options), NotImplementedError);
 }
 
+// ---- RocketProblem: a failed operating point does not abort the sweep ----
+
+namespace {
+
+/** H2/O2 at 300 K and 70 bar over the ten species of h2o2.yaml `ohmech`. */
+ChemicalParameters make_h2o2_chemistry(std::vector<double> of_ratios) {
+    ChemicalParameters chem_params;
+    chem_params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    chem_params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    chem_params.fuel_state = PhaseSpecification(300.0, 70.0e5, "H2:1");
+    chem_params.oxidizer_state = PhaseSpecification(300.0, 70.0e5, "O2:1");
+    chem_params.OF_ratios = std::move(of_ratios);
+    return chem_params;
+}
+
+RocketCaseParameters make_h2o2_case(const std::string& name, std::vector<double> area_ratios) {
+    RocketCaseParameters case_params;
+    case_params.name = name;
+    case_params.combustor_options.pressures = {70.0e5};
+    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
+    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
+    case_params.nozzle_options.expansion_ratios = std::move(area_ratios);
+    return case_params;
+}
+
+}
+
+class RocketProblemPartialFailureTests : public ::testing::Test {
+protected:
+    // At an area ratio of 1e5 the equilibrium exit falls outside what the backend can solve;
+    // the exit at an area ratio of 10 solves. Both mixture ratios behave alike. The sweep takes a
+    // few seconds, so the tests share one solve.
+    static void SetUpTestSuite() {
+        shared_results = std::make_unique<RocketProblemResults>(
+            RocketProblem(make_h2o2_chemistry({4.0, 6.0}), {make_h2o2_case("sweep", {10.0, 1.0e5})}, "ohmech")
+                .solve());
+    }
+    static void TearDownTestSuite() { shared_results.reset(); }
+
+    const RocketProblemResults& results() const { return *shared_results; }
+
+    static std::unique_ptr<RocketProblemResults> shared_results;
+};
+
+std::unique_ptr<RocketProblemResults> RocketProblemPartialFailureTests::shared_results;
+
+TEST_F(RocketProblemPartialFailureTests, failedExitsAreReportedAndEveryOtherStationIsKept) {
+    const std::vector<RocketStation> failed = results().failed_stations("sweep");
+    ASSERT_EQ(failed.size(), 2u);
+    for (const RocketStation& station : failed) {
+        EXPECT_EQ(station.type, StationType::EXIT);
+        EXPECT_EQ(station.expansion_index, 1u);
+        EXPECT_EQ(station.status.reason, FailureReason::THERMO_FAILURE) << station.status.describe();
+        EXPECT_TRUE(std::isnan(station.thermo.temperature));
+    }
+    EXPECT_NE(failed[0].of_index, failed[1].of_index);
+    EXPECT_EQ(results().failed_stations().size(), 2u) << "an empty case name reads every case";
+
+    // 2 mixture ratios x (chamber, throat, 2 exits): the failed stations are still in the list
+    EXPECT_EQ(results().stations().size(), 8u);
+    for (std::size_t of_index = 0; of_index < 2; of_index++) {
+        EXPECT_TRUE(results().chamber(of_index, 0, "sweep").status.ok());
+        EXPECT_TRUE(results().throat(of_index, 0, "sweep").status.ok());
+        const std::vector<RocketStation> exits = results().exits(of_index, 0, "sweep");
+        ASSERT_EQ(exits.size(), 2u);
+        EXPECT_TRUE(exits[0].status.ok());
+        EXPECT_GT(exits[0].thermo.temperature, 500.0);
+        EXPECT_FALSE(exits[1].status.ok());
+    }
+}
+
+TEST_F(RocketProblemPartialFailureTests, statusNamesTheFirstFailureAndCountsThem) {
+    const SolveStatus status = results().status();
+    EXPECT_TRUE(failed_with(status, FailureReason::THERMO_FAILURE));
+    EXPECT_NE(status.message.find("2"), std::string::npos) << status.message;
+}
+
+TEST_F(RocketProblemPartialFailureTests, performanceOfTheFailedExitIsNaNAndTheGoodExitIsNot) {
+    for (std::size_t of_index = 0; of_index < 2; of_index++) {
+        const RocketPerformance good = results().performance(of_index, 0, 0, "sweep");
+        EXPECT_TRUE(good.status.ok()) << good.status.describe();
+        EXPECT_GT(good.isp, 2000.0);
+        EXPECT_GT(good.cstar, 1500.0);
+
+        const RocketPerformance bad = results().performance(of_index, 0, 1, "sweep");
+        EXPECT_EQ(bad.status.reason, FailureReason::THERMO_FAILURE) << bad.status.describe();
+        EXPECT_TRUE(std::isnan(bad.isp));
+        EXPECT_TRUE(std::isnan(bad.ivac));
+        EXPECT_TRUE(std::isnan(bad.CF));
+        EXPECT_TRUE(std::isnan(bad.cstar));
+        EXPECT_TRUE(std::isnan(bad.mach_number));
+    }
+}
+
+TEST_F(RocketProblemPartialFailureTests, reportMarksTheFailedStationsAndStillPrintsTheTable) {
+    const std::string report = results().report("sweep");
+    EXPECT_NE(report.find("STATIONS NOT SOLVED (NaN ABOVE)"), std::string::npos) << report;
+    EXPECT_EQ(report.find("OPERATING POINT NOT SOLVED"), std::string::npos) << report;
+}
+
+TEST(RocketProblemFailures, failedChamberOrThroatIsAnOperatingPointNotSolvedInTheReport) {
+    // A chamber whose fuel and oxidizer enthalpy do not allow an equilibrium (a 1e5 K reactant
+    // stream) fails its operating point as a whole; the second case solves.
+    ChemicalParameters chem_params = make_h2o2_chemistry({6.0});
+    chem_params.fuel_state = PhaseSpecification(1.0e5, 70.0e5, "H2:1");
+    RocketProblem problem(chem_params, {make_h2o2_case("hot", {10.0})}, "ohmech");
+    const RocketProblemResults results = problem.solve();
+
+    ASSERT_FALSE(results.status().ok());
+    const std::string report = results.report("hot");
+    EXPECT_NE(report.find("OPERATING POINT NOT SOLVED"), std::string::npos) << report;
+    const RocketPerformance performance = results.performance(0, 0, 0, "hot");
+    EXPECT_FALSE(performance.status.ok());
+    EXPECT_TRUE(std::isnan(performance.isp));
+}
+
+TEST(RocketProblemFailures, invalidSetupsThrowInvalidArgument) {
+    const auto build_and_solve = [](const ChemicalParameters& chem_params,
+                                    const std::vector<RocketCaseParameters>& cases) {
+        RocketProblem(chem_params, cases, "ohmech").solve();
+    };
+    const ChemicalParameters chemistry = make_h2o2_chemistry({6.0});
+
+    EXPECT_THROW(build_and_solve(chemistry, {make_h2o2_case("same", {10.0}), make_h2o2_case("same", {5.0})}),
+                 std::invalid_argument);
+
+    ChemicalParameters unset_fuel = chemistry;
+    unset_fuel.fuel_state = PhaseSpecification();
+    EXPECT_THROW(build_and_solve(unset_fuel, {make_h2o2_case("a", {10.0})}), std::invalid_argument);
+
+    ChemicalParameters cold_oxidizer = chemistry;
+    cold_oxidizer.oxidizer_state = PhaseSpecification(0.0, 70.0e5, "O2:1");
+    EXPECT_THROW(build_and_solve(cold_oxidizer, {make_h2o2_case("a", {10.0})}), std::invalid_argument);
+
+    ChemicalParameters no_pressure = chemistry;
+    no_pressure.fuel_state = PhaseSpecification(300.0, 0.0, "H2:1");
+    EXPECT_THROW(build_and_solve(no_pressure, {make_h2o2_case("a", {10.0})}), std::invalid_argument);
+
+    // H2O2, HO2, N2 and AR are missing: the phase cannot be built from this species selection
+    ChemicalParameters too_few_species = chemistry;
+    too_few_species.species = {"H2", "H", "O", "O2", "OH", "H2O"};
+    EXPECT_THROW(build_and_solve(too_few_species, {make_h2o2_case("a", {10.0})}), std::invalid_argument);
+}
+
 // RP-1311 example 8: H2(L)/O2(L) at O/F 5.55157 and 53.3172 bar, on the NASA9 data CEA itself uses.
 class CryogenicRocketTests : public ::testing::Test {
 protected:
@@ -1008,13 +1222,14 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
         stagnation_pressure,
         /*contraction_ratio=*/2.0,
         /*mass_flux=*/500.0,
-        /*iterations=*/1
+        /*iterations=*/1,
+        /*status=*/SolveStatus{}
     };
 
     RocketProblemCaseResult case_result{
         injector_states,
         GasChemistry::EQUILIBRIUM,
-        {NozzleResults{fac.injector, fac.throat, exits.expansions}},
+        {NozzleResults{fac.injector, fac.throat, exits.expansions, SolveStatus{}}},
         {of_ratio},
         {injector_pressure},
         {5.0},

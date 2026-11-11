@@ -47,6 +47,8 @@ ThroatCondition make_perfect_gas_throat(double gamma) {
         .dlV_dlP_T = -1.0,
         .dlV_dlT_P = 1.0,
         .state = {},
+        .pinned_transition = false,
+        .thermo = {},
     };
 }
 
@@ -567,6 +569,7 @@ TEST(KliegelLevineInitialization, ForcedSeriesFailsHonestlyBelowThreshold) {
     MocResult result;
     ASSERT_NO_THROW({ result = solver.solve(); });
 
-    EXPECT_FALSE(result.converged);
     EXPECT_EQ(result.failure.code, MocErrorCode::INITIALIZATION_FAILED);
+    EXPECT_EQ(result.status.reason, FailureReason::NOT_CONVERGED);
+    EXPECT_EQ(result.status.stage, "MoC initialization");
 }

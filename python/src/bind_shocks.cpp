@@ -6,6 +6,7 @@
 #include <nanobind/stl/pair.h>
 #include "goddard/shocks.hpp"
 #include "goddard/gas.hpp"
+#include "bind_status.hpp"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
@@ -14,7 +15,7 @@ using namespace nb::literals;
 void bind_shocks(nb::module_& m) {
     // ShockResult
     nb::class_<Goddard::ShockResult>(m, "ShockResult", DOC(Goddard, ShockResult))
-        .def_ro("valid", &Goddard::ShockResult::valid, DOC(Goddard, ShockResult, valid))
+        .def_ro("status", &Goddard::ShockResult::status, DOC(Goddard, ShockResult, status))
         .def_ro("mach_in", &Goddard::ShockResult::mach_in, DOC(Goddard, ShockResult, mach_in))
         .def_ro("mach_out", &Goddard::ShockResult::mach_out, DOC(Goddard, ShockResult, mach_out))
         .def_ro("static_pressure_ratio", &Goddard::ShockResult::static_pressure_ratio,
@@ -26,30 +27,30 @@ void bind_shocks(nb::module_& m) {
         .def_ro("total_pressure_ratio", &Goddard::ShockResult::total_pressure_ratio,
                 DOC(Goddard, ShockResult, total_pressure_ratio))
         .def("__repr__", [](const Goddard::ShockResult& self) {
-            return std::format("<ShockResult valid={} M1={:.6g} M2={:.6g} P2/P1={:.6g} T2/T1={:.6g} rho2/rho1={:.6g}>", self.valid ? "True" : "False", self.mach_in, self.mach_out, self.static_pressure_ratio, self.static_temperature_ratio, self.density_ratio);
+            return std::format("<ShockResult {} M1={:.6g} M2={:.6g} P2/P1={:.6g} T2/T1={:.6g} rho2/rho1={:.6g}>", status_tag(self.status), self.mach_in, self.mach_out, self.static_pressure_ratio, self.static_temperature_ratio, self.density_ratio);
         });
 
     // ReflectedShockResult
     nb::class_<Goddard::ReflectedShockResult>(m, "ReflectedShockResult", DOC(Goddard, ReflectedShockResult))
-        .def_ro("valid", &Goddard::ReflectedShockResult::valid, DOC(Goddard, ReflectedShockResult, valid))
+        .def_ro("status", &Goddard::ReflectedShockResult::status, DOC(Goddard, ReflectedShockResult, status))
         .def_ro("incident", &Goddard::ReflectedShockResult::incident,
                 DOC(Goddard, ReflectedShockResult, incident))
         .def_ro("reflected", &Goddard::ReflectedShockResult::reflected,
                 DOC(Goddard, ReflectedShockResult, reflected))
         .def("__repr__", [](const Goddard::ReflectedShockResult& self) {
-            return std::format("<ReflectedShockResult valid={} P2/P1={:.6g} P5/P2={:.6g} T5/T2={:.6g}>", self.valid ? "True" : "False", self.incident.static_pressure_ratio, self.reflected.static_pressure_ratio, self.reflected.static_temperature_ratio);
+            return std::format("<ReflectedShockResult {} P2/P1={:.6g} P5/P2={:.6g} T5/T2={:.6g}>", status_tag(self.status), self.incident.static_pressure_ratio, self.reflected.static_pressure_ratio, self.reflected.static_temperature_ratio);
         });
 
     // ObliqueShockResult
     nb::class_<Goddard::ObliqueShockResult>(m, "ObliqueShockResult", DOC(Goddard, ObliqueShockResult))
-        .def_ro("valid", &Goddard::ObliqueShockResult::valid, DOC(Goddard, ObliqueShockResult, valid))
+        .def_ro("status", &Goddard::ObliqueShockResult::status, DOC(Goddard, ObliqueShockResult, status))
         .def_ro("mach_in", &Goddard::ObliqueShockResult::mach_in, DOC(Goddard, ObliqueShockResult, mach_in))
         .def_ro("mach_out", &Goddard::ObliqueShockResult::mach_out, DOC(Goddard, ObliqueShockResult, mach_out))
         .def_ro("shock", &Goddard::ObliqueShockResult::shock, DOC(Goddard, ObliqueShockResult, shock))
         .def_ro("beta", &Goddard::ObliqueShockResult::beta, DOC(Goddard, ObliqueShockResult, beta))
         .def_ro("theta", &Goddard::ObliqueShockResult::theta, DOC(Goddard, ObliqueShockResult, theta))
         .def("__repr__", [](const Goddard::ObliqueShockResult& self) {
-            return std::format("<ObliqueShockResult valid={} M1={:.6g} M2={:.6g} beta={:.6g} rad theta={:.6g} rad P2/P1={:.6g}>", self.valid ? "True" : "False", self.mach_in, self.mach_out, self.beta, self.theta, self.shock.static_pressure_ratio);
+            return std::format("<ObliqueShockResult {} M1={:.6g} M2={:.6g} beta={:.6g} rad theta={:.6g} rad P2/P1={:.6g}>", status_tag(self.status), self.mach_in, self.mach_out, self.beta, self.theta, self.shock.static_pressure_ratio);
         });
 
     // Perfect-gas free functions

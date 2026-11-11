@@ -1,4 +1,6 @@
 #include <nanobind/nanobind.h>
+#include <format>
+#include <string>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/eigen/dense.h>
@@ -42,5 +44,20 @@ void bind_thermoarray(nb::module_& m) {
         .def("internal_energy_mole", &Goddard::ThermoArray::internal_energy_mole, nb::arg("slice") = 0,
              DOC(Goddard, ThermoArray, internal_energy_mole))
         .def("mean_molecular_weight", &Goddard::ThermoArray::mean_molecular_weight, nb::arg("slice") = 0,
-             DOC(Goddard, ThermoArray, mean_molecular_weight));
+             DOC(Goddard, ThermoArray, mean_molecular_weight))
+        .def_prop_ro("status", &Goddard::ThermoArray::status, DOC(Goddard, ThermoArray, status))
+        .def("status_at", &Goddard::ThermoArray::status_at, nb::arg("loc"),
+             DOC(Goddard, ThermoArray, status_at))
+        .def_prop_ro("num_failed", &Goddard::ThermoArray::num_failed,
+             DOC(Goddard, ThermoArray, num_failed))
+        .def("ok", &Goddard::ThermoArray::ok, nb::arg("slice") = 0,
+             DOC(Goddard, ThermoArray, ok))
+        .def("__repr__", [](const Goddard::ThermoArray& self) {
+            std::string shape;
+            for (long extent : self.shape()) {
+                shape += (shape.empty() ? "" : ", ") + std::to_string(extent);
+            }
+            return std::format("<ThermoArray shape=({}) {} of {} entries failed>", shape,
+                               self.num_failed(), self.size());
+        });
 }

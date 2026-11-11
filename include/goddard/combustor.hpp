@@ -73,6 +73,11 @@ struct CombustorOptions {
 /**
  * @brief Base class for isobaric (HP) and isochoric (UV) combustion.
  * Provides shared utilities for stream mixing and equilibration.
+ *
+ * Every `solve` returns a `ThermoArray` whose entries each carry a status. An operating point
+ * whose combustion solve fails is reported there (`ThermoArray::status_at`, `ThermoArray::ok`,
+ * and `ThermoArray::status` for the grid as a whole), its properties are NaN, and the other
+ * points are unaffected. A `solve` throws only for invalid arguments and unimplemented options.
  */
 class BaseCombustor {
     public:
@@ -90,12 +95,21 @@ class BaseCombustor {
     mutable Gas m_gas;
 
     /**
-     * Equilibrate reactant states in place and return them.
+     * Equilibrate reactant states in place and return them. An entry whose equilibrium solve
+     * fails, or that already carries a failed status, is reported through its status.
      *
      * @throws NotImplementedError for `CombustionProcess::ISOCHORIC` when `states` carries
      * candidate condensed species.
      */
     ThermoArray combust(ThermoArray& states, const CombustorOptions& options);
+
+    /**
+     * Set the entries of a (mixture ratio, pressure) array to the reactant mixtures: row `i` of
+     * `mass_fractions` [-] at the specific enthalpy `enthalpies(i)` [J/kg] and each of
+     * `pressures` [Pa]. An entry for which no state has that enthalpy records the failure.
+     */
+    void set_reactant_states(ThermoArray& states, const Eigen::ArrayXXd& mass_fractions,
+        const Eigen::ArrayXd& enthalpies, const Eigen::ArrayXd& pressures) const;
 
     /**
      * Array of reactant states with the given shape, carrying the candidate condensed species of
@@ -182,6 +196,8 @@ class Combustor : public BaseCombustor {
      * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
      * @param options Combustor settings.
      * @return Array of combustion states with shape (temperatures, pressures, mixture ratios).
+     * @throws std::invalid_argument for an empty grid, a nonpositive temperature or pressure, or
+     * a combustor built from reactant `Gas` streams.
      */
     ThermoArray solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
         const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options = {});
@@ -197,6 +213,8 @@ class Combustor : public BaseCombustor {
      * @param mixture_ratios Mixture ratios, interpreted according to `options.mixture_type`.
      * @param options Combustor settings.
      * @return Array of combustion states with shape (mixture ratios, pressures).
+     * @throws std::invalid_argument for an empty grid, a nonpositive temperature or pressure, or
+     * a combustor built from reactant `Gas` streams.
      */
     ThermoArray solve(double fuel_temperature, double oxidizer_temperature,
         const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
@@ -261,6 +279,14 @@ class Combustor : public BaseCombustor {
      * order of the product gas. Product elements the stream does not have are zero.
      */
     Eigen::ArrayXd stream_element_moles(const Gas& stream) const;
+
+    /**
+     * Reject a `solve` overload for composition reactants on a combustor built from reactant
+     * `Gas` streams, which has no fuel and oxidizer compositions.
+     *
+     * @throws std::invalid_argument
+     */
+    void require_composition_reactants(const std::string& overload) const;
 };
 
 /**

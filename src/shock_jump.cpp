@@ -1,6 +1,9 @@
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 #include "cantera/core.h"
 #include "goddard/error.hpp"
@@ -44,16 +47,9 @@ void set_trial_state(Gas& gas, double T, double P) {
 
 } // anonymous namespace
 
-ShockResult invalid_shock() {
+ShockResult failed_shock(SolveStatus status) {
     ShockResult result;
-    result.valid = false;
-    result.static_pressure_ratio = -1.0;
-    result.static_temperature_ratio = -1.0;
-    result.density_ratio = -1.0;
-    result.total_pressure_ratio = -1.0;
-    result.mach_in = -1.0;
-    result.mach_out = -1.0;
-
+    result.status = std::move(status);
     return result;
 }
 
@@ -149,13 +145,17 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
         case NewtonStatus::CONVERGED:
             break;
         case NewtonStatus::MAX_ITERATIONS: {
-            const char* message = condition == JumpCondition::CHAPMAN_JOUGUET
-                ? "Chapman-Jouguet detonation failed to converge."
-                : "Normal shock properties failed to converge.";
+            std::string message = condition == JumpCondition::CHAPMAN_JOUGUET
+                ? "the Chapman-Jouguet jump conditions did not converge."
+                : "the shock jump conditions did not converge.";
+            if (condition == JumpCondition::INCIDENT && gas.chemistry == GasChemistry::EQUILIBRIUM) {
+                message += " With EQUILIBRIUM chemistry, a mixture that releases heat has no "
+                           "shock below its Chapman-Jouguet detonation speed.";
+            }
             throw ConvergenceError(message, result.iterations, opts.abstol, largest_step);
         }
         case NewtonStatus::NON_FINITE_STEP:
-            throw ConvergenceError("Shock jump Newton step is not finite.",
+            throw ConvergenceError("the shock jump Newton step is not finite.",
                 result.iterations, opts.abstol, largest_step);
     }
     set_trial_state(gas, std::exp(result.x(1))*T_up, std::exp(result.x(0))*P_up);
@@ -204,8 +204,10 @@ ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
 {
     const double a1 = frozen_sound_speed(gas);
     // A wave at the Mach angle has u_normal = a1 up to round-off; treat it as sonic.
-    if (u_normal < a1*(1.0 - 1e-12)) {
-        return invalid_shock();
+    if (!(u_normal >= a1*(1.0 - 1e-12))) {
+        return failed_shock(SolveStatus::failure(FailureReason::NO_SOLUTION, std::format(
+            "no shock exists: the upstream normal velocity {:.6g} m/s is below the frozen sound "
+            "speed {:.6g} m/s (Mach {:.6g}).", u_normal, a1, u_normal/a1)));
     }
     u_normal = std::max(u_normal, a1);
     gas.chemistry = GasChemistry::FROZEN;
@@ -215,7 +217,6 @@ ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
     const double u_normal2 = u_normal/jump.density_ratio;
 
     ShockResult result;
-    result.valid = true;
     result.mach_in = u_normal/a1;
     result.mach_out = u_normal2/gas.speed_of_sound();
     result.static_pressure_ratio = jump.pressure_ratio;
@@ -239,7 +240,6 @@ ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity, GasC
     const double u_in = particle_velocity + wave_speed;
 
     ShockResult result;
-    result.valid = true;
     result.mach_in = u_in/a2;
     result.mach_out = wave_speed/gas.speed_of_sound();
     result.static_pressure_ratio = jump.pressure_ratio;

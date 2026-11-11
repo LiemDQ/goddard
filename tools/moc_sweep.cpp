@@ -119,7 +119,7 @@ void write_row(std::ostream& os, const Config& c, const MocResult& r) {
        << c.n << ',' << num(c.r_arc) << ',' << num(c.shift) << ',' << num(c.length_frac)
        << ',' << num(c.gamma) << ','
        << start_line_name(d.start_line_used) << ','
-       << (r.converged ? 1 : 0) << ',' << to_string(r.failure.code) << ','
+       << (r.status.ok() ? 1 : 0) << ',' << to_string(r.failure.code) << ','
        << num(r.failure.x) << ',' << num(r.failure.y) << ',' << r.failure.kernel_pass << ','
        << num(r.exit_mach) << ',' << num(r.exit_coverage) << ','
        << (r.reached_exit_plane ? 1 : 0) << ',' << num(r.area_ratio) << ','

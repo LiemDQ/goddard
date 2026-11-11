@@ -63,6 +63,9 @@ from goddard._core import (
     validate_moc_options,
     # Errors
     ConvergenceError,
+    FailureReason,
+    SolveError,
+    SolveStatus,
     # Functions
     add_data_directory,
     equilibrium_derivatives,
@@ -180,6 +183,9 @@ __all__ = [
     "find_like_characteristic_crossings",
     "validate_moc_options",
     "ConvergenceError",
+    "FailureReason",
+    "SolveError",
+    "SolveStatus",
     "add_data_directory",
     "equilibrium_derivatives",
     "equilibrium_properties",

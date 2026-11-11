@@ -109,7 +109,7 @@ def test_shock_tube_matches_cea(incident_chemistry, reflected_chemistry):
         assert expected["converged"], f"CEA did not converge at u1={u1}"
         label = f"u1={u1:g}"
         result = solver.reflected_shock_from_velocity(u1, incident_chemistry, reflected_chemistry)
-        assert result.valid, label
+        assert result.status.ok, label
         incident, reflected = result.incident, result.reflected
 
         assert_close_rel(incident.mach_in, expected["Mach"][0], RATIO_RTOL, f"{label} Mach1")

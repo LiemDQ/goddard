@@ -10,6 +10,7 @@
 #include "cantera/core.h" 
 #include "goddard/characteristics.hpp"
 #include "goddard/characteristic_net.hpp"
+#include "goddard/status.hpp"
 #include "goddard/chemistry.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/profile.hpp"
@@ -465,7 +466,7 @@ std::string_view to_string(MocErrorCode code);
 
 /**
  * Describes a numerical or physical failure encountered while solving a MocNozzle
- * problem. When MocResult::converged is false, this identifies what went wrong and
+ * problem. When MocResult::status is not ok, this identifies what went wrong and
  * where, instead of the failure being silently swallowed or thrown as an exception.
  */
 struct MocFailure {
@@ -485,12 +486,17 @@ struct MocFailure {
  * `throat_radius`. Coordinates quoted inside `messages` are in throat radii.
  */
 struct MocResult {
-    bool converged = false; ///< True iff failure.code == MocErrorCode::NONE and the kernel completed without hitting the iteration cap.
+    /**
+     * Outcome of the solve; ok when the march completed. A failed status carries the generic
+     * reason of the failure, its message and where it happened, and `failure` the MoC-specific
+     * detail. `status.warnings` holds the warnings of `messages`.
+     */
+    SolveStatus status;
     CharacteristicNet net; ///< The solved characteristic mesh. Populated even when the march fails partway.
     NozzleProfile profile; ///< Wall contour: computed in design mode, echoed back in analysis mode.
 
     std::vector<std::string> messages; ///< Warnings and error information collected during the solve.
-    MocFailure failure; ///< Populated when converged is false; MocErrorCode::NONE otherwise.
+    MocFailure failure; ///< MoC-specific detail of a failed solve; MocErrorCode::NONE when `status` is ok.
 
     double exit_mach = 0.0;     ///< Mach number at the exit plane.
     double nozzle_length = 0.0; ///< Distance from throat to exit plane, in the unit of NozzleGeometry::throat_radius.

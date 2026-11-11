@@ -5,13 +5,18 @@
 #include "goddard/error.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
+#include "status_test_helpers.hpp"
 #include <cmath>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
+using Goddard::test_helpers::throws_solve_error;
 
 namespace {
 
@@ -27,8 +32,8 @@ const char* branch_name(DetonationBranch branch) {
 
 void expect_shock_near(const ShockResult& actual, const ShockResult& expected, double tol,
                        const std::string& label) {
-    ASSERT_TRUE(actual.valid) << label;
-    ASSERT_TRUE(expected.valid) << label;
+    ASSERT_TRUE(actual.status.ok()) << label;
+    ASSERT_TRUE(expected.status.ok()) << label;
     EXPECT_NEAR(actual.mach_in, expected.mach_in, max_fp_error(expected.mach_in, tol, 1e-12)) << label;
     EXPECT_NEAR(actual.mach_out, expected.mach_out, max_fp_error(expected.mach_out, tol, 1e-12)) << label;
     EXPECT_NEAR(actual.static_pressure_ratio, expected.static_pressure_ratio,
@@ -44,8 +49,8 @@ void expect_shock_near(const ShockResult& actual, const ShockResult& expected, d
 /** Compare the jump across a real-gas detonation with a perfect-gas one; `velocity` is not compared. */
 void expect_detonation_near(const DetonationResult& actual, const DetonationResult& expected, double tol,
                             const std::string& label) {
-    ASSERT_TRUE(actual.valid) << label;
-    ASSERT_TRUE(expected.valid) << label;
+    ASSERT_TRUE(actual.status.ok()) << label;
+    ASSERT_TRUE(expected.status.ok()) << label;
     EXPECT_NEAR(actual.drive_factor, expected.drive_factor, max_fp_error(expected.drive_factor, tol, 0.0)) << label;
     EXPECT_NEAR(actual.mach_in, expected.mach_in, max_fp_error(expected.mach_in, tol, 0.0)) << label;
     EXPECT_NEAR(actual.mach_out, expected.mach_out, max_fp_error(expected.mach_out, tol, 0.0)) << label;
@@ -130,7 +135,7 @@ TEST(PerfectGasDetonation, ChapmanJouguetIsSonicAndOnTheHugoniot) {
         for (double Q : {5.0, 40.0}) {
             const std::string label = "gamma=" + std::to_string(gamma) + " Q=" + std::to_string(Q);
             DetonationResult cj = chapman_jouguet_detonation(gamma, Q);
-            ASSERT_TRUE(cj.valid) << label;
+            ASSERT_TRUE(cj.status.ok()) << label;
             // M_CJ = sqrt(H) + sqrt(H + 1), H = (gamma^2 - 1) Q/(2 gamma)
             const double H = (gamma*gamma - 1.0)*Q/(2.0*gamma);
             EXPECT_NEAR(cj.mach_in, std::sqrt(H) + std::sqrt(H + 1.0), 1e-12) << label;
@@ -155,8 +160,8 @@ TEST(PerfectGasDetonation, BranchesSatisfyJumpConditions) {
         const DetonationResult strong = detonation(f, gamma, Q, DetonationBranch::OVERDRIVEN);
         const DetonationResult weak = detonation(f, gamma, Q, DetonationBranch::UNDERDRIVEN);
         const std::string label = "f=" + std::to_string(f);
-        ASSERT_TRUE(strong.valid) << label;
-        ASSERT_TRUE(weak.valid) << label;
+        ASSERT_TRUE(strong.status.ok()) << label;
+        ASSERT_TRUE(weak.status.ok()) << label;
         for (const DetonationResult& r : {strong, weak}) {
             EXPECT_NEAR(r.mach_in, f*cj.mach_in, 1e-12*r.mach_in) << label;
             EXPECT_NEAR(hugoniot_residual(r, gamma, Q), 0.0, 1e-10*Q) << label;
@@ -178,7 +183,7 @@ TEST(PerfectGasDetonation, NoHeatReleaseIsNormalShock) {
     for (double f : {1.5, 3.0}) {
         const DetonationResult strong = detonation(f, gamma, 0.0, DetonationBranch::OVERDRIVEN);
         const ShockResult shock = normal_shock(f, gamma);
-        ASSERT_TRUE(strong.valid);
+        ASSERT_TRUE(strong.status.ok());
         EXPECT_NEAR(strong.static_pressure_ratio, shock.static_pressure_ratio, 1e-12*shock.static_pressure_ratio);
         EXPECT_NEAR(strong.static_temperature_ratio, shock.static_temperature_ratio,
                     1e-12*shock.static_temperature_ratio);
@@ -187,7 +192,7 @@ TEST(PerfectGasDetonation, NoHeatReleaseIsNormalShock) {
         EXPECT_NEAR(strong.total_pressure_ratio, shock.total_pressure_ratio, 1e-12);
 
         const DetonationResult weak = detonation(f, gamma, 0.0, DetonationBranch::UNDERDRIVEN);
-        ASSERT_TRUE(weak.valid);
+        ASSERT_TRUE(weak.status.ok());
         EXPECT_NEAR(weak.static_pressure_ratio, 1.0, 1e-12);
         EXPECT_NEAR(weak.density_ratio, 1.0, 1e-12);
     }
@@ -201,7 +206,7 @@ TEST(PerfectGasDetonation, ReflectedShockBringsProductsToRest) {
     for (double f : {1.0, 1.5}) {
         for (DetonationBranch branch : BRANCHES) {
             const ReflectedDetonationResult r = reflected_detonation(f, gamma, Q, branch);
-            ASSERT_TRUE(r.valid);
+            ASSERT_TRUE(r.status.ok());
             const double particle_mach = r.incident.mach_out*(r.incident.density_ratio - 1.0);
             EXPECT_NEAR(particle_mach, r.reflected.mach_in*(1.0 - 1.0/r.reflected.density_ratio), 1e-12)
                 << "f=" << f << " " << branch_name(branch);
@@ -210,12 +215,21 @@ TEST(PerfectGasDetonation, ReflectedShockBringsProductsToRest) {
 }
 
 TEST(PerfectGasDetonation, InvalidInputs) {
-    EXPECT_FALSE(detonation(0.99, 1.4, 10.0).valid);
-    EXPECT_FALSE(chapman_jouguet_detonation(1.0, 10.0).valid);
-    EXPECT_FALSE(chapman_jouguet_detonation(1.4, -1.0).valid);
-    EXPECT_FALSE(reflected_detonation(0.99, 1.4, 10.0).valid);
+    // A wave slower than the CJ speed and a negative heat release have no solution
+    const DetonationResult slow = detonation(0.99, 1.4, 10.0);
+    EXPECT_TRUE(failed_with(slow.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(slow.velocity));
+    EXPECT_TRUE(std::isnan(slow.static_pressure_ratio));
+    EXPECT_TRUE(std::isnan(slow.von_neumann.static_pressure_ratio));
+    EXPECT_TRUE(failed_with(chapman_jouguet_detonation(1.4, -1.0).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(detonation(1.5, 1.4, -1.0).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(reflected_detonation(0.99, 1.4, 10.0).status, FailureReason::NO_SOLUTION));
+    // gamma <= 1 is an invalid argument
+    EXPECT_THROW(chapman_jouguet_detonation(1.0, 10.0), std::invalid_argument);
+    EXPECT_THROW(detonation(1.5, 0.9, 10.0), std::invalid_argument);
+    EXPECT_THROW(reflected_detonation(1.5, 1.0, 10.0), std::invalid_argument);
     // A drive factor of 1 up to round-off is the CJ detonation
-    EXPECT_TRUE(detonation(1.0 - 1e-14, 1.4, 10.0, DetonationBranch::UNDERDRIVEN).valid);
+    EXPECT_TRUE(detonation(1.0 - 1e-14, 1.4, 10.0, DetonationBranch::UNDERDRIVEN).status.ok());
 }
 
 // ============================================================
@@ -249,7 +263,7 @@ TEST_P(OneGammaDetonationTests, ReflectedDetonationMatchesPerfectGas) {
             const std::string label = "f=" + std::to_string(f) + " " + branch_name(branch);
             const ReflectedDetonationResult actual = solver.reflected_detonation(f, branch);
             const ReflectedDetonationResult expected = reflected_detonation(f, GAMMA, HEAT_RELEASE, branch);
-            ASSERT_TRUE(actual.valid) << label;
+            ASSERT_TRUE(actual.status.ok()) << label;
             expect_detonation_near(actual.incident, expected.incident, RATIO_TOL, label);
             expect_shock_near(actual.reflected, expected.reflected, RATIO_TOL, label + " reflected");
         }
@@ -284,7 +298,7 @@ protected:
 
 TEST_F(HydrogenOxygenDetonationTests, ChapmanJouguetConservesMassMomentumEnergy) {
     const DetonationResult cj = solver.chapman_jouguet();
-    ASSERT_TRUE(cj.valid);
+    ASSERT_TRUE(cj.status.ok());
     const double u1 = cj.velocity;
     EXPECT_NEAR(cj.mach_in*get_frozen_properties(solver.pre_detonation_state()).speed_of_sound, u1, 1e-9*u1);
 
@@ -320,8 +334,8 @@ TEST_F(HydrogenOxygenDetonationTests, BranchesBracketChapmanJouguet) {
     for (double f : {1.01, 1.5}) {
         const DetonationResult strong = solver.detonation(f, DetonationBranch::OVERDRIVEN);
         const DetonationResult weak = solver.detonation(f, DetonationBranch::UNDERDRIVEN);
-        ASSERT_TRUE(strong.valid);
-        ASSERT_TRUE(weak.valid);
+        ASSERT_TRUE(strong.status.ok());
+        ASSERT_TRUE(weak.status.ok());
         EXPECT_LT(strong.mach_out, 1.0) << "f=" << f;
         EXPECT_GT(weak.mach_out, 1.0) << "f=" << f;
         EXPECT_GT(strong.static_pressure_ratio, cj.static_pressure_ratio) << "f=" << f;
@@ -333,7 +347,7 @@ TEST_F(HydrogenOxygenDetonationTests, BranchesBracketChapmanJouguet) {
 TEST_F(HydrogenOxygenDetonationTests, DrivenDetonationConservesMassMomentumEnergy) {
     for (DetonationBranch branch : BRANCHES) {
         const DetonationResult r = solver.detonation(1.3, branch);
-        ASSERT_TRUE(r.valid) << branch_name(branch);
+        ASSERT_TRUE(r.status.ok()) << branch_name(branch);
         const Gas& post = solver.post_detonation_state();
         const double u1 = r.velocity;
         const double rho2 = post.density();
@@ -366,7 +380,7 @@ TEST_F(HydrogenOxygenDetonationTests, ReflectedShockBringsProductsToRest) {
     const double a2 = state2.speed_of_sound();
 
     const ReflectedDetonationResult r = solver.reflected_detonation();
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.incident.velocity, cj.velocity, 1e-12*cj.velocity);
     const Gas& state5 = solver.post_detonation_state();
     EXPECT_NEAR(r.reflected.density_ratio, state5.density()/rho2, max_fp_error(state5.density()/rho2, 1e-10, 0.0));
@@ -388,11 +402,17 @@ TEST_F(HydrogenOxygenDetonationTests, UnburnedChemistryDoesNotChangeResult) {
 
 TEST_F(HydrogenOxygenDetonationTests, SlowerThanChapmanJouguetIsInvalid) {
     const DetonationResult cj = solver.chapman_jouguet();
-    EXPECT_FALSE(solver.detonation(0.99).valid);
-    EXPECT_FALSE(solver.detonation_from_velocity(0.99*cj.velocity, DetonationBranch::UNDERDRIVEN).valid);
-    EXPECT_FALSE(solver.reflected_detonation(0.99).valid);
-    // After an invalid result the post state is the unburned gas
-    EXPECT_NEAR(solver.post_detonation_state().pressure(), P1, 1e-10*P1);
+    const DetonationResult slow = solver.detonation(0.99);
+    EXPECT_TRUE(failed_with(slow.status, FailureReason::NO_SOLUTION, "Chapman-Jouguet"));
+    EXPECT_TRUE(std::isnan(slow.velocity));
+    EXPECT_TRUE(std::isnan(slow.static_temperature_ratio));
+    EXPECT_TRUE(failed_with(
+        solver.detonation_from_velocity(0.99*cj.velocity, DetonationBranch::UNDERDRIVEN).status,
+        FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(solver.reflected_detonation(0.99).status, FailureReason::NO_SOLUTION));
+    // After a failed result there are no product states: not the unburned gas, not the CJ state
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_detonation_state(); }, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(throws_solve_error([&] { solver.von_neumann_state(); }, FailureReason::NO_SOLUTION));
 }
 
 // ============================================================
@@ -415,7 +435,7 @@ TEST_F(DiluteDetonationTests, OverdrivenMatchesEquilibriumShock) {
     for (double u1 : {1100.0, 1200.0, 1400.0}) {
         const DetonationResult r = detonations.detonation_from_velocity(u1, DetonationBranch::OVERDRIVEN);
         const ShockResult shock = shocks.normal_shock_from_velocity(u1);
-        ASSERT_TRUE(r.valid) << "u1=" << u1;
+        ASSERT_TRUE(r.status.ok()) << "u1=" << u1;
         ShockResult as_shock = r.von_neumann;
         as_shock.mach_in = r.mach_in;
         as_shock.mach_out = r.mach_out;
@@ -433,18 +453,16 @@ TEST_F(DiluteDetonationTests, NearChapmanJouguetNeverReturnsWrongBranch) {
     DetonationSolver solver(make_dilute_gas(GasChemistry::FROZEN));
     for (double excess : {1e-8, 1e-6, 1e-4}) {
         for (DetonationBranch branch : BRANCHES) {
-            try {
-                const DetonationResult r = solver.detonation(1.0 + excess, branch);
-                ASSERT_TRUE(r.valid);
-                if (branch == DetonationBranch::OVERDRIVEN) {
-                    EXPECT_LT(r.mach_out, 1.0) << "excess=" << excess;
-                }
-                else {
-                    EXPECT_GT(r.mach_out, 1.0) << "excess=" << excess;
-                }
+            const DetonationResult r = solver.detonation(1.0 + excess, branch);
+            if (!r.status.ok()) {
+                EXPECT_TRUE(failed_with(r.status, FailureReason::NOT_CONVERGED)) << "excess=" << excess;
+                EXPECT_TRUE(std::isnan(r.mach_out));
             }
-            catch (const ConvergenceError&) {
-                SUCCEED();
+            else if (branch == DetonationBranch::OVERDRIVEN) {
+                EXPECT_LT(r.mach_out, 1.0) << "excess=" << excess;
+            }
+            else {
+                EXPECT_GT(r.mach_out, 1.0) << "excess=" << excess;
             }
         }
     }
@@ -460,10 +478,53 @@ TEST(DetonationSolverUnsupported, RejectsPerfectGasAndKinetic) {
 }
 
 TEST(DetonationSolverUnsupported, MixtureWithoutHeatReleaseHasNoDetonation) {
-    DetonationSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
-    EXPECT_FALSE(solver.chapman_jouguet().valid);
-    EXPECT_FALSE(solver.detonation(1.5).valid);
-    EXPECT_FALSE(solver.reflected_detonation().valid);
+    // Air at 298 K releases no heat. The constructor does not solve, so it does not throw.
+    std::unique_ptr<DetonationSolver> solver;
+    ASSERT_NO_THROW(solver = std::make_unique<DetonationSolver>(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN)));
+    const DetonationResult cj = solver->chapman_jouguet();
+    EXPECT_TRUE(failed_with(cj.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(cj.velocity));
+    EXPECT_TRUE(failed_with(solver->detonation(1.5).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(solver->reflected_detonation().status, FailureReason::NO_SOLUTION));
+}
+
+TEST(DetonationSolverUnsupported, InertArgonHasNoDetonationEither) {
+    DetonationSolver solver(make_gas("AR:1", GasChemistry::EQUILIBRIUM));
+    EXPECT_TRUE(failed_with(solver.chapman_jouguet().status, FailureReason::NO_SOLUTION));
+}
+
+TEST(DetonationSolverFailures, ConstructorSolvesNothingAndFirstUseSolvesTheChapmanJouguetState) {
+    DetonationSolver solver(make_gas("H2:2, O2:1", GasChemistry::FROZEN));
+    // No detonation has been solved yet, so there are no product states
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_detonation_state(); }, FailureReason::NOT_COMPUTED));
+    EXPECT_TRUE(throws_solve_error([&] { solver.von_neumann_state(); }, FailureReason::NOT_COMPUTED));
+
+    // A driven detonation solves the CJ detonation it is fitted to, so the CJ result afterwards is
+    // the cached one and is identical when asked twice
+    ASSERT_TRUE(is_ok(solver.detonation(1.5).status));
+    const DetonationResult first = solver.chapman_jouguet();
+    const DetonationResult second = solver.chapman_jouguet();
+    ASSERT_TRUE(is_ok(first.status));
+    EXPECT_EQ(first.velocity, second.velocity);
+    EXPECT_EQ(first.static_pressure_ratio, second.static_pressure_ratio);
+    EXPECT_NO_THROW(solver.post_detonation_state());
+}
+
+TEST(DetonationSolverFailures, FailedChapmanJouguetSolveIsCached) {
+    DetonationSolver solver(make_gas("AR:1", GasChemistry::FROZEN));
+    const DetonationResult first = solver.chapman_jouguet();
+    const DetonationResult second = solver.chapman_jouguet();
+    ASSERT_TRUE(failed_with(first.status, FailureReason::NO_SOLUTION));
+    EXPECT_EQ(first.status.message, second.status.message);
+    EXPECT_EQ(first.status.reason, second.status.reason);
+}
+
+TEST(DetonationSolverFailures, ReflectedDetonationOfAFailedIncidentDetonationIsNotComputed) {
+    DetonationSolver solver(make_gas("H2:2, O2:1", GasChemistry::FROZEN));
+    const ReflectedDetonationResult r = solver.reflected_detonation(0.99);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_EQ(r.reflected.status.reason, FailureReason::NOT_COMPUTED);
+    EXPECT_TRUE(std::isnan(r.reflected.static_pressure_ratio));
 }
 
 TEST(DetonationSolverState, AccessorsRestoreStatesAndChemistry) {
@@ -473,7 +534,7 @@ TEST(DetonationSolverState, AccessorsRestoreStatesAndChemistry) {
     DetonationSolver solver(gas);
     const DetonationResult cj = solver.chapman_jouguet();
     const DetonationResult overdriven = solver.detonation(1.5);
-    ASSERT_TRUE(overdriven.valid);
+    ASSERT_TRUE(overdriven.status.ok());
 
     const Gas& pre = solver.pre_detonation_state();
     EXPECT_NEAR(pre.temperature(), T_initial, 1e-10);

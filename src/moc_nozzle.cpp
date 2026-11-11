@@ -12,6 +12,7 @@
 #include "goddard/moc_inverse_march.hpp"
 #include "goddard/moc_thermo.hpp"
 #include "goddard/prandtlmeyer.hpp"
+#include "goddard/solve_guard.hpp"
 #include "goddard/error.hpp"
 
 namespace Goddard {
@@ -155,6 +156,83 @@ bool MocNozzle::is_solved() const {
     return m_is_solved;
 }
 
+namespace {
+
+/** Generic failure reason of a MoC error code. */
+FailureReason failure_reason_of(MocErrorCode code) {
+    switch (code) {
+        case MocErrorCode::NONE:
+            return FailureReason::NONE;
+        // The characteristic net broke down: the flow the method assumes does not exist there.
+        case MocErrorCode::NEGATIVE_NU:
+        case MocErrorCode::NEGATIVE_THETA:
+        case MocErrorCode::SUBSONIC_MACH:
+        case MocErrorCode::NON_DOWNSTREAM_POINT:
+            return FailureReason::NO_SOLUTION;
+        case MocErrorCode::TABLE_RANGE_EXCEEDED:
+        case MocErrorCode::WALL_QUERY_OUT_OF_BOUNDS:
+            return FailureReason::OUT_OF_DATA_RANGE;
+        case MocErrorCode::NONFINITE_VALUE:
+        case MocErrorCode::PM_INVERSION_FAILED:
+        case MocErrorCode::INITIALIZATION_FAILED:
+        case MocErrorCode::MAX_ITERATIONS_REACHED:
+            return FailureReason::NOT_CONVERGED;
+    }
+    return FailureReason::NOT_CONVERGED;
+}
+
+/**
+ * Status of a solve from its MoC failure record (in the caller's length unit) and its log.
+ *
+ * @param initialization_status Status of the failure that stopped the initialization, when it
+ * came from another solver (the throat, the thermodynamic backend); its reason is then kept.
+ */
+SolveStatus moc_status(const MocFailure& failure, const MocLog& log,
+                       const std::optional<SolveStatus>& initialization_status) {
+    SolveStatus status;
+    if (failure.code != MocErrorCode::NONE) {
+        if (initialization_status.has_value()) {
+            status = *initialization_status;
+        } else {
+            status.reason = failure_reason_of(failure.code);
+        }
+        status.message = std::format("{} ({})", failure.message, to_string(failure.code));
+        if (failure.kernel_pass < 0) {
+            status.stage = "MoC initialization";
+        } else {
+            status.stage = std::format("MoC march, pass {}", failure.kernel_pass);
+            status.message += std::format(" near x = {:.6g}, y = {:.6g}", failure.x, failure.y);
+        }
+    }
+    const std::string_view warning_prefix = "Warning: ";
+    for (const std::string& message : log.messages) {
+        if (message.starts_with(warning_prefix)) {
+            status.warnings.push_back(message.substr(warning_prefix.size()));
+        }
+    }
+    return status;
+}
+
+/**
+ * Record the exception being handled as an initialization failure. Call it only inside a
+ * `catch (...)` block. A table lookup out of range, a `SolveError` and a Cantera error are
+ * numerical failures; anything else (a bad argument, an unimplemented mode) is rethrown.
+ */
+void record_initialization_failure(MocResult& result, std::optional<SolveStatus>& status,
+                                   const std::string& what) {
+    try {
+        throw;
+    } catch (const std::out_of_range& e) {
+        result.failure = MocFailure{MocErrorCode::TABLE_RANGE_EXCEEDED, what + e.what(), 0.0, 0.0, -1};
+    } catch (...) {
+        status = status_from_current_exception({});
+        result.failure = MocFailure{
+            MocErrorCode::INITIALIZATION_FAILED, what + status->message, 0.0, 0.0, -1};
+    }
+}
+
+} // namespace
+
 // -- MocNozzle --
 MocResult MocNozzle::solve() {
     // Re-checked here, not just in the constructor: options is public and callers do
@@ -173,19 +251,21 @@ MocResult MocNozzle::solve() {
     ThroatCondition throat{};
     std::optional<MocThermo> thermo;
 
+    MocResult result;
+    result.throat_radius = throat_radius;
+    // Set when the initialization is stopped by a failure of another solver.
+    std::optional<SolveStatus> initialization_status;
+
     if (options.chemistry == GasChemistry::PERFECT_GAS) {
         // Pure algebraic path: no Cantera dependency
         // throat populated with dummy values; they are not used in the perfect gas case.
-        throat = ThroatCondition{
-            .speed_of_sound = 1.0,
-            .H_stagnation = 1.0,
-            .P_inlet = 1.0, // dimensionless stagnation pressure
-            .S_inlet = 1.0,
-            .gamma_s = options.gamma,
-            .dlV_dlP_T = -1.0,
-            .dlV_dlT_P = 1.0,
-            .state = {}
-        };
+        throat.speed_of_sound = 1.0;
+        throat.H_stagnation = 1.0;
+        throat.P_inlet = 1.0; // dimensionless stagnation pressure
+        throat.S_inlet = 1.0;
+        throat.gamma_s = options.gamma;
+        throat.dlV_dlP_T = -1.0;
+        throat.dlV_dlT_P = 1.0;
         thermo = MocThermo::perfect_gas(options.gamma);
     }
     else {
@@ -197,16 +277,26 @@ MocResult MocNozzle::solve() {
         NozzleOptions nozzle_opts;
         nozzle_opts.chemistry = options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);
-        throat = nozzle.solve_throat_conditions();
-        thermo = MocThermo::tabulated(*m_gas, options.chemistry, throat);
+        // The throat and the expansion table are solves of their own and can fail numerically.
+        try {
+            throat = nozzle.solve_throat_conditions();
+            throat.status.raise_if_failed();
+            thermo = MocThermo::tabulated(*m_gas, options.chemistry, throat);
+        } catch (...) {
+            record_initialization_failure(result, initialization_status,
+                "Throat and expansion table construction failed: ");
+        }
+        if (result.failure.code != MocErrorCode::NONE) {
+            result.messages = log.messages;
+            result.status = moc_status(result.failure, log, initialization_status);
+            m_is_solved = true;
+            return result;
+        }
     }
 
     // Everything a kernel or unit process needs for this solve, besides the points it works
     // on.
     MocSolveContext ctx{normalized, wall, *thermo, log};
-
-    MocResult result;
-    result.throat_radius = throat_radius;
 
     StartLine line;
     double reference_spacing = 0.0;
@@ -277,28 +367,16 @@ MocResult MocNozzle::solve() {
             }
         }
     }
-    catch (const NotImplementedError&) {
-        // Programmer error (unimplemented mode): not a numerical failure, keep throwing.
-        throw;
-    }
-    catch (const std::out_of_range& e) {
-        result.failure = MocFailure{
-            MocErrorCode::TABLE_RANGE_EXCEEDED,
-            std::string("Initial data line construction failed: ") + e.what(),
-            0.0, 0.0, -1
-        };
-    }
-    catch (const std::exception& e) {
-        result.failure = MocFailure{
-            MocErrorCode::INITIALIZATION_FAILED,
-            std::string("Initial data line construction failed: ") + e.what(),
-            0.0, 0.0, -1
-        };
+    catch (...) {
+        // Numerical failures become the result's failure; a bad argument or an unimplemented
+        // mode is not one and keeps propagating.
+        record_initialization_failure(result, initialization_status,
+            "Initial data line construction failed: ");
     }
 
     if (result.failure.code != MocErrorCode::NONE) {
-        result.converged = false;
         result.messages = log.messages;
+        result.status = moc_status(result.failure, log, initialization_status);
         m_is_solved = true;
         return result;
     }
@@ -332,9 +410,6 @@ MocResult MocNozzle::solve() {
     result.messages = log.messages;
     if (kernel_failure.has_value()) {
         result.failure = *kernel_failure;
-        result.converged = false;
-    } else {
-        result.converged = true;
     }
 
     // Populate performance fields
@@ -406,6 +481,7 @@ MocResult MocNozzle::solve() {
 
     // Everything above is in throat radii; report lengths in the caller's unit.
     scale_result_lengths(result, throat_radius);
+    result.status = moc_status(result.failure, log, initialization_status);
 
     m_is_solved = true;
     return result;

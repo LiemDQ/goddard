@@ -4,6 +4,8 @@
 #include "goddard/numerics.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/config.h"
+#include "goddard/error.hpp"
+#include "status_test_helpers.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -15,6 +17,7 @@
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::throws_solve_error;
 
 class GasTests : public ::testing::Test {
 protected:
@@ -375,4 +378,36 @@ TEST(GasSpeciesOrderTests, CreateFromSpeciesUsesFileOrder) {
 TEST(GasSpeciesOrderTests, CreateFromSpeciesRejectsUnknownSpecies) {
     EXPECT_THROW(Gas::create_from_species("h2o2.yaml", "gas", {"H2", "NOT_A_SPECIES"}),
                  std::invalid_argument);
+}
+
+// ---- Errors of the thermodynamic backend never reach the caller ----
+
+TEST(GasBackendErrors, UnknownSpeciesInACompositionIsAnInvalidArgument) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    EXPECT_THROW(gas.set_state_TPX(300.0, 1.0e5, "H2:1, NOT_A_SPECIES:1"), std::invalid_argument);
+    EXPECT_THROW(gas.set_state_TPX(300.0, 1.0e5, Composition{{"NOT_A_SPECIES", 1.0}}), std::invalid_argument);
+}
+
+TEST(GasBackendErrors, MissingFileOrPhaseIsAnInvalidArgument) {
+    EXPECT_THROW(Gas::create("no_such_file.yaml", "gas"), std::invalid_argument);
+    EXPECT_THROW(Gas("no_such_file.yaml", "gas"), std::invalid_argument);
+    EXPECT_THROW(Gas::create("h2o2.yaml", "no_such_phase"), std::invalid_argument);
+    EXPECT_THROW(Gas("h2o2.yaml", "no_such_phase"), std::invalid_argument);
+}
+
+TEST(GasBackendErrors, StateTheBackendRejectsIsASolveErrorNamingTheCall) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    gas.set_state_TPX(300.0, 1.0e5, "H2:1, O2:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(0.0, 1.0e5); },
+                                   FailureReason::THERMO_FAILURE, "Gas::set_state_TP(T = 0 K, P = 100000 Pa)"));
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(-300.0, 1.0e5); }, FailureReason::THERMO_FAILURE));
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(300.0, -1.0); }, FailureReason::THERMO_FAILURE));
+}
+
+TEST(GasBackendErrors, EquilibriumThatCannotBeSolvedIsASolveError) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    // 1e5 K is far outside the range of the NASA polynomials: no temperature matches
+    gas.set_state_TPX(1.0e5, 1.0e5, "H2:2, O2:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.equilibrate_HP(gas.enthalpy_mass(), gas.pressure()); },
+                                   FailureReason::THERMO_FAILURE));
 }

@@ -5,6 +5,7 @@
 #include <nanobind/stl/shared_ptr.h>
 #include "goddard/detonations.hpp"
 #include "goddard/gas.hpp"
+#include "bind_status.hpp"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
@@ -17,7 +18,7 @@ void bind_detonations(nb::module_& m) {
 
     // DetonationResult
     nb::class_<Goddard::DetonationResult>(m, "DetonationResult", DOC(Goddard, DetonationResult))
-        .def_ro("valid", &Goddard::DetonationResult::valid, DOC(Goddard, DetonationResult, valid))
+        .def_ro("status", &Goddard::DetonationResult::status, DOC(Goddard, DetonationResult, status))
         .def_ro("velocity", &Goddard::DetonationResult::velocity, DOC(Goddard, DetonationResult, velocity))
         .def_ro("drive_factor", &Goddard::DetonationResult::drive_factor,
                 DOC(Goddard, DetonationResult, drive_factor))
@@ -36,20 +37,20 @@ void bind_detonations(nb::module_& m) {
         .def_ro("von_neumann", &Goddard::DetonationResult::von_neumann,
                 DOC(Goddard, DetonationResult, von_neumann))
         .def("__repr__", [](const Goddard::DetonationResult& self) {
-            return std::format("<DetonationResult valid={} u1={:.6g} m/s drive_factor={:.6g} M1={:.6g} M2={:.6g} P2/P1={:.6g} T2/T1={:.6g}>", self.valid ? "True" : "False", self.velocity, self.drive_factor, self.mach_in, self.mach_out, self.static_pressure_ratio, self.static_temperature_ratio);
+            return std::format("<DetonationResult {} u1={:.6g} m/s drive_factor={:.6g} M1={:.6g} M2={:.6g} P2/P1={:.6g} T2/T1={:.6g}>", status_tag(self.status), self.velocity, self.drive_factor, self.mach_in, self.mach_out, self.static_pressure_ratio, self.static_temperature_ratio);
         });
 
     // ReflectedDetonationResult
     nb::class_<Goddard::ReflectedDetonationResult>(m, "ReflectedDetonationResult",
                                                    DOC(Goddard, ReflectedDetonationResult))
-        .def_ro("valid", &Goddard::ReflectedDetonationResult::valid,
-                DOC(Goddard, ReflectedDetonationResult, valid))
+        .def_ro("status", &Goddard::ReflectedDetonationResult::status,
+                DOC(Goddard, ReflectedDetonationResult, status))
         .def_ro("incident", &Goddard::ReflectedDetonationResult::incident,
                 DOC(Goddard, ReflectedDetonationResult, incident))
         .def_ro("reflected", &Goddard::ReflectedDetonationResult::reflected,
                 DOC(Goddard, ReflectedDetonationResult, reflected))
         .def("__repr__", [](const Goddard::ReflectedDetonationResult& self) {
-            return std::format("<ReflectedDetonationResult valid={} P2/P1={:.6g} P5/P2={:.6g} T5/T2={:.6g}>", self.valid ? "True" : "False", self.incident.static_pressure_ratio, self.reflected.static_pressure_ratio, self.reflected.static_temperature_ratio);
+            return std::format("<ReflectedDetonationResult {} P2/P1={:.6g} P5/P2={:.6g} T5/T2={:.6g}>", status_tag(self.status), self.incident.static_pressure_ratio, self.reflected.static_pressure_ratio, self.reflected.static_temperature_ratio);
         });
 
     // Perfect-gas free functions

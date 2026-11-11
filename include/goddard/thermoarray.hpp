@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "goddard/status.hpp"
+
 // NOLINTBEGIN(readability-identifier-naming)
 namespace Goddard {
 
@@ -117,6 +119,8 @@ class ThermoArray {
 	 *
 	 * The values are those of the gas phase alone: condensed species are not included in the
 	 * energies, entropies or molecular weight.
+	 *
+	 * An entry whose solve failed (see `status_at`) is NaN in every property getter.
 	 */
 	Eigen::ArrayXXd temperature(int slice = 0) const;
 	/** Pressure [Pa] of every entry; see `temperature` for the shape and `slice`. */
@@ -159,7 +163,42 @@ class ThermoArray {
 
 
 	/**
+	 * Outcome of the most recent solve at flat location `loc`: ok for an entry that was set
+	 * directly or equilibrated successfully.
+	 *
+	 * @throws std::out_of_range if `loc` is not a location of the array.
+	 */
+	const SolveStatus& status_at(int loc) const;
+
+	/**
+	 * Outcome over the whole array: ok when every entry is, otherwise the status of the first
+	 * failed entry (in storage order), whose message also gives the number of failed entries.
+	 */
+	SolveStatus status() const;
+
+	/** Number of entries whose solve failed [-]. */
+	int num_failed() const;
+
+	/**
+	 * Whether each entry is ok, as 1 or 0; the shape and `slice` are those of the property
+	 * getters (see `temperature`).
+	 */
+	Eigen::Array<bool, Eigen::Dynamic, Eigen::Dynamic> ok(int slice = 0) const;
+
+	/**
+	 * Record the outcome of a solve at flat location `loc`. Used by the solvers that fill the
+	 * array entry by entry; `set_state` and the bulk setters reset an entry to ok.
+	 *
+	 * @throws std::out_of_range if `loc` is not a location of the array.
+	 */
+	void set_status(int loc, SolveStatus status);
+
+	/**
 	 * Equilibrate every entry, holding the two properties named by `XY` constant.
+	 *
+	 * An entry whose equilibrium solve fails keeps the state it had before the call and records
+	 * the failure (see `status_at`); the other entries are unaffected. Nothing is thrown for a
+	 * failed solve.
 	 *
 	 * When the array carries condensed species each location is equilibrated through a `Gas` built
 	 * on the array's phase and candidate set, so the condensed amounts take part and are written
@@ -176,9 +215,27 @@ class ThermoArray {
 		int estimate_equil=0,
 		int log_level=0);
 
+	/**
+	 * Equilibrate again the entries whose last solve failed, e.g. with another solver. Entries
+	 * that are ok are left alone. See `equilibrate` for the arguments.
+	 *
+	 * @return Number of entries still failed [-].
+	 */
+	int retry_failed(const std::string& XY,
+		const std::string& solver="auto",
+		double rtol=1e-6,
+		int max_steps=50000,
+		int max_iter=100,
+		int estimate_equil=0,
+		int log_level=0);
+
 	/** Thermodynamic state methods
 		TODO: Possibly enable dynamic resizing of the array based on the arguments
 		provided to the method
+
+		Each setter resets every entry's status to ok. A state the thermodynamic backend rejects
+		(e.g. a nonpositive temperature) throws `SolveError`, leaving the entries set before it
+		changed.
 	*/
 
 	/**
@@ -308,7 +365,18 @@ class ThermoArray {
 	// flat location `loc` is `m_condensed_moles[loc * num_condensed() + k]`.
 	std::shared_ptr<CondensedPhaseSet> m_condensed;
 	std::vector<double> m_condensed_moles;
+	// Outcome of the last solve at each flat location. Entries beyond its length are ok, so an
+	// array that never failed stores nothing.
+	std::vector<SolveStatus> m_statuses;
 	bool m_shape_is_set = false;
+
+	/** Equilibrate the entry at `loc`; on failure restore its state and record the failure. */
+	void equilibrate_location(int loc, Gas* condensed_gas, const std::string& XY,
+		const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil,
+		int log_level);
+	/** "entry (i, j, k)" for flat location `loc`, with as many indices as dimensions. */
+	std::string entry_label(int loc) const;
+	void check_location(int loc) const;
 };
 
 }

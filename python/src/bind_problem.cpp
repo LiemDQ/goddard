@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <format>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/unordered_map.h>
@@ -37,6 +38,11 @@ void bind_problem(nb::module_& m) {
             DOC(Goddard, RocketProblemResults))
         .def_prop_ro("stations", &Goddard::RocketProblemResults::stations,
              DOC(Goddard, RocketProblemResults, stations))
+        .def_prop_ro("status", &Goddard::RocketProblemResults::status,
+             DOC(Goddard, RocketProblemResults, status))
+        .def("failed_stations", &Goddard::RocketProblemResults::failed_stations,
+             "case_name"_a = "",
+             DOC(Goddard, RocketProblemResults, failed_stations))
         .def("stations_of_type", &Goddard::RocketProblemResults::stations_of_type,
              "type"_a, "case_name"_a = "",
              DOC(Goddard, RocketProblemResults, stations_of_type))
@@ -78,5 +84,10 @@ void bind_problem(nb::module_& m) {
         .def_static("calculate_performance",
              &Goddard::RocketProblemResults::calculate_performance,
              "chamber"_a, "throat"_a, "exit"_a,
-             DOC(Goddard, RocketProblemResults, calculate_performance));
+             DOC(Goddard, RocketProblemResults, calculate_performance))
+        .def("__repr__", [](const Goddard::RocketProblemResults& self) {
+            return std::format("<RocketProblemResults {} case(s), {} stations, {} not solved>",
+                               self.case_names().size(), self.stations().size(),
+                               self.failed_stations().size());
+        });
 }

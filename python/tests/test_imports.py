@@ -76,7 +76,7 @@ def test_import_shocks():
 def test_perfect_gas_normal_shock():
     from goddard import normal_shock
     r = normal_shock(2.0, 1.4)
-    assert r.valid
+    assert r.status.ok
     assert r.mach_out < 1.0
     assert r.static_pressure_ratio > 1.0
 
@@ -84,7 +84,7 @@ def test_perfect_gas_normal_shock():
 def test_perfect_gas_reflected_shock():
     from goddard import reflected_shock, normal_shock
     r = reflected_shock(2.0, 1.4)
-    assert r.valid
+    assert r.status.ok
     assert r.incident.static_pressure_ratio == normal_shock(2.0, 1.4).static_pressure_ratio
     # The reflected shock is weaker than the incident one but still a shock
     assert 1.0 < r.reflected.mach_in < 2.0
@@ -92,11 +92,14 @@ def test_perfect_gas_reflected_shock():
 
 def test_perfect_gas_max_deflection():
     import math
-    from goddard import oblique_shock_max_deflection, oblique_shock_from_deflection
+    from goddard import FailureReason, oblique_shock_max_deflection, oblique_shock_from_deflection
     # NACA 1135 chart 2: theta_max = 22.97 deg at M = 2, gamma = 1.4
     theta_max = oblique_shock_max_deflection(2.0, 1.4)
     assert abs(math.degrees(theta_max) - 22.97) < 0.01
-    assert not oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4).valid
+    detached = oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4)
+    assert not detached.status.ok
+    assert detached.status.reason == FailureReason.NO_SOLUTION
+    assert math.isnan(detached.beta)
 
 
 def test_nozzle_options_fields():
@@ -107,8 +110,11 @@ def test_nozzle_options_fields():
 
 
 def test_import_errors():
-    from goddard import ConvergenceError
-    assert issubclass(ConvergenceError, Exception)
+    from goddard import ConvergenceError, SolveError, SolveStatus, FailureReason
+    assert issubclass(SolveError, RuntimeError)
+    assert issubclass(ConvergenceError, SolveError)
+    assert SolveStatus is not None
+    assert FailureReason.NOT_COMPUTED is not None
 
 
 def test_import_convenience():
@@ -203,15 +209,17 @@ def test_import_detonations():
 
 
 def test_perfect_gas_detonation():
-    from goddard import chapman_jouguet_detonation, detonation, DetonationBranch
+    from goddard import FailureReason, chapman_jouguet_detonation, detonation, DetonationBranch
     # M_CJ = sqrt(H) + sqrt(H + 1), H = (gamma^2 - 1) Q/(2 gamma); Q is chosen so that H = 4.
     gamma = 1.4
     Q = 2.0 * gamma * 4.0 / (gamma * gamma - 1.0)
     cj = chapman_jouguet_detonation(gamma, Q)
-    assert cj.valid
+    assert cj.status.ok
     assert abs(cj.mach_in - (2.0 + 5.0**0.5)) < 1e-12
     assert abs(cj.mach_out - 1.0) < 1e-12
     strong = detonation(1.5, gamma, Q, DetonationBranch.OVERDRIVEN)
     weak = detonation(1.5, gamma, Q, DetonationBranch.UNDERDRIVEN)
     assert strong.mach_out < 1.0 < weak.mach_out
-    assert not detonation(0.9, gamma, Q).valid
+    slow = detonation(0.9, gamma, Q)
+    assert not slow.status.ok
+    assert slow.status.reason == FailureReason.NO_SOLUTION

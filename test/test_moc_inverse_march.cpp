@@ -106,7 +106,7 @@ TEST_P(InverseMarchUniformFlow, StaysUniform) {
     solver.set_front_override(front0);
     MocResult result = solver.solve();
 
-    ASSERT_TRUE(result.converged) << to_string(result.failure.code) << ": " << result.failure.message;
+    ASSERT_TRUE(result.status.ok()) << to_string(result.failure.code) << ": " << result.failure.message;
     ASSERT_GE(result.net.fronts.size(), 2u) << "march must have advanced past F_0";
 
     for (size_t f = 0; f < result.net.fronts.size(); f++) {
@@ -210,7 +210,7 @@ TEST_P(InverseMarchSourceFlow, SecondOrderConvergence) {
         solver.set_front_override(front0);
         MocResult result = solver.solve();
 
-        ASSERT_TRUE(result.converged) << "N=" << n << ": " << to_string(result.failure.code)
+        ASSERT_TRUE(result.status.ok()) << "N=" << n << ": " << to_string(result.failure.code)
             << " -- " << result.failure.message;
         ASSERT_FALSE(result.net.fronts.empty());
         EXPECT_NEAR(result.net.wall_x.back(), x_end, 1e-6) << "N=" << n;
@@ -271,7 +271,7 @@ TEST(InverseMarch, PlanarDesignRoundTrip) {
     int levels[2] = {16, 32};
     for (int i = 0; i < 2; i++) {
         MocResult design = solve_planar_min_length_design(gamma, theta_max, levels[i]);
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
 
         MocOptions opts = make_inverse_options(MocFlowKind::PLANAR, gamma, levels[i]);
         opts.geometry.downstream_wall_curvature_radius = -1.0; // fan start line
@@ -279,10 +279,10 @@ TEST(InverseMarch, PlanarDesignRoundTrip) {
 
         MocNozzle solver(opts);
         MocResult analysis = solver.solve();
-        ok[i] = analysis.converged;
-        EXPECT_TRUE(analysis.converged) << "N=" << levels[i] << ": "
+        ok[i] = analysis.status.ok();
+        EXPECT_TRUE(analysis.status.ok()) << "N=" << levels[i] << ": "
             << to_string(analysis.failure.code) << " -- " << analysis.failure.message;
-        if (!analysis.converged) continue;
+        if (!analysis.status.ok()) continue;
 
         err[i] = std::abs(analysis.exit_mach - expected_exit_mach);
         RecordProperty("exit_mach_error_N" + std::to_string(levels[i]), std::to_string(err[i]));
@@ -357,10 +357,10 @@ TEST(InverseMarch, ConicalConvergesAtCleanThroat) {
             MocNozzle solver(opts);
             MocResult result = solver.solve();
 
-            ok[li] = result.converged;
-            EXPECT_TRUE(result.converged) << "AR=" << ar << " N=" << n << ": "
+            ok[li] = result.status.ok();
+            EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
-            if (!result.converged) continue;
+            if (!result.status.ok()) continue;
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
 
             // Wall Mach must not decrease along the contour. The first wall point is the
@@ -420,9 +420,9 @@ TEST(InverseMarch, ConicalDefaultThroatReachesExit) {
             opts.geometry.downstream_wall_curvature_radius = 0.382;
             opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0, 60);
             MocResult result = MocNozzle(opts).solve();
-            EXPECT_TRUE(result.converged) << "AR=" << ar << " N=" << n << ": "
+            EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
-            if (!result.converged) continue;
+            if (!result.status.ok()) continue;
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
             const double mdot_err = exit_plane_mass_flow_error(result, gamma, 1.0);
             EXPECT_LT(std::abs(mdot_err), 0.02) << "AR=" << ar << " N=" << n << ": mass-flow error " << mdot_err;
@@ -461,13 +461,13 @@ TEST(InverseMarch, AxiDesignRoundTripConservesMass) {
         d.num_characteristics = levels[i];
         d.geometry.throat_radius = 1.0;
         MocResult design = MocNozzle(d).solve();
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
 
         MocOptions a = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, levels[i]);
         a.geometry.downstream_wall_curvature_radius = -1.0; // fan start line
         a.nozzle_profile = design.profile;
         MocResult analysis = MocNozzle(a).solve();
-        ASSERT_TRUE(analysis.converged) << "N=" << levels[i] << ": "
+        ASSERT_TRUE(analysis.status.ok()) << "N=" << levels[i] << ": "
             << to_string(analysis.failure.code) << " -- " << analysis.failure.message;
 
         mdot_err[i] = exit_plane_mass_flow_error(analysis, gamma, 1.0);
@@ -532,9 +532,9 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     MocResult frozen_result = solve_with(GasChemistry::FROZEN);
     MocResult equil_result = solve_with(GasChemistry::EQUILIBRIUM);
 
-    ASSERT_TRUE(frozen_result.converged) << to_string(frozen_result.failure.code)
+    ASSERT_TRUE(frozen_result.status.ok()) << to_string(frozen_result.failure.code)
         << " -- " << frozen_result.failure.message;
-    ASSERT_TRUE(equil_result.converged) << to_string(equil_result.failure.code)
+    ASSERT_TRUE(equil_result.status.ok()) << to_string(equil_result.failure.code)
         << " -- " << equil_result.failure.message;
 
     RecordProperty("frozen_exit_mach", std::to_string(frozen_result.exit_mach));

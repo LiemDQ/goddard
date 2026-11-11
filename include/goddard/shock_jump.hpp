@@ -33,8 +33,8 @@ struct ShockJump {
     double density_ratio;
 };
 
-/** Shock result with `valid = false` and every other field set to -1. */
-ShockResult invalid_shock();
+/** Shock result with the given failed status and every other field NaN. */
+ShockResult failed_shock(SolveStatus status);
 
 /**
  * Solve the jump conditions by Newton's method in x = (ln P_down/P_up, ln T_down/T_up),
@@ -79,6 +79,10 @@ ShockJump incident_jump(Gas& gas, double u1, GasChemistry chemistry, const Solve
  *
  * State 1 is taken as given, so its sound speed and stagnation pressure are frozen ones. For an
  * oblique shock, `u_tangential` enters only the stagnation pressures.
+ *
+ * @return the shock; a `NO_SOLUTION` result, with `gas` left at state 1, if `u_normal` is below
+ * the frozen sound speed of state 1
+ * @throws ConvergenceError if the jump conditions cannot be solved
  */
 ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
                            GasChemistry chemistry, const SolverOptions& opts);

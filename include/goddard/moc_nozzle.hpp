@@ -40,7 +40,7 @@ public:
      * March the characteristic net and return the solved flow field.
      *
      * Never throws for numerical failures: a solve that breaks down returns a MocResult with
-     * `converged == false` and `failure` identifying what went wrong and where. It does throw
+     * a failed `status` and `failure` identifying what went wrong and where. It does throw
      * std::invalid_argument if `options` is self-inconsistent (checked here as well as in
      * the constructor, since `options` is public and callers do adjust it in between), and
      * NotImplementedError for MocMode::DESIGN_CENTERLINE.

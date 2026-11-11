@@ -7,6 +7,7 @@
 #include "goddard/global.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/utils.hpp"
+#include "status_test_helpers.hpp"
 
 #include "cantera/core.h"
 #include "gtest/gtest.h"
@@ -19,6 +20,8 @@
 #include <vector>
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::throws_solve_error;
 using ::testing::Contains;
 using ::testing::Not;
 using ::testing::UnorderedElementsAreArray;
@@ -1412,7 +1415,9 @@ TEST_F(CondensedStateTests, FrozenExpansionStopsAtACondensedTemperatureRange) {
 
     // Expanding far enough drives the frozen temperature below the melting point of alumina, which
     // a frozen expansion cannot represent because the liquid is not allowed to solidify.
-    EXPECT_THROW(products.set_state_SP(products.entropy_mass(), 0.001 * BAR), FmtError);
+    EXPECT_TRUE(throws_solve_error(
+        [&] { products.set_state_SP(products.entropy_mass(), 0.001 * BAR); },
+        FailureReason::OUT_OF_DATA_RANGE));
 }
 
 TEST_F(CondensedStateTests, ThermoArrayEquilibratesEachLocationLikeGas) {

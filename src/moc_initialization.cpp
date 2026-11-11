@@ -604,12 +604,12 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
         if (ctx.options.mode != MocMode::ANALYSIS && ctx.options.mode != MocMode::DESIGN_RAO) return;
         const NozzleProfile& wall = ctx.wall;
         if (wall.size() < 2) {
-            throw std::runtime_error(
+            throw std::invalid_argument(
                 "Centered-fan initialization requires a wall profile with at least 2 points.");
         }
         init_options.theta_max = wall.max_theta();
         if (init_options.theta_max <= 0.0) {
-            throw std::runtime_error(
+            throw std::invalid_argument(
                 "Wall profile must have a positive expansion angle for centered-fan initialization.");
         }
     };

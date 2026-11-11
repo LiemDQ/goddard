@@ -27,9 +27,12 @@ def test_convergence_error_carries_solver_details(h2o2_yaml):
     gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
     gas.set_state_TPX(300.0, 1e5, "H2:2, O2:1")
     solver = goddard.ShockSolver(gas)
+    result = solver.normal_shock(1.5)
+    assert result.status.reason == goddard.FailureReason.NOT_CONVERGED
     with pytest.raises(goddard.ConvergenceError) as info:
-        solver.normal_shock(1.5)
+        result.status.raise_if_failed()
     error = info.value
+    assert isinstance(error, goddard.SolveError)
     assert isinstance(error, RuntimeError)
     assert error.iterations > 0
     assert error.tolerance > 0.0
@@ -86,10 +89,10 @@ def test_reprs(burnt):
     results = goddard.Nozzle(burnt).solve(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, 5.0)
     assert repr(results).startswith("<NozzleResults ")
     assert repr(results.throat).startswith("<ThroatCondition ")
-    assert repr(results.expansions[0]).startswith("<NozzleStation A/At=")
+    assert repr(results.expansions[0]).startswith("<NozzleStation ok A/At=")
     assert repr(results.expansions[0].thermo).startswith("<ThermodynamicState T=")
     shock = goddard.ShockSolver(burnt.clone()).normal_shock(2.0)
-    assert repr(shock).startswith("<ShockResult valid=True")
+    assert repr(shock).startswith("<ShockResult ok ")
 
 
 def test_thermo_array_shape_properties(h2o2_yaml):

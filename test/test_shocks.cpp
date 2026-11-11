@@ -4,11 +4,15 @@
 #include "goddard/error.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
+#include "status_test_helpers.hpp"
 #include <cmath>
 #include <string>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
+using Goddard::test_helpers::throws_solve_error;
 
 static constexpr double DEG = M_PI / 180.0;
 
@@ -19,7 +23,7 @@ static constexpr double DEG = M_PI / 180.0;
 TEST(NormalShock, SonicLimit) {
     // M1 = 1 is a vanishingly weak shock (sound wave): no change
     ShockResult r = normal_shock(1.0, 1.4);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.mach_out, 1.0, 1e-12);
     EXPECT_NEAR(r.static_pressure_ratio, 1.0, 1e-12);
     EXPECT_NEAR(r.static_temperature_ratio, 1.0, 1e-12);
@@ -30,7 +34,7 @@ TEST(NormalShock, DownstreamSubsonic) {
     // Post-shock Mach must be subsonic for any supersonic inflow
     for (double M1 : {1.01, 1.5, 2.0, 3.0, 5.0, 10.0}) {
         ShockResult r = normal_shock(M1, 1.4);
-        ASSERT_TRUE(r.valid) << "M1=" << M1;
+        ASSERT_TRUE(r.status.ok()) << "M1=" << M1;
         EXPECT_LT(r.mach_out, 1.0) << "M2 must be < 1 for M1=" << M1;
         EXPECT_GT(r.mach_out, 0.0) << "M2 must be > 0 for M1=" << M1;
     }
@@ -39,7 +43,7 @@ TEST(NormalShock, DownstreamSubsonic) {
 TEST(NormalShock, StaticPressureIncreases) {
     for (double M1 : {1.5, 2.0, 5.0}) {
         ShockResult r = normal_shock(M1, 1.4);
-        ASSERT_TRUE(r.valid);
+        ASSERT_TRUE(r.status.ok());
         EXPECT_GT(r.static_pressure_ratio, 1.0)
             << "Static pressure must increase across shock at M1=" << M1;
     }
@@ -48,7 +52,7 @@ TEST(NormalShock, StaticPressureIncreases) {
 TEST(NormalShock, StaticTemperatureIncreases) {
     for (double M1 : {1.5, 2.0, 5.0}) {
         ShockResult r = normal_shock(M1, 1.4);
-        ASSERT_TRUE(r.valid);
+        ASSERT_TRUE(r.status.ok());
         EXPECT_GT(r.static_temperature_ratio, 1.0)
             << "Static temperature must increase across shock at M1=" << M1;
     }
@@ -58,7 +62,7 @@ TEST(NormalShock, TotalPressureDecreases) {
     // Entropy increases across a shock, so total pressure must decrease
     for (double M1 : {1.01, 1.5, 2.0, 5.0}) {
         ShockResult r = normal_shock(M1, 1.4);
-        ASSERT_TRUE(r.valid);
+        ASSERT_TRUE(r.status.ok());
         EXPECT_LE(r.total_pressure_ratio, 1.0)
             << "Total pressure must not increase across shock at M1=" << M1;
     }
@@ -71,7 +75,7 @@ TEST(NormalShock, DensityRatioConsistency) {
     double gamma = 1.4;
     for (double M1 : {1.5, 2.0, 3.0, 5.0, 10.0}) {
         ShockResult r = normal_shock(M1, gamma);
-        ASSERT_TRUE(r.valid);
+        ASSERT_TRUE(r.status.ok());
 
         double rho_ratio_from_state = r.static_pressure_ratio / r.static_temperature_ratio;
         double rho_ratio_RH = (gamma + 1) * M1 * M1
@@ -86,12 +90,18 @@ TEST(NormalShock, DensityRatioConsistency) {
 
 TEST(NormalShock, InvalidSubsonicMach) {
     ShockResult r = normal_shock(0.5, 1.4);
-    EXPECT_FALSE(r.valid);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(r.mach_in));
+    EXPECT_TRUE(std::isnan(r.mach_out));
+    EXPECT_TRUE(std::isnan(r.static_pressure_ratio));
+    EXPECT_TRUE(std::isnan(r.static_temperature_ratio));
+    EXPECT_TRUE(std::isnan(r.density_ratio));
+    EXPECT_TRUE(std::isnan(r.total_pressure_ratio));
 }
 
 TEST(NormalShock, InvalidGamma) {
-    ShockResult r = normal_shock(2.0, 0.5);
-    EXPECT_FALSE(r.valid);
+    EXPECT_THROW(normal_shock(2.0, 0.5), std::invalid_argument);
+    EXPECT_THROW(normal_shock(2.0, 1.0), std::invalid_argument);
 }
 
 TEST(NormalShock, DifferentGamma) {
@@ -99,7 +109,7 @@ TEST(NormalShock, DifferentGamma) {
     double gamma = 5.0 / 3.0;
     for (double M1 : {1.5, 3.0, 5.0}) {
         ShockResult r = normal_shock(M1, gamma);
-        ASSERT_TRUE(r.valid);
+        ASSERT_TRUE(r.status.ok());
         EXPECT_LT(r.mach_out, 1.0);
         EXPECT_GT(r.static_pressure_ratio, 1.0);
         EXPECT_GT(r.static_temperature_ratio, 1.0);
@@ -120,7 +130,7 @@ TEST(NormalShock, AndersonExercise3p5) {
     // Values from Anderson example 3.5
     NormalShockData data{1.4, 3.0, 0.4752, 10.333, 2.679, -1};
     ShockResult r = normal_shock(data.mach_in, data.gamma);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.mach_out, data.mach_out,
                 max_fp_error(data.mach_out, 1e-4, 1e-6));
     EXPECT_NEAR(r.static_pressure_ratio, data.static_pressure_ratio,
@@ -141,7 +151,7 @@ TEST(NormalShock, AndersonExercise3p6) {
     double P1_stag = perfect_gas_stagnation_pressure(P1, mach1, gamma);
     double T2_stag = stag_factor*r.static_temperature_ratio*T1;
     double P2_stag = r.total_pressure_ratio*P1_stag;
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
 
     EXPECT_NEAR(T2_stag, 934.2,
                 max_fp_error(934.2, 1e-4, 1e-6));
@@ -156,7 +166,7 @@ TEST_P(NormalShockAnderson, TableA2) {
     // M1, gamma, and the expected M2, P2/P1, T2/T1, P02/P01.
     auto data = GetParam();
     ShockResult r = normal_shock(data.mach_in, data.gamma);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.mach_out, data.mach_out,
                 max_fp_error(data.mach_out, 1e-3, 1e-4));
     EXPECT_NEAR(r.static_pressure_ratio, data.static_pressure_ratio,
@@ -255,8 +265,8 @@ TEST(ObliqueShock, NormalComponentConsistency) {
     double M_n1 = M * sin(beta);
     ShockResult ns = normal_shock(M_n1, gamma);
 
-    ASSERT_TRUE(obl.valid);
-    ASSERT_TRUE(ns.valid);
+    ASSERT_TRUE(obl.status.ok());
+    ASSERT_TRUE(ns.status.ok());
     EXPECT_NEAR(obl.shock.mach_out, ns.mach_out, 1e-12)
         << "Normal component M2 should match standalone normal shock";
     EXPECT_NEAR(obl.shock.static_pressure_ratio, ns.static_pressure_ratio, 1e-12);
@@ -275,8 +285,8 @@ TEST(ObliqueShock, FromDeflectionConsistency) {
     ObliqueShockResult strong = oblique_shock_from_deflection(M, theta, gamma, false);
     auto [weak_beta, strong_beta] = oblique_shock_wave_angle(M, theta, gamma);
 
-    ASSERT_TRUE(weak.valid);
-    ASSERT_TRUE(strong.valid);
+    ASSERT_TRUE(weak.status.ok());
+    ASSERT_TRUE(strong.status.ok());
 
     EXPECT_NEAR(weak.theta, theta, 1e-12);
     EXPECT_NEAR(strong.theta, theta, 1e-12);
@@ -296,8 +306,8 @@ TEST(ObliqueShock, WeakDownstreamSupersonicStrongSubsonic) {
     ObliqueShockResult weak = oblique_shock_from_deflection(M, theta, gamma, true);
     ObliqueShockResult strong = oblique_shock_from_deflection(M, theta, gamma, false);
 
-    ASSERT_TRUE(weak.valid);
-    ASSERT_TRUE(strong.valid);
+    ASSERT_TRUE(weak.status.ok());
+    ASSERT_TRUE(strong.status.ok());
 
     EXPECT_GT(weak.mach_out, 1.0)
         << "Weak oblique shock should be supersonic downstream";
@@ -355,7 +365,7 @@ TEST(ReflectedShock, EndWallGasIsAtRest) {
     for (double gamma : {1.4, 5.0/3.0}) {
         for (double M1 : {1.5, 2.0, 4.0, 8.0}) {
             ReflectedShockResult r = reflected_shock(M1, gamma);
-            ASSERT_TRUE(r.valid);
+            ASSERT_TRUE(r.status.ok());
             const double a1 = 1.0;
             const double a2 = a1*std::sqrt(r.incident.static_temperature_ratio);
             const double u1 = M1*a1;
@@ -372,14 +382,17 @@ TEST(ReflectedShock, EndWallGasIsAtRest) {
 TEST(ReflectedShock, SonicLimit) {
     // A sound wave reflects as a sound wave
     ReflectedShockResult r = reflected_shock(1.0, 1.4);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.reflected.mach_in, 1.0, 1e-12);
     EXPECT_NEAR(r.reflected.static_pressure_ratio, 1.0, 1e-12);
 }
 
 TEST(ReflectedShock, Invalid) {
-    EXPECT_FALSE(reflected_shock(0.5, 1.4).valid);
-    EXPECT_FALSE(reflected_shock(2.0, 1.0).valid);
+    // A subsonic incident wave has no shock, so there is no reflected shock either
+    const ReflectedShockResult subsonic = reflected_shock(0.5, 1.4);
+    EXPECT_TRUE(failed_with(subsonic.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(subsonic.incident.status, FailureReason::NO_SOLUTION));
+    EXPECT_THROW(reflected_shock(2.0, 1.0), std::invalid_argument);
 }
 
 // ============================================================
@@ -417,11 +430,15 @@ TEST(ObliqueShockMaxDeflection, IsMaximumOfThetaBetaM) {
 
 TEST(ObliqueShockMaxDeflection, DetachedShockIsInvalid) {
     const double theta = oblique_shock_max_deflection(3.0, 1.4) + 1e-3;
-    auto [weak_beta, strong_beta] = oblique_shock_wave_angle(3.0, theta, 1.4);
-    EXPECT_TRUE(std::isnan(weak_beta));
-    EXPECT_TRUE(std::isnan(strong_beta));
-    EXPECT_FALSE(oblique_shock_from_deflection(3.0, theta, 1.4, true).valid);
-    EXPECT_FALSE(oblique_shock_from_deflection(3.0, theta, 1.4, false).valid);
+    // The scalar solve has no result object to carry the failure, so it throws
+    EXPECT_TRUE(throws_solve_error([&] { oblique_shock_wave_angle(3.0, theta, 1.4); },
+                                   FailureReason::NO_SOLUTION, "detached"));
+    for (bool weak : {true, false}) {
+        const ObliqueShockResult r = oblique_shock_from_deflection(3.0, theta, 1.4, weak);
+        EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION, "detached"));
+        EXPECT_TRUE(std::isnan(r.beta));
+        EXPECT_TRUE(std::isnan(r.mach_out));
+    }
 }
 
 TEST(ObliqueShock, ZeroDeflectionIsMachWaveOrNormalShock) {
@@ -431,13 +448,15 @@ TEST(ObliqueShock, ZeroDeflectionIsMachWaveOrNormalShock) {
     EXPECT_NEAR(strong_beta, M_PI/2, 1e-14);
 
     ObliqueShockResult weak = oblique_shock_from_deflection(M, 0.0, 1.4, true);
-    ASSERT_TRUE(weak.valid);
+    ASSERT_TRUE(weak.status.ok());
     EXPECT_NEAR(weak.shock.static_pressure_ratio, 1.0, 1e-12);
     EXPECT_NEAR(weak.mach_out, M, 1e-10);
 }
 
 TEST(ObliqueShock, BelowMachAngleIsInvalid) {
-    EXPECT_FALSE(oblique_shock_from_wave_angle(2.0, 0.9*std::asin(0.5), 1.4).valid);
+    const ObliqueShockResult r = oblique_shock_from_wave_angle(2.0, 0.9*std::asin(0.5), 1.4);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(r.theta));
 }
 
 // ============================================================
@@ -461,8 +480,8 @@ constexpr double RATIO_TOL = 1e-5;
 
 void expect_shock_near(const ShockResult& actual, const ShockResult& expected, double tol,
                        const std::string& label) {
-    ASSERT_TRUE(actual.valid) << label;
-    ASSERT_TRUE(expected.valid) << label;
+    ASSERT_TRUE(actual.status.ok()) << label;
+    ASSERT_TRUE(expected.status.ok()) << label;
     EXPECT_NEAR(actual.mach_in, expected.mach_in, max_fp_error(expected.mach_in, tol, 1e-12)) << label;
     EXPECT_NEAR(actual.mach_out, expected.mach_out, max_fp_error(expected.mach_out, tol, 1e-12)) << label;
     EXPECT_NEAR(actual.static_pressure_ratio, expected.static_pressure_ratio,
@@ -505,7 +524,7 @@ TEST_P(ShockSolverArgonTests, ReflectedShockMatchesPerfectGas) {
         const std::string label = std::string(chemistry_name(GetParam())) + " M=" + std::to_string(M);
         ReflectedShockResult actual = solver.reflected_shock(M);
         ReflectedShockResult expected = reflected_shock(M, 5.0/3.0);
-        ASSERT_TRUE(actual.valid) << label;
+        ASSERT_TRUE(actual.status.ok()) << label;
         expect_shock_near(actual.incident, expected.incident, RATIO_TOL, label + " incident");
         expect_shock_near(actual.reflected, expected.reflected, RATIO_TOL, label + " reflected");
     }
@@ -518,7 +537,7 @@ TEST_P(ShockSolverArgonTests, ObliqueShockMatchesPerfectGas) {
 
     ObliqueShockResult from_beta = solver.oblique_shock_from_wave_angle(M, 35.0*DEG);
     ObliqueShockResult from_beta_pg = oblique_shock_from_wave_angle(M, 35.0*DEG, gamma);
-    ASSERT_TRUE(from_beta.valid);
+    ASSERT_TRUE(from_beta.status.ok());
     EXPECT_NEAR(from_beta.theta, from_beta_pg.theta, 1e-6);
     EXPECT_NEAR(from_beta.mach_out, from_beta_pg.mach_out, max_fp_error(from_beta_pg.mach_out, RATIO_TOL, 0.0));
     expect_shock_near(from_beta.shock, from_beta_pg.shock, RATIO_TOL, "wave angle");
@@ -532,7 +551,7 @@ TEST_P(ShockSolverArgonTests, ObliqueShockMatchesPerfectGas) {
     for (bool weak : {true, false}) {
         ObliqueShockResult actual = solver.oblique_shock_from_deflection(M, 15.0*DEG, weak);
         ObliqueShockResult expected = oblique_shock_from_deflection(M, 15.0*DEG, gamma, weak);
-        ASSERT_TRUE(actual.valid) << "weak=" << weak;
+        ASSERT_TRUE(actual.status.ok()) << "weak=" << weak;
         EXPECT_NEAR(actual.beta, expected.beta, 1e-5) << "weak=" << weak;
         EXPECT_NEAR(actual.theta, 15.0*DEG, 1e-6) << "weak=" << weak;
     }
@@ -570,13 +589,13 @@ TEST_F(ShockSolverFrozenTests, ApproachesPerfectGas) {
     double mach = 2.0;
 
     ShockResult r_perf = normal_shock(mach, gamma);
-    ASSERT_TRUE(r_perf.valid);
+    ASSERT_TRUE(r_perf.status.ok());
 
     gas->thermo()->restoreState(initial_state);
     Gas g(*gas, GasChemistry::FROZEN);
     ShockSolver solver(g, {.abstol = 5e-5});
     ShockResult r_cant = solver.normal_shock(mach);
-    ASSERT_TRUE(r_cant.valid);
+    ASSERT_TRUE(r_cant.status.ok());
 
     EXPECT_NEAR(r_cant.mach_out, r_perf.mach_out,
                 max_fp_error(r_perf.mach_out, 1e-2, 1e-4))
@@ -606,7 +625,7 @@ TEST_F(ShockSolverFrozenTests, RankineHugoniot) {
     Gas g(*gas, GasChemistry::FROZEN);
     ShockSolver solver(g, {.abstol = 5e-5});
     ShockResult r = solver.normal_shock(mach);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
 
     // Access post-shock state via solver
     const Gas& post = solver.post_shock_state();
@@ -634,17 +653,23 @@ TEST_F(ShockSolverFrozenTests, RankineHugoniot) {
 TEST_F(ShockSolverFrozenTests, InvalidSubsonic) {
     Gas g(*gas, GasChemistry::FROZEN);
     ShockSolver solver(g, {.abstol = 5e-5});
-    EXPECT_FALSE(solver.normal_shock(0.5).valid);
-    EXPECT_FALSE(solver.reflected_shock(0.5).valid);
-    EXPECT_FALSE(solver.oblique_shock_from_wave_angle(2.0, 0.9*std::asin(0.5)).valid);
+    EXPECT_TRUE(failed_with(solver.normal_shock(0.5).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(solver.reflected_shock(0.5).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(solver.oblique_shock_from_wave_angle(2.0, 0.9*std::asin(0.5)).status,
+                            FailureReason::NO_SOLUTION));
+    // The scalar maximum deflection has no result object, so a subsonic Mach number throws
+    EXPECT_TRUE(throws_solve_error([&] { solver.max_deflection(0.5); }, FailureReason::NO_SOLUTION));
 }
 
 TEST_F(ShockSolverFrozenTests, DetachedShockIsInvalid) {
     Gas g(*gas, GasChemistry::FROZEN);
     ShockSolver solver(g);
     const double theta_max = solver.max_deflection(3.0);
-    EXPECT_FALSE(solver.oblique_shock_from_deflection(3.0, theta_max + 1e-3, true).valid);
-    EXPECT_FALSE(solver.oblique_shock_from_deflection(3.0, theta_max + 1e-3, false).valid);
+    for (bool weak : {true, false}) {
+        const ObliqueShockResult r = solver.oblique_shock_from_deflection(3.0, theta_max + 1e-3, weak);
+        EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION, "detached"));
+        EXPECT_TRUE(std::isnan(r.beta));
+    }
 }
 
 // ============================================================
@@ -667,7 +692,7 @@ TEST_F(ShockSolverEquilibriumTests, ConservesMassMomentumEnergy) {
     ShockSolver solver(pre);
     const double u1 = MACH*get_frozen_properties(solver.pre_shock_state()).speed_of_sound;
     ShockResult r = solver.normal_shock_from_velocity(u1);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     EXPECT_NEAR(r.mach_in, MACH, 1e-12);
 
     const Gas& post = solver.post_shock_state();
@@ -688,8 +713,8 @@ TEST_F(ShockSolverEquilibriumTests, DissociationLowersTemperatureAndRaisesDensit
     ShockSolver equilibrium(make_gas("N2:0.79, O2:0.21", GasChemistry::EQUILIBRIUM));
     ShockResult r_frozen = frozen.normal_shock(MACH);
     ShockResult r_equilibrium = equilibrium.normal_shock(MACH);
-    ASSERT_TRUE(r_frozen.valid);
-    ASSERT_TRUE(r_equilibrium.valid);
+    ASSERT_TRUE(r_frozen.status.ok());
+    ASSERT_TRUE(r_equilibrium.status.ok());
     // Dissociation absorbs energy: lower temperature (by ~3% here), higher compression. The
     // 1e-2 margin is far above the ~1e-6 solver error.
     EXPECT_LT(r_equilibrium.static_temperature_ratio, (1.0 - 1e-2)*r_frozen.static_temperature_ratio);
@@ -709,7 +734,7 @@ TEST_F(ShockSolverEquilibriumTests, ReflectedShockBringsGasToRest) {
     const double u1 = mach*get_frozen_properties(reflected.pre_shock_state()).speed_of_sound;
     ShockResult r2 = incident.normal_shock(mach);
     ReflectedShockResult r = reflected.reflected_shock(mach);
-    ASSERT_TRUE(r.valid);
+    ASSERT_TRUE(r.status.ok());
     expect_shock_near(r.incident, r2, 1e-12, "incident");
 
     // incident and reflected own separate Gas objects, so both states stay valid
@@ -739,8 +764,8 @@ TEST_F(ShockSolverEquilibriumTests, MixedChemistryReflectedShock) {
 
     ReflectedShockResult mixed = solver.reflected_shock(mach, GasChemistry::FROZEN, GasChemistry::EQUILIBRIUM);
     ReflectedShockResult all_frozen = frozen.reflected_shock(mach);
-    ASSERT_TRUE(mixed.valid);
-    ASSERT_TRUE(all_frozen.valid);
+    ASSERT_TRUE(mixed.status.ok());
+    ASSERT_TRUE(all_frozen.status.ok());
     expect_shock_near(mixed.incident, all_frozen.incident, 1e-12, "incident");
     // Behind the reflected shock (~4500 K) dissociation lowers the temperature
     EXPECT_LT(mixed.reflected.static_temperature_ratio, all_frozen.reflected.static_temperature_ratio);
@@ -754,11 +779,11 @@ TEST_F(ShockSolverEquilibriumTests, ObliqueRoundTrip) {
     const double theta_max = solver.max_deflection(mach);
     for (double beta_deg : {20.0, 80.0}) {
         ObliqueShockResult forward = solver.oblique_shock_from_wave_angle(mach, beta_deg*DEG);
-        ASSERT_TRUE(forward.valid);
+        ASSERT_TRUE(forward.status.ok());
         ASSERT_LT(forward.theta, theta_max);
         const bool weak = beta_deg < 50.0;
         ObliqueShockResult inverse = solver.oblique_shock_from_deflection(mach, forward.theta, weak);
-        ASSERT_TRUE(inverse.valid) << "beta=" << beta_deg;
+        ASSERT_TRUE(inverse.status.ok()) << "beta=" << beta_deg;
         EXPECT_NEAR(inverse.beta, forward.beta, 1e-5) << "beta=" << beta_deg;
         EXPECT_NEAR(inverse.mach_out, forward.mach_out, max_fp_error(forward.mach_out, 1e-4, 0.0));
     }
@@ -802,8 +827,8 @@ TEST(ShockSolverPerfectGas, ObliqueMatchesFreeFunction) {
     ObliqueShockResult r_solver = solver.oblique_shock_from_deflection(mach, theta, true);
     ObliqueShockResult r_free = oblique_shock_from_deflection(mach, theta, gamma, true);
 
-    ASSERT_TRUE(r_solver.valid);
-    ASSERT_TRUE(r_free.valid);
+    ASSERT_TRUE(r_solver.status.ok());
+    ASSERT_TRUE(r_free.status.ok());
     EXPECT_NEAR(r_solver.beta, r_free.beta, 1e-12);
     EXPECT_NEAR(r_solver.mach_out, r_free.mach_out, 1e-12);
 }
@@ -877,28 +902,28 @@ TEST(ShockSolverState, PerfectGasPostShockStateFollowsJump) {
     };
 
     ShockResult normal = solver.normal_shock(3.0);
-    ASSERT_TRUE(normal.valid);
+    ASSERT_TRUE(normal.status.ok());
     expect_post_shock(normal.static_temperature_ratio, normal.static_pressure_ratio, "normal");
 
     ShockResult from_velocity = solver.normal_shock_from_velocity(2.0*a1);
-    ASSERT_TRUE(from_velocity.valid);
+    ASSERT_TRUE(from_velocity.status.ok());
     expect_post_shock(from_velocity.static_temperature_ratio, from_velocity.static_pressure_ratio,
                       "normal from velocity");
 
     ReflectedShockResult reflected = solver.reflected_shock(3.0);
-    ASSERT_TRUE(reflected.valid);
+    ASSERT_TRUE(reflected.status.ok());
     expect_post_shock(
         reflected.incident.static_temperature_ratio*reflected.reflected.static_temperature_ratio,
         reflected.incident.static_pressure_ratio*reflected.reflected.static_pressure_ratio,
         "reflected (state 5)");
 
     ObliqueShockResult from_wave_angle = solver.oblique_shock_from_wave_angle(3.0, 40.0*DEG);
-    ASSERT_TRUE(from_wave_angle.valid);
+    ASSERT_TRUE(from_wave_angle.status.ok());
     expect_post_shock(from_wave_angle.shock.static_temperature_ratio,
                       from_wave_angle.shock.static_pressure_ratio, "oblique from wave angle");
 
     ObliqueShockResult from_deflection = solver.oblique_shock_from_deflection(3.0, 15.0*DEG, true);
-    ASSERT_TRUE(from_deflection.valid);
+    ASSERT_TRUE(from_deflection.status.ok());
     expect_post_shock(from_deflection.shock.static_temperature_ratio,
                       from_deflection.shock.static_pressure_ratio, "oblique from deflection");
 }
@@ -918,4 +943,82 @@ TEST(ShockSolverUnsupported, PerShockChemistryMustBeFrozenOrEquilibrium) {
 
     ShockSolver perfect(make_gas("N2:0.79, O2:0.21", GasChemistry::PERFECT_GAS));
     EXPECT_THROW(perfect.reflected_shock(3.0, GasChemistry::FROZEN, GasChemistry::FROZEN), std::invalid_argument);
+}
+
+// ============================================================
+//  Failure reporting
+// ============================================================
+
+TEST(PerfectGasShockFailures, ScalarFunctionsThrowInsteadOfReturningNaN) {
+    // The scalar functions have no result object: a failure throws SolveError, bad arguments throw
+    // std::invalid_argument.
+    EXPECT_TRUE(throws_solve_error([] { oblique_shock_wave_angle(0.8, 0.1, 1.4); }, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(throws_solve_error([] { oblique_shock_wave_angle(2.0, -0.1, 1.4); }, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(throws_solve_error([] { oblique_shock_max_deflection(0.8, 1.4); }, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(throws_solve_error([] { oblique_shock_max_deflection_wave_angle(0.8, 1.4); },
+                                   FailureReason::NO_SOLUTION));
+    EXPECT_THROW(oblique_shock_wave_angle(2.0, 0.1, 1.0), std::invalid_argument);
+    EXPECT_THROW(oblique_shock_max_deflection(2.0, 0.9), std::invalid_argument);
+    EXPECT_THROW(oblique_shock_max_deflection_wave_angle(2.0, 0.9), std::invalid_argument);
+}
+
+TEST(PerfectGasShockFailures, ResultFunctionsRejectGammaAtOrBelowOne) {
+    EXPECT_THROW(oblique_shock_from_wave_angle(2.0, 0.7, 1.0), std::invalid_argument);
+    EXPECT_THROW(oblique_shock_from_deflection(2.0, 0.1, 0.5, true), std::invalid_argument);
+}
+
+TEST(PerfectGasShockFailures, NegativeDeflectionHasNoSolution) {
+    const ObliqueShockResult r = oblique_shock_from_deflection(2.0, -0.1, 1.4, true);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(r.beta));
+    EXPECT_TRUE(std::isnan(r.mach_out));
+}
+
+TEST(ShockSolverFailures, PostShockStateIsUnavailableBeforeASolve) {
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_shock_state(); }, FailureReason::NOT_COMPUTED));
+}
+
+TEST(ShockSolverFailures, PostShockStateFollowsTheMostRecentSolve) {
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ASSERT_TRUE(is_ok(solver.normal_shock(2.0).status));
+    EXPECT_GT(solver.post_shock_state().pressure(), solver.pre_shock_state().pressure());
+
+    // A failed solve leaves no post-shock state; it must not return the previous one or the
+    // pre-shock gas
+    ASSERT_TRUE(failed_with(solver.normal_shock(0.5).status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_shock_state(); }, FailureReason::NO_SOLUTION));
+
+    ASSERT_TRUE(is_ok(solver.normal_shock(2.0).status));
+    EXPECT_NO_THROW(solver.post_shock_state());
+}
+
+TEST(ShockSolverFailures, ReflectedShockOfAFailedIncidentShockIsNotComputed) {
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    const ReflectedShockResult r = solver.reflected_shock(0.5);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(failed_with(r.incident.status, FailureReason::NO_SOLUTION));
+    EXPECT_EQ(r.reflected.status.reason, FailureReason::NOT_COMPUTED);
+    EXPECT_NE(r.reflected.status.message.find(r.incident.status.message), std::string::npos)
+        << "NOT_COMPUTED must name the upstream failure: " << r.reflected.status.message;
+    EXPECT_TRUE(std::isnan(r.reflected.static_pressure_ratio));
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_shock_state(); }, FailureReason::NO_SOLUTION));
+}
+
+TEST(ShockSolverFailures, VelocityBelowTheSoundSpeedHasNoSolution) {
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    const ShockResult r = solver.normal_shock_from_velocity(100.0);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
+    EXPECT_TRUE(std::isnan(r.static_pressure_ratio));
+}
+
+TEST(ShockSolverFailures, EquilibriumShockBelowTheDetonationSpeedDoesNotConverge) {
+    // Stoichiometric H2/O2 reacts behind a slow shock: an equilibrium shock below the
+    // Chapman-Jouguet speed has no steady solution, and the Newton iteration cannot find one.
+    ShockSolver solver(make_gas("H2:2, O2:1", GasChemistry::EQUILIBRIUM));
+    const ShockResult r = solver.normal_shock(2.0);
+    EXPECT_TRUE(failed_with(r.status, FailureReason::NOT_CONVERGED));
+    EXPECT_TRUE(std::isnan(r.static_pressure_ratio));
+    EXPECT_TRUE(std::isnan(r.mach_out));
+    EXPECT_TRUE(throws_solve_error([&] { solver.post_shock_state(); }, FailureReason::NOT_CONVERGED));
 }

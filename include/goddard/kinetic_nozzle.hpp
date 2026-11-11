@@ -34,13 +34,21 @@ struct KineticNozzleStation {
 struct KineticNozzleResults {
     /// Throat the integration starts from, solved with the chemistry of `NozzleOptions::chemistry`.
     ThroatCondition throat;
-    /// Stations downstream of the throat, one per integration step.
+    /**
+     * Stations downstream of the throat, one per integration step. Every station in the list is
+     * valid: when the solve fails partway the list ends at the last completed step.
+     */
     std::vector<KineticNozzleStation> stations;
     /**
-     * True if the integration reached the exit of the profile. False if it stopped after
-     * `max_steps` steps, in which case `stations` ends upstream of the exit.
+     * Outcome of the solve; ok when the integration reached the exit of the profile.
+     *
+     * - `INCOMPLETE`: the integration stopped after `max_steps` steps, upstream of the exit.
+     * - `NOT_CONVERGED`: the reactor integration failed at some step, typically because the
+     *   coupled chemistry and expansion are too stiff for the step limit.
+     * - The failure of the throat solve, in which case `stations` is empty.
+     * - `NO_SOLUTION`: condensed species are present at the throat.
      */
-    bool reached_exit = false;
+    SolveStatus status;
 };
 
 /**
@@ -107,8 +115,10 @@ public:
      *
      * @param dt_max Largest time step [s].
      * @param dx_max Largest axial step [m].
-     * @param max_steps Largest number of steps [-]; see `KineticNozzleResults::reached_exit`.
-     * @throws std::runtime_error if the reactor integration fails.
+     * @param max_steps Largest number of steps [-].
+     * @return The throat and the stations integrated; see `KineticNozzleResults::status` for
+     * the outcome. A failed solve keeps the stations completed before the failure.
+     * @throws std::invalid_argument for a nonpositive `dt_max`, `dx_max` or `max_steps`.
      */
     KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 1e-3, int max_steps = 100000);
 
@@ -120,6 +130,14 @@ public:
     NozzleOptions opts;
 
 protected:
+    /**
+     * March the reactor from the solved throat of `results` to the exit, appending a station
+     * per step.
+     *
+     * @throws SolveError if the integration fails or stops short of the exit.
+     */
+    void integrate(KineticNozzleResults& results, double dt_max, double dx_max, int max_steps);
+
     Nozzle m_throat_solver;
     std::vector<double> m_inlet_state;
     Gas m_gas;

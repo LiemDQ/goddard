@@ -2,6 +2,7 @@
 #include "goddard/condensed.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
+#include "goddard/solve_guard.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/newton.hpp"
 
@@ -369,8 +370,9 @@ void set_monatomic_basis(Cantera::ThermoPhase& gas, const Eigen::ArrayXd& elemen
             }
         }
         if (chosen == Cantera::npos) {
-            throw FmtError("no species made of element '{}' alone is available as a starting guess",
-                           gas.elementName(m));
+            throw SolveError(FailureReason::THERMO_FAILURE, std::format(
+                "no species made of element '{}' alone is available as a starting guess",
+                gas.elementName(m)));
         }
         moles(static_cast<long>(chosen)) += amount / chosen_atoms;
     }
@@ -423,10 +425,10 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
         const size_t target = offered_of_group[g];
         if (target == Cantera::npos) {
             const size_t present = set.groups[g].members.front();
-            throw FmtError(
+            throw SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
                 "Gas::equilibrate_TP: condensed species '{}' is present ({:.6g} kmol/kg) but no "
                 "polymorph of its group has thermodynamic data at T = {:.4f} K.",
-                set.species[present].name, total, T);
+                set.species[present].name, total, T));
         }
         for (size_t k : set.groups[g].members) {
             set.moles[k] = 0.0;
@@ -472,9 +474,9 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
                 condensed_mass += set.moles[k] * set.species[k].molar_mass;
             }
             if (condensed_mass >= 1.0) {
-                throw FmtError(
+                throw SolveError(FailureReason::THERMO_FAILURE, std::format(
                     "Gas::equilibrate_TP: the condensed amounts weigh {:.6g} kg per kg of mixture, "
-                    "leaving no gas phase.", condensed_mass);
+                    "leaving no gas phase.", condensed_mass));
             }
 
             thermo()->setState_TP(T, P);
@@ -506,21 +508,24 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
                 mass += set.moles[k] * set.species[k].molar_mass;
             }
             if (std::abs(mass - 1.0) > MASS_CLOSURE_TOLERANCE) {
-                throw FmtError("mass closure is off by {:.3e} kg per kg of mixture", mass - 1.0);
+                throw SolveError(FailureReason::THERMO_FAILURE, std::format(
+                    "mass closure is off by {:.3e} kg per kg of mixture", mass - 1.0));
             }
 
             const Eigen::ArrayXd elements_after = element_moles();
             for (long m = 0; m < elements_before.size(); m++) {
                 const double scale = std::abs(elements_before(m)) + 1e-30;
                 if (std::abs(elements_after(m) - elements_before(m)) > ELEMENT_CLOSURE_TOLERANCE * scale) {
-                    throw FmtError("element '{}' changed by {:.3e} relative",
-                                   thermo()->elementName(static_cast<size_t>(m)),
-                                   (elements_after(m) - elements_before(m)) / scale);
+                    throw SolveError(FailureReason::THERMO_FAILURE, std::format(
+                        "element '{}' changed by {:.3e} relative",
+                        thermo()->elementName(static_cast<size_t>(m)),
+                        (elements_after(m) - elements_before(m)) / scale));
                 }
             }
             return;
-        } catch (const std::exception& error) {
-            last_failure = error.what();
+        } catch (...) {
+            // A failed solve is retried from the next starting guess; anything else propagates.
+            last_failure = status_from_current_exception({}).message;
         }
     }
 
@@ -529,7 +534,7 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
     throw ConvergenceError(
         std::format("Gas::equilibrate_TP: multiphase equilibrium at T = {:.4f} K, P = {:.6g} Pa "
                     "failed from every starting guess. Last failure: {}", T, P, last_failure),
-        static_cast<int>(std::size(restarts)), equilibrium_options.rtol, -1.0);
+        static_cast<int>(std::size(restarts)), equilibrium_options.rtol);
 }
 
 int Gas::solve_multiphase_XP(EquilibriumProperty property, double target, double P) {
@@ -803,12 +808,12 @@ void Gas::solve_frozen_XP(EquilibriumProperty property, double target, double P)
                                          T_lowest, T_highest);
         const size_t limiter = step < 0.0 ? low_limiter : high_limiter;
         if (T_next == T_trial && limiter != Cantera::npos) {
-            throw FmtError(
+            throw SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
                 "Gas::set_state_{}P: the frozen state leaves the temperature range of "
                 "condensed species '{}' ({:.2f} - {:.2f} K) at T = {:.2f} K.",
                 property == EquilibriumProperty::ENTHALPY ? "H" : "S",
                 set.species[limiter].name, set.species[limiter].T_min,
-                set.species[limiter].T_max, T_trial);
+                set.species[limiter].T_max, T_trial));
         }
         return T_next - T_trial;
     }, options);

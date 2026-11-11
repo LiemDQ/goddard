@@ -389,7 +389,7 @@ public:
      * gas phase and the candidates whose thermodynamic data covers `T`. Amounts of candidates that
      * have left their data range are first moved to the in-range polymorph of their group.
      *
-     * @throws std::runtime_error (FmtError) if a condensed species is present and no polymorph of its group has data at
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if a condensed species is present and no polymorph of its group has data at
      * `T`.
      * @throws ConvergenceError if the solve fails after all restart strategies.
      */
@@ -636,7 +636,7 @@ private:
      * Newton iteration on temperature for the frozen `set_state_HP`/`set_state_SP` problems with
      * condensed phases present: composition and condensed amounts are held fixed.
      *
-     * @throws std::runtime_error (FmtError) if the solution lies outside the temperature range of a present condensed
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if the solution lies outside the temperature range of a present condensed
      * species, as CEA reports for a frozen expansion.
      */
     void solve_frozen_XP(EquilibriumProperty property, double target, double P);

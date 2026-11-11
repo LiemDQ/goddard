@@ -122,7 +122,7 @@ def test_chapman_jouguet_matches_cea(mole_fractions, T1, P1_bar):
 
     solver = _goddard_solver(products, mole_fractions, T1, P1_bar * BAR)
     cj = solver.chapman_jouguet()
-    assert cj.valid
+    assert cj.status.ok
     assert_close_rel(cj.velocity, expected["velocity"], RATIO_RTOL, "CJ velocity")
     assert_close_rel(cj.mach_in, expected["Mach"], RATIO_RTOL, "CJ Mach")
     assert_close_rel(cj.static_pressure_ratio, expected["P_P1"], RATIO_RTOL, "P/P1")
@@ -147,7 +147,7 @@ def test_overdriven_matches_cea_equilibrium_shock():
         assert expected["converged"], f"CEA did not converge at u1={u1}"
         label = f"u1={u1:g}"
         r = solver.detonation_from_velocity(u1, DetonationBranch.OVERDRIVEN)
-        assert r.valid, label
+        assert r.status.ok, label
         assert_close_rel(r.mach_in, expected["Mach"][0], SHOCK_RATIO_RTOL, f"{label} Mach1")
         assert_close_rel(r.mach_out, expected["Mach"][1], SHOCK_RATIO_RTOL, f"{label} Mach2")
         assert_close_rel(r.static_pressure_ratio, expected["P21"], SHOCK_RATIO_RTOL, f"{label} P2/P1")

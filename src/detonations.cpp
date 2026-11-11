@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <cmath>
-#include <limits>
+#include <format>
 #include <stdexcept>
 #include <vector>
 #include "cantera/core.h"
@@ -8,39 +8,49 @@
 #include "goddard/error.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/shock_jump.hpp"
+#include "goddard/solve_guard.hpp"
 
 namespace Goddard {
 
 // ===== utilities =====
 namespace {
 
-const double NaN = std::numeric_limits<double>::quiet_NaN();
-
 /** Drive factors within this of 1 give the CJ detonation, as sonic shocks are treated in shock_jump.cpp. */
 constexpr double CJ_DRIVE_FACTOR_TOLERANCE = 1e-12;
 
-DetonationResult invalid_detonation() {
+/** A failed detonation: every field NaN, and the von Neumann shock not computed. */
+DetonationResult failed_detonation(const SolveStatus& status) {
     DetonationResult result;
-    result.valid = false;
-    result.velocity = -1.0;
-    result.drive_factor = -1.0;
-    result.mach_in = -1.0;
-    result.mach_out = -1.0;
-    result.static_pressure_ratio = -1.0;
-    result.static_temperature_ratio = -1.0;
-    result.density_ratio = -1.0;
-    result.molecular_weight_ratio = -1.0;
-    result.total_pressure_ratio = -1.0;
-    result.von_neumann = invalid_shock();
+    result.status = status;
+    result.von_neumann = failed_shock(SolveStatus::not_computed(status));
     return result;
 }
 
-ReflectedDetonationResult invalid_reflected_detonation() {
+/** A reflected detonation whose incident detonation failed: the reflected shock was not computed. */
+ReflectedDetonationResult failed_reflected_detonation(const SolveStatus& status) {
     ReflectedDetonationResult result;
-    result.valid = false;
-    result.incident = invalid_detonation();
-    result.reflected = invalid_shock();
+    result.status = status;
+    result.incident = failed_detonation(status);
+    result.reflected = failed_shock(SolveStatus::not_computed(status));
     return result;
+}
+
+void require_gamma_above_one(double gamma, const char* function) {
+    if (!(gamma > 1.0)) {
+        throw std::invalid_argument(std::format(
+            "{}: the ratio of specific heats must be greater than 1, got {:.6g}.", function, gamma));
+    }
+}
+
+SolveStatus endothermic_status(double heat_release) {
+    return SolveStatus::failure(FailureReason::NO_SOLUTION, std::format(
+        "no detonation exists: the heat release q/(R T1) = {:.6g} is negative.", heat_release));
+}
+
+SolveStatus below_chapman_jouguet_status(double drive_factor) {
+    return SolveStatus::failure(FailureReason::NO_SOLUTION, std::format(
+        "no steady detonation exists below the Chapman-Jouguet speed: the drive factor "
+        "u1/u_CJ = {:.6g} is below 1.", drive_factor));
 }
 
 /**
@@ -68,7 +78,6 @@ double compression(double mach, double a, double b, DetonationBranch branch) {
 /** Jump across a one-gamma detonation of Mach number `mach` and compression `s` = 1 - rho1/rho2. */
 DetonationResult perfect_gas_detonation(double mach, double s, double drive_factor, double gamma) {
     DetonationResult result;
-    result.valid = true;
     result.velocity = NaN;
     result.drive_factor = drive_factor;
     result.mach_in = mach;
@@ -190,7 +199,6 @@ DetonationResult real_gas_detonation(Gas& gas, const std::vector<double>& unburn
     gas.chemistry = GasChemistry::EQUILIBRIUM;
 
     DetonationResult result;
-    result.valid = true;
     result.velocity = velocity;
     result.drive_factor = drive_factor;
     result.mach_in = velocity/a1;
@@ -205,10 +213,8 @@ DetonationResult real_gas_detonation(Gas& gas, const std::vector<double>& unburn
 }
 
 /**
- * Reject a mixture carrying condensed species.
- *
- * The detonation relations are gas-phase only: condensed species in the unburned gas or the
- * products are not supported.
+ * Reject an unburned mixture carrying condensed species: the detonation relations are gas-phase
+ * only.
  *
  * @throws std::invalid_argument if any condensed species is present in a nonzero amount.
  */
@@ -219,13 +225,27 @@ void check_no_condensed_phases(const Gas& gas) {
     }
 }
 
+/**
+ * Fail the solve if condensed species formed in the products. Unlike the check on the unburned
+ * gas this depends on the solution, so it is a solve failure and not a bad argument.
+ *
+ * @throws SolveError with reason NO_SOLUTION if any condensed species is present.
+ */
+void check_no_condensed_products(const Gas& gas) {
+    if (gas.has_condensed_phases()) {
+        throw SolveError(FailureReason::NO_SOLUTION,
+            "condensed species form behind the wave; detonations are gas-phase only.");
+    }
+}
+
 } // namespace
 
 // ===== Perfect gas free functions =====
 
 DetonationResult chapman_jouguet_detonation(double gamma, double heat_release) {
-    if (gamma <= 1.0 || heat_release < 0.0) {
-        return invalid_detonation();
+    require_gamma_above_one(gamma, "chapman_jouguet_detonation");
+    if (!(heat_release >= 0.0)) {
+        return failed_detonation(endothermic_status(heat_release));
     }
     const double H = (gamma*gamma - 1.0)*heat_release/(2.0*gamma);
     const double mach = std::sqrt(H) + std::sqrt(H + 1.0);
@@ -235,8 +255,12 @@ DetonationResult chapman_jouguet_detonation(double gamma, double heat_release) {
 }
 
 DetonationResult detonation(double drive_factor, double gamma, double heat_release, DetonationBranch branch) {
-    if (drive_factor < 1.0 - CJ_DRIVE_FACTOR_TOLERANCE || gamma <= 1.0 || heat_release < 0.0) {
-        return invalid_detonation();
+    require_gamma_above_one(gamma, "detonation");
+    if (!(heat_release >= 0.0)) {
+        return failed_detonation(endothermic_status(heat_release));
+    }
+    if (!(drive_factor >= 1.0 - CJ_DRIVE_FACTOR_TOLERANCE)) {
+        return failed_detonation(below_chapman_jouguet_status(drive_factor));
     }
     if (drive_factor <= 1.0 + CJ_DRIVE_FACTOR_TOLERANCE) {
         return chapman_jouguet_detonation(gamma, heat_release);
@@ -251,20 +275,23 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
 {
     ReflectedDetonationResult result;
     result.incident = detonation(drive_factor, gamma, heat_release, branch);
-    if (!result.incident.valid) {
-        return invalid_reflected_detonation();
+    if (!result.incident.status.ok()) {
+        return failed_reflected_detonation(result.incident.status);
     }
     // Lab-frame velocity of the products: u_p = u1 - u2, so u_p/a2 = M2 (rho2/rho1 - 1)
     const double particle_mach = result.incident.mach_out*(result.incident.density_ratio - 1.0);
     result.reflected = Goddard::normal_shock(reflected_shock_mach(particle_mach, gamma), gamma);
-    result.valid = result.reflected.valid;
+    result.status = result.reflected.status;
     return result;
 }
 
 // ===== DetonationSolver =====
 
 DetonationSolver::DetonationSolver(const Gas& gas, SolverOptions options)
-    : m_gas(gas.clone()), m_chemistry(m_gas.chemistry), m_options(options)
+    : m_gas(gas.clone()), m_chemistry(m_gas.chemistry), m_options(options),
+      m_post_detonation_status(SolveStatus::failure(FailureReason::NOT_COMPUTED,
+          "DetonationSolver: no detonation has been solved yet.")),
+      m_von_neumann_status(m_post_detonation_status)
 {
     switch (m_chemistry) {
         case GasChemistry::PERFECT_GAS:
@@ -280,10 +307,6 @@ DetonationSolver::DetonationSolver(const Gas& gas, SolverOptions options)
     }
     check_no_condensed_phases(m_gas);
     m_gas.copy_state(m_pre_detonation_state);
-    solve_chapman_jouguet();
-    m_post_detonation_state = m_chapman_jouguet_state;
-    m_von_neumann_state = m_chapman_jouguet_von_neumann_state;
-    reset();
 }
 
 void DetonationSolver::reset() const {
@@ -291,12 +314,26 @@ void DetonationSolver::reset() const {
     m_gas.chemistry = m_chemistry;
 }
 
-void DetonationSolver::store_unburned_states() {
-    m_post_detonation_state = m_pre_detonation_state;
-    m_von_neumann_state = m_pre_detonation_state;
+void DetonationSolver::store_failure(const SolveStatus& status) {
+    m_post_detonation_status = status;
+    m_von_neumann_status = status;
 }
 
-void DetonationSolver::solve_chapman_jouguet() {
+const DetonationResult& DetonationSolver::cached_chapman_jouguet() {
+    if (!m_chapman_jouguet_solved) {
+        const SolveStatus status = capture_failure("Chapman-Jouguet detonation", [&] {
+            m_chapman_jouguet = solve_chapman_jouguet();
+        });
+        if (!status.ok()) {
+            m_chapman_jouguet = failed_detonation(status);
+        }
+        m_chapman_jouguet_solved = true;
+        reset();
+    }
+    return m_chapman_jouguet;
+}
+
+DetonationResult DetonationSolver::solve_chapman_jouguet() {
     reset();
     m_gas.chemistry = GasChemistry::EQUILIBRIUM;
     const double T1 = m_gas.temperature();
@@ -304,67 +341,91 @@ void DetonationSolver::solve_chapman_jouguet() {
     // A mixture that releases no heat has no detonation, and the CJ Jacobian is singular at its
     // trivial root P2 = P1, T2 = T1.
     m_gas.equilibrate_HP(m_gas.enthalpy_mass(), m_gas.pressure());
-    const bool exothermic = m_gas.temperature() > T1*(1.0 + 1e-6);
+    const double flame_temperature = m_gas.temperature();
     m_gas.restore_state(m_pre_detonation_state);
-    if (!exothermic) {
-        m_chapman_jouguet = invalid_detonation();
-        m_chapman_jouguet_state = m_pre_detonation_state;
-        m_chapman_jouguet_von_neumann_state = m_pre_detonation_state;
-        return;
+    if (!(flame_temperature > T1*(1.0 + 1e-6))) {
+        throw SolveError(FailureReason::NO_SOLUTION, std::format(
+            "no detonation exists: the mixture releases no heat (constant-pressure combustion "
+            "takes it from {:.6g} K to {:.6g} K).", T1, flame_temperature));
     }
 
     const JumpGuess guess = chapman_jouguet_initial_estimate(m_gas);
     m_gas.restore_state(m_pre_detonation_state);
     const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::CHAPMAN_JOUGUET, 0.0,
         guess.pressure_ratio, guess.temperature_ratio, m_options);
-    check_no_condensed_phases(m_gas);
+    check_no_condensed_products(m_gas);
     if (!(jump.pressure_ratio > 1.0 && jump.density_ratio > 1.0)) {
-        throw ConvergenceError("DetonationSolver: the Chapman-Jouguet solve converged to a root that "
-                               "is not a detonation.");
+        throw ConvergenceError(std::format(
+            "the Chapman-Jouguet solve converged to a root that is not a detonation "
+            "(P2/P1 = {:.6g}, rho2/rho1 = {:.6g}).", jump.pressure_ratio, jump.density_ratio));
     }
 
     // u2 = a2, so u1 = (rho2/rho1) a2
     const double velocity = jump.density_ratio*m_gas.speed_of_sound();
-    m_chapman_jouguet = real_gas_detonation(m_gas, m_pre_detonation_state, velocity, 1.0, jump,
-                                            m_options, m_chapman_jouguet_von_neumann_state);
+    const DetonationResult result = real_gas_detonation(m_gas, m_pre_detonation_state, velocity,
+        1.0, jump, m_options, m_chapman_jouguet_von_neumann_state);
+    result.von_neumann.status.raise_if_failed();
     m_gas.copy_state(m_chapman_jouguet_state);
+    return result;
 }
 
 DetonationResult DetonationSolver::chapman_jouguet() {
-    m_post_detonation_state = m_chapman_jouguet_state;
-    m_von_neumann_state = m_chapman_jouguet_von_neumann_state;
+    const DetonationResult& result = cached_chapman_jouguet();
+    if (result.status.ok()) {
+        m_post_detonation_state = m_chapman_jouguet_state;
+        m_von_neumann_state = m_chapman_jouguet_von_neumann_state;
+    }
+    m_post_detonation_status = result.status;
+    m_von_neumann_status = result.status;
     reset();
-    return m_chapman_jouguet;
+    return result;
 }
 
 DetonationResult DetonationSolver::detonation(double drive_factor, DetonationBranch branch) {
-    if (!m_chapman_jouguet.valid) {
-        store_unburned_states();
-        reset();
-        return invalid_detonation();
+    const DetonationResult& chapman_jouguet = cached_chapman_jouguet();
+    if (!chapman_jouguet.status.ok()) {
+        store_failure(chapman_jouguet.status);
+        return failed_detonation(chapman_jouguet.status);
     }
-    return solve_driven(drive_factor*m_chapman_jouguet.velocity, drive_factor, branch);
+    return driven_detonation(drive_factor*chapman_jouguet.velocity, drive_factor, branch);
 }
 
 DetonationResult DetonationSolver::detonation_from_velocity(double velocity, DetonationBranch branch) {
-    if (!m_chapman_jouguet.valid) {
-        store_unburned_states();
-        reset();
-        return invalid_detonation();
+    const DetonationResult& chapman_jouguet = cached_chapman_jouguet();
+    if (!chapman_jouguet.status.ok()) {
+        store_failure(chapman_jouguet.status);
+        return failed_detonation(chapman_jouguet.status);
     }
-    return solve_driven(velocity, velocity/m_chapman_jouguet.velocity, branch);
+    return driven_detonation(velocity, velocity/chapman_jouguet.velocity, branch);
 }
 
-DetonationResult DetonationSolver::solve_driven(double velocity, double drive_factor, DetonationBranch branch) {
+DetonationResult DetonationSolver::driven_detonation(double velocity, double drive_factor,
+                                                     DetonationBranch branch)
+{
     if (!(drive_factor >= 1.0 - CJ_DRIVE_FACTOR_TOLERANCE)) {
-        store_unburned_states();
+        SolveStatus status = below_chapman_jouguet_status(drive_factor);
+        status.stage = "detonation";
+        store_failure(status);
         reset();
-        return invalid_detonation();
+        return failed_detonation(status);
     }
     if (drive_factor <= 1.0 + CJ_DRIVE_FACTOR_TOLERANCE) {
         return chapman_jouguet();
     }
 
+    DetonationResult result;
+    const SolveStatus status = capture_failure("detonation", [&] {
+        result = solve_driven(velocity, drive_factor, branch);
+    });
+    if (!status.ok()) {
+        result = failed_detonation(status);
+        store_failure(status);
+        reset();
+    }
+    return result;
+}
+
+DetonationResult DetonationSolver::solve_driven(double velocity, double drive_factor, DetonationBranch branch) {
     reset();
     const double momentum_coeff = m_gas.density()*velocity*velocity/m_gas.pressure();
     const JumpGuess guess = driven_initial_guess(m_chapman_jouguet, drive_factor, momentum_coeff, branch);
@@ -373,11 +434,12 @@ DetonationResult DetonationSolver::solve_driven(double velocity, double drive_fa
     m_gas.chemistry = GasChemistry::EQUILIBRIUM;
     const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::INCIDENT, velocity,
         guess.pressure_ratio, guess.temperature_ratio, m_options);
-    check_no_condensed_phases(m_gas);
+    check_no_condensed_products(m_gas);
 
     std::vector<double> von_neumann_state;
     const DetonationResult result = real_gas_detonation(m_gas, m_pre_detonation_state, velocity,
                                                         drive_factor, jump, m_options, von_neumann_state);
+    result.von_neumann.status.raise_if_failed();
     bool on_branch = false;
     switch (branch) {
         case DetonationBranch::OVERDRIVEN:
@@ -388,34 +450,47 @@ DetonationResult DetonationSolver::solve_driven(double velocity, double drive_fa
             break;
     }
     if (!on_branch || !(jump.pressure_ratio > 1.0 && jump.density_ratio > 1.0)) {
-        throw ConvergenceError("DetonationSolver: the jump conditions converged off the requested "
-                               "branch; the drive factor may be too close to 1.");
+        throw ConvergenceError(std::format(
+            "the jump conditions converged off the requested branch (products Mach number {:.6g}, "
+            "P2/P1 = {:.6g}); the drive factor {:.6g} may be too close to 1.",
+            result.mach_out, jump.pressure_ratio, drive_factor));
     }
     m_gas.copy_state(m_post_detonation_state);
     m_von_neumann_state = von_neumann_state;
+    m_post_detonation_status = {};
+    m_von_neumann_status = {};
     return result;
 }
 
 ReflectedDetonationResult DetonationSolver::reflected_detonation(double drive_factor, DetonationBranch branch) {
     ReflectedDetonationResult result;
     result.incident = detonation(drive_factor, branch);
-    if (!result.incident.valid) {
-        return invalid_reflected_detonation();
+    if (!result.incident.status.ok()) {
+        return failed_reflected_detonation(result.incident.status);
     }
-    m_gas.restore_state(m_post_detonation_state);
-    m_gas.chemistry = GasChemistry::EQUILIBRIUM;
 
-    // Lab-frame velocity of the products, which the reflected shock brings to rest
-    const double particle_velocity = result.incident.velocity*(1.0 - 1.0/result.incident.density_ratio);
-    // Initial guess: the perfect-gas reflected shock with the equilibrium gamma of the products
-    const double gamma_s = m_gas.gamma_s();
-    const ShockResult guess = Goddard::normal_shock(
-        reflected_shock_mach(particle_velocity/m_gas.speed_of_sound(), gamma_s), gamma_s);
-    result.reflected = reflected_shock_from_state2(m_gas, particle_velocity, GasChemistry::EQUILIBRIUM,
-        guess.static_pressure_ratio, guess.static_temperature_ratio, m_options);
-    check_no_condensed_phases(m_gas);
-    m_gas.copy_state(m_post_detonation_state);
-    result.valid = result.reflected.valid;
+    const SolveStatus status = capture_failure("reflected shock", [&] {
+        m_gas.restore_state(m_post_detonation_state);
+        m_gas.chemistry = GasChemistry::EQUILIBRIUM;
+
+        // Lab-frame velocity of the products, which the reflected shock brings to rest
+        const double particle_velocity = result.incident.velocity*(1.0 - 1.0/result.incident.density_ratio);
+        // Initial guess: the perfect-gas reflected shock with the equilibrium gamma of the products
+        const double gamma_s = m_gas.gamma_s();
+        const ShockResult guess = Goddard::normal_shock(
+            reflected_shock_mach(particle_velocity/m_gas.speed_of_sound(), gamma_s), gamma_s);
+        result.reflected = reflected_shock_from_state2(m_gas, particle_velocity, GasChemistry::EQUILIBRIUM,
+            guess.static_pressure_ratio, guess.static_temperature_ratio, m_options);
+        check_no_condensed_products(m_gas);
+        m_gas.copy_state(m_post_detonation_state);
+    });
+    if (!status.ok()) {
+        result.reflected = failed_shock(status);
+    }
+    set_stage_if_unset(result.reflected.status, "reflected shock");
+    result.status = result.reflected.status;
+    // The von Neumann state stays that of the incident detonation.
+    m_post_detonation_status = result.status;
     return result;
 }
 
@@ -425,12 +500,14 @@ Gas DetonationSolver::pre_detonation_state() const {
 }
 
 Gas DetonationSolver::post_detonation_state() const {
+    m_post_detonation_status.raise_if_failed();
     m_gas.restore_state(m_post_detonation_state);
     m_gas.chemistry = GasChemistry::EQUILIBRIUM;
     return m_gas.clone();
 }
 
 Gas DetonationSolver::von_neumann_state() const {
+    m_von_neumann_status.raise_if_failed();
     m_gas.restore_state(m_von_neumann_state);
     m_gas.chemistry = GasChemistry::FROZEN;
     return m_gas.clone();

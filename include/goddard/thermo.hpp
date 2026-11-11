@@ -93,6 +93,12 @@ public:
      * prints a specific heat of zero for such a station.
      */
     bool pinned_transition = false;
+
+    /**
+     * State with every numeric field NaN and an empty composition: the state of a station whose
+     * solve failed.
+     */
+    static ThermodynamicState undefined();
 };
 
 

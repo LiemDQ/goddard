@@ -15,6 +15,7 @@
 #include "goddard/profile.hpp"
 #include "goddard/shocks.hpp"
 #include "goddard/thermoarray.hpp"
+#include "status_test_helpers.hpp"
 
 #include "cantera/core.h"
 #include "gtest/gtest.h"
@@ -25,6 +26,9 @@
 #include <vector>
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
+using Goddard::test_helpers::throws_solve_error;
 
 namespace {
 
@@ -253,16 +257,44 @@ TEST_F(PropellantNozzleTests, FrozenExpansionStopsWhereTheAluminaWouldFreeze) {
     options.expansion_type = ExpansionType::PRESSURE_RATIO;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
-    try {
-        // Far enough to drive the frozen temperature below the 2327 K melting point of alumina,
-        // which a frozen expansion cannot represent: CEA stops there too.
-        nozzle.solve(ExpansionType::PRESSURE_RATIO, 1000.0);
-        FAIL() << "expected the frozen expansion to leave the range of AL2O3(L)";
-    } catch (const FmtError& error) {
-        const std::string message = error.what();
-        EXPECT_NE(message.find("Frozen expansion"), std::string::npos) << message;
-        EXPECT_NE(message.find("AL2O3(L)"), std::string::npos) << message;
-    }
+    // Far enough to drive the frozen temperature below the 2327 K melting point of alumina,
+    // which a frozen expansion cannot represent: CEA stops there too.
+    NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, 1000.0);
+    ASSERT_EQ(results.expansions.size(), 1u);
+    const SolveStatus& status = results.expansions.front().status;
+    EXPECT_TRUE(failed_with(status, FailureReason::OUT_OF_DATA_RANGE, "Frozen expansion"));
+    EXPECT_NE(status.message.find("AL2O3(L)"), std::string::npos) << status.message;
+    EXPECT_FALSE(results.status.ok());
+}
+
+
+TEST_F(PropellantNozzleTests, OneFailedStationLeavesTheOtherStationsValid) {
+    Gas nozzle_gas = products;
+    nozzle_gas.chemistry = GasChemistry::FROZEN;
+    NozzleOptions options;
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 1;
+    options.expansion_type = ExpansionType::PRESSURE_RATIO;
+
+    // The pressure ratio of 1000 drives the frozen temperature below the melting point of
+    // alumina (see the previous test); the stations around it do not.
+    Nozzle nozzle(nozzle_gas, chamber_state, options);
+    const NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, std::vector<double>{2.0, 1000.0, 5.0});
+    ASSERT_EQ(results.expansions.size(), 3u);
+
+    EXPECT_TRUE(is_ok(results.expansions[0].status));
+    EXPECT_TRUE(is_ok(results.expansions[2].status));
+    EXPECT_TRUE(failed_with(results.expansions[1].status, FailureReason::OUT_OF_DATA_RANGE, "Frozen expansion"));
+    EXPECT_GT(results.expansions[0].mach, 1.0);
+    EXPECT_GT(results.expansions[2].mach, results.expansions[0].mach);
+    EXPECT_TRUE(std::isnan(results.expansions[1].mach));
+    EXPECT_TRUE(std::isnan(results.expansions[1].thermo.temperature));
+    EXPECT_TRUE(results.expansions[1].state.empty());
+
+    EXPECT_TRUE(is_ok(results.throat.status));
+    EXPECT_FALSE(results.status.ok());
+    EXPECT_EQ(results.first_failure().reason, FailureReason::OUT_OF_DATA_RANGE);
+    EXPECT_EQ(results.first_failure().message, results.expansions[1].status.message);
 }
 
 

@@ -18,10 +18,12 @@ RocketProblemResults::RocketProblemResults(
     : m_gas(std::move(gas))
 {
     // The nozzle stores each station's mixture state. Its `stagnation_enthalpy` is set to the
-    // reference of the operating point (see `RocketProblemResults::stagnation`).
+    // reference of the operating point (see `RocketProblemResults::stagnation`); NaN when that
+    // reference state was not solved.
+    double stagnation_enthalpy = NaN;
     auto station_thermo = [&](const ThermodynamicState& thermo) {
         ThermodynamicState result = thermo;
-        result.stagnation_enthalpy = m_gas.get_stagnation_enthalpy();
+        result.stagnation_enthalpy = stagnation_enthalpy;
         return result;
     };
 
@@ -56,10 +58,14 @@ RocketProblemResults::RocketProblemResults(
                 // Reference stagnation state of this operating point, reported as the
                 // `stagnation_enthalpy` of each of its stations: the "inf" state of a finite-area
                 // combustor, the chamber otherwise.
-                m_gas.restore_state(is_fac
-                    ? case_result.finite_area_chambers[state_idx].stagnation.state
-                    : nozzle.inlet.state);
-                m_gas.set_current_state_as_reference();
+                const NozzleStation& reference = is_fac
+                    ? case_result.finite_area_chambers[state_idx].stagnation : nozzle.inlet;
+                stagnation_enthalpy = NaN;
+                if (reference.status.ok()) {
+                    m_gas.restore_state(reference.state);
+                    m_gas.set_current_state_as_reference();
+                    stagnation_enthalpy = m_gas.get_stagnation_enthalpy();
+                }
 
                 switch (case_result.chemistry) {
                     case GasChemistry::EQUILIBRIUM:
@@ -79,6 +85,7 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 0.0;
                     s.thermo          = station_thermo(nozzle.inlet.thermo);
+                    s.status          = nozzle.inlet.status;
                     m_stations.push_back(std::move(s));
                 }
 
@@ -96,6 +103,7 @@ RocketProblemResults::RocketProblemResults(
                         s.expansion_index = 0;
                         s.area_ratio      = 0.0;
                         s.thermo          = station_thermo(fac.stagnation.thermo);
+                        s.status          = fac.stagnation.status;
                         m_stations.push_back(std::move(s));
                     }
 
@@ -110,6 +118,7 @@ RocketProblemResults::RocketProblemResults(
                         s.expansion_index = 0;
                         s.area_ratio      = fac.contraction_ratio;
                         s.thermo          = station_thermo(ce.thermo);
+                        s.status          = ce.status;
                         m_stations.push_back(std::move(s));
                     }
                 }
@@ -125,6 +134,7 @@ RocketProblemResults::RocketProblemResults(
                     s.expansion_index = 0;
                     s.area_ratio      = 1.0;
                     s.thermo          = station_thermo(tc.thermo);
+                    s.status          = tc.status;
                     m_stations.push_back(std::move(s));
                 }
 
@@ -143,6 +153,7 @@ RocketProblemResults::RocketProblemResults(
                                          && exp_idx < case_result.expansion_ratios.size())
                                         ? case_result.expansion_ratios[exp_idx] : exp.area_ratio;
                     s.thermo          = station_thermo(exp.thermo);
+                    s.status          = exp.status;
                     m_stations.push_back(std::move(s));
                 }
             }
@@ -166,6 +177,48 @@ std::string RocketProblemResults::resolve_case(const std::string& case_name) con
     throw std::runtime_error("Multiple cases present; specify case_name explicitly.");
 }
 
+namespace {
+
+/** Operating point label for error messages. */
+std::string operating_point_label(const std::string& case_name, std::size_t of_index,
+                                  std::size_t pressure_index) {
+    return "case '" + case_name + "', of_index=" + std::to_string(of_index)
+        + ", pressure_index=" + std::to_string(pressure_index);
+}
+
+} // namespace
+
+SolveStatus RocketProblemResults::status() const {
+    const auto failed = std::count_if(m_stations.begin(), m_stations.end(),
+        [](const RocketStation& s) { return !s.status.ok(); });
+    if (failed == 0) {
+        return {};
+    }
+    const auto first = std::find_if(m_stations.begin(), m_stations.end(),
+        [](const RocketStation& s) { return !s.status.ok(); });
+    const CaseMeta& meta = m_case_meta.at(first->case_name);
+    SolveStatus overall = first->status;
+    overall.stage = operating_point_label(first->case_name, first->of_index, first->pressure_index)
+        + (overall.stage.empty() ? "" : ": " + overall.stage);
+    overall.message += " (" + std::to_string(failed) + " of " + std::to_string(m_stations.size())
+        + " stations were not solved; this is the first, at mixture ratio "
+        + format_fixed(meta.of_ratios[first->of_index], 0, 4) + ".)";
+    return overall;
+}
+
+std::vector<RocketStation> RocketProblemResults::failed_stations(const std::string& case_name) const {
+    if (!case_name.empty()) {
+        resolve_case(case_name);
+    }
+    std::vector<RocketStation> result;
+    for (const auto& s : m_stations) {
+        if (!s.status.ok() && (case_name.empty() || s.case_name == case_name)) {
+            result.push_back(s);
+        }
+    }
+    return result;
+}
+
 std::vector<RocketStation> RocketProblemResults::stations_of_type(
     StationType type, const std::string& case_name) const
 {
@@ -179,16 +232,6 @@ std::vector<RocketStation> RocketProblemResults::stations_of_type(
     return result;
 }
 
-namespace {
-
-/** Operating point label for error messages. */
-std::string operating_point_label(const std::string& case_name, std::size_t of_index,
-                                  std::size_t pressure_index) {
-    return "case '" + case_name + "', of_index=" + std::to_string(of_index)
-        + ", pressure_index=" + std::to_string(pressure_index);
-}
-
-} // namespace
 
 const RocketStation& RocketProblemResults::chamber(
     std::size_t of_index, std::size_t pressure_index, const std::string& case_name) const
@@ -248,7 +291,14 @@ RocketPerformance RocketProblemResults::performance(
             "exit_index " + std::to_string(exit_index) +
             " out of range (" + std::to_string(exit_stations.size()) + " exits available)");
     }
-    return calculate_performance(c.thermo, t.thermo, exit_stations[exit_index].thermo);
+    const RocketStation& e = exit_stations[exit_index];
+    for (const RocketStation* station : {&c, &t, &e}) {
+        if (!station->status.ok()) {
+            RocketPerformance failed{NaN, NaN, NaN, NaN, NaN, NaN, NaN, station->status};
+            return failed;
+        }
+    }
+    return calculate_performance(c.thermo, t.thermo, e.thermo);
 }
 
 const RocketStation& RocketProblemResults::stagnation(
@@ -325,7 +375,7 @@ RocketPerformance RocketProblemResults::calculate_performance(
 
     double mach_number = exit_velocity / exit.speed_of_sound;
 
-    return RocketPerformance{pressure_ratio, area_ratio, mach_number, c_star, CF, isp, ivac};
+    return RocketPerformance{pressure_ratio, area_ratio, mach_number, c_star, CF, isp, ivac, {}};
 }
 
 namespace {
@@ -637,6 +687,44 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                 ThermodynamicState stagnation_thermo{};
                 double combustion_end_area_ratio = 0.0;
 
+                // Stations of this operating point that were not solved, and whether the columns
+                // up to the throat are among them: the table then has nothing to show.
+                std::string failures;
+                bool upstream_failed = false;
+                for (const auto& s : m_stations) {
+                    if (s.case_name != name || s.of_index != of_idx || s.pressure_index != p_idx
+                        || s.status.ok()) {
+                        continue;
+                    }
+                    std::string label;
+                    switch (s.type) {
+                        case StationType::CHAMBER:        label = is_fac ? "INJECTOR" : "CHAMBER"; break;
+                        case StationType::STAGNATION:     label = "STAGNATION"; break;
+                        case StationType::COMBUSTION_END: label = "COMB END"; break;
+                        case StationType::THROAT:         label = "THROAT"; break;
+                        case StationType::EXIT:
+                            label = "EXIT " + std::to_string(s.expansion_index + 1);
+                            break;
+                    }
+                    if (s.type != StationType::EXIT) {
+                        upstream_failed = true;
+                    }
+                    failures += "   " + label + ": " + s.status.describe() + "\n";
+                }
+                if (upstream_failed) {
+                    std::string mixture_label;
+                    switch (meta.mixture_type) {
+                        case MixtureRatioType::OF_RATIO: mixture_label = "O/F="; break;
+                        case MixtureRatioType::FUEL_FRAC: mixture_label = "FUEL FRACTION="; break;
+                        case MixtureRatioType::PHI_RATIO: mixture_label = "PHI="; break;
+                    }
+                    result += "         OPERATING POINT NOT SOLVED\n\n";
+                    result += "Pin = " + format_fixed(meta.pressures[p_idx] * PA_TO_PSIA, 7, 1) + " PSIA\n";
+                    result += mixture_label + format_fixed(meta.of_ratios[of_idx], 11, 5) + "\n\n";
+                    result += failures + "\n\n";
+                    continue;
+                }
+
                 for (const auto& s : m_stations) {
                     if (s.case_name == name && s.type == StationType::CHAMBER &&
                         s.of_index == of_idx && s.pressure_index == p_idx) {
@@ -711,6 +799,9 @@ std::string RocketProblemResults::report(const std::string& case_name_arg) const
                     meta.pressures[p_idx],
                     meta.frozen_NFZ,
                     fac_ptr);
+                if (!failures.empty()) {
+                    result += " STATIONS NOT SOLVED (NaN ABOVE)\n" + failures + "\n\n";
+                }
             }
         }
     }

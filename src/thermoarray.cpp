@@ -6,7 +6,10 @@
 #include "goddard/condensed.hpp"
 #include "goddard/error.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/solve_guard.hpp"
 #include "goddard/utils.hpp"
+
+#include <format>
 
 #include <algorithm>
 #include <vector>
@@ -97,6 +100,91 @@ void ThermoArray::reshape(const std::vector<long>& shape) {
 	m_shape_is_set = !shape.empty();
 	// Entries that survive keep their amounts; new entries start empty.
 	m_condensed_moles.resize(static_cast<size_t>(size()) * num_condensed(), 0.0);
+	if (m_statuses.size() > static_cast<size_t>(size())) {
+		m_statuses.resize(static_cast<size_t>(size()));
+	}
+}
+
+void ThermoArray::check_location(int loc) const {
+	if (loc < 0 || loc >= size()) {
+		throw std::out_of_range("ThermoArray location " + std::to_string(loc)
+			+ " out of range for an array of " + std::to_string(size()) + " entries.");
+	}
+}
+
+std::string ThermoArray::entry_label(int loc) const {
+	const std::vector<long> data_shape = shape();
+	std::string label = "entry (";
+	long remainder = loc;
+	for (size_t dim = 0; dim < data_shape.size(); dim++) {
+		const long extent = std::max(data_shape[dim], 1L);
+		label += (dim == 0 ? "" : ", ") + std::to_string(remainder % extent);
+		remainder /= extent;
+	}
+	if (data_shape.empty()) {
+		label += std::to_string(loc);
+	}
+	return label + ")";
+}
+
+const SolveStatus& ThermoArray::status_at(int loc) const {
+	static const SolveStatus ok_status;
+	check_location(loc);
+	if (static_cast<size_t>(loc) >= m_statuses.size()) {
+		return ok_status;
+	}
+	return m_statuses[static_cast<size_t>(loc)];
+}
+
+void ThermoArray::set_status(int loc, SolveStatus status) {
+	check_location(loc);
+	if (static_cast<size_t>(loc) >= m_statuses.size()) {
+		if (status.ok()) {
+			return;
+		}
+		m_statuses.resize(static_cast<size_t>(loc) + 1);
+	}
+	m_statuses[static_cast<size_t>(loc)] = std::move(status);
+}
+
+int ThermoArray::num_failed() const {
+	return static_cast<int>(std::count_if(m_statuses.begin(), m_statuses.end(),
+		[](const SolveStatus& status) { return !status.ok(); }));
+}
+
+SolveStatus ThermoArray::status() const {
+	const int failed = num_failed();
+	if (failed == 0) {
+		return {};
+	}
+	const auto first = std::find_if(m_statuses.begin(), m_statuses.end(),
+		[](const SolveStatus& status) { return !status.ok(); });
+	SolveStatus overall = *first;
+	if (failed > 1) {
+		overall.message += std::format(" ({} of {} entries failed; this is the first.)", failed, size());
+	}
+	return overall;
+}
+
+Eigen::Array<bool, Eigen::Dynamic, Eigen::Dynamic> ThermoArray::ok(int slice) const {
+	if (!m_shape_is_set) {
+		throw std::runtime_error("Attempted to retrieve data from ThermoArray before setting its shape.");
+	}
+	const std::vector<long> data_shape = shape();
+	const long rows = data_shape[0];
+	const long cols = ndim() >= 2 ? data_shape[1] : 1;
+	const long slices = ndim() >= 3 ? data_shape[2] : 1;
+	if (slice < 0 || slice >= slices) {
+		throw std::out_of_range("ThermoArray slice " + std::to_string(slice)
+			+ " out of range for " + std::to_string(slices) + " slices.");
+	}
+	Eigen::Array<bool, Eigen::Dynamic, Eigen::Dynamic> flags(rows, cols);
+	for (long j = 0; j < cols; j++) {
+		for (long i = 0; i < rows; i++) {
+			flags(i, j) = status_at(flat_index(i, j, slice)).ok();
+		}
+	}
+	return flags;
 }
 
 int ThermoArray::flat_index(long i, long j, long k) const {
@@ -136,6 +224,7 @@ void ThermoArray::set_state(int loc, const std::vector<double>& state) {
 		for (size_t k = 0; k < n_condensed; k++) {
 			m_condensed_moles[static_cast<size_t>(loc) * n_condensed + k] = state[cantera_size + k];
 		}
+		set_status(loc, {});
 		return;
 	}
 
@@ -150,6 +239,7 @@ void ThermoArray::set_state(int loc, const std::vector<double>& state) {
 	for (size_t k = 0; k < n_condensed; k++) {
 		m_condensed_moles[static_cast<size_t>(loc) * n_condensed + k] = 0.0;
 	}
+	set_status(loc, {});
 }
 
 std::vector<double> ThermoArray::get_condensed_moles(int loc) const {
@@ -206,32 +296,75 @@ ArrayXXd ThermoArray::mean_molecular_weight(int slice) const {
 }
 
 
+void ThermoArray::equilibrate_location(int loc, Gas* condensed_gas, const std::string& XY,
+	const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil,
+	int log_level) {
+
+	m_states->setLoc(loc);
+	const std::vector<double> state_before = get_state(loc);
+	SolveStatus status = capture_failure(entry_label(loc), [&] {
+		if (condensed_gas == nullptr) {
+			translate_backend_errors(
+				std::format("equilibrium at constant {} with the '{}' solver, from T = {:.6g} K, P = {:.6g} Pa",
+					XY, solver, m_solution->thermo()->temperature(), m_solution->thermo()->pressure()),
+				[&] {
+					m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter,
+						estimate_equil, log_level);
+				});
+			return;
+		}
+		// The condensed amounts are part of the problem, so the location goes through a `Gas`
+		// sharing the array's phase and candidate set.
+		m_condensed->moles = get_condensed_moles(loc);
+		m_condensed->update_pinned_group();
+		condensed_gas->equilibrate(XY, solver == "auto" ? "gibbs" : solver);
+		set_condensed_moles(loc, m_condensed->moles);
+	});
+	if (status.ok()) {
+		m_states->updateState(loc);
+		set_status(loc, {});
+		return;
+	}
+	// A failed solve leaves the phase in an arbitrary state: put the entry back as it was.
+	set_state(loc, state_before);
+	m_states->setLoc(loc);
+	set_status(loc, std::move(status));
+}
+
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
 
 	if (num_condensed() == 0) {
 		for (int loc = 0; loc < size(); loc++){
-			m_states->setLoc(loc);
-			m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
-			m_states->updateState(loc);
+			equilibrate_location(loc, nullptr, XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
 		}
 		return;
 	}
 
-	// The condensed amounts are part of the problem, so each location goes through a `Gas` sharing
-	// the array's phase and candidate set. The solver arguments Cantera's ThermoPhase takes do not
-	// all apply; the two that do are forwarded.
+	// The solver arguments Cantera's ThermoPhase takes do not all apply to the multiphase solve;
+	// the two that do are forwarded.
 	Gas gas(m_solution, m_condensed);
 	gas.equilibrium_options.rtol = rtol;
 	gas.equilibrium_options.max_steps = max_steps;
 
 	for (int loc = 0; loc < size(); loc++){
-		m_states->setLoc(loc);
-		m_condensed->moles = get_condensed_moles(loc);
-		m_condensed->update_pinned_group();
-		gas.equilibrate(XY, solver == "auto" ? "gibbs" : solver);
-		set_condensed_moles(loc, m_condensed->moles);
-		m_states->updateState(loc);
+		equilibrate_location(loc, &gas, XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
 	}
+}
+
+int ThermoArray::retry_failed(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
+
+	std::unique_ptr<Gas> gas;
+	if (num_condensed() > 0) {
+		gas = std::make_unique<Gas>(m_solution, m_condensed);
+		gas->equilibrium_options.rtol = rtol;
+		gas->equilibrium_options.max_steps = max_steps;
+	}
+	for (int loc = 0; loc < static_cast<int>(m_statuses.size()); loc++){
+		if (!m_statuses[static_cast<size_t>(loc)].ok()) {
+			equilibrate_location(loc, gas.get(), XY, solver, rtol, max_steps, max_iter, estimate_equil, log_level);
+		}
+	}
+	return num_failed();
 }
 
 void ThermoArray::TD(const ArrayXd& Ts, const ArrayXd& Ds) {
@@ -320,8 +453,9 @@ ArrayXXd ThermoArray::retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(voi
 	for (long j = 0; j < cols; j++) {
 		for (long i = 0; i < rows; i++) {
 			// Loading an entry leaves the private Solution equal to the buffered entry.
-			m_states->setLoc(flat_index(i, j, slice));
-			data(i, j) = fn(m_solution->thermo());
+			const int loc = flat_index(i, j, slice);
+			m_states->setLoc(loc);
+			data(i, j) = status_at(loc).ok() ? fn(m_solution->thermo()) : NaN;
 		}
 	}
 	return data;
@@ -379,10 +513,13 @@ void ThermoArray::_update_states(Func&& f, const ArrayXd& arr1, const ArrayXd& a
 		check_dimensionality(len2, 1);
 	}
 
+	m_statuses.clear();
 	int loc = 0;
 	for (double v2: arr2){
 		for (double v1: arr1){
-			f(v1, v2);
+			translate_backend_errors(
+				std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g})", entry_label(loc), v1, v2),
+				[&] { f(v1, v2); });
 			m_states->updateState(loc);
 			loc++;			
 		}
@@ -414,6 +551,7 @@ void ThermoArray::_update_states_with_composition(
 		check_dimensionality(len3, 2);
 	}
 
+	m_statuses.clear();
 	int loc = 0;
 	for (int i = 0; i < arr3.rows(); i++){
 		// Evaluate row into contiguous storage. ArrayXXd is column-major,
@@ -422,7 +560,10 @@ void ThermoArray::_update_states_with_composition(
 		ArrayXd row = arr3.row(i);
 		for (double v2: arr2){
 			for (double v1: arr1){
-				f(v1, v2, row.data());
+				translate_backend_errors(
+					std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g}) and composition row {}",
+						entry_label(loc), v1, v2, i),
+					[&] { f(v1, v2, row.data()); });
 				m_states->updateState(loc);
 				loc++;
 			}

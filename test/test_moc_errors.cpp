@@ -5,13 +5,17 @@
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/error.hpp"
+#include "status_test_helpers.hpp"
 #include "cantera/core.h"
 #include <cmath>
 #include <limits>
 #include <string>
+#include <vector>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
 
 static constexpr double DEG = M_PI / 180.0;
 
@@ -28,9 +32,39 @@ CharacteristicPoint make_valid_point() {
     return pt;
 }
 
+/**
+ * `MocResult::status` and `MocResult::failure` describe the same outcome: the status is ok exactly
+ * when the code is NONE, a failed status names the code and carries the failure message and the
+ * stage, and `status.warnings` are the "Warning: " entries of `messages` without the prefix.
+ */
+void expect_status_agrees_with_failure(const MocResult& result) {
+    EXPECT_EQ(result.status.ok(), result.failure.code == MocErrorCode::NONE);
+    if (result.status.ok()) {
+        EXPECT_TRUE(result.status.message.empty());
+        EXPECT_TRUE(result.status.stage.empty());
+    } else {
+        EXPECT_NE(result.status.message.find(std::string(to_string(result.failure.code))), std::string::npos)
+            << result.status.message;
+        EXPECT_NE(result.status.message.find(result.failure.message), std::string::npos)
+            << result.status.message;
+        const std::string expected_stage = result.failure.kernel_pass < 0
+            ? std::string("MoC initialization")
+            : "MoC march, pass " + std::to_string(result.failure.kernel_pass);
+        EXPECT_EQ(result.status.stage, expected_stage);
+    }
+    std::vector<std::string> expected_warnings;
+    const std::string prefix = "Warning: ";
+    for (const std::string& message : result.messages) {
+        if (message.rfind(prefix, 0) == 0) {
+            expected_warnings.push_back(message.substr(prefix.size()));
+        }
+    }
+    EXPECT_EQ(result.status.warnings, expected_warnings);
+}
+
 // Every point that actually entered the net via a unit process must
 // independently pass the validity check -- this is the invariant that makes
-// converged == true trustworthy. The one exception is CharacteristicNet's
+// status.ok() trustworthy. The one exception is CharacteristicNet's
 // throat-lip seed point (CharacteristicNet::seed_wall_point, used to anchor
 // the wall march for a centered-fan initial data line): it owns no
 // characteristic chain (both membership optionals empty) and is not the
@@ -116,7 +150,7 @@ TEST(CheckPointValidity, NonFiniteMuDetected) {
 
 // ============================================================
 // Regression: representative previously-passing configurations must still
-// report converged == true with an all-NONE failure record, and every point
+// report status.ok() with an all-NONE failure record, and every point
 // that entered the net must independently pass check_point_validity.
 // ============================================================
 
@@ -138,8 +172,9 @@ TEST(MocErrorsRegression, AndersonMinLengthConverges) {
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(is_ok(result.status));
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
+    expect_status_agrees_with_failure(result);
     EXPECT_NEAR(result.exit_mach, 2.4, 0.01)
         << "Exit Mach should match Anderson Table 11.1 (nu_exit = 2*theta_max)";
 
@@ -168,7 +203,7 @@ TEST_F(MocErrorsFrozenTest, BasicFrozenCaseConverges) {
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
 
     expect_all_points_valid(result, opts.solver_options.abstol);
@@ -187,7 +222,7 @@ TEST_F(MocErrorsFrozenTest, BasicEquilibriumCaseConverges) {
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
 
     expect_all_points_valid(result, opts.solver_options.abstol);
@@ -217,8 +252,7 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
     RecordProperty("exit_coverage", std::to_string(result.exit_coverage));
     RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
-    EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
-        << "converged and failure.code disagree: " << result.failure.message;
+    expect_status_agrees_with_failure(result);
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.area_ratio, 1.0);
 
@@ -228,7 +262,7 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
 // ============================================================
 // Failure honesty: a configuration known to trigger huge marching steps (and,
 // before this phase, a silently-laundered Prandtl-Meyer inversion failure)
-// must report converged == false with a specific error code, must never
+// must report a failed status with a specific error code, must never
 // throw, and -- the load-bearing assertion -- must never leave a NaN in the
 // net.
 // ============================================================
@@ -241,7 +275,7 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     // apply the wall-consistency correction and converge; tightening the threshold to
     // 0.01 rad rejects it instead, and a forced MocStartLine::KLIEGEL_LEVINE does not
     // fall back to the centered fan (unlike AUTO), so solve() must report
-    // converged == false with MocErrorCode::INITIALIZATION_FAILED, without throwing.
+    // a failed status with MocErrorCode::INITIALIZATION_FAILED, without throwing.
     MocOptions opts;
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
     opts.kl_max_wall_angle_error = 0.01;
@@ -260,9 +294,12 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     ASSERT_NO_THROW({ result = nozzle.solve(); })
         << "solve() must never throw for a numerical/convergence failure";
 
-    EXPECT_FALSE(result.converged);
     EXPECT_NE(result.failure.code, MocErrorCode::NONE)
         << "A non-converging solve must carry a specific, non-NONE error code";
+    EXPECT_EQ(result.failure.code, MocErrorCode::INITIALIZATION_FAILED);
+    EXPECT_TRUE(failed_with(result.status, FailureReason::NOT_CONVERGED, "INITIALIZATION_FAILED"));
+    EXPECT_EQ(result.status.stage, "MoC initialization");
+    expect_status_agrees_with_failure(result);
 
     // The laundering path this phase closes: a PM-inversion or table-lookup
     // failure must never flow into mach_to_mu()/corrector-step averaging and

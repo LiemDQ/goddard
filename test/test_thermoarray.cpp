@@ -2,10 +2,14 @@
 #include "goddard/thermo.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/numerics.hpp"
+#include "goddard/error.hpp"
+#include "goddard/global.hpp"
+#include "status_test_helpers.hpp"
 
 #include "cantera/core.h"
 #include "gtest/gtest.h"
 #include "eigen3/Eigen/Dense"
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -476,4 +480,149 @@ TEST_F(ThermoArray2DTests, operationsDoNotChangeConstructorSolution) {
     std::vector<double> after(sln->thermo()->stateSize());
     sln->thermo()->saveState(after);
     EXPECT_EQ(after, original);
+}
+
+// ============================================================
+//  Failure reporting
+// ============================================================
+
+namespace {
+
+using Goddard::FailureReason;
+using Goddard::SolveStatus;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
+using Goddard::test_helpers::throws_solve_error;
+
+/**
+ * 2 x 2 array of H2/O2 at T = {300 K, 1e5 K} by P = {1 bar, 2 bar}. The hot row (i = 1) is far
+ * outside the temperature range of the thermodynamic data, so a constant-enthalpy equilibrium
+ * from it fails in the backend; the cold row (i = 0) equilibrates.
+ */
+class ThermoArrayFailureTests : public ::testing::Test {
+protected:
+    ThermoArrayFailureTests() : sln(Cantera::newSolution("h2o2.yaml", "ohmech")) {
+        Goddard::setup_defaults();
+        sln->thermo()->setMoleFractionsByName("H2:2, O2:1");
+        array = std::make_unique<Goddard::ThermoArray>(sln, std::vector<long>{2, 2});
+        temperatures = Eigen::ArrayXd(2);
+        temperatures << 300.0, 1.0e5;
+        pressures = Eigen::ArrayXd(2);
+        pressures << 1.0e5, 2.0e5;
+    }
+
+    std::shared_ptr<Cantera::Solution> sln;
+    std::unique_ptr<Goddard::ThermoArray> array;
+    Eigen::ArrayXd temperatures;
+    Eigen::ArrayXd pressures;
+};
+
+}
+
+TEST_F(ThermoArrayFailureTests, freshArrayHasNoFailures) {
+    EXPECT_EQ(array->num_failed(), 0);
+    EXPECT_TRUE(is_ok(array->status()));
+    EXPECT_TRUE(is_ok(array->status_at(0)));
+    EXPECT_TRUE(array->ok().all());
+    array->TP(temperatures, pressures);
+    EXPECT_EQ(array->num_failed(), 0);
+    EXPECT_TRUE(array->temperature().isFinite().all());
+}
+
+TEST_F(ThermoArrayFailureTests, failedEquilibriumIsRecordedPerEntryAndOthersSurvive) {
+    array->TP(temperatures, pressures);
+    ASSERT_NO_THROW(array->equilibrate("HP"));
+
+    EXPECT_EQ(array->num_failed(), 2);
+    const auto ok = array->ok();
+    ASSERT_EQ(ok.rows(), 2);
+    ASSERT_EQ(ok.cols(), 2);
+    EXPECT_TRUE(ok(0, 0));
+    EXPECT_TRUE(ok(0, 1));
+    EXPECT_FALSE(ok(1, 0));
+    EXPECT_FALSE(ok(1, 1));
+
+    const int failed_loc = array->flat_index(1, 0);
+    EXPECT_TRUE(failed_with(array->status_at(failed_loc), FailureReason::THERMO_FAILURE));
+    EXPECT_TRUE(is_ok(array->status_at(array->flat_index(0, 0))));
+
+    // The first failure represents the array and says how many entries failed
+    const SolveStatus overall = array->status();
+    EXPECT_TRUE(failed_with(overall, FailureReason::THERMO_FAILURE, "2 of 4"));
+    EXPECT_NE(overall.stage.find("(1, 0)"), std::string::npos) << overall.describe();
+
+    // Failed entries are NaN in every getter; good entries are burnt gas
+    const Eigen::ArrayXXd T = array->temperature();
+    EXPECT_TRUE(std::isnan(T(1, 0)));
+    EXPECT_TRUE(std::isnan(T(1, 1)));
+    EXPECT_GT(T(0, 0), 2500.0);
+    EXPECT_GT(T(0, 1), 2500.0);
+    for (const Eigen::ArrayXXd& values : {array->pressure(), array->enthalpy_mass(), array->entropy_mass(),
+                                          array->mean_molecular_weight(), array->internal_energy_mole()}) {
+        EXPECT_TRUE(std::isnan(values(1, 0)));
+        EXPECT_TRUE(std::isfinite(values(0, 0)));
+    }
+}
+
+TEST_F(ThermoArrayFailureTests, retryFailedLeavesGoodEntriesAloneAndCountsRemaining) {
+    array->TP(temperatures, pressures);
+    array->equilibrate("HP");
+    const Eigen::ArrayXXd before = array->temperature();
+
+    // Retrying cannot fix an entry outside the data range, and must not redo the good ones
+    EXPECT_EQ(array->retry_failed("HP"), 2);
+    const Eigen::ArrayXXd after = array->temperature();
+    EXPECT_EQ(after(0, 0), before(0, 0));
+    EXPECT_EQ(after(0, 1), before(0, 1));
+    EXPECT_TRUE(std::isnan(after(1, 0)));
+}
+
+TEST_F(ThermoArrayFailureTests, settersAndSetStateResetStatuses) {
+    array->TP(temperatures, pressures);
+    array->equilibrate("HP");
+    ASSERT_EQ(array->num_failed(), 2);
+
+    // Writing a state to a failed entry makes it a valid entry again
+    const int failed_loc = array->flat_index(1, 0);
+    array->set_state(failed_loc, array->get_state(array->flat_index(0, 0)));
+    EXPECT_TRUE(is_ok(array->status_at(failed_loc)));
+    EXPECT_EQ(array->num_failed(), 1);
+    EXPECT_TRUE(std::isfinite(array->temperature()(1, 0)));
+
+    // A bulk setter resets every entry
+    array->TP(temperatures, pressures);
+    EXPECT_EQ(array->num_failed(), 0);
+    EXPECT_TRUE(array->temperature().isFinite().all());
+}
+
+TEST_F(ThermoArrayFailureTests, setStatusMarksAnEntryFailedAndItsGettersNaN) {
+    array->TP(temperatures, pressures);
+    const int loc = array->flat_index(0, 1);
+    array->set_status(loc, SolveStatus::failure(FailureReason::NOT_CONVERGED, "test failure"));
+
+    EXPECT_EQ(array->num_failed(), 1);
+    EXPECT_TRUE(failed_with(array->status_at(loc), FailureReason::NOT_CONVERGED, "test failure"));
+    EXPECT_FALSE(array->ok()(0, 1));
+    EXPECT_TRUE(array->ok()(0, 0));
+    EXPECT_TRUE(std::isnan(array->temperature()(0, 1)));
+    EXPECT_TRUE(failed_with(array->status(), FailureReason::NOT_CONVERGED, "test failure"));
+    EXPECT_THROW(array->set_status(array->size(), SolveStatus{}), std::out_of_range);
+    EXPECT_THROW(array->status_at(-1), std::out_of_range);
+}
+
+TEST_F(ThermoArrayFailureTests, bulkSetterThrowsOnAStateTheBackendRejects) {
+    Eigen::ArrayXd negative(2);
+    negative << 300.0, -5.0;
+    EXPECT_TRUE(throws_solve_error([&] { array->TP(negative, pressures); }, FailureReason::THERMO_FAILURE));
+}
+
+TEST(ThermoArrayThreeDimensional, okSelectsTheSlice) {
+    auto sln = Cantera::newSolution("h2o2.yaml", "ohmech");
+    Goddard::ThermoArray array(sln, std::vector<long>{2, 2, 2});
+    array.set_status(array.flat_index(1, 0, 1), SolveStatus::failure(FailureReason::NO_SOLUTION, "x"));
+    EXPECT_TRUE(array.ok(0).all());
+    const auto slice = array.ok(1);
+    EXPECT_FALSE(slice(1, 0));
+    EXPECT_EQ(slice.count(), 3);
+    EXPECT_EQ(array.num_failed(), 1);
 }

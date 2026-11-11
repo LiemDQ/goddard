@@ -38,6 +38,7 @@ add_executable(
     test_newton.cpp
     test_condensed.cpp
     test_nozzle_condensed.cpp
+    test_status.cpp
     asan_options.cpp
 )
 

@@ -145,7 +145,7 @@ TEST(MocPhase2, CsvRoundTrip) {
 TEST(MocPhase2, ConvergedFlagTrue) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
     auto result = solver.solve();
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_TRUE(result.messages.empty());
 }
 
@@ -157,7 +157,7 @@ TEST(MocPhase3, AxiPerfectGasSolves) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7, MocFlowKind::AXISYMMETRIC);
     auto result = solver.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -192,8 +192,8 @@ TEST(MocPhase3, AxiExitMachReasonable) {
     auto result_axi = axi.solve();
 
     // Both should produce valid results
-    EXPECT_TRUE(result_planar.converged);
-    EXPECT_TRUE(result_axi.converged);
+    EXPECT_TRUE(result_planar.status.ok());
+    EXPECT_TRUE(result_axi.status.ok());
 
     // Axisymmetric exit Mach should differ from planar
     EXPECT_NE(result_planar.exit_mach, result_axi.exit_mach);
@@ -254,7 +254,7 @@ TEST_F(MocFrozenTest, PlanarFrozenSolves) {
     MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -298,7 +298,7 @@ TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
     MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -320,7 +320,7 @@ TEST_F(MocFrozenTest, AxiFrozenSolves) {
     MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -338,7 +338,7 @@ TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
     MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -377,7 +377,7 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
 
     MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
-    ASSERT_TRUE(moc_result.converged);
+    ASSERT_TRUE(moc_result.status.ok());
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
@@ -405,7 +405,7 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
 
     MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
     auto moc_result = moc_nozzle.solve();
-    ASSERT_TRUE(moc_result.converged);
+    ASSERT_TRUE(moc_result.status.ok());
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
@@ -441,8 +441,8 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
     MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
     auto equil_result = equil_nozzle.solve();
 
-    EXPECT_TRUE(frozen_result.converged);
-    EXPECT_TRUE(equil_result.converged);
+    EXPECT_TRUE(frozen_result.status.ok());
+    EXPECT_TRUE(equil_result.status.ok());
     EXPECT_GT(std::abs(frozen_result.exit_mach - equil_result.exit_mach), 1e-6)
         << "Frozen and equilibrium should produce different exit Mach";
 }
@@ -469,8 +469,8 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
     auto equil_result = equil_nozzle.solve();
 
     // Both should converge
-    EXPECT_TRUE(frozen_result.converged);
-    EXPECT_TRUE(equil_result.converged);
+    EXPECT_TRUE(frozen_result.status.ok());
+    EXPECT_TRUE(equil_result.status.ok());
 
     // Exit Mach should differ (equilibrium shifts composition)
     // The difference may be small for this composition, but should not be identical
@@ -489,7 +489,7 @@ TEST(MocThrust, PlanarPerfectGasVs1D) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 15);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf = compute_thrust_coefficient(result, MocFlowKind::PLANAR);
 
@@ -515,7 +515,7 @@ TEST(MocThrust, AxiPerfectGasVs1D) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 15, MocFlowKind::AXISYMMETRIC);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf = compute_thrust_coefficient(result, MocFlowKind::AXISYMMETRIC);
 
@@ -539,7 +539,7 @@ TEST(MocThrust, AmbientPressureReducesCf) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf_vac = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.0);
     auto cf_amb = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.1);
@@ -579,7 +579,7 @@ TEST(MocAnalysis, PlanarRoundTrip) {
     // Step 1: Design mode (DESIGN_MIN_LENGTH always uses the chain-pairing ladder).
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto design_result = design_solver.solve();
-    ASSERT_TRUE(design_result.converged) << "Design did not converge: "
+    ASSERT_TRUE(design_result.status.ok()) << "Design did not converge: "
         << to_string(design_result.failure.code) << " -- "
         << design_result.failure.message;
 
@@ -594,9 +594,9 @@ TEST(MocAnalysis, PlanarRoundTrip) {
 
     MocNozzle analysis_solver(opts);
     auto analysis_result = analysis_solver.solve();
-    RecordProperty("converged", analysis_result.converged ? "true" : "false");
+    RecordProperty("converged", analysis_result.status.ok() ? "true" : "false");
 
-    ASSERT_TRUE(analysis_result.converged) << "Analysis did not converge: "
+    ASSERT_TRUE(analysis_result.status.ok()) << "Analysis did not converge: "
         << to_string(analysis_result.failure.code)
         << " -- " << analysis_result.failure.message;
     EXPECT_GT(analysis_result.exit_mach, 1.0);
@@ -642,7 +642,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 8, MocFlowKind::AXISYMMETRIC);
     auto design_result = design_solver.solve();
-    ASSERT_TRUE(design_result.converged);
+    ASSERT_TRUE(design_result.status.ok());
 
     auto area_ratio_1d = [&](double mach) {
         const double t = (2.0 / (gamma + 1.0)) * (1.0 + 0.5 * (gamma - 1.0) * mach * mach);
@@ -670,11 +670,11 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     MocNozzle analysis_solver(opts);
     auto result = analysis_solver.solve();
-    RecordProperty("converged", result.converged ? "true" : "false");
+    RecordProperty("converged", result.status.ok() ? "true" : "false");
 
-    EXPECT_TRUE(result.converged) << "Analysis did not converge: "
+    EXPECT_TRUE(result.status.ok()) << "Analysis did not converge: "
         << to_string(result.failure.code) << " -- " << result.failure.message;
-    if (!result.converged) return;
+    if (!result.status.ok()) return;
     EXPECT_GT(result.exit_mach, 1.0);
 
     // The design's exit Mach carries a known +0.08 bias against the 1-D area-Mach

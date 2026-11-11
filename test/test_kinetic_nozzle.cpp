@@ -4,6 +4,7 @@
 #include "goddard/profile.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
+#include "status_test_helpers.hpp"
 #include "cantera/core.h"
 #include "gtest/gtest.h"
 
@@ -13,6 +14,8 @@
 #include <iostream>
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::throws_solve_error;
 
 // Build a simple conical diverging profile from throat (x=0) to exit.
 // Only the diverging section is needed since KineticNozzle starts at x_min.
@@ -192,23 +195,39 @@ TEST_F(KineticNozzleTests, FullSolveReachesExit) {
     // The fixture allows 100000 steps for ~20000 steps of dx_max, so the integration must end
     // exactly at the exit of the profile.
     ASSERT_GT(s_results.stations.size(), 0u);
-    EXPECT_TRUE(s_results.reached_exit);
+    EXPECT_TRUE(s_results.status.ok()) << s_results.status.describe();
     EXPECT_EQ(s_results.stations.back().x, s_profile.x_max())
         << "The last step must land on the exit, not a rounding error short of it";
 }
 
-TEST_F(KineticNozzleTests, StepLimitedSolveReportsExitNotReached) {
-    // Stopping at max_steps must be reported rather than returned as if complete.
+TEST_F(KineticNozzleTests, StepLimitedSolveIsIncompleteAndKeepsTheStationsSolved) {
+    // Stopping at max_steps must be reported rather than returned as if complete, and the part
+    // of the nozzle that was integrated stays valid.
     const int max_steps = 3;
     double length = s_profile.x_max() - s_profile.x_min();
     KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
     KineticNozzleResults truncated = nozzle.solve(1e-6, length/20000, max_steps);
 
-    EXPECT_FALSE(truncated.reached_exit);
+    EXPECT_TRUE(failed_with(truncated.status, FailureReason::INCOMPLETE, "max_steps"));
     EXPECT_EQ(truncated.stations.size(), static_cast<size_t>(max_steps));
     ASSERT_FALSE(truncated.stations.empty());
     EXPECT_LT(truncated.stations.back().x, s_profile.x_max());
     EXPECT_LT(truncated.stations.size(), s_results.stations.size());
+    for (const KineticNozzleStation& station : truncated.stations) {
+        EXPECT_TRUE(std::isfinite(station.x));
+        EXPECT_TRUE(std::isfinite(station.velocity));
+        EXPECT_TRUE(std::isfinite(station.thermo.temperature));
+    }
+    // The throat is solved before the integration starts and is not affected by the stop
+    EXPECT_TRUE(truncated.throat.status.ok());
+}
+
+TEST_F(KineticNozzleTests, NonpositiveStepArgumentsAreRejected) {
+    KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+    EXPECT_THROW(nozzle.solve(0.0, 1e-4, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(-1e-6, 1e-4, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(1e-6, 0.0, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(1e-6, 1e-4, 0), std::invalid_argument);
 }
 
 TEST_F(KineticNozzleTests, FirstStationMachIsApproximatelyOne) {

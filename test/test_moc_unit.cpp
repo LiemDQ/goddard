@@ -237,7 +237,7 @@ TEST(MocSolve, PerfectGasDoesNotRequireCantera) {
     MocNozzle nozzle(opts);
     ASSERT_NO_THROW({
         auto result = nozzle.solve();
-        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.status.ok());
         EXPECT_GT(result.exit_mach, 1.0);
         EXPECT_GT(result.nozzle_length, 0.0);
         EXPECT_GT(result.area_ratio, 1.0);

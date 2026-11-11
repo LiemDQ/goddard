@@ -36,7 +36,7 @@ def analysis_result(planar_result):
 
 
 def test_planar_perfect_gas_solve(planar_result):
-    assert planar_result.converged
+    assert planar_result.status.ok
     assert planar_result.exit_mach > 1.0
     assert planar_result.nozzle_length > 0.0
     assert planar_result.area_ratio > 1.0
@@ -45,7 +45,7 @@ def test_planar_perfect_gas_solve(planar_result):
 
 def test_result_types(planar_result):
     from goddard import CharacteristicNet, NozzleProfile, ExitPlane
-    assert isinstance(planar_result.converged, bool)
+    assert isinstance(planar_result.status.ok, bool)
     assert isinstance(planar_result.exit_mach, float)
     assert isinstance(planar_result.nozzle_length, float)
     assert isinstance(planar_result.area_ratio, float)
@@ -113,7 +113,7 @@ def test_result_diagnostic_fields_readable(planar_result, analysis_result):
     # Per-pass diagnostics are recorded by the front-marching kernel (analysis and Rao
     # design) only; the minimum-length design ladder records none.
     assert len(planar_result.pass_diagnostics) == 0
-    assert analysis_result.converged
+    assert analysis_result.status.ok
     assert len(analysis_result.pass_diagnostics) > 0
     diag = analysis_result.pass_diagnostics[0]
     # `pass` is a Python keyword, so the field is exposed as pass_index.
@@ -209,7 +209,7 @@ def test_analysis_round_trip(planar_result):
     opts.nozzle_profile = profile
 
     result = MocNozzle(opts).solve()
-    assert result.converged
+    assert result.status.ok
     # Analysis should reproduce design Mach within 5%
     assert result.exit_mach == pytest.approx(design_mach, rel=0.05)
 
@@ -236,7 +236,7 @@ def test_convenience_moc_design():
     from goddard import moc_design
 
     result = moc_design(15.0)
-    assert result.converged
+    assert result.status.ok
     assert result.exit_mach > 1.0
 
 
@@ -244,10 +244,10 @@ def test_convenience_moc_analysis():
     from goddard import moc_design, moc_analysis
 
     design = moc_design(15.0)
-    assert design.converged
+    assert design.status.ok
 
     result = moc_analysis(design.profile)
-    assert result.converged
+    assert result.status.ok
 
 
 def test_convenience_analysis_from_csv(tmp_path):
@@ -258,14 +258,14 @@ def test_convenience_analysis_from_csv(tmp_path):
     design.profile.save_csv(csv_path)
 
     result = moc_analysis(csv_path)
-    assert result.converged
+    assert result.status.ok
 
 
 def test_convenience_axisymmetric():
     from goddard import moc_design, MocFlowKind
 
     result = moc_design(15.0, flow_type=MocFlowKind.AXISYMMETRIC)
-    assert result.converged
+    assert result.status.ok
     assert result.exit_mach > 1.0
 
 
@@ -355,7 +355,7 @@ def test_conical_axisymmetric_analysis_converges():
     profile = conical_nozzle(4.0)
     result = moc_analysis(profile, flow_type=MocFlowKind.AXISYMMETRIC, num_characteristics=15)
 
-    assert result.converged, result.failure.message
+    assert result.status.ok, result.failure.message
 
     y = np.asarray(result.exit_plane.y)
     assert len(y) > 1

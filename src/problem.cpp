@@ -10,7 +10,9 @@
 #include "goddard/utils.hpp"
 #include "goddard/speciate.hpp"
 #include "goddard/format.hpp"
+#include "goddard/solve_guard.hpp"
 #include <algorithm>
+#include <format>
 #include <cmath>
 #include <iostream>
 #include <exception>
@@ -37,9 +39,16 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
     problem_cases(cases),
     chemical_params(chem_params) {
 
-    auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
-    const Cantera::AnyMap& phase_node = root_node.at("phases").getMapWhere("name", phase_name);
-    m_sln = Cantera::newSolution(phase_node, root_node);
+    // A phase that cannot be built from the file and the species selection is a bad argument.
+    m_sln = translate_backend_usage_errors(
+        std::format("RocketProblem: cannot build phase '{}' from '{}' with the selected species",
+            phase_name, chemical_params.thermo_file),
+        [&] {
+            auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
+            const Cantera::AnyMap& phase_node =
+                root_node.at("phases").getMapWhere("name", phase_name);
+            return Cantera::newSolution(phase_node, root_node);
+        });
     m_sln->setSource(chemical_params.thermo_file);
 
     if (!chemical_params.condensed_file.empty()) {
@@ -75,6 +84,29 @@ Gas RocketProblem::reactant_gas(const PhaseSpecification& state) const {
     return stream;
 }
 
+namespace {
+
+/** Reject a reactant stream that was left unset or given a nonphysical state. */
+void validate_reactant_state(const PhaseSpecification& state, const std::string& name) {
+    if (state.composition.empty()) {
+        throw std::invalid_argument(std::format(
+            "RocketProblem: ChemicalParameters.{} has no composition; set its temperature, "
+            "pressure and composition.", name));
+    }
+    if (!(state.T > 0.0) || !std::isfinite(state.T)) {
+        throw std::invalid_argument(std::format(
+            "RocketProblem: ChemicalParameters.{} must have a positive temperature, got {:.6g} K.",
+            name, state.T));
+    }
+    if (!(state.P > 0.0) || !std::isfinite(state.P)) {
+        throw std::invalid_argument(std::format(
+            "RocketProblem: ChemicalParameters.{} must have a positive pressure, got {:.6g} Pa.",
+            name, state.P));
+    }
+}
+
+} // namespace
+
 RocketProblemResults RocketProblem::solve() {
     if (include_transport) {
         throw NotImplementedError("RocketProblem: transport properties are not implemented.");
@@ -92,6 +124,19 @@ RocketProblemResults RocketProblem::solve() {
             "set OF_ratios and CombustorOptions.mixture_type instead.");
     }
 
+    validate_reactant_state(chemical_params.fuel_state, "fuel_state");
+    validate_reactant_state(chemical_params.oxidizer_state, "oxidizer_state");
+    {
+        std::set<std::string> names;
+        for (const RocketCaseParameters& params : problem_cases) {
+            if (!names.insert(params.name).second) {
+                throw std::invalid_argument(std::format(
+                    "RocketProblem: two cases are named '{}'; case names must be unique.",
+                    params.name));
+            }
+        }
+    }
+
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;
     
     Eigen::ArrayXd OFs = vector_to_eigenarray(chemical_params.OF_ratios);
@@ -105,11 +150,13 @@ RocketProblemResults RocketProblem::solve() {
     Cantera::Composition fuel_comp;
     Cantera::Composition ox_comp;
     if (!reactant_streams) {
-        // Parse fuel and oxidizer compositions into Cantera Composition maps
-        thermo->setState_TPX(fuel_input.T, fuel_input.P, fuel_input.composition);
+        // Parse fuel and oxidizer compositions into Cantera Composition maps. A species the
+        // product phase does not have is a bad argument.
+        Gas parser = product_gas();
+        parser.set_state_TPX(fuel_input.T, fuel_input.P, fuel_input.composition);
         fuel_comp = thermo->getMoleFractionsByName();
 
-        thermo->setState_TPX(ox_input.T, ox_input.P, ox_input.composition);
+        parser.set_state_TPX(ox_input.T, ox_input.P, ox_input.composition);
         ox_comp = thermo->getMoleFractionsByName();
     }
     double fuel_T = fuel_input.T;
@@ -133,7 +180,21 @@ RocketProblemResults RocketProblem::solve() {
         Gas gas = product_gas();
         Nozzle nozzle(gas, params.nozzle_options);
 
+        const bool finite_area = params.combustor_options.type != CombustorType::INFINITE_AREA;
+        const std::size_t num_exits = params.nozzle_options.expansion_ratios.size();
+
         for (int i = 0; i < combustion_states.size(); i++) {
+            // A failed combustion leaves nothing to expand: the operating point is recorded as
+            // failed and the sweep goes on.
+            const SolveStatus& combustion_status = combustion_states.status_at(i);
+            if (!combustion_status.ok()) {
+                expansion_results.push_back(NozzleResults::failed(combustion_status, num_exits));
+                if (finite_area) {
+                    finite_area_chambers.push_back(
+                        FiniteAreaChamber::failed(SolveStatus::not_computed(combustion_status)));
+                }
+                continue;
+            }
             state = combustion_states.get_state(i);
 
             switch (params.combustor_options.type) {
@@ -155,8 +216,9 @@ RocketProblemResults RocketProblem::solve() {
                     std::vector<NozzleStation> stations = nozzle.solve_stations(fac,
                         params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
 
-                    expansion_results.push_back(
-                        NozzleResults{fac.injector, fac.throat, std::move(stations)});
+                    NozzleResults expansions{fac.injector, fac.throat, std::move(stations), {}};
+                    expansions.status = fac.status.ok() ? expansions.first_failure() : fac.status;
+                    expansion_results.push_back(std::move(expansions));
                     finite_area_chambers.push_back(std::move(fac));
                     break;
                 }

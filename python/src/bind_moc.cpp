@@ -19,6 +19,7 @@
 #include "goddard/characteristic_net.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
+#include "bind_status.hpp"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
@@ -719,7 +720,7 @@ void bind_moc(nb::module_& m) {
     // ---- MocResult ----
 
     nb::class_<Goddard::MocResult>(m, "MocResult", DOC(Goddard, MocResult))
-        .def_ro("converged", &Goddard::MocResult::converged, DOC(Goddard, MocResult, converged))
+        .def_ro("status", &Goddard::MocResult::status, DOC(Goddard, MocResult, status))
         .def_ro("net", &Goddard::MocResult::net, DOC(Goddard, MocResult, net))
         .def_ro("profile", &Goddard::MocResult::profile, DOC(Goddard, MocResult, profile))
         .def_ro("messages", &Goddard::MocResult::messages, DOC(Goddard, MocResult, messages))
@@ -747,8 +748,8 @@ void bind_moc(nb::module_& m) {
         .def_ro("exit_plane", &Goddard::MocResult::exit_plane, DOC(Goddard, MocResult, exit_plane))
         .def("__repr__", [](const Goddard::MocResult& self) {
             return std::format(
-                "<MocResult converged={} exit_mach={:.4g} area_ratio={:.4g} length={:.4g}>",
-                self.converged, self.exit_mach, self.area_ratio, self.nozzle_length);
+                "<MocResult {} exit_mach={:.4g} area_ratio={:.4g} length={:.4g}>",
+                status_tag(self.status), self.exit_mach, self.area_ratio, self.nozzle_length);
         });
 
     // ---- ThrustCoefficient ----

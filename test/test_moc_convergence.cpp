@@ -161,7 +161,7 @@ TEST(MocConvergence, PlanarDesignExitMachExactAtAllN) {
 
     for (int n : {8, 16, 32, 64}) {
         auto result = solve_design(MocFlowKind::PLANAR, gamma, theta_max, n);
-        ASSERT_TRUE(result.converged) << "N=" << n;
+        ASSERT_TRUE(result.status.ok()) << "N=" << n;
         EXPECT_NEAR(result.exit_mach, expected, 1e-6)
             << "Planar exit Mach must equal PM^-1(2*theta_max) at N=" << n;
     }
@@ -179,8 +179,8 @@ TEST(MocConvergence, PlanarDesignAreaRatioConvergesTo1D) {
 
     auto coarse = solve_design(MocFlowKind::PLANAR, gamma, theta_max, 8);
     auto fine = solve_design(MocFlowKind::PLANAR, gamma, theta_max, 64);
-    ASSERT_TRUE(coarse.converged);
-    ASSERT_TRUE(fine.converged);
+    ASSERT_TRUE(coarse.status.ok());
+    ASSERT_TRUE(fine.status.ok());
 
     double err_coarse = std::abs(coarse.area_ratio - area_ratio_1d(coarse.exit_mach, gamma));
     double err_fine = std::abs(fine.area_ratio - area_ratio_1d(fine.exit_mach, gamma));
@@ -214,9 +214,9 @@ TEST(MocConvergence, PlanarRoundTripErrorShrinksWithN) {
     bool ok[2] = {false, false};
     for (int i = 0; i < 2; i++) {
         auto design = solve_design(MocFlowKind::PLANAR, gamma, theta_max, levels[i]);
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
         auto analysis = solve_analysis_of(design, MocFlowKind::PLANAR, gamma, levels[i]);
-        ok[i] = analysis.converged;
+        ok[i] = analysis.status.ok();
         RecordProperty("converged_N" + std::to_string(levels[i]), ok[i] ? "true" : "false");
         if (ok[i]) {
             err[i] = std::abs(analysis.exit_mach - design.exit_mach);
@@ -259,7 +259,7 @@ TEST(MocConvergence, AxiDesignExitMachCauchyConvergence) {
     int levels[4] = {8, 16, 32, 64};
     for (int i = 0; i < 4; i++) {
         auto result = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, levels[i]);
-        ASSERT_TRUE(result.converged) << "N=" << levels[i];
+        ASSERT_TRUE(result.status.ok()) << "N=" << levels[i];
         mach[i] = result.exit_mach;
     }
 
@@ -290,7 +290,7 @@ TEST(MocConvergence, AxiDesign1DConsistencyBounded) {
     double theta_max = 12.0 * DEG;
 
     auto result = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, 64);
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     double mach_1d = mach_from_area_ratio_1d(result.area_ratio, gamma);
     EXPECT_NEAR(result.exit_mach, mach_1d, 0.12)
@@ -320,9 +320,9 @@ TEST(MocConvergence, AxiRoundTripErrorShrinksWithN) {
     const int levels[3] = {8, 16, 32};
     for (int i = 0; i < 3; i++) {
         auto design = solve_design(MocFlowKind::AXISYMMETRIC, gamma, theta_max, levels[i]);
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
         auto analysis = solve_analysis_of(design, MocFlowKind::AXISYMMETRIC, gamma, levels[i]);
-        ASSERT_TRUE(analysis.converged) << "N=" << levels[i] << ": "
+        ASSERT_TRUE(analysis.status.ok()) << "N=" << levels[i] << ": "
             << to_string(analysis.failure.code) << " -- " << analysis.failure.message;
 
         const ExitPlane& ep = analysis.exit_plane;
@@ -396,16 +396,16 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
 
             MocNozzle solver(opts);
             MocResult result = solver.solve();
-            ok[li] = result.converged;
+            ok[li] = result.status.ok();
 
             const std::string tag = "_AR" + std::to_string(static_cast<int>(ar)) + "_N" + std::to_string(n);
             RecordProperty("start_line_used" + tag,
                            result.init_diagnostics.start_line_used == MocStartLine::KLIEGEL_LEVINE
                                ? "KLIEGEL_LEVINE" : "CENTERED_FAN");
 
-            EXPECT_TRUE(result.converged) << "AR=" << ar << " N=" << n << ": "
+            EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
-            if (!result.converged) continue;
+            if (!result.status.ok()) continue;
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
 
             // 1e-2 matches MocKlInitConvergence.FirstWallHitsHaveMonotoneMach's tolerance
@@ -520,7 +520,7 @@ TEST(MocKlInitConvergence, ConicalAR2ReachesExitPlaneAcrossN) {
     for (int i = 0; i < 3; i++) {
         const int n = levels[i];
         auto result = solve_conical_kl_analysis(2.0, n);
-        ASSERT_TRUE(result.converged) << "N=" << n << ": " << result.failure.message;
+        ASSERT_TRUE(result.status.ok()) << "N=" << n << ": " << result.failure.message;
         EXPECT_GT(result.exit_mach, 1.0) << "N=" << n;
         EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
         EXPECT_GE(result.exit_coverage, coverage_floor[i])
@@ -548,7 +548,7 @@ TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
     RecordProperty("exit_mach", std::to_string(result.exit_mach));
     RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
-    ASSERT_TRUE(result.converged) << to_string(result.failure.code)
+    ASSERT_TRUE(result.status.ok()) << to_string(result.failure.code)
         << " -- " << result.failure.message;
     EXPECT_TRUE(result.reached_exit_plane);
     EXPECT_GT(result.exit_mach, 1.0);
@@ -573,7 +573,7 @@ TEST(MocKlInitConvergence, ConicalAR4AtCoarseNReachesRecordedCoverage) {
 TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
     for (int n : {15, 31}) {
         auto result = solve_conical_kl_analysis(4.0, n);
-        ASSERT_TRUE(result.converged) << "N=" << n << " AR=4: " << result.failure.message;
+        ASSERT_TRUE(result.status.ok()) << "N=" << n << " AR=4: " << result.failure.message;
         EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
         check_conical_default_throat_physics(result, "_AR4_N" + std::to_string(n),
                                               /*wall_mach_tol=*/1e-2,
@@ -583,7 +583,7 @@ TEST(MocKlInitConvergence, ConicalAR4FinerNAndAR8Converge) {
     }
     for (int n : {8, 15, 31}) {
         auto result = solve_conical_kl_analysis(8.0, n);
-        ASSERT_TRUE(result.converged) << "N=" << n << " AR=8: " << result.failure.message;
+        ASSERT_TRUE(result.status.ok()) << "N=" << n << " AR=8: " << result.failure.message;
         EXPECT_TRUE(result.reached_exit_plane) << "N=" << n;
         // N=8 is coarser than the measured grid above (N=31/61); the compression
         // dip need not have fully formed there (see the AR=4 N=8 comment above), so its

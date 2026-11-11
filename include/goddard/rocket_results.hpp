@@ -17,7 +17,11 @@ namespace Goddard {
 /** Standard gravity [m/s^2], for specific impulse in seconds. */
 constexpr double STANDARD_GRAVITY = 9.80665;
 
-/** Rocket performance of one exit, as CEA reports it. */
+/**
+ * Rocket performance of one exit, as CEA reports it.
+ *
+ * When a station it is computed from failed (`status.ok()` is false) every value is NaN.
+ */
 struct RocketPerformance {
     /** Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-]. */
     double pressure_ratio;
@@ -33,6 +37,11 @@ struct RocketPerformance {
     double isp;
     /** Vacuum specific impulse, as an effective exhaust velocity [m/s]. */
     double ivac;
+    /**
+     * Ok when the stagnation, throat and exit stations were all solved; otherwise the failure
+     * of the first of them that was not.
+     */
+    SolveStatus status;
 
     /** Specific impulse at optimum expansion in seconds, `isp / STANDARD_GRAVITY` [s]. */
     double isp_s() const { return isp / STANDARD_GRAVITY; }
@@ -54,7 +63,11 @@ enum class StationType {
     EXIT
 };
 
-/** One station of one operating point of a rocket problem. */
+/**
+ * One station of one operating point of a rocket problem.
+ *
+ * When the station was not solved (`status.ok()` is false) `thermo` is NaN.
+ */
 struct RocketStation {
     /// Name of the case the station belongs to.
     std::string case_name;
@@ -77,6 +90,11 @@ struct RocketStation {
      * which the adiabatic expansion conserves.
      */
     ThermodynamicState thermo;
+    /**
+     * Outcome of the solve that produced the station. A station downstream of a failed one
+     * (the throat and exits of a failed chamber, for example) has reason `NOT_COMPUTED`.
+     */
+    SolveStatus status;
 };
 
 // Internal type: used by RocketProblem::solve() to pass results to RocketProblemResults.
@@ -102,6 +120,10 @@ struct RocketProblemCaseResult {
 /**
  * Results of a `RocketProblem`: a flat list of stations over every case, mixture ratio and
  * pressure, with accessors by operating point and a CEA-style report.
+ *
+ * An operating point that could not be solved does not stop the problem: its stations are in
+ * the list with a failed `status` and NaN states, and `status()` and `failed_stations()` say
+ * whether and where that happened.
  */
 class RocketProblemResults {
 
@@ -119,6 +141,20 @@ public:
 
     /** Every station of every case, as one flat list. */
     const std::vector<RocketStation>& stations() const { return m_stations; }
+
+    /**
+     * Outcome of the whole problem: ok when every station was solved, otherwise the status of
+     * the first failed station, whose message also gives the number of failed stations.
+     */
+    SolveStatus status() const;
+
+    /**
+     * The stations that were not solved, in list order.
+     *
+     * @param case_name Case to read. Empty reads every case.
+     * @throws std::runtime_error if the case does not exist.
+     */
+    std::vector<RocketStation> failed_stations(const std::string& case_name = "") const;
 
     /**
      * All stations of one type in one case.
@@ -195,6 +231,8 @@ public:
      * @param pressure_index Index into the case's chamber pressures [-].
      * @param exit_index Index into the exit stations of the operating point [-].
      * @param case_name Case to read. May be empty when the results hold a single case.
+     * @return The performance; all NaN, with a failed `status`, if one of the three stations
+     * was not solved.
      * @throws std::runtime_error if the case or a station does not exist, or if `exit_index`
      * is out of range.
      */
@@ -214,6 +252,10 @@ public:
 
     /**
      * CEA-style formatted text report.
+     *
+     * An operating point whose chamber or throat was not solved is reported as a short notice
+     * with the failure; one with failed exits keeps its table, with NaN in the failed columns
+     * and the failures listed below it.
      *
      * @param case_name Case to report. Empty reports every case, sorted by name.
      */

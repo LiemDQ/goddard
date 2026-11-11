@@ -7,6 +7,7 @@
 #include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/config.h"
+#include "status_test_helpers.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,10 +18,12 @@
 #include <iostream>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
-#include "cantera/base/logger.h"
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
+using Goddard::test_helpers::throws_solve_error;
 
 class NozzleTests : public ::testing::Test {
 protected:
@@ -158,9 +161,13 @@ TEST_F(NozzleTests, EqThroatConditionsConverge) {
     EXPECT_DOUBLE_EQ(conditions.S_inlet, gas->thermo()->entropy_mass()) << "Inlet pressure should remain equal";
 }
 
-TEST_F(NozzleTests, ThroatNonConvergenceThrows) {
+TEST_F(NozzleTests, ThroatNonConvergenceIsReportedInStatus) {
     Nozzle nozzle(*gas, options);
-    EXPECT_THROW(nozzle.solve_throat_conditions(1e-14), ConvergenceError);
+    const ThroatCondition throat = nozzle.solve_throat_conditions(1e-14);
+    EXPECT_TRUE(failed_with(throat.status, FailureReason::NOT_CONVERGED));
+    EXPECT_TRUE(std::isnan(throat.thermo.temperature));
+    EXPECT_TRUE(std::isnan(throat.velocity));
+    EXPECT_TRUE(throat.state.empty());
 }
 
 // Test throat condition calculation
@@ -573,6 +580,66 @@ static NozzleProfile make_conical_profile(
     return profile;
 }
 
+TEST_F(NozzleTests, InvalidArgumentsThrow) {
+    Nozzle nozzle(*gas, options);
+    EXPECT_THROW(nozzle.solve(ExpansionType::PRESSURE_RATIO, 0.5), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(make_conical_profile(0.01, 0.01414, 0.1, 100), 0), std::invalid_argument);
+    // An invalid ratio anywhere in the list rejects the whole call, valid ratios included
+    EXPECT_THROW(nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 1.0}), std::invalid_argument);
+
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = -1;
+    EXPECT_THROW(Nozzle(*gas, options), std::invalid_argument);
+}
+
+TEST_F(NozzleTests, FrozenStationBeyondTheLastStationThrows) {
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 5; // station 0 is the chamber, 1 the throat: two ratios end at station 3
+    Nozzle nozzle(*gas, options);
+    EXPECT_THROW(nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0}), std::invalid_argument);
+}
+
+TEST_F(NozzleTests, ThroatOfAnInletOutOfEquilibriumFailsAndStationsAreNotComputed) {
+    // Cold H2/O2 at 70 bar is far from equilibrium, which the equilibrium throat iteration
+    // does not tolerate. The failure is in the result; nothing is thrown.
+    gas->thermo()->setState_TPX(300.0, 70.0e5, "H2:2, O2:1");
+    Nozzle nozzle(*gas, options);
+    const NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
+
+    EXPECT_TRUE(failed_with(results.throat.status, FailureReason::NOT_CONVERGED));
+    EXPECT_TRUE(std::isnan(results.throat.velocity));
+    ASSERT_EQ(results.expansions.size(), 1u);
+    const NozzleStation& exit = results.expansions.front();
+    EXPECT_EQ(exit.status.reason, FailureReason::NOT_COMPUTED);
+    EXPECT_NE(exit.status.message.find(results.throat.status.message), std::string::npos)
+        << "NOT_COMPUTED must repeat the upstream message: " << exit.status.message;
+    EXPECT_TRUE(std::isnan(exit.mach));
+    EXPECT_TRUE(std::isnan(exit.area_ratio));
+    EXPECT_TRUE(exit.state.empty());
+
+    EXPECT_FALSE(results.status.ok());
+    EXPECT_EQ(results.first_failure().reason, FailureReason::NOT_CONVERGED);
+
+    // Stations solved from the failed throat are not computed either
+    const std::vector<NozzleStation> downstream = nozzle.solve_stations(
+        results.throat, ExpansionType::SUPERSONIC_AREA_RATIO, {3.0, 6.0});
+    ASSERT_EQ(downstream.size(), 2u);
+    for (const NozzleStation& station : downstream) {
+        EXPECT_EQ(station.status.reason, FailureReason::NOT_COMPUTED);
+    }
+}
+
+TEST_F(NozzleTests, SuccessfulSolveHasAnOkStatusEverywhere) {
+    Nozzle nozzle(*gas, options);
+    const NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0});
+    EXPECT_TRUE(is_ok(results.status));
+    EXPECT_TRUE(is_ok(results.throat.status));
+    EXPECT_TRUE(is_ok(results.first_failure()));
+    for (const NozzleStation& station : results.expansions) {
+        EXPECT_TRUE(is_ok(station.status));
+    }
+}
+
 TEST_F(NozzleTests, ProfileSolveReturnsCorrectCount) {
     NozzleProfile profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
     Nozzle nozzle(*gas, options);
@@ -839,58 +906,26 @@ TEST_F(FiniteAreaCombustorTests, LargeContractionRatioRecoversInfiniteArea) {
         1e-5 * temperature_of(infinite.expansions[0].state));
 }
 
-namespace {
-
-/** Cantera logger that records warning messages instead of printing them. */
-class WarningRecorder : public Cantera::Logger {
-public:
-    explicit WarningRecorder(std::vector<std::string>* messages) : m_messages(messages) {}
-    void warn(const std::string& /*warning*/, const std::string& msg) override {
-        m_messages->push_back(msg);
-    }
-
-private:
-    std::vector<std::string>* m_messages;
-};
-
-/** Warnings emitted by Cantera::warn_user while `action` runs. */
-std::vector<std::string> recorded_warnings(const std::function<void()>& action) {
-    std::vector<std::string> messages;
-    Cantera::setLogger(std::make_unique<WarningRecorder>(&messages));
-    try {
-        action();
-    } catch (...) {
-        Cantera::setLogger(std::make_unique<Cantera::Logger>());
-        throw;
-    }
-    Cantera::setLogger(std::make_unique<Cantera::Logger>());
-    return messages;
-}
-
-bool any_contains(const std::vector<std::string>& messages, const std::string& text) {
-    return std::any_of(messages.begin(), messages.end(),
-        [&](const std::string& message) { return message.find(text) != std::string::npos; });
-}
-
-} // namespace
-
 TEST_F(FiniteAreaCombustorTests, UnresolvedCombustionEndVelocityWarns) {
     const std::string warning = "below the solver's resolution";
+    const auto has_warning = [&](const FiniteAreaChamber& chamber) {
+        return std::any_of(chamber.status.warnings.begin(), chamber.status.warnings.end(),
+            [&](const std::string& text) { return text.find(warning) != std::string::npos; });
+    };
 
     Nozzle realistic_nozzle(products, injector_state, options);
-    const std::vector<std::string> realistic = recorded_warnings([&] {
-        realistic_nozzle.solve_finite_area_chamber(
-            injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1.58);
-    });
-    EXPECT_FALSE(any_contains(realistic, warning));
+    const FiniteAreaChamber realistic = realistic_nozzle.solve_finite_area_chamber(
+        injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1.58);
+    ASSERT_TRUE(is_ok(realistic.status));
+    EXPECT_FALSE(has_warning(realistic));
 
-    // M_c ~ 6e-4: the kinetic energy is comparable to the station solve's enthalpy error.
+    // M_c ~ 6e-4: the kinetic energy is comparable to the station solve's enthalpy error. The
+    // warning does not fail the solve.
     Nozzle huge_nozzle(products, injector_state, options);
-    const std::vector<std::string> huge = recorded_warnings([&] {
-        huge_nozzle.solve_finite_area_chamber(
-            injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1000.0);
-    });
-    EXPECT_TRUE(any_contains(huge, warning));
+    const FiniteAreaChamber huge = huge_nozzle.solve_finite_area_chamber(
+        injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1000.0);
+    ASSERT_TRUE(is_ok(huge.status));
+    EXPECT_TRUE(has_warning(huge));
 }
 
 TEST_F(FiniteAreaCombustorTests, FrozenExpansionContinuesFromEquilibriumChamber) {
@@ -938,15 +973,26 @@ TEST_F(FiniteAreaCombustorTests, InvalidInputsThrow) {
         injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 2.0), NotImplementedError);
 }
 
-TEST_F(FiniteAreaCombustorTests, MassFluxAboveThermalChokingThrows) {
+TEST_F(FiniteAreaCombustorTests, MassFluxAboveThermalChokingHasNoSolution) {
     Nozzle nozzle(products, injector_state, options);
     // The throat mass flux of the infinite-area chamber is about P_inj / c* = 2231 kg/(m^2 s);
     // a constant-area chamber cannot pass more than roughly that divided by phi(1) ~ 1.25.
-    try {
+    const FiniteAreaChamber chamber =
         nozzle.solve_finite_area_chamber(injector_state, CombustorType::FINITE_MASS_FLUX, 3000.0);
-        FAIL() << "Expected std::invalid_argument for a thermally choked chamber";
-    } catch (const std::invalid_argument& error) {
-        EXPECT_NE(std::string(error.what()).find("Maximum mass flux"), std::string::npos)
-            << error.what();
+    EXPECT_TRUE(failed_with(chamber.status, FailureReason::NO_SOLUTION, "Maximum mass flux"));
+    EXPECT_TRUE(std::isnan(chamber.stagnation_pressure));
+    EXPECT_TRUE(failed_with(chamber.throat.status, FailureReason::NOT_COMPUTED));
+    // The injector station does not depend on the chamber solve and stays valid
+    EXPECT_TRUE(is_ok(chamber.injector.status));
+    EXPECT_GT(chamber.injector.thermo.temperature, 0.0);
+    EXPECT_FALSE(chamber.injector.state.empty());
+
+    // Stations downstream of the failed chamber are not computed either
+    const std::vector<NozzleStation> exits = nozzle.solve_stations(
+        chamber, ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0});
+    ASSERT_EQ(exits.size(), 2u);
+    for (const NozzleStation& exit : exits) {
+        EXPECT_EQ(exit.status.reason, FailureReason::NOT_COMPUTED);
+        EXPECT_TRUE(exit.state.empty());
     }
 }

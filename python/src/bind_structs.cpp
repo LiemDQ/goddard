@@ -12,6 +12,7 @@
 #include "goddard/problem.hpp"
 #include "goddard/rocket_results.hpp"
 #include "goddard/thermo.hpp"
+#include "bind_status.hpp"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
@@ -121,8 +122,10 @@ void bind_structs(nb::module_& m) {
              DOC(Goddard, ThroatCondition, area_ratio))
         .def_ro("state", &Goddard::ThroatCondition::state,
              DOC(Goddard, ThroatCondition, state))
+        .def_ro("status", &Goddard::ThroatCondition::status,
+             DOC(Goddard, ThroatCondition, status))
         .def("__repr__", [](const Goddard::ThroatCondition& self) {
-            return std::format("<ThroatCondition T={:.6g} K P={:.6g} Pa u={:.6g} m/s M={:.6g} gamma_s={:.6g}>", self.thermo.temperature, self.thermo.pressure, self.velocity, self.mach, self.gamma_s);
+            return std::format("<ThroatCondition {} T={:.6g} K P={:.6g} Pa u={:.6g} m/s M={:.6g} gamma_s={:.6g}>", status_tag(self.status), self.thermo.temperature, self.thermo.pressure, self.velocity, self.mach, self.gamma_s);
         });
 
     // NozzleStation
@@ -133,8 +136,9 @@ void bind_structs(nb::module_& m) {
         .def_ro("area_ratio", &Goddard::NozzleStation::area_ratio,
              DOC(Goddard, NozzleStation, area_ratio))
         .def_ro("state", &Goddard::NozzleStation::state, DOC(Goddard, NozzleStation, state))
+        .def_ro("status", &Goddard::NozzleStation::status, DOC(Goddard, NozzleStation, status))
         .def("__repr__", [](const Goddard::NozzleStation& self) {
-            return std::format("<NozzleStation A/At={:.6g} T={:.6g} K P={:.6g} Pa u={:.6g} m/s M={:.6g}>", self.area_ratio, self.thermo.temperature, self.thermo.pressure, self.velocity, self.mach);
+            return std::format("<NozzleStation {} A/At={:.6g} T={:.6g} K P={:.6g} Pa u={:.6g} m/s M={:.6g}>", status_tag(self.status), self.area_ratio, self.thermo.temperature, self.thermo.pressure, self.velocity, self.mach);
         });
 
     // NozzleResults
@@ -144,8 +148,9 @@ void bind_structs(nb::module_& m) {
              DOC(Goddard, NozzleResults, throat))
         .def_ro("expansions", &Goddard::NozzleResults::expansions,
              DOC(Goddard, NozzleResults, expansions))
+        .def_ro("status", &Goddard::NozzleResults::status, DOC(Goddard, NozzleResults, status))
         .def("__repr__", [](const Goddard::NozzleResults& self) {
-            return std::format("<NozzleResults chamber P={:.6g} Pa, throat T={:.6g} K, {} expansion station(s)>", self.inlet.thermo.pressure, self.throat.thermo.temperature, self.expansions.size());
+            return std::format("<NozzleResults {} chamber P={:.6g} Pa, throat T={:.6g} K, {} expansion station(s)>", status_tag(self.status), self.inlet.thermo.pressure, self.throat.thermo.temperature, self.expansions.size());
         });
 
     // FiniteAreaChamber
@@ -168,7 +173,12 @@ void bind_structs(nb::module_& m) {
         .def_ro("mass_flux", &Goddard::FiniteAreaChamber::mass_flux,
              DOC(Goddard, FiniteAreaChamber, mass_flux))
         .def_ro("iterations", &Goddard::FiniteAreaChamber::iterations,
-             DOC(Goddard, FiniteAreaChamber, iterations));
+             DOC(Goddard, FiniteAreaChamber, iterations))
+        .def_ro("status", &Goddard::FiniteAreaChamber::status,
+             DOC(Goddard, FiniteAreaChamber, status))
+        .def("__repr__", [](const Goddard::FiniteAreaChamber& self) {
+            return std::format("<FiniteAreaChamber {} Pinj={:.6g} Pa Pinf={:.6g} Pa Ac/At={:.6g}>", status_tag(self.status), self.injector_pressure, self.stagnation_pressure, self.contraction_ratio);
+        });
 
     // RocketCaseParameters
     nb::class_<Goddard::RocketCaseParameters>(m, "RocketCaseParameters", DOC(Goddard, RocketCaseParameters))
@@ -382,8 +392,10 @@ void bind_structs(nb::module_& m) {
              DOC(Goddard, RocketStation, area_ratio))
         .def_ro("thermo",          &Goddard::RocketStation::thermo,
              DOC(Goddard, RocketStation, thermo))
+        .def_ro("status",          &Goddard::RocketStation::status,
+             DOC(Goddard, RocketStation, status))
         .def("__repr__", [](const Goddard::RocketStation& self) {
-            return std::format("<RocketStation case='{}' type={} of_index={} pressure_index={} expansion_index={} A/At={:.6g} T={:.6g} K P={:.6g} Pa>", self.case_name, station_type_name(self.type), self.of_index, self.pressure_index, self.expansion_index, self.area_ratio, self.thermo.temperature, self.thermo.pressure);
+            return std::format("<RocketStation {} case='{}' type={} of_index={} pressure_index={} expansion_index={} A/At={:.6g} T={:.6g} K P={:.6g} Pa>", status_tag(self.status), self.case_name, station_type_name(self.type), self.of_index, self.pressure_index, self.expansion_index, self.area_ratio, self.thermo.temperature, self.thermo.pressure);
         });
 
     // RocketPerformance
@@ -412,6 +424,8 @@ void bind_structs(nb::module_& m) {
             "isp"_a = 0.0,
             "ivac"_a = 0.0,
             "Create a performance record; each keyword sets the field of the same name.")
+        .def_ro("status", &Goddard::RocketPerformance::status,
+             DOC(Goddard, RocketPerformance, status))
         .def_ro("pressure_ratio", &Goddard::RocketPerformance::pressure_ratio,
              DOC(Goddard, RocketPerformance, pressure_ratio))
         .def_ro("area_ratio", &Goddard::RocketPerformance::area_ratio,

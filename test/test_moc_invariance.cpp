@@ -129,7 +129,7 @@ TEST(MocInvariance, DesignMinLengthUnchanged) {
         SCOPED_TRACE(c.name);
         MocResult r = solve_golden(c);
 
-        ASSERT_TRUE(r.converged) << c.name << ": " << r.failure.message;
+        ASSERT_TRUE(r.status.ok()) << c.name << ": " << r.failure.message;
         expect_matches(r.exit_mach, c.exit_mach, "exit_mach", 0);
         expect_matches(r.area_ratio, c.area_ratio, "area_ratio", 0);
         expect_matches(r.nozzle_length, c.nozzle_length, "nozzle_length", 0);
@@ -235,9 +235,9 @@ NozzleProfile scale_profile(const NozzleProfile& profile, double k) {
 void expect_scaled_solution(const MocResult& scaled, const MocResult& unit, double k,
                             MocFlowKind flow)
 {
-    ASSERT_TRUE(unit.converged) << "reference (throat_radius = 1): "
+    ASSERT_TRUE(unit.status.ok()) << "reference (throat_radius = 1): "
         << to_string(unit.failure.code) << " -- " << unit.failure.message;
-    ASSERT_TRUE(scaled.converged) << "throat_radius = " << k << ": "
+    ASSERT_TRUE(scaled.status.ok()) << "throat_radius = " << k << ": "
         << to_string(scaled.failure.code) << " -- " << scaled.failure.message;
 
     // Dimensionless performance.
@@ -394,8 +394,8 @@ TEST(MocThroatScaling, PlanarFanDesignAnalysisRoundTripIsScaleInvariant) {
 
     const MocResult unit_design = design_at(1.0);
     const MocResult scaled_design = design_at(k);
-    ASSERT_TRUE(unit_design.converged);
-    ASSERT_TRUE(scaled_design.converged);
+    ASSERT_TRUE(unit_design.status.ok());
+    ASSERT_TRUE(scaled_design.status.ok());
     {
         SCOPED_TRACE("design");
         expect_scaled_solution(scaled_design, unit_design, k, flow);
@@ -457,7 +457,7 @@ TEST(MocThroatScaling, DesignMinLengthContourScalesWithThroatRadius) {
         const MocResult scaled = MocNozzle(o).solve();
         const MocResult unit = solve_golden(c);
 
-        ASSERT_TRUE(scaled.converged) << scaled.failure.message;
+        ASSERT_TRUE(scaled.status.ok()) << scaled.failure.message;
         expect_invariant(scaled.exit_mach, c.exit_mach, "exit_mach");
         expect_invariant(scaled.area_ratio, c.area_ratio, "area_ratio");
         expect_length_scaled(scaled.nozzle_length, c.nozzle_length, k, "nozzle_length");

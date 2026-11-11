@@ -6,6 +6,7 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/error.hpp"
+#include "goddard/solve_guard.hpp"
 #include "goddard/utils.hpp"
 
 namespace Goddard {
@@ -104,33 +105,60 @@ KineticNozzle::KineticNozzle(
 static std::string diagnose_cvodes_failure(
     const Cantera::CanteraError& e, double x, int step, double t, double dt_max)
 {
-    const char* msg = e.what();
-    bool is_stiffness_failure = std::string_view(msg).find("Error code: -3") != std::string_view::npos
-                             || std::string_view(msg).find("hmin") != std::string_view::npos;
+    const std::string msg = e.getMessage();
+    bool is_stiffness_failure = msg.find("Error code: -3") != std::string::npos
+                             || msg.find("hmin") != std::string::npos;
 
     if (is_stiffness_failure) {
         return std::vformat(
-                   "KineticNozzle::solve: stiffness limit reached at x={:.4f} m "
+                   "stiffness limit reached at x={:.4f} m "
                    "(step {}, t={:.3e} s). The coupled chemistry+expansion ODE is too "
-                   "stiff for CVodes at dt_max={:.1e} s. Reduce dt_max by an order of magnitude.\n"
-                   "CVodes error: ",
+                   "stiff for the integrator at dt_max={:.1e} s. Reduce dt_max by an order of "
+                   "magnitude. Integrator error: ",
                    std::make_format_args(x, step, t, dt_max))
                + msg;
     }
     return std::vformat(
-               "KineticNozzle::solve: CVodes integration failed at x={:.4f} m "
-               "(step {}, t={:.3e} s).\nCVodes error: ",
+               "the reactor integration failed at x={:.4f} m "
+               "(step {}, t={:.3e} s). Integrator error: ",
                std::make_format_args(x, step, t))
            + msg;
 }
 
 KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_steps) {
-    ThroatCondition throat = m_throat_solver.solve_throat_conditions();
+    if (!(dt_max > 0.0) || !(dx_max > 0.0) || max_steps < 1) {
+        throw std::invalid_argument(std::format(
+            "KineticNozzle::solve: dt_max, dx_max and max_steps must be positive, got {:.6g} s, {:.6g} m "
+            "and {}.", dt_max, dx_max, max_steps));
+    }
+
+    KineticNozzleResults results;
+    results.throat = m_throat_solver.solve_throat_conditions();
+    if (!results.throat.status.ok()) {
+        results.status = results.throat.status;
+        return results;
+    }
+    // The stations are appended to the result as they are completed, so a failure partway
+    // leaves the ones before it.
+    results.status = capture_failure("kinetic expansion", [&] {
+        integrate(results, dt_max, dx_max, max_steps);
+    });
+    return results;
+}
+
+void KineticNozzle::integrate(KineticNozzleResults& results, double dt_max, double dx_max,
+                              int max_steps) {
+    const ThroatCondition& throat = results.throat;
+    std::vector<KineticNozzleStation>& stations = results.stations;
     auto thermo = m_gas.thermo();
     if (throat.state.size() > thermo->stateSize()) {
         // An extended state vector carries condensed amounts the reactor network cannot follow.
         m_gas.restore_state(throat.state);
-        check_no_condensed_phases(m_gas);
+        if (m_gas.has_condensed_phases()) {
+            throw SolveError(FailureReason::NO_SOLUTION,
+                "condensed species are present at the throat; the kinetic nozzle is gas-phase "
+                "only.");
+        }
     }
     thermo->restoreState(thermo->stateSize(), throat.state.data());
 
@@ -172,7 +200,6 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
 
     std::vector<double> damkohler(n_species);
 
-    std::vector<KineticNozzleStation> stations;
     double t = 0.0;
     double u_old = u;
     double x_old = x;
@@ -205,7 +232,7 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
         try {
             net.advance(t + dt);
         } catch (const Cantera::CanteraError& e) {
-            throw std::runtime_error(diagnose_cvodes_failure(e, x, step, t, dt_max));
+            throw ConvergenceError(diagnose_cvodes_failure(e, x, step, t, dt_max), step);
         }
         t += dt;
 
@@ -243,7 +270,11 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
         stations.push_back({x, u, M, A_At, std::move(station_thermo), save_thermo_state(*thermo),
             damkohler, Da_min, freezing_species});
     }
-    return {throat, stations, x >= x_exit};
+    if (!(x >= x_exit)) {
+        throw SolveError(FailureReason::INCOMPLETE, std::format(
+            "the integration stopped after max_steps = {} steps at x = {:.6g} m, short of the exit "
+            "at x = {:.6g} m. Raise max_steps, dt_max or dx_max.", max_steps, x, x_exit));
+    }
 }
 
 } // namespace Goddard

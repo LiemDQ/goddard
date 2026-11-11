@@ -45,10 +45,10 @@ TEST(MocDesignRao, BasicSolveReachesRecordedCoverage) {
     RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
     // Honesty: converged and "no failure code" must agree, whichever way they go.
-    EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
+    EXPECT_EQ(result.status.ok(), result.failure.code == MocErrorCode::NONE)
         << "converged and failure.code disagree: " << result.failure.message;
 
-    ASSERT_TRUE(result.converged) << to_string(result.failure.code)
+    ASSERT_TRUE(result.status.ok()) << to_string(result.failure.code)
         << " -- " << result.failure.message;
     EXPECT_TRUE(result.reached_exit_plane);
     EXPECT_GT(result.exit_mach, 1.0);
@@ -96,7 +96,7 @@ TEST(MocDesignRao, CfExceedsConicalOfSameLengthAndAreaRatio) {
                     + "_Lf" + std::to_string(lf) + "_g" + std::to_string(gamma);
 
                 MocResult rao = make_rao_solver(gamma, ar, lf, 31).solve();
-                ASSERT_TRUE(rao.converged) << tag << ": " << to_string(rao.failure.code)
+                ASSERT_TRUE(rao.status.ok()) << tag << ": " << to_string(rao.failure.code)
                     << " -- " << rao.failure.message;
                 EXPECT_TRUE(rao.reached_exit_plane) << tag;
 
@@ -128,7 +128,7 @@ TEST(MocDesignRao, CfExceedsConicalOfSameLengthAndAreaRatio) {
                 // (test_moc_convergence.cpp). MocMode::ANALYSIS always uses the inverse march.
 
                 MocResult cone_result = MocNozzle(cone_opts).solve();
-                ASSERT_TRUE(cone_result.converged) << tag << " (comparison cone): "
+                ASSERT_TRUE(cone_result.status.ok()) << tag << " (comparison cone): "
                     << to_string(cone_result.failure.code) << " -- " << cone_result.failure.message;
                 EXPECT_TRUE(cone_result.reached_exit_plane) << tag << " (comparison cone)";
 
