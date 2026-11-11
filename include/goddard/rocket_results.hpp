@@ -81,7 +81,7 @@ struct RocketStation {
     std::size_t expansion_index;
     /**
      * A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1 for THROAT, Ae/At
-     * for EXIT (also for pressure-ratio exits).
+     * for EXIT (also for pressure-ratio exits). NaN when the station failed (`status` not ok).
      */
     double area_ratio;
     /**

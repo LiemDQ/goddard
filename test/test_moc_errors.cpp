@@ -317,6 +317,42 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     expect_all_points_valid(result, opts.solver_options.abstol);
 }
 
+// A failed solve carries no scalar summary of a nozzle it did not finish: the exit Mach number,
+// length and area ratio are NaN and the exit plane is empty, so a script cannot mistake them for
+// results. The partial record (messages, diagnostics, the net as far as it got) is still there.
+TEST(MocErrorsFailureHonesty, FailedSolveHasNaNScalarsAndNoThrustCoefficient) {
+    MocOptions opts;
+    opts.start_line = MocStartLine::KLIEGEL_LEVINE;
+    opts.kl_max_wall_angle_error = 0.01;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
+    opts.mode = MocMode::ANALYSIS;
+    opts.gamma = 1.4;
+    opts.num_characteristics = 8;
+    opts.geometry.throat_radius = 1.0;
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
+
+    MocNozzle nozzle(opts);
+    const MocResult result = nozzle.solve();
+    ASSERT_FALSE(result.status.ok());
+
+    EXPECT_TRUE(std::isnan(result.exit_mach));
+    EXPECT_TRUE(std::isnan(result.nozzle_length));
+    EXPECT_TRUE(std::isnan(result.area_ratio));
+    EXPECT_TRUE(result.exit_plane.y.empty());
+    EXPECT_NE(result.failure.code, MocErrorCode::NONE);
+
+    for (MocFlowKind flow : {MocFlowKind::PLANAR, MocFlowKind::AXISYMMETRIC}) {
+        ThrustCoefficient cf;
+        ASSERT_NO_THROW({ cf = compute_thrust_coefficient(result, flow, 0.1); });
+        EXPECT_TRUE(failed_with(cf.status, FailureReason::NOT_COMPUTED, "MoC initialization"));
+        EXPECT_TRUE(std::isnan(cf.Cf));
+        EXPECT_TRUE(std::isnan(cf.Cf_vacuum));
+        EXPECT_TRUE(std::isnan(cf.momentum_thrust));
+        EXPECT_TRUE(std::isnan(cf.pressure_thrust));
+    }
+}
+
 // Options that stand for planned features are rejected rather than silently ignored.
 TEST(MocOptionsValidation, PlaceholderOptionsAreNotImplemented) {
     MocOptions base;

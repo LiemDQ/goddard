@@ -77,6 +77,8 @@ states.num_failed
 states.status_at(states.flat_index(i, j))
 ```
 
+A failed entry has no state: `states.get_state(loc)` raises `SolveError` with the entry's status instead of returning the state the entry held before the failed solve.
+
 ## Stopping at the first failure
 
 A script that should not continue past a failed solve calls `raise_if_failed()`:
@@ -106,4 +108,4 @@ The same holds for solves that return a number, such as `ShockSolver.max_deflect
 Two solvers keep what they computed before a failure:
 
 - `KineticNozzle.solve` keeps the stations integrated up to the failing step. `status.reason` is `INCOMPLETE` if the step limit ran out and `NOT_CONVERGED` if the integration failed.
-- `MocNozzle.solve` keeps the characteristic net marched so far. `MocResult.failure` adds the MoC-specific detail: an error code, the location and the marching pass.
+- `MocNozzle.solve` keeps the characteristic net marched so far. `MocResult.failure` adds the MoC-specific detail: an error code, the location and the marching pass. `MocResult.exit_mach`, `nozzle_length` and `area_ratio` are `NaN` and `exit_plane` is empty unless the solve succeeded, and `compute_thrust_coefficient` on a failed result returns `NaN` values with a `NOT_COMPUTED` status.

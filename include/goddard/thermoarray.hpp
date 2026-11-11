@@ -83,6 +83,10 @@ class ThermoArray {
 	 * State vector of the entry at flat location `loc`: the Cantera state of the gas phase followed
 	 * by one entry per candidate condensed species (kmol per kg of mixture), exactly as
 	 * `Gas::save_state()` lays it out.
+	 *
+	 * @throws SolveError with the entry's status if the entry failed (see `status_at`): it holds
+	 * the state it had before the failed solve, which is not a solution.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	std::vector<double> get_state(int loc) const;
 
@@ -93,12 +97,15 @@ class ThermoArray {
 	 * length, in which case the condensed amounts of that entry are set to zero.
 	 *
 	 * @throws std::invalid_argument if the vector has neither length.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	void set_state(int loc, const std::vector<double>& state);
 
 	/**
 	 * Amounts of the candidate condensed species at flat location `loc` [kmol per kg of mixture],
 	 * in candidate order. Empty for a gas-only array.
+	 *
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	std::vector<double> get_condensed_moles(int loc) const;
 
@@ -107,6 +114,7 @@ class ThermoArray {
 	 * [kmol per kg of mixture].
 	 *
 	 * @throws std::invalid_argument if `moles` does not have one entry per candidate.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	void set_condensed_moles(int loc, const std::vector<double>& moles);
 
@@ -205,7 +213,9 @@ class ThermoArray {
 	 * back; `rtol` and `max_steps` are forwarded to the Gibbs solver and the remaining arguments
 	 * are ignored.
 	 *
-	 * @throws std::invalid_argument if `solver` is "vcs" and the array carries condensed species.
+	 * @throws std::invalid_argument if `XY` is not one of "TP", "TV", "HP", "SP", "SV" or "UV", if
+	 * `solver` is not "auto", "element_potential", "gibbs" or "vcs", or if `solver` is "vcs" and the
+	 * array carries condensed species.
 	 */
 	void equilibrate(const std::string& XY, 
 		const std::string& solver="auto", 
@@ -220,6 +230,7 @@ class ThermoArray {
 	 * that are ok are left alone. See `equilibrate` for the arguments.
 	 *
 	 * @return Number of entries still failed [-].
+	 * @throws std::invalid_argument for an `XY` or `solver` that `equilibrate` rejects.
 	 */
 	int retry_failed(const std::string& XY,
 		const std::string& solver="auto",
@@ -233,9 +244,10 @@ class ThermoArray {
 		TODO: Possibly enable dynamic resizing of the array based on the arguments
 		provided to the method
 
-		Each setter resets every entry's status to ok. A state the thermodynamic backend rejects
-		(e.g. a nonpositive temperature) throws `SolveError`, leaving the entries set before it
-		changed.
+		Each setter resets the status of every entry it writes to ok. A state the thermodynamic
+		backend rejects (e.g. a nonpositive temperature) throws `SolveError`: the entries set before
+		it are written and ok, and the entry that was rejected and those after it keep their
+		previous state and status.
 	*/
 
 	/**
@@ -377,6 +389,8 @@ class ThermoArray {
 	/** "entry (i, j, k)" for flat location `loc`, with as many indices as dimensions. */
 	std::string entry_label(int loc) const;
 	void check_location(int loc) const;
+	/** `get_state` without the check of the entry's status, for the retry of a failed entry. */
+	std::vector<double> state_unchecked(int loc) const;
 };
 
 }

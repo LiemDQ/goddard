@@ -1,5 +1,6 @@
 #include "goddard/speciate.hpp"
 #include "goddard/utils.hpp"
+#include "goddard/solve_guard.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -93,7 +94,8 @@ AnyMap speciate_from_yaml_string(const string& yaml_str, const std::unordered_se
 }
 
 AnyMap select_species(const string& infile, const std::unordered_set<string>& species) {
-    auto root_node = load_root_node(infile);
+    auto root_node = translate_backend_usage_errors(
+        "select_species", [&] { return load_root_node(infile); });
     return select_species(root_node, species);
 }
 

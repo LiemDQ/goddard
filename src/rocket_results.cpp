@@ -86,6 +86,9 @@ RocketProblemResults::RocketProblemResults(
                     s.area_ratio      = 0.0;
                     s.thermo          = station_thermo(nozzle.inlet.thermo);
                     s.status          = nozzle.inlet.status;
+                    if (!s.status.ok()) {
+                        s.area_ratio = NaN;
+                    }
                     m_stations.push_back(std::move(s));
                 }
 
@@ -104,6 +107,9 @@ RocketProblemResults::RocketProblemResults(
                         s.area_ratio      = 0.0;
                         s.thermo          = station_thermo(fac.stagnation.thermo);
                         s.status          = fac.stagnation.status;
+                        if (!s.status.ok()) {
+                            s.area_ratio = NaN;
+                        }
                         m_stations.push_back(std::move(s));
                     }
 
@@ -119,6 +125,9 @@ RocketProblemResults::RocketProblemResults(
                         s.area_ratio      = fac.contraction_ratio;
                         s.thermo          = station_thermo(ce.thermo);
                         s.status          = ce.status;
+                        if (!s.status.ok()) {
+                            s.area_ratio = NaN;
+                        }
                         m_stations.push_back(std::move(s));
                     }
                 }
@@ -135,6 +144,9 @@ RocketProblemResults::RocketProblemResults(
                     s.area_ratio      = 1.0;
                     s.thermo          = station_thermo(tc.thermo);
                     s.status          = tc.status;
+                    if (!s.status.ok()) {
+                        s.area_ratio = NaN;
+                    }
                     m_stations.push_back(std::move(s));
                 }
 
@@ -154,6 +166,9 @@ RocketProblemResults::RocketProblemResults(
                                         ? case_result.expansion_ratios[exp_idx] : exp.area_ratio;
                     s.thermo          = station_thermo(exp.thermo);
                     s.status          = exp.status;
+                    if (!s.status.ok()) {
+                        s.area_ratio = NaN;
+                    }
                     m_stations.push_back(std::move(s));
                 }
             }

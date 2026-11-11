@@ -23,7 +23,6 @@
 using namespace Goddard;
 using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::is_ok;
-using Goddard::test_helpers::throws_solve_error;
 
 class NozzleTests : public ::testing::Test {
 protected:
@@ -592,6 +591,49 @@ TEST_F(NozzleTests, InvalidArgumentsThrow) {
     EXPECT_THROW(Nozzle(*gas, options), std::invalid_argument);
 }
 
+TEST_F(NozzleTests, ValidateStationsIsPublicAndChecksWithoutSolving) {
+    Nozzle nozzle(*gas, options);
+    EXPECT_NO_THROW(nozzle.validate_stations(ExpansionType::SUPERSONIC_AREA_RATIO, {2.0, 10.0}));
+    EXPECT_NO_THROW(nozzle.validate_stations(ExpansionType::PRESSURE_RATIO, {1.0, 20.0}));
+    EXPECT_THROW(nozzle.validate_stations(ExpansionType::SUPERSONIC_AREA_RATIO, {2.0, 1.0}),
+                 std::invalid_argument);
+    EXPECT_THROW(nozzle.validate_stations(ExpansionType::SUBSONIC_AREA_RATIO, {0.5}),
+                 std::invalid_argument);
+    EXPECT_THROW(nozzle.validate_stations(ExpansionType::PRESSURE_RATIO, {20.0, 0.99}),
+                 std::invalid_argument);
+
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 4;
+    Nozzle frozen(*gas, options);
+    EXPECT_THROW(frozen.validate_stations(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0}),
+                 std::invalid_argument);
+    EXPECT_NO_THROW(frozen.validate_stations(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0, 20.0}));
+}
+
+TEST_F(NozzleTests, StationsFrozenFromAFailedFreezingStationAreNotComputed) {
+    // Station 2 is the last equilibrium station (frozen_NFZ = 2). At an area ratio of 1e8 its
+    // equilibrium solve fails (the temperature at the station's pressure is negative), so station 3, which would keep its composition, cannot be solved.
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 2;
+    Nozzle nozzle(*gas, options);
+    const NozzleResults results =
+        nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {1.0e8, 10.0});
+    ASSERT_EQ(results.expansions.size(), 2u);
+    ASSERT_TRUE(is_ok(results.throat.status)) << results.throat.status.describe();
+    ASSERT_FALSE(results.expansions[0].status.ok()) << "the freezing station was expected to fail";
+    EXPECT_TRUE(failed_with(results.expansions[1].status, FailureReason::NOT_COMPUTED,
+                            "not computed because"));
+    EXPECT_NE(results.expansions[1].status.message.find(results.expansions[0].status.message),
+              std::string::npos) << results.expansions[1].status.message;
+    EXPECT_TRUE(results.expansions[1].state.empty());
+    EXPECT_TRUE(std::isnan(results.expansions[1].mach));
+    EXPECT_EQ(results.status.reason, results.expansions[0].status.reason);
+
+    // With a freezing station that solves, the frozen station after it does too
+    const NozzleResults good = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0});
+    EXPECT_TRUE(is_ok(good.status));
+}
+
 TEST_F(NozzleTests, FrozenStationBeyondTheLastStationThrows) {
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 5; // station 0 is the chamber, 1 the throat: two ratios end at station 3
@@ -981,7 +1023,12 @@ TEST_F(FiniteAreaCombustorTests, MassFluxAboveThermalChokingHasNoSolution) {
         nozzle.solve_finite_area_chamber(injector_state, CombustorType::FINITE_MASS_FLUX, 3000.0);
     EXPECT_TRUE(failed_with(chamber.status, FailureReason::NO_SOLUTION, "Maximum mass flux"));
     EXPECT_TRUE(std::isnan(chamber.stagnation_pressure));
-    EXPECT_TRUE(failed_with(chamber.throat.status, FailureReason::NOT_COMPUTED));
+    // The stagnation state, combustion end and throat are outputs of the failed chamber solve:
+    // they carry its reason, not a NOT_COMPUTED wrapper around it
+    EXPECT_TRUE(failed_with(chamber.stagnation.status, FailureReason::NO_SOLUTION, "Maximum mass flux"));
+    EXPECT_TRUE(failed_with(chamber.combustion_end.status, FailureReason::NO_SOLUTION, "Maximum mass flux"));
+    EXPECT_TRUE(failed_with(chamber.throat.status, FailureReason::NO_SOLUTION, "Maximum mass flux"));
+    EXPECT_EQ(chamber.throat.status.stage, chamber.status.stage);
     // The injector station does not depend on the chamber solve and stays valid
     EXPECT_TRUE(is_ok(chamber.injector.status));
     EXPECT_GT(chamber.injector.thermo.temperature, 0.0);
@@ -992,7 +1039,60 @@ TEST_F(FiniteAreaCombustorTests, MassFluxAboveThermalChokingHasNoSolution) {
         chamber, ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0});
     ASSERT_EQ(exits.size(), 2u);
     for (const NozzleStation& exit : exits) {
-        EXPECT_EQ(exit.status.reason, FailureReason::NOT_COMPUTED);
+        EXPECT_TRUE(failed_with(exit.status, FailureReason::NOT_COMPUTED, "not computed because"));
         EXPECT_TRUE(exit.state.empty());
+        // The cause is named once
+        const std::string needle = "not computed because";
+        EXPECT_EQ(exit.status.message.find(needle, exit.status.message.find(needle) + 1),
+                  std::string::npos) << exit.status.message;
+        EXPECT_NE(exit.status.message.find("Maximum mass flux"), std::string::npos);
     }
+}
+
+TEST_F(FiniteAreaCombustorTests, FailedChamberSolveRestoresTheInletState) {
+    Nozzle nozzle(products, injector_state, options);
+    const std::vector<double> inlet_before = nozzle.get_inlet_state();
+
+    // Just above the perfect-gas limit the real-gas iteration starts and chokes at a trial
+    // stagnation pressure; the nozzle must not keep that state as its inlet.
+    const FiniteAreaChamber chamber =
+        nozzle.solve_finite_area_chamber(injector_state, CombustorType::FINITE_MASS_FLUX, 1825.0);
+    ASSERT_TRUE(failed_with(chamber.status, FailureReason::NO_SOLUTION, "A_c/A_t"));
+    EXPECT_EQ(nozzle.get_inlet_state(), inlet_before);
+
+    // A solve that succeeds moves the inlet to the stagnation state
+    const FiniteAreaChamber solved = nozzle.solve_finite_area_chamber(
+        injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1.58);
+    ASSERT_TRUE(is_ok(solved.status));
+    EXPECT_NE(nozzle.get_inlet_state(), inlet_before);
+    EXPECT_EQ(nozzle.get_inlet_state(), solved.stagnation.state);
+}
+
+TEST_F(FiniteAreaCombustorTests, PressureRatioBelowInjectorOverStagnationFailsOnlyThatStation) {
+    Nozzle nozzle(products, injector_state, options);
+    const FiniteAreaChamber chamber = nozzle.solve_finite_area_chamber(
+        injector_state, CombustorType::FINITE_CONTRACTION_RATIO, 1.58);
+    ASSERT_TRUE(is_ok(chamber.status));
+    const double injector_over_stagnation = chamber.injector_pressure / chamber.stagnation_pressure;
+    ASSERT_GT(injector_over_stagnation, 1.05);
+
+    // The user's ratios are P_inj/P. 1.0 and 1.05 are between 1 and P_inj/P_inf, so the station
+    // pressure would exceed the stagnation pressure: no solution, not an exception quoting a
+    // ratio the user never gave. 5.0 solves.
+    const std::vector<NozzleStation> stations = nozzle.solve_stations(
+        chamber, ExpansionType::PRESSURE_RATIO, {1.0, 1.05, 5.0});
+    ASSERT_EQ(stations.size(), 3u);
+    EXPECT_TRUE(failed_with(stations[0].status, FailureReason::NO_SOLUTION, "stagnation pressure"));
+    EXPECT_TRUE(failed_with(stations[1].status, FailureReason::NO_SOLUTION, "stagnation pressure"));
+    EXPECT_TRUE(std::isnan(stations[0].mach));
+    EXPECT_TRUE(stations[0].state.empty());
+    ASSERT_TRUE(is_ok(stations[2].status)) << stations[2].status.describe();
+    EXPECT_NEAR(pressure_of(stations[2].state), chamber.injector_pressure / 5.0,
+                1e-6 * chamber.injector_pressure);
+
+    // A ratio below 1 is the user's error whatever the chamber is
+    EXPECT_THROW(nozzle.solve_stations(chamber, ExpansionType::PRESSURE_RATIO, {5.0, 0.9}),
+                 std::invalid_argument);
+    EXPECT_THROW(nozzle.solve_stations(chamber, ExpansionType::SUPERSONIC_AREA_RATIO, {1.0}),
+                 std::invalid_argument);
 }

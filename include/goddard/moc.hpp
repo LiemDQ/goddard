@@ -498,9 +498,13 @@ struct MocResult {
     std::vector<std::string> messages; ///< Warnings and error information collected during the solve.
     MocFailure failure; ///< MoC-specific detail of a failed solve; MocErrorCode::NONE when `status` is ok.
 
-    double exit_mach = 0.0;     ///< Mach number at the exit plane.
-    double nozzle_length = 0.0; ///< Distance from throat to exit plane, in the unit of NozzleGeometry::throat_radius.
-    double area_ratio = 0.0;    ///< Exit area divided by throat area.
+    /// Mach number at the exit plane. NaN unless the solve succeeded.
+    double exit_mach = NaN;
+    /// Distance from throat to exit plane, in the unit of NozzleGeometry::throat_radius. NaN
+    /// unless the solve succeeded.
+    double nozzle_length = NaN;
+    /// Exit area divided by throat area. NaN unless the solve succeeded.
+    double area_ratio = NaN;
     /// The NozzleGeometry::throat_radius of the solve: the length unit of every length in
     /// this result, and the reference compute_thrust_coefficient() normalizes by.
     double throat_radius = 1.0;
@@ -546,16 +550,19 @@ struct MocResult {
     double min_theta_x = 0.0; ///< Axial position of min_theta, in the unit of NozzleGeometry::throat_radius.
     double min_theta_y = 0.0; ///< Radial position of min_theta, in the unit of NozzleGeometry::throat_radius.
 
-    /// Flow state across the exit plane, for `compute_thrust_coefficient`.
+    /// Flow state across the exit plane, for `compute_thrust_coefficient`. Empty unless the solve
+    /// succeeded.
     ExitPlane exit_plane;
 };
 
 /** Thrust performance obtained by integrating over a solved exit plane. */
 struct ThrustCoefficient {
-    double Cf_vacuum;       ///< Vacuum thrust coefficient.
-    double Cf;              ///< Thrust coefficient at the specified ambient pressure.
-    double momentum_thrust; ///< Momentum component, normalized by p0 * A_throat.
-    double pressure_thrust; ///< Pressure component, normalized by p0 * A_throat.
+    double Cf_vacuum = NaN;       ///< Vacuum thrust coefficient.
+    double Cf = NaN;              ///< Thrust coefficient at the specified ambient pressure.
+    double momentum_thrust = NaN; ///< Momentum component, normalized by p0 * A_throat.
+    double pressure_thrust = NaN; ///< Pressure component, normalized by p0 * A_throat.
+    /// `NOT_COMPUTED` when the MoC result it was computed from failed (every field is then NaN).
+    SolveStatus status;
 };
 
 /**
@@ -567,7 +574,9 @@ struct ThrustCoefficient {
  * (2 r_t for planar flow, pi r_t^2 axisymmetric), so the coefficient does not depend on the
  * length unit.
  *
- * @param result   MoC solution result (must have populated exit_plane with gamma_s)
+ * @param result   MoC solution result (must have populated exit_plane with gamma_s). If
+ *                 `result.status` is not ok, the returned coefficient has NaN fields and a
+ *                 `NOT_COMPUTED` status.
  * @param flow_type  PLANAR or AXISYMMETRIC (determines integration measure)
  * @param ambient_pressure_ratio  p_amb / p0 (0 for vacuum)
  *

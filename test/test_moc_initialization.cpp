@@ -49,6 +49,7 @@ ThroatCondition make_perfect_gas_throat(double gamma) {
         .state = {},
         .pinned_transition = false,
         .thermo = {},
+        .status = {},
     };
 }
 

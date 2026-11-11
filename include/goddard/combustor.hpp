@@ -157,6 +157,9 @@ class Combustor : public BaseCombustor {
     /**
      * Construct from fuel and oxidizer compositions, given as product species of `gas`.
      * Solve with the `solve` overloads that take reactant temperatures.
+     *
+     * @throws std::invalid_argument if a composition string cannot be parsed or names a species
+     * the product gas does not have.
      */
     Combustor(Gas gas, const std::string& fuel, const std::string& oxidizer);
     /**
@@ -244,7 +247,9 @@ class Combustor : public BaseCombustor {
      * or if the process is `ISOCHORIC` while the
      * product gas carries candidate condensed species.
      * @throws std::invalid_argument if a reactant contains an element the product gas does not have.
-     * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty.
+     * @throws std::invalid_argument if `pressures` or `mixture_ratios` is empty, a pressure is
+     * not positive and finite, or a mixture ratio is out of range. Every ratio is checked before
+     * anything is solved.
      */
     ThermoArray solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
         const CombustorOptions& options = {});

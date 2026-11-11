@@ -25,7 +25,7 @@ Cantera::AnyMap speciate_from_yaml_string(const std::string& yaml_str, const std
  *
  * The species names must match exactly. The selected species keep their order in the file.
  *
- * @throws Cantera::CanteraError for a CTI or XML input file.
+ * @throws std::invalid_argument if the input file cannot be read (e.g. a CTI or XML file).
  * @throws std::invalid_argument if a requested species is not in the file, listing the missing
  * names.
  */

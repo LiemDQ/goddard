@@ -108,9 +108,10 @@ ReflectedShockResult reflected_shock(double mach, double gamma);
  * @param mach upstream Mach number [-]
  * @param deflection_angle flow deflection [rad]
  * @param gamma ratio of specific heats [-]
- * @return (weak, strong) wave angles [rad]. Both are NaN if the deflection is negative or exceeds
- * the maximum deflection (a detached shock), or if mach < 1 or gamma <= 1. At zero deflection
- * they are the Mach angle and pi/2.
+ * @return (weak, strong) wave angles [rad]. At zero deflection they are the Mach angle and pi/2.
+ * @throws SolveError (`NO_SOLUTION`) if the deflection is negative or exceeds the maximum
+ * deflection (a detached shock), or if mach < 1.
+ * @throws std::invalid_argument if gamma <= 1
  */
 std::pair<double,double> oblique_shock_wave_angle(double mach, double deflection_angle, double gamma);
 
@@ -130,7 +131,9 @@ double oblique_shock_deflection_angle(double mach, double wave_angle, double gam
  *
  * @param mach upstream Mach number [-]
  * @param gamma ratio of specific heats [-]
- * @return wave angle [rad]; NaN if mach < 1 or gamma <= 1
+ * @return wave angle [rad]
+ * @throws SolveError (`NO_SOLUTION`) if mach < 1
+ * @throws std::invalid_argument if gamma <= 1
  */
 double oblique_shock_max_deflection_wave_angle(double mach, double gamma);
 
@@ -139,7 +142,9 @@ double oblique_shock_max_deflection_wave_angle(double mach, double gamma);
  *
  * @param mach upstream Mach number [-]
  * @param gamma ratio of specific heats [-]
- * @return maximum deflection angle [rad]; NaN if mach < 1 or gamma <= 1
+ * @return maximum deflection angle [rad]
+ * @throws SolveError (`NO_SOLUTION`) if mach < 1
+ * @throws std::invalid_argument if gamma <= 1
  */
 double oblique_shock_max_deflection(double mach, double gamma);
 

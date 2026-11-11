@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 namespace Goddard {
 
 namespace {
@@ -227,8 +228,8 @@ void BaseCombustor::set_reactant_states(ThermoArray& states, const Eigen::ArrayX
             const int loc = states.flat_index(i, j);
             SolveStatus status = capture_failure("reactant state", [&] {
                 translate_backend_errors(
-                    std::format("no reactant state has the enthalpy {:.6g} J/kg at P = {:.6g} Pa",
-                        enthalpies[i], pressures[j]),
+                    [&] { return std::format("no reactant state has the enthalpy {:.6g} J/kg at P = {:.6g} Pa",
+                        enthalpies[i], pressures[j]); },
                     [&] {
                         thermo->setMassFractions(row.data());
                         thermo->setState_HP(enthalpies[i], pressures[j]);
@@ -265,8 +266,10 @@ void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
 Combustor::Combustor(Gas gas, const std::string& fuel_comp, const std::string& ox_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+    translate_backend_usage_errors("Combustor::Combustor", [&] {
+        m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+        m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+    });
 }
 
 Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer)
@@ -339,6 +342,7 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
 
     require_nonempty(pressures, "pressures");
     require_nonempty(mixture_ratios, "mixture_ratios");
+    require_positive(pressures, "pressures");
     if (!m_fuel_gas || !m_oxidizer_gas) {
         throw NotImplementedError(
             "Combustor::solve(pressures, mixture_ratios) requires the combustor to be built from "
@@ -365,10 +369,16 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
 
     const long n_ratios = mixture_ratios.size();
     const long n_pressures = pressures.size();
+    // Validate every mixture ratio before anything is solved.
+    std::vector<double> fuel_fractions;
+    fuel_fractions.reserve(static_cast<size_t>(n_ratios));
+    for (long i = 0; i < n_ratios; i++) {
+        fuel_fractions.push_back(fuel_mass_fraction(mixture_ratios(i), options.mixture_type));
+    }
     ThermoArray combustion_states(m_gas, {n_ratios, n_pressures});
 
     for (long i = 0; i < n_ratios; i++) {
-        const double fuel_fraction = fuel_mass_fraction(mixture_ratios(i), options.mixture_type);
+        const double fuel_fraction = fuel_fractions[static_cast<size_t>(i)];
         const Eigen::ArrayXd element_moles =
             fuel_fraction * fuel_elements + (1.0 - fuel_fraction) * oxidizer_elements;
         const double enthalpy =
@@ -531,9 +541,11 @@ DilutedCombustor::DilutedCombustor(Gas gas, const std::string& fuel_comp,
     const std::string& ox_comp, const std::string& dilute_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
-    m_flue_composition = Cantera::parseCompString(dilute_comp, m_gas.species_names());
+    translate_backend_usage_errors("DilutedCombustor::DilutedCombustor", [&] {
+        m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+        m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+        m_flue_composition = Cantera::parseCompString(dilute_comp, m_gas.species_names());
+    });
 }
 
 DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,
@@ -628,7 +640,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
     double r = recirculation_ratio;
 
     // Get molecular weight and mole fractions for flue gas
-    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    m_gas.set_state_TPX(300.0, 101325.0, m_flue_composition);
     double mw_flue = thermo->meanMolecularWeight();
     std::vector<double> flue_mole_fracs(n_species);
     thermo->getMoleFractions(flue_mole_fracs.data());
@@ -674,7 +686,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(
     double w_flue = r / (1.0 + r);
 
     // Get mass fractions for flue gas
-    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    m_gas.set_state_TPX(300.0, 101325.0, m_flue_composition);
     std::vector<double> flue_mass_fracs(n_species);
     thermo->getMassFractions(flue_mass_fracs.data());
 

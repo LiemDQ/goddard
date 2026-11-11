@@ -96,7 +96,8 @@ struct SolveStatus {
 
     /**
      * Status of a solve that was skipped because the stage `upstream` depends on failed. The
-     * message names the upstream stage and repeats its message.
+     * message names the upstream stage and repeats its message. If `upstream` is itself
+     * `NOT_COMPUTED`, it already names the failure that caused it and is returned unchanged.
      */
     static SolveStatus not_computed(const SolveStatus& upstream);
 };

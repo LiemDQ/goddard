@@ -1,6 +1,7 @@
 #include "cantera/base/stringUtils.h"
 #include "goddard/thermo.hpp"
 #include "goddard/error.hpp"
+#include "goddard/solve_guard.hpp"
 
 #include <limits>
 
@@ -30,8 +31,10 @@ ThermodynamicState ThermodynamicState::undefined() {
 
 // -- PhaseSpecification --
 
-PhaseSpecification::PhaseSpecification(double temperature, double pressure, const std::string& comp) 
-: T(temperature), P(pressure), composition(Cantera::parseCompString(comp))
+PhaseSpecification::PhaseSpecification(double temperature, double pressure, const std::string& comp)
+: T(temperature), P(pressure),
+  composition(translate_backend_usage_errors("PhaseSpecification::PhaseSpecification",
+      [&] { return Cantera::parseCompString(comp); }))
 {}
 
 PhaseSpecification::PhaseSpecification(double temperature, double pressure, const Composition& comp) 

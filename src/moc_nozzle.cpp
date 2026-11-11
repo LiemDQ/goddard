@@ -175,8 +175,10 @@ FailureReason failure_reason_of(MocErrorCode code) {
         case MocErrorCode::NONFINITE_VALUE:
         case MocErrorCode::PM_INVERSION_FAILED:
         case MocErrorCode::INITIALIZATION_FAILED:
-        case MocErrorCode::MAX_ITERATIONS_REACHED:
             return FailureReason::NOT_CONVERGED;
+        // The pass cap stopped a march that had produced a valid partial net.
+        case MocErrorCode::MAX_ITERATIONS_REACHED:
+            return FailureReason::INCOMPLETE;
     }
     return FailureReason::NOT_CONVERGED;
 }
@@ -201,7 +203,10 @@ SolveStatus moc_status(const MocFailure& failure, const MocLog& log,
             status.stage = "MoC initialization";
         } else {
             status.stage = std::format("MoC march, pass {}", failure.kernel_pass);
-            status.message += std::format(" near x = {:.6g}, y = {:.6g}", failure.x, failure.y);
+            if (failure.code != MocErrorCode::MAX_ITERATIONS_REACHED) {
+                // The pass cap is not tied to a point: its failure record has no location.
+                status.message += std::format(" near x = {:.6g}, y = {:.6g}", failure.x, failure.y);
+            }
         }
     }
     const std::string_view warning_prefix = "Warning: ";
@@ -221,6 +226,8 @@ SolveStatus moc_status(const MocFailure& failure, const MocLog& log,
 void record_initialization_failure(MocResult& result, std::optional<SolveStatus>& status,
                                    const std::string& what) {
     try {
+        // Only called from a catch block.
+        // cppcheck-suppress rethrowNoCurrentException
         throw;
     } catch (const std::out_of_range& e) {
         result.failure = MocFailure{MocErrorCode::TABLE_RANGE_EXCEEDED, what + e.what(), 0.0, 0.0, -1};
@@ -443,10 +450,13 @@ MocResult MocNozzle::solve() {
             result.reached_exit_plane = false;
         }
     }
-    if (!net.wall_x.empty()) {
+    // The scalar summaries and the exit plane describe a finished nozzle: a failed solve leaves
+    // them NaN and empty. The net, profile and diagnostics are its partial-solution record.
+    const bool solved = !kernel_failure.has_value();
+    if (solved && !net.wall_x.empty()) {
         result.nozzle_length = net.wall_x.back();
     }
-    if (options.mode != MocMode::DESIGN_MIN_LENGTH) {
+    if (solved && options.mode != MocMode::DESIGN_MIN_LENGTH) {
         // net.wall_x.front()/wall_y.front() are F_0's own wall point, not the throat lip
         // (0, 1) DirectMarch seeds -- see the front-based seeding branch above -- so the
         // throat radius reference is the normalized geometry's (1) instead.
@@ -454,7 +464,7 @@ MocResult MocNozzle::solve() {
             result.area_ratio = area_ratio_of(net, options.flow_type, net_throat_radius);
         }
     }
-    else if (!net.wall_y.empty() && net.wall_y.front() > 0.0) {
+    else if (solved && !net.wall_y.empty() && net.wall_y.front() > 0.0) {
         result.area_ratio = area_ratio_of(net, options.flow_type, net.wall_y.front());
     }
 
@@ -464,7 +474,7 @@ MocResult MocNozzle::solve() {
     // For analysis/Rao the exit flow is generally not uniform, so no single computed point
     // represents "the" exit Mach; report the centerline value (most downstream axis point)
     // instead, for a number that is consistently defined across modes.
-    if (!net.points.empty()) {
+    if (solved && !net.points.empty()) {
         if (options.mode != MocMode::DESIGN_MIN_LENGTH && !net.axis_point_indices.empty()) {
             result.exit_mach = net.leading_axis_point().mach;
         } else {
@@ -477,7 +487,9 @@ MocResult MocNozzle::solve() {
     result.profile.y = net.wall_y;
 
     // Exit plane extraction: see exit_plane_of() above.
-    result.exit_plane = exit_plane_of(net, options.mode);
+    if (solved) {
+        result.exit_plane = exit_plane_of(net, options.mode);
+    }
 
     // Everything above is in throat radii; report lengths in the caller's unit.
     scale_result_lengths(result, throat_radius);

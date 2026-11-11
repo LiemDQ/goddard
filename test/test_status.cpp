@@ -90,6 +90,22 @@ TEST(SolveStatus, NotComputedNamesTheUpstreamStageAndMessage) {
     EXPECT_TRUE(failed_with(anonymous, FailureReason::NOT_COMPUTED, "choked"));
 }
 
+TEST(SolveStatus, NotComputedOfANotComputedStatusIsPassedThroughUnchanged) {
+    SolveStatus root = SolveStatus::failure(FailureReason::NO_SOLUTION, "choked");
+    root.stage = "finite-area chamber";
+    const SolveStatus once = SolveStatus::not_computed(root);
+    const SolveStatus twice = SolveStatus::not_computed(once);
+    EXPECT_EQ(twice.reason, FailureReason::NOT_COMPUTED);
+    EXPECT_EQ(twice.message, once.message);
+    EXPECT_EQ(twice.stage, once.stage);
+    // The reason is named once, not as "not computed because ... not computed because ...".
+    const std::string needle = "not computed because";
+    const size_t first = twice.message.find(needle);
+    ASSERT_NE(first, std::string::npos) << twice.message;
+    EXPECT_EQ(twice.message.find(needle, first + 1), std::string::npos) << twice.message;
+    EXPECT_NE(twice.message.find("choked"), std::string::npos) << twice.message;
+}
+
 TEST(SolveStatus, RaiseIfFailedDoesNothingForAnOkStatus) {
     EXPECT_NO_THROW(SolveStatus{}.raise_if_failed());
 }
@@ -262,4 +278,44 @@ TEST(TranslateBackendUsageErrors, CanteraErrorBecomesAnInvalidArgument) {
 TEST(TranslateBackendUsageErrors, OtherExceptionsPassThroughUnchanged) {
     EXPECT_THROW(translate_backend_usage_errors("op", [] { throw SolveError(FailureReason::NO_SOLUTION, "x"); }),
                  SolveError);
+}
+
+TEST(TranslateBackendErrors, MessageCallableRunsOnlyWhenTheCallFails) {
+    int message_calls = 0;
+    const auto message = [&] {
+        message_calls++;
+        return std::string("Gas::set_state_TP(T = 0 K)");
+    };
+
+    EXPECT_EQ(translate_backend_errors(message, [] { return 7; }), 7);
+    EXPECT_EQ(translate_backend_usage_errors(message, [] { return 8; }), 8);
+    EXPECT_EQ(message_calls, 0) << "the message was built although nothing failed";
+
+    try {
+        translate_backend_errors(message, []() -> int {
+            throw Cantera::CanteraError("ThermoPhase::setState_TP", "temperature must be positive");
+        });
+        FAIL() << "expected a SolveError";
+    } catch (const SolveError& error) {
+        EXPECT_EQ(error.status().message.rfind("Gas::set_state_TP(T = 0 K)", 0), 0u);
+    }
+    EXPECT_EQ(message_calls, 1);
+
+    EXPECT_THROW(translate_backend_usage_errors(message, []() -> int {
+        throw Cantera::CanteraError("newSolution", "no such phase");
+    }), std::invalid_argument);
+    EXPECT_EQ(message_calls, 2);
+}
+
+TEST(ValidateEquilibriumRequest, AcceptsExactlyThePairsCanteraKnows) {
+    for (const char* pair : {"TP", "TV", "HP", "SP", "SV", "UV"}) {
+        EXPECT_NO_THROW(validate_equilibrium_request(pair, "auto")) << pair;
+    }
+    for (const char* pair : {"PT", "VT", "PH", "TT", "TH", "HS", "UP", "tp", "T", "TPX", ""}) {
+        EXPECT_THROW(validate_equilibrium_request(pair, "auto"), std::invalid_argument) << pair;
+    }
+    for (const char* solver : {"auto", "element_potential", "gibbs", "vcs"}) {
+        EXPECT_NO_THROW(validate_equilibrium_request("TP", solver)) << solver;
+    }
+    EXPECT_THROW(validate_equilibrium_request("TP", "gibs"), std::invalid_argument);
 }

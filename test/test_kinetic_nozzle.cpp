@@ -15,7 +15,6 @@
 
 using namespace Goddard;
 using Goddard::test_helpers::failed_with;
-using Goddard::test_helpers::throws_solve_error;
 
 // Build a simple conical diverging profile from throat (x=0) to exit.
 // Only the diverging section is needed since KineticNozzle starts at x_min.

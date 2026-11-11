@@ -20,7 +20,6 @@
 #include <vector>
 
 using namespace Goddard;
-using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::throws_solve_error;
 using ::testing::Contains;
 using ::testing::Not;

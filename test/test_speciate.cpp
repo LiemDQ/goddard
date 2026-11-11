@@ -177,7 +177,7 @@ TEST(SelectSpecies, ctiAndXmlFilesAreRejected) {
         try {
             Goddard::select_species(infile, {"H2"});
             FAIL() << infile << " must be rejected";
-        } catch (const Cantera::CanteraError& error) {
+        } catch (const std::invalid_argument& error) {
             EXPECT_THAT(error.what(), ::testing::HasSubstr("CTI and XML formats"))
                 << infile;
         }

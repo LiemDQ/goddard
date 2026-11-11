@@ -60,7 +60,6 @@ class H2O2CombustorTests: public ::testing::Test {
 
 using namespace Goddard;
 using Goddard::test_helpers::failed_with;
-using Goddard::test_helpers::is_ok;
 
 TEST_F(H2O2CombustorTests, moleFracMatrixIsCorrect) {
     Eigen::ArrayXXd mole_fracs = combustor->generate_mole_fraction_matrix(
@@ -243,6 +242,76 @@ TEST_F(H2O2CombustorTests, stringCompositionConstructorParsesSpecies) {
             EXPECT_NEAR(from_strings(i, j), from_maps(i, j), 1e-12);
         }
     }
+}
+
+TEST_F(H2O2CombustorTests, malformedOrUnknownCompositionStringsAreInvalidArguments) {
+    // An unknown species and a malformed entry are bad arguments, not Cantera errors.
+    EXPECT_THROW(Combustor(gas, "H2:1", "O2:1, XX:1"), std::invalid_argument);
+    EXPECT_THROW(Combustor(gas, "H2:abc", "O2:1"), std::invalid_argument);
+    EXPECT_THROW(DilutedCombustor(gas, "H2:1", "O2:1", "XX:1"), std::invalid_argument);
+    EXPECT_THROW(PhaseSpecification(300.0, 1.0e5, "H2:abc"), std::invalid_argument);
+    EXPECT_NO_THROW(PhaseSpecification(300.0, 1.0e5, "H2:1, O2:2"));
+}
+
+TEST_F(H2O2CombustorTests, streamCombustorValidatesPressuresAndEveryMixtureRatio) {
+    Eigen::ArrayXd good_pressures(1);
+    good_pressures << 10.0 * Cantera::OneBar;
+    Eigen::ArrayXd ratios(1);
+    ratios << 6.0;
+
+    Gas fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    fuel.set_state_TPX(300.0, good_pressures(0), "H2:1");
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, good_pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    Combustor stream_combustor(products, fuel, oxidizer);
+
+    for (double bad : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN()}) {
+        Eigen::ArrayXd bad_pressures(2);
+        bad_pressures << good_pressures(0), bad;
+        EXPECT_THROW(stream_combustor.solve(bad_pressures, ratios, options), std::invalid_argument)
+            << "pressure " << bad;
+    }
+
+    // The bad ratio comes last: it is rejected before the good one is solved.
+    Eigen::ArrayXd bad_ratios(2);
+    bad_ratios << 6.0, -1.0;
+    EXPECT_THROW(stream_combustor.solve(good_pressures, bad_ratios, options), std::invalid_argument);
+    // An equivalence ratio is not implemented on this path, also when it is not the first value
+    CombustorOptions phi = options;
+    phi.mixture_type = MixtureRatioType::PHI_RATIO;
+    EXPECT_THROW(stream_combustor.solve(good_pressures, ratios, phi), NotImplementedError);
+}
+
+TEST_F(H2O2CombustorTests, streamCombustorReportsFailedPointsInTheStatuses) {
+    Eigen::ArrayXd pressures(2);
+    pressures << 10.0 * Cantera::OneBar, 20.0 * Cantera::OneBar;
+    Eigen::ArrayXd ratios(2);
+    ratios << 4.0, 6.0;
+
+    Gas oxidizer(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    oxidizer.set_state_TPX(300.0, pressures(0), "O2:1");
+    Gas products(Cantera::newSolution("h2o2.yaml", "ohmech"));
+
+    // A fuel stream at 1e5 K has an enthalpy no combustion temperature can match, at every point
+    Gas hot_fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    hot_fuel.set_state_TPX(1.0e5, pressures(0), "H2:1");
+    Combustor hot_combustor(products, hot_fuel, oxidizer);
+    ThermoArray hot_states = hot_combustor.solve(pressures, ratios, options);
+    EXPECT_EQ(hot_states.num_failed(), 4);
+    EXPECT_FALSE(hot_states.ok().any());
+    EXPECT_TRUE(failed_with(hot_states.status(), FailureReason::THERMO_FAILURE));
+    EXPECT_NE(hot_states.status_at(0).stage.find("combustion at O/F = 4"), std::string::npos)
+        << hot_states.status_at(0).describe();
+    EXPECT_TRUE(hot_states.temperature().isNaN().all());
+
+    // The same combustor with a cold fuel stream solves every point
+    Gas cold_fuel(Cantera::newSolution("h2o2.yaml", "ohmech"));
+    cold_fuel.set_state_TPX(300.0, pressures(0), "H2:1");
+    Combustor cold_combustor(products, cold_fuel, oxidizer);
+    ThermoArray cold_states = cold_combustor.solve(pressures, ratios, options);
+    EXPECT_EQ(cold_states.num_failed(), 0);
+    EXPECT_TRUE(cold_states.temperature().isFinite().all());
 }
 
 TEST_F(H2O2CombustorTests, emptyInputGridsAreRejectedBeforeIndexing) {
@@ -994,6 +1063,8 @@ TEST_F(RocketProblemPartialFailureTests, failedExitsAreReportedAndEveryOtherStat
         EXPECT_EQ(station.expansion_index, 1u);
         EXPECT_EQ(station.status.reason, FailureReason::THERMO_FAILURE) << station.status.describe();
         EXPECT_TRUE(std::isnan(station.thermo.temperature));
+        // A failed exit does not report the requested area ratio as if it had been solved
+        EXPECT_TRUE(std::isnan(station.area_ratio));
     }
     EXPECT_NE(failed[0].of_index, failed[1].of_index);
     EXPECT_EQ(results().failed_stations().size(), 2u) << "an empty case name reads every case";
@@ -1007,6 +1078,7 @@ TEST_F(RocketProblemPartialFailureTests, failedExitsAreReportedAndEveryOtherStat
         ASSERT_EQ(exits.size(), 2u);
         EXPECT_TRUE(exits[0].status.ok());
         EXPECT_GT(exits[0].thermo.temperature, 500.0);
+        EXPECT_DOUBLE_EQ(exits[0].area_ratio, 10.0);
         EXPECT_FALSE(exits[1].status.ok());
     }
 }
@@ -1014,7 +1086,7 @@ TEST_F(RocketProblemPartialFailureTests, failedExitsAreReportedAndEveryOtherStat
 TEST_F(RocketProblemPartialFailureTests, statusNamesTheFirstFailureAndCountsThem) {
     const SolveStatus status = results().status();
     EXPECT_TRUE(failed_with(status, FailureReason::THERMO_FAILURE));
-    EXPECT_NE(status.message.find("2"), std::string::npos) << status.message;
+    EXPECT_NE(status.message.find("2 of 8 stations"), std::string::npos) << status.message;
 }
 
 TEST_F(RocketProblemPartialFailureTests, performanceOfTheFailedExitIsNaNAndTheGoodExitIsNot) {
@@ -1054,6 +1126,88 @@ TEST(RocketProblemFailures, failedChamberOrThroatIsAnOperatingPointNotSolvedInTh
     const RocketPerformance performance = results.performance(0, 0, 0, "hot");
     EXPECT_FALSE(performance.status.ok());
     EXPECT_TRUE(std::isnan(performance.isp));
+}
+
+TEST(RocketProblemFailures, nozzleArgumentsAreValidatedForEveryCaseBeforeAnythingIsSolved) {
+    const ChemicalParameters chemistry = make_h2o2_chemistry({6.0});
+    const auto solve_cases = [&](const std::vector<RocketCaseParameters>& cases) {
+        RocketProblem(chemistry, cases, "ohmech").solve();
+    };
+
+    // An area ratio of 1 is not a supersonic station
+    EXPECT_THROW(solve_cases({make_h2o2_case("a", {1.0})}), std::invalid_argument);
+
+    // A freezing station beyond the last station (the chamber, the throat and one exit are
+    // stations 0 to 2) would never freeze the flow
+    RocketCaseParameters beyond_last = make_h2o2_case("frozen", {10.0});
+    beyond_last.nozzle_options.chemistry = GasChemistry::FROZEN;
+    beyond_last.nozzle_options.frozen_NFZ = 3;
+    EXPECT_THROW(solve_cases({beyond_last}), std::invalid_argument);
+
+    // The bad case is the last one: it is rejected as well
+    EXPECT_THROW(solve_cases({make_h2o2_case("fine", {10.0}), beyond_last}), std::invalid_argument);
+    EXPECT_THROW(solve_cases({make_h2o2_case("fine", {10.0}), make_h2o2_case("bad", {10.0, 0.5})}),
+                 std::invalid_argument);
+
+    // A pressure ratio below 1 is an invalid argument for an infinite-area case
+    RocketCaseParameters below_one = make_h2o2_case("pressure", {20.0, 0.5});
+    below_one.nozzle_options.expansion_type = ExpansionType::PRESSURE_RATIO;
+    EXPECT_THROW(solve_cases({below_one}), std::invalid_argument);
+}
+
+TEST(RocketProblemFailures, finiteAreaChamberChokedByTheMassFluxFailsEveryDownstreamStation) {
+    ChemicalParameters chemistry = make_h2o2_chemistry({6.0});
+    RocketCaseParameters choked = make_h2o2_case("choked", {5.0, 10.0});
+    choked.combustor_options.type = CombustorType::FINITE_MASS_FLUX;
+    // The throat mass flux at 70 bar is about 3e3 kg/(m^2 s)
+    choked.combustor_options.mass_flux = 1.0e5;
+    const RocketProblemResults results = RocketProblem(chemistry, {choked}, "ohmech").solve();
+
+    EXPECT_TRUE(failed_with(results.status(), FailureReason::NO_SOLUTION, "thermally chokes"));
+    // The injector face does not depend on the chamber solve; everything computed from it does
+    EXPECT_TRUE(results.chamber(0, 0, "choked").status.ok());
+    EXPECT_GT(results.chamber(0, 0, "choked").thermo.temperature, 2000.0);
+    for (const RocketStation& station : {results.stagnation(0, 0, "choked"),
+                                         results.combustion_end(0, 0, "choked"),
+                                         results.throat(0, 0, "choked")}) {
+        EXPECT_TRUE(failed_with(station.status, FailureReason::NO_SOLUTION, "thermally chokes"))
+            << station.status.describe();
+        EXPECT_TRUE(std::isnan(station.area_ratio));
+    }
+    const std::vector<RocketStation> exits = results.exits(0, 0, "choked");
+    ASSERT_EQ(exits.size(), 2u);
+    for (const RocketStation& exit : exits) {
+        EXPECT_TRUE(failed_with(exit.status, FailureReason::NOT_COMPUTED, "not computed because"));
+        // The reason is given once, not as a chain of "not computed because"
+        const std::string needle = "not computed because";
+        EXPECT_EQ(exit.status.message.find(needle, exit.status.message.find(needle) + 1),
+                  std::string::npos) << exit.status.message;
+        EXPECT_TRUE(std::isnan(exit.area_ratio));
+    }
+    const RocketPerformance performance = results.performance(0, 0, 0, "choked");
+    EXPECT_EQ(performance.status.reason, FailureReason::NO_SOLUTION) << performance.status.describe();
+    EXPECT_TRUE(std::isnan(performance.isp));
+}
+
+TEST(RocketProblemFailures, finiteAreaPressureRatioBelowInjectorOverStagnationFailsOnlyThatExit) {
+    ChemicalParameters chemistry = make_h2o2_chemistry({6.0});
+    RocketCaseParameters finite = make_h2o2_case("finite", {1.0, 20.0});
+    finite.combustor_options.type = CombustorType::FINITE_CONTRACTION_RATIO;
+    finite.combustor_options.contraction_ratio = 2.0;
+    finite.nozzle_options.expansion_type = ExpansionType::PRESSURE_RATIO;
+    const RocketProblemResults results = RocketProblem(chemistry, {finite}, "ohmech").solve();
+
+    // P_inj/P_inf is about 1.1 here, so the station at P_inj/P = 1 would be above the
+    // stagnation pressure; it fails alone
+    const std::vector<RocketStation> exits = results.exits(0, 0, "finite");
+    ASSERT_EQ(exits.size(), 2u);
+    EXPECT_TRUE(failed_with(exits[0].status, FailureReason::NO_SOLUTION, "stagnation pressure"))
+        << exits[0].status.describe();
+    EXPECT_TRUE(std::isnan(exits[0].area_ratio));
+    EXPECT_TRUE(exits[1].status.ok());
+    EXPECT_GT(exits[1].area_ratio, 1.0);
+    EXPECT_TRUE(results.stagnation(0, 0, "finite").status.ok());
+    EXPECT_TRUE(results.throat(0, 0, "finite").status.ok());
 }
 
 TEST(RocketProblemFailures, invalidSetupsThrowInvalidArgument) {

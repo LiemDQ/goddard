@@ -523,6 +523,10 @@ void Gas::solve_multiphase_TP(double T, double P, const std::vector<size_t>& off
                 }
             }
             return;
+        } catch (const std::invalid_argument& error) {
+            // A starting guess that cannot be formed for this phase is a failed rung, not a bad
+            // argument of the caller.
+            last_failure = error.what();
         } catch (...) {
             // A failed solve is retried from the next starting guess; anything else propagates.
             last_failure = status_from_current_exception({}).message;

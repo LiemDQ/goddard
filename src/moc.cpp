@@ -206,6 +206,12 @@ ThrustCoefficient compute_thrust_coefficient(
     MocFlowKind flow_type,
     double ambient_pressure_ratio)
 {
+    if (!result.status.ok()) {
+        ThrustCoefficient not_computed;
+        not_computed.status = SolveStatus::not_computed(result.status);
+        return not_computed;
+    }
+
     const auto& ep = result.exit_plane;
     size_t n = ep.y.size();
 
@@ -264,7 +270,7 @@ ThrustCoefficient compute_thrust_coefficient(
     double Cf_vacuum = Cf_momentum + Cf_pressure;
     double Cf = Cf_vacuum - ambient_pressure_ratio * result.area_ratio;
 
-    return {Cf_vacuum, Cf, Cf_momentum, Cf_pressure};
+    return {Cf_vacuum, Cf, Cf_momentum, Cf_pressure, {}};
 }
 
 

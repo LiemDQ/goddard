@@ -485,7 +485,11 @@ the nozzle.)doc";
 static const char *__doc_Goddard_Combustor_Combustor =
 R"doc(Construct from fuel and oxidizer compositions, given as product
 species of `gas`. Solve with the `solve` overloads that take reactant
-temperatures.)doc";
+temperatures.
+
+Throws:
+    std::invalid_argument if a composition string cannot be parsed or
+    names a species the product gas does not have.)doc";
 
 static const char *__doc_Goddard_Combustor_Combustor_2 =
 R"doc(Construct from fuel and oxidizer mole-fraction maps of product species
@@ -656,7 +660,9 @@ Throws:
     product gas does not have.
 
 Throws:
-    std::invalid_argument if `pressures` or `mixture_ratios` is empty.)doc";
+    std::invalid_argument if `pressures` or `mixture_ratios` is empty,
+    a pressure is not positive and finite, or a mixture ratio is out
+    of range. Every ratio is checked before anything is solved.)doc";
 
 static const char *__doc_Goddard_Combustor_stream_element_moles =
 R"doc(Element amounts of a reactant stream [kmol per kg of stream] re-
@@ -1229,8 +1235,12 @@ axial momentum. The flow from the combustion end onward is the
 isentropic expansion from a hypothetical stagnation state "inf" with
 the injector enthalpy and pressure P_inf < P_inj.
 
-When the chamber solve fails (`status.ok()` is false) the stations and
-the throat are failed as well and the scalars are NaN.)doc";
+When the chamber solve fails (`status.ok()` is false) the scalars are
+NaN, and the stagnation station, the combustion-end station and the
+throat, which are outputs of that one coupled solve, carry the
+chamber's `status`. The injector face does not depend on it and is the
+real station when it can be computed, otherwise it carries the
+chamber's `status` too.)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_combustion_end =
 R"doc(Combustion-end station, the subsonic point at area ratio
@@ -1240,7 +1250,8 @@ static const char *__doc_Goddard_FiniteAreaChamber_contraction_ratio = R"doc(Con
 
 static const char *__doc_Goddard_FiniteAreaChamber_failed =
 R"doc(Chamber of a failed solve: the given status, NaN scalars, and stations
-and throat that are `NOT_COMPUTED`.)doc";
+and throat that carry that same status (the throat keeps its stage if
+the status names one).)doc";
 
 static const char *__doc_Goddard_FiniteAreaChamber_injector = R"doc(Injector-face station; always in equilibrium.)doc";
 
@@ -1472,9 +1483,12 @@ With candidate condensed species attached the call is routed to
 current value of the held properties.
 
 Throws:
-    std::invalid_argument if `solver` is "vcs", which gives wrong
-    answers with condensed phases, or if `XY` is not one of "TP",
-    "HP", "SP", "UV".
+    std::invalid_argument if `XY` is not one of "TP", "TV", "HP",
+    "SP", "SV" or "UV", if `solver` is not "auto",
+    "element_potential", "gibbs" or "vcs", or if `solver` is "vcs"
+    with condensed candidates attached (it gives wrong answers with
+    condensed phases), or if `XY` is not one of "TP", "HP", "SP", "UV"
+    with condensed candidates attached.
 
 Throws:
     NotImplementedError for "UV" with condensed candidates attached.)doc";
@@ -2552,7 +2566,7 @@ the unit of NozzleGeometry::throat_radius, recorded here as
 `throat_radius`. Coordinates quoted inside `messages` are in throat
 radii.)doc";
 
-static const char *__doc_Goddard_MocResult_area_ratio = R"doc(Exit area divided by throat area.)doc";
+static const char *__doc_Goddard_MocResult_area_ratio = R"doc(Exit area divided by throat area. NaN unless the solve succeeded.)doc";
 
 static const char *__doc_Goddard_MocResult_crossings =
 R"doc(Same-family characteristic crossings in the finished net; nonzero
@@ -2573,9 +2587,11 @@ the exit plane when it converges (1.0); on a solve that fails partway,
 this is instead the fraction of the target exit radius the net's last
 wall point actually reached.)doc";
 
-static const char *__doc_Goddard_MocResult_exit_mach = R"doc(Mach number at the exit plane.)doc";
+static const char *__doc_Goddard_MocResult_exit_mach = R"doc(Mach number at the exit plane. NaN unless the solve succeeded.)doc";
 
-static const char *__doc_Goddard_MocResult_exit_plane = R"doc(Flow state across the exit plane, for `compute_thrust_coefficient`.)doc";
+static const char *__doc_Goddard_MocResult_exit_plane =
+R"doc(Flow state across the exit plane, for `compute_thrust_coefficient`.
+Empty unless the solve succeeded.)doc";
 
 static const char *__doc_Goddard_MocResult_failure =
 R"doc(MoC-specific detail of a failed solve; MocErrorCode::NONE when
@@ -2609,7 +2625,7 @@ partway.)doc";
 
 static const char *__doc_Goddard_MocResult_nozzle_length =
 R"doc(Distance from throat to exit plane, in the unit of
-NozzleGeometry::throat_radius.)doc";
+NozzleGeometry::throat_radius. NaN unless the solve succeeded.)doc";
 
 static const char *__doc_Goddard_MocResult_pass_diagnostics =
 R"doc(Per-pass marching-front geometry; one entry per kernel pass, in order.
@@ -3250,7 +3266,9 @@ Iterates on the stagnation pressure P_inf until the chamber momentum
 balance P_inj = P_c + rho_c u_c^2 holds, where c is the combustion
 end. The chamber is always in equilibrium. On return the nozzle inlet
 state is the stagnation state, so `solve_stations(result.throat, ...)`
-continues the expansion, and the gas holds the stagnation state.
+continues the expansion, and the gas holds the stagnation state. If
+the chamber solve fails, the inlet state is the one the nozzle had
+before the call.
 
 The combustion-end velocity follows from the enthalpy drop h_inj -
 h_c. At very large contraction ratios (Mach numbers of order 1e-3 and
@@ -3306,8 +3324,9 @@ Returns:
     `NOT_COMPUTED` if `throat_condition` is a failed throat.
 
 Throws:
-    std::invalid_argument for a ratio out of range (see `solve`), or
-    if `frozen_NFZ` lies beyond the last station.)doc";
+    std::invalid_argument for a ratio out of range (see
+    `validate_stations`), or if `frozen_NFZ` lies beyond the last
+    station.)doc";
 
 static const char *__doc_Goddard_Nozzle_solve_stations_2 =
 R"doc(Solve expansion stations downstream of a finite-area combustor.
@@ -3325,7 +3344,19 @@ Parameter ``ratios``:
 
 Returns:
     One station per ratio, in order, each with its own status. All
-    `NOT_COMPUTED` if `chamber` is a failed chamber.)doc";
+    `NOT_COMPUTED` if `chamber` is a failed chamber. A pressure ratio
+    between 1 and P_inj/P_inf gives a station pressure above the
+    stagnation pressure: that station fails with `NO_SOLUTION`.
+
+Throws:
+    std::invalid_argument for a ratio outside the domain of
+    `expansion_type` (see `validate_stations`); the ratios are checked
+    as given, before the conversion to P_inf.)doc";
+
+static const char *__doc_Goddard_Nozzle_solve_stations_unchecked =
+R"doc(Station solver without argument validation, for callers that validated
+the user's ratios. A pressure ratio below 1 fails its station with
+`NO_SOLUTION`.)doc";
 
 static const char *__doc_Goddard_Nozzle_solve_subsonic_area_expansion = R"doc()doc";
 
@@ -3371,11 +3402,19 @@ static const char *__doc_Goddard_Nozzle_throw_invalid_expansion_ratio = R"doc()d
 static const char *__doc_Goddard_Nozzle_validate_freezing_station = R"doc()doc";
 
 static const char *__doc_Goddard_Nozzle_validate_stations =
-R"doc(Reject ratios outside the domain of `expansion_type` and a freezing
-station beyond the last of `num_stations` expansion stations.
+R"doc(Check the arguments of a station solve without solving anything.
+
+Parameter ``expansion_type``:
+    How `ratios` are interpreted.
+
+Parameter ``ratios``:
+    Area ratios A/A_t [-], above 1.0001, or pressure ratios P_inlet/P
+    [-], at least 1.
 
 Throws:
-    std::invalid_argument)doc";
+    std::invalid_argument for a ratio outside its domain or a freezing
+    station (`NozzleOptions::frozen_NFZ`) beyond the last station.
+    `solve` and `solve_stations` call it.)doc";
 
 static const char *__doc_Goddard_ObliqueShockResult =
 R"doc(Oblique shock: wave and deflection angles, and the jump across the
@@ -3979,7 +4018,8 @@ NaN.)doc";
 
 static const char *__doc_Goddard_RocketStation_area_ratio =
 R"doc(A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1
-for THROAT, Ae/At for EXIT (also for pressure-ratio exits).)doc";
+for THROAT, Ae/At for EXIT (also for pressure-ratio exits). NaN when
+the station failed (`status` not ok).)doc";
 
 static const char *__doc_Goddard_RocketStation_case_name = R"doc(Name of the case the station belongs to.)doc";
 
@@ -4273,7 +4313,8 @@ succeeded.)doc";
 static const char *__doc_Goddard_SolveStatus_not_computed =
 R"doc(Status of a solve that was skipped because the stage `upstream`
 depends on failed. The message names the upstream stage and repeats
-its message.)doc";
+its message. If `upstream` is itself `NOT_COMPUTED`, it already names
+the failure that caused it and is returned unchanged.)doc";
 
 static const char *__doc_Goddard_SolveStatus_ok = R"doc(True when the solve succeeded.)doc";
 
@@ -4447,8 +4488,10 @@ condensed amounts take part and are written back; `rtol` and
 arguments are ignored.
 
 Throws:
-    std::invalid_argument if `solver` is "vcs" and the array carries
-    condensed species.)doc";
+    std::invalid_argument if `XY` is not one of "TP", "TV", "HP",
+    "SP", "SV" or "UV", if `solver` is not "auto",
+    "element_potential", "gibbs" or "vcs", or if `solver` is "vcs" and
+    the array carries condensed species.)doc";
 
 static const char *__doc_Goddard_ThermoArray_equilibrate_location =
 R"doc(Equilibrate the entry at `loc`; on failure restore its state and
@@ -4461,12 +4504,23 @@ beyond the array's number of dimensions must be zero.)doc";
 static const char *__doc_Goddard_ThermoArray_get_condensed_moles =
 R"doc(Amounts of the candidate condensed species at flat location `loc`
 [kmol per kg of mixture], in candidate order. Empty for a gas-only
-array.)doc";
+array.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_get_state =
 R"doc(State vector of the entry at flat location `loc`: the Cantera state of
 the gas phase followed by one entry per candidate condensed species
-(kmol per kg of mixture), exactly as `Gas::save_state()` lays it out.)doc";
+(kmol per kg of mixture), exactly as `Gas::save_state()` lays it out.
+
+Throws:
+    SolveError with the entry's status if the entry failed (see
+    `status_at`): it holds the state it had before the failed solve,
+    which is not a solution.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_internal_energy_mass =
 R"doc(Specific internal energy of the gas phase [J/kg] of every entry; see
@@ -4520,7 +4574,11 @@ another solver. Entries that are ok are left alone. See `equilibrate`
 for the arguments.
 
 Returns:
-    Number of entries still failed [-].)doc";
+    Number of entries still failed [-].
+
+Throws:
+    std::invalid_argument for an `XY` or `solver` that `equilibrate`
+    rejects.)doc";
 
 static const char *__doc_Goddard_ThermoArray_set_condensed_moles =
 R"doc(Set the amounts of the candidate condensed species at flat location
@@ -4528,7 +4586,10 @@ R"doc(Set the amounts of the candidate condensed species at flat location
 
 Throws:
     std::invalid_argument if `moles` does not have one entry per
-    candidate.)doc";
+    candidate.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_set_state =
 R"doc(Set the entry at flat location `loc` from a state vector of the same
@@ -4539,7 +4600,10 @@ bare Cantera state length, in which case the condensed amounts of that
 entry are set to zero.
 
 Throws:
-    std::invalid_argument if the vector has neither length.)doc";
+    std::invalid_argument if the vector has neither length.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_set_status =
 R"doc(Record the outcome of a solve at flat location `loc`. Used by the
@@ -4552,6 +4616,10 @@ Throws:
 static const char *__doc_Goddard_ThermoArray_shape = R"doc(Extent of each dimension [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray_size = R"doc(Number of entries [-].)doc";
+
+static const char *__doc_Goddard_ThermoArray_state_unchecked =
+R"doc(`get_state` without the check of the entry's status, for the retry of
+a failed entry.)doc";
 
 static const char *__doc_Goddard_ThermoArray_status =
 R"doc(Outcome over the whole array: ok when every entry is, otherwise the
@@ -4725,6 +4793,10 @@ static const char *__doc_Goddard_ThrustCoefficient_momentum_thrust = R"doc(Momen
 
 static const char *__doc_Goddard_ThrustCoefficient_pressure_thrust = R"doc(Pressure component, normalized by p0 * A_throat.)doc";
 
+static const char *__doc_Goddard_ThrustCoefficient_status =
+R"doc(`NOT_COMPUTED` when the MoC result it was computed from failed (every
+field is then NaN).)doc";
+
 static const char *__doc_Goddard_average_angle = R"doc()doc";
 
 static const char *__doc_Goddard_average_cminus_angle = R"doc()doc";
@@ -4782,7 +4854,9 @@ planar flow, pi r_t^2 axisymmetric), so the coefficient does not
 depend on the length unit.
 
 Parameter ``result``:
-    MoC solution result (must have populated exit_plane with gamma_s)
+    MoC solution result (must have populated exit_plane with gamma_s).
+    If `result.status` is not ok, the returned coefficient has NaN
+    fields and a `NOT_COMPUTED` status.
 
 Parameter ``flow_type``:
     PLANAR or AXISYMMETRIC (determines integration measure)
@@ -5021,7 +5095,13 @@ Parameter ``gamma``:
     ratio of specific heats [-]
 
 Returns:
-    maximum deflection angle [rad]; NaN if mach < 1 or gamma <= 1)doc";
+    maximum deflection angle [rad]
+
+Throws:
+    SolveError (`NO_SOLUTION`) if mach < 1
+
+Throws:
+    std::invalid_argument if gamma <= 1)doc";
 
 static const char *__doc_Goddard_oblique_shock_max_deflection_wave_angle =
 R"doc(Wave angle at which the deflection of an oblique shock is largest, in
@@ -5034,7 +5114,13 @@ Parameter ``gamma``:
     ratio of specific heats [-]
 
 Returns:
-    wave angle [rad]; NaN if mach < 1 or gamma <= 1)doc";
+    wave angle [rad]
+
+Throws:
+    SolveError (`NO_SOLUTION`) if mach < 1
+
+Throws:
+    std::invalid_argument if gamma <= 1)doc";
 
 static const char *__doc_Goddard_oblique_shock_wave_angle =
 R"doc(Weak and strong wave angles of an oblique shock with a given
@@ -5050,10 +5136,15 @@ Parameter ``gamma``:
     ratio of specific heats [-]
 
 Returns:
-    (weak, strong) wave angles [rad]. Both are NaN if the deflection
-    is negative or exceeds the maximum deflection (a detached shock),
-    or if mach < 1 or gamma <= 1. At zero deflection they are the Mach
-    angle and pi/2.)doc";
+    (weak, strong) wave angles [rad]. At zero deflection they are the
+    Mach angle and pi/2.
+
+Throws:
+    SolveError (`NO_SOLUTION`) if the deflection is negative or
+    exceeds the maximum deflection (a detached shock), or if mach < 1.
+
+Throws:
+    std::invalid_argument if gamma <= 1)doc";
 
 static const char *__doc_Goddard_prandtl_meyer = R"doc()doc";
 

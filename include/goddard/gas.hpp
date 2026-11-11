@@ -376,8 +376,10 @@ public:
      * With candidate condensed species attached the call is routed to `equilibrate_TP()`,
      * `equilibrate_HP()` or `equilibrate_SP()` with the current value of the held properties.
      *
-     * @throws std::invalid_argument if `solver` is "vcs", which gives wrong answers with condensed
-     * phases, or if `XY` is not one of "TP", "HP", "SP", "UV".
+     * @throws std::invalid_argument if `XY` is not one of "TP", "TV", "HP", "SP", "SV" or "UV",
+     * if `solver` is not "auto", "element_potential", "gibbs" or "vcs", or if `solver` is "vcs"
+     * with condensed candidates attached (it gives wrong answers with condensed phases), or if
+     * `XY` is not one of "TP", "HP", "SP", "UV" with condensed candidates attached.
      * @throws NotImplementedError for "UV" with condensed candidates attached.
      */
     void equilibrate(const std::string& XY, const std::string& solver = "gibbs");

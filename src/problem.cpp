@@ -41,8 +41,8 @@ RocketProblem::RocketProblem(const ChemicalParameters& chem_params,
 
     // A phase that cannot be built from the file and the species selection is a bad argument.
     m_sln = translate_backend_usage_errors(
-        std::format("RocketProblem: cannot build phase '{}' from '{}' with the selected species",
-            phase_name, chemical_params.thermo_file),
+        [&] { return std::format("RocketProblem: cannot build phase '{}' from '{}' with the selected species",
+            phase_name, chemical_params.thermo_file); },
         [&] {
             auto root_node = select_species(chemical_params.thermo_file, chemical_params.species);
             const Cantera::AnyMap& phase_node =
@@ -135,6 +135,15 @@ RocketProblemResults RocketProblem::solve() {
                     params.name));
             }
         }
+    }
+
+    // Check the nozzle arguments of every case before any combustion is solved, so that a bad
+    // argument in the last case does not surface after the earlier cases have been solved.
+    for (const RocketCaseParameters& params : problem_cases) {
+        const Gas gas = product_gas();
+        const Nozzle nozzle(gas, params.nozzle_options);
+        nozzle.validate_stations(
+            params.nozzle_options.expansion_type, params.nozzle_options.expansion_ratios);
     }
 
     std::unordered_map<std::string, RocketProblemCaseResult> case_results;

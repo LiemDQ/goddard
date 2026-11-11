@@ -489,6 +489,7 @@ TEST_F(ThermoArray2DTests, operationsDoNotChangeConstructorSolution) {
 namespace {
 
 using Goddard::FailureReason;
+using Goddard::SolveError;
 using Goddard::SolveStatus;
 using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::is_ok;
@@ -614,6 +615,101 @@ TEST_F(ThermoArrayFailureTests, bulkSetterThrowsOnAStateTheBackendRejects) {
     Eigen::ArrayXd negative(2);
     negative << 300.0, -5.0;
     EXPECT_TRUE(throws_solve_error([&] { array->TP(negative, pressures); }, FailureReason::THERMO_FAILURE));
+}
+
+TEST_F(ThermoArrayFailureTests, getStateOfAFailedEntryThrowsItsStatus) {
+    array->TP(temperatures, pressures);
+    array->equilibrate("HP");
+    const int failed_loc = array->flat_index(1, 0);
+    ASSERT_FALSE(array->status_at(failed_loc).ok());
+    const std::vector<double> good_state = array->get_state(array->flat_index(0, 0));
+
+    // The failed entry holds the state it had before the failed solve: there is no state to return.
+    try {
+        array->get_state(failed_loc);
+        FAIL() << "expected a SolveError";
+    } catch (const SolveError& error) {
+        EXPECT_EQ(error.reason(), array->status_at(failed_loc).reason);
+        EXPECT_EQ(error.status().message, array->status_at(failed_loc).message);
+    }
+    // Writing a state makes the entry readable again
+    array->set_state(failed_loc, good_state);
+    EXPECT_EQ(array->get_state(failed_loc), good_state);
+}
+
+TEST_F(ThermoArrayFailureTests, retryFailedStillReadsTheStateOfAFailedEntry) {
+    array->TP(temperatures, pressures);
+    array->equilibrate("HP");
+    ASSERT_EQ(array->num_failed(), 2);
+    // retry_failed starts each retry from the state the entry holds, which get_state refuses to give
+    int still_failed = -1;
+    EXPECT_NO_THROW(still_failed = array->retry_failed("HP", "vcs"));
+    EXPECT_EQ(still_failed, 2);
+    EXPECT_TRUE(failed_with(array->status_at(array->flat_index(1, 0)), FailureReason::THERMO_FAILURE));
+}
+
+TEST_F(ThermoArrayFailureTests, entryAccessorsRejectALocationOutsideTheArray) {
+    array->TP(temperatures, pressures);
+    const std::vector<double> state = array->get_state(0);
+    for (int loc : {-1, array->size(), array->size() + 7}) {
+        EXPECT_THROW(array->get_state(loc), std::out_of_range) << loc;
+        EXPECT_THROW(array->set_state(loc, state), std::out_of_range) << loc;
+        EXPECT_THROW(array->get_condensed_moles(loc), std::out_of_range) << loc;
+        EXPECT_THROW(array->set_condensed_moles(loc, {}), std::out_of_range) << loc;
+    }
+}
+
+TEST_F(ThermoArrayFailureTests, equilibrateRejectsAnUnknownPropertyPairOrSolver) {
+    array->TP(temperatures, pressures);
+    EXPECT_THROW(array->equilibrate("PT"), std::invalid_argument);
+    EXPECT_THROW(array->equilibrate("TP", "gibs"), std::invalid_argument);
+    EXPECT_THROW(array->retry_failed("TP", "nope"), std::invalid_argument);
+    EXPECT_THROW(array->retry_failed("TT"), std::invalid_argument);
+    // Nothing was solved or recorded
+    EXPECT_EQ(array->num_failed(), 0);
+}
+
+// A bulk setter that throws leaves a consistent array: the entries written before the rejected
+// one are ok and hold the state the setter gave them, the rejected one and those after it keep
+// their previous state and status, and later reads agree with the stored entries.
+TEST_F(ThermoArrayFailureTests, bulkSetterThatThrowsKeepsTheArrayConsistent) {
+    Eigen::ArrayXd first_temperatures(2);
+    first_temperatures << 300.0, 400.0;
+    array->TP(first_temperatures, pressures);
+    const std::vector<double> state_of_entry_1 = array->get_state(1);
+    array->set_status(2, SolveStatus::failure(FailureReason::NOT_CONVERGED, "earlier failure"));
+
+    // Enthalpy of this mixture at 600 K and 1 bar, from an independent Cantera phase
+    auto reference = Cantera::newSolution("h2o2.yaml", "ohmech");
+    reference->thermo()->setMoleFractionsByName("H2:2, O2:1");
+    reference->thermo()->setState_TP(600.0, pressures[0]);
+    const double enthalpy_at_600_K = reference->thermo()->enthalpy_mass();
+    Eigen::ArrayXd enthalpies(2);
+    // The second enthalpy is far beyond what any temperature in the data range gives
+    enthalpies << enthalpy_at_600_K, 1.0e14;
+
+    EXPECT_TRUE(throws_solve_error([&] { array->HP(enthalpies, pressures); },
+                                   FailureReason::THERMO_FAILURE));
+
+    // Entry 0 was written by the first, successful step of HP (600 K, not the 300 K it held
+    // before and not whatever temperature the rejected iterate reached), and ok.
+    EXPECT_TRUE(is_ok(array->status_at(0)));
+    EXPECT_NEAR(array->temperature()(0, 0), 600.0, 1e-6);
+    EXPECT_NEAR(array->enthalpy_mass()(0, 0), enthalpy_at_600_K, 1e-6 * std::abs(enthalpy_at_600_K));
+    const std::vector<double> state_of_entry_0 = array->get_state(0);
+    // A second read gives the same entry: reading does not disturb it
+    EXPECT_EQ(array->get_state(0), state_of_entry_0);
+    EXPECT_NEAR(array->temperature()(0, 0), 600.0, 1e-6);
+
+    // The rejected entry and those after it keep their previous state and status
+    EXPECT_TRUE(is_ok(array->status_at(1)));
+    EXPECT_EQ(array->get_state(1), state_of_entry_1);
+    EXPECT_NEAR(array->temperature()(1, 0), 400.0, 1e-9);
+    EXPECT_TRUE(failed_with(array->status_at(2), FailureReason::NOT_CONVERGED, "earlier failure"));
+    EXPECT_EQ(array->num_failed(), 1);
+    // Entry 2 is still failed, so its state cannot be read; entry 3 never changed
+    EXPECT_TRUE(throws_solve_error([&] { array->get_state(2); }, FailureReason::NOT_CONVERGED));
+    EXPECT_NEAR(array->temperature()(1, 1), 400.0, 1e-9);
 }
 
 TEST(ThermoArrayThreeDimensional, okSelectsTheSlice) {

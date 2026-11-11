@@ -45,7 +45,7 @@ Gas::Gas(const std::string& infile,
         const std::string& phase_name,
         GasChemistry chem) 
     : chemistry(chem), m_sol(translate_backend_usage_errors(
-        std::format("Gas: cannot load phase '{}' from '{}'", phase_name, infile),
+        [&] { return std::format("Gas: cannot load phase '{}' from '{}'", phase_name, infile); },
         [&] { return Cantera::newSolution(infile, phase_name); }))
 {
     set_current_state_as_reference();
@@ -98,7 +98,7 @@ Gas Gas::create_from_elements(
     GasChemistry chemistry)
 {
     return translate_backend_usage_errors(
-        std::format("Gas::create_from_elements: cannot build phase '{}' from '{}'", name, infile),
+        [&] { return std::format("Gas::create_from_elements: cannot build phase '{}' from '{}'", name, infile); },
         [&] {
             Cantera::AnyMap root_node = load_root_node(infile);
             Cantera::AnyMap phase_node = create_speciated_phase_node(name, elements);
@@ -114,7 +114,7 @@ Gas Gas::create_from_species(
     GasChemistry chemistry)
 {
     return translate_backend_usage_errors(
-        std::format("Gas::create_from_species: cannot build phase '{}' from '{}'", name, infile),
+        [&] { return std::format("Gas::create_from_species: cannot build phase '{}' from '{}'", name, infile); },
         [&] {
             Cantera::AnyMap root_node = load_root_node(infile);
             // File order, so that the species indices do not depend on the order of `species`.
@@ -127,12 +127,12 @@ Gas Gas::create_from_species(
 
 // State setters
 void Gas::set_state_TD(double T, double D) {
-    translate_backend_errors(std::format("Gas::set_state_TD(T = {:.6g} K, D = {:.6g} kg/m^3)", T, D),
+    translate_backend_errors([&] { return std::format("Gas::set_state_TD(T = {:.6g} K, D = {:.6g} kg/m^3)", T, D); },
         [&] { thermo()->setState_TD(T, D); });
 }
 
 void Gas::set_state_TP(double T, double P) {
-    translate_backend_errors(std::format("Gas::set_state_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P),
+    translate_backend_errors([&] { return std::format("Gas::set_state_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
         [&] { thermo()->setState_TP(T, P); });
 }
 
@@ -151,7 +151,7 @@ void Gas::set_state_TPX(double T, double P, const Composition& composition) {
 }
 
 void Gas::set_state_TPX(double T, double P, const double* composition) {
-    translate_backend_errors(std::format("Gas::set_state_TPX(T = {:.6g} K, P = {:.6g} Pa)", T, P),
+    translate_backend_errors([&] { return std::format("Gas::set_state_TPX(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
         [&] { thermo()->setState_TPX(T, P, composition); });
 }
 
@@ -168,27 +168,27 @@ void Gas::set_state_TPY(double T, double P, const Composition& composition) {
 }
 
 void Gas::set_state_TPY(double T, double P, const double* composition) {
-    translate_backend_errors(std::format("Gas::set_state_TPY(T = {:.6g} K, P = {:.6g} Pa)", T, P),
+    translate_backend_errors([&] { return std::format("Gas::set_state_TPY(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
         [&] { thermo()->setState_TPY(T, P, composition); });
 }
 
 void Gas::set_state_HP(double H, double P) {
     if (!has_condensed_candidates()) {
-        translate_backend_errors(std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P),
+        translate_backend_errors([&] { return std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
             [&] { thermo()->setState_HP(H, P); });
         return;
     }
-    translate_backend_errors(std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P),
+    translate_backend_errors([&] { return std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
         [&] { solve_frozen_XP(EquilibriumProperty::ENTHALPY, H, P); });
 }
 
 void Gas::set_state_SP(double S, double P) {
     if (!has_condensed_candidates()) {
-        translate_backend_errors(std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P),
+        translate_backend_errors([&] { return std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
             [&] { thermo()->setState_SP(S, P); });
         return;
     }
-    translate_backend_errors(std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P),
+    translate_backend_errors([&] { return std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
         [&] { solve_frozen_XP(EquilibriumProperty::ENTROPY, S, P); });
 }
 
@@ -198,7 +198,7 @@ void Gas::set_state_UV(double U, double V) {
             "Gas::set_state_UV: constant internal energy and volume with condensed species is not "
             "implemented.");
     }
-    translate_backend_errors(std::format("Gas::set_state_UV(U = {:.6g} J/kg, V = {:.6g} m^3/kg)", U, V),
+    translate_backend_errors([&] { return std::format("Gas::set_state_UV(U = {:.6g} J/kg, V = {:.6g} m^3/kg)", U, V); },
         [&] { thermo()->setState_UV(U, V); });
 }
 
@@ -617,10 +617,14 @@ ExpansionProperties Gas::expansion_properties() const {
 }
 
 void Gas::equilibrate(const std::string& XY, const std::string& solver) {
+    validate_equilibrium_request(XY, solver);
     if (!has_condensed_candidates()) {
+        // The message names the state the solve started from, which a failed solve may change.
+        const double start_temperature = temperature();
+        const double start_pressure = pressure();
         translate_backend_errors(
-            std::format("Gas::equilibrate('{}', '{}') from T = {:.6g} K, P = {:.6g} Pa", XY, solver,
-                        temperature(), pressure()),
+            [&] { return std::format("Gas::equilibrate('{}', '{}') from T = {:.6g} K, P = {:.6g} Pa", XY, solver,
+                        start_temperature, start_pressure); },
             [&] { thermo()->equilibrate(XY, solver); });
         return;
     }
@@ -695,11 +699,11 @@ size_t basis_species_for_element(const Cantera::ThermoPhase& gas, size_t m) {
 void Gas::equilibrate_TP(double T, double P) {
     m_equilibrium_solve_count = 0;
     if (has_condensed_candidates()) {
-        translate_backend_errors(std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P),
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
             [&] { solve_multiphase_TP(T, P, {}); });
         return;
     }
-    translate_backend_errors(std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P), [&] {
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); }, [&] {
         thermo()->setState_TP(T, P);
         thermo()->equilibrate("TP", "gibbs");
     });
@@ -707,13 +711,13 @@ void Gas::equilibrate_TP(double T, double P) {
 
 void Gas::equilibrate_HP(double H, double P) {
     if (has_condensed_candidates()) {
-        translate_backend_errors(std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P),
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
             [&] { solve_multiphase_XP(EquilibriumProperty::ENTHALPY, H, P); });
         return;
     }
     m_equilibrium_solve_count = 0;
     const std::vector<double> start_state = save_state();
-    translate_backend_errors(std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P), [&] {
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); }, [&] {
         thermo()->setState_HP(H, P);
         try {
             thermo()->equilibrate("HP", "gibbs");
@@ -729,12 +733,12 @@ void Gas::equilibrate_HP(double H, double P) {
 
 void Gas::equilibrate_SP(double S, double P) {
     if (has_condensed_candidates()) {
-        translate_backend_errors(std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P),
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
             [&] { solve_multiphase_XP(EquilibriumProperty::ENTROPY, S, P); });
         return;
     }
     m_equilibrium_solve_count = 0;
-    translate_backend_errors(std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P),
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
         [&] {
             thermo()->setState_SP(S, P);
             thermo()->equilibrate("SP", "gibbs");
@@ -777,24 +781,26 @@ void Gas::set_element_moles(const Eigen::ArrayXd& element_moles, double T, doubl
 // Condensed species
 
 void Gas::add_condensed_species(const std::string& infile, const std::vector<std::string>& names) {
-    Cantera::AnyMap root_node = translate_backend_usage_errors(
-        "Gas::add_condensed_species", [&] { return load_root_node(infile); });
-    if (m_condensed) {
-        m_condensed->add_species(root_node, names, *thermo());
-    } else {
-        m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
-    }
+    translate_backend_usage_errors("Gas::add_condensed_species", [&] {
+        Cantera::AnyMap root_node = load_root_node(infile);
+        if (m_condensed) {
+            m_condensed->add_species(root_node, names, *thermo());
+        } else {
+            m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
+        }
+    });
 }
 
 void Gas::add_all_condensed_species(const std::string& infile) {
-    Cantera::AnyMap root_node = translate_backend_usage_errors(
-        "Gas::add_all_condensed_species", [&] { return load_root_node(infile); });
-    std::vector<std::string> names = CondensedPhaseSet::compatible_species(root_node, *thermo());
-    if (m_condensed) {
-        m_condensed->add_species(root_node, names, *thermo());
-    } else {
-        m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
-    }
+    translate_backend_usage_errors("Gas::add_all_condensed_species", [&] {
+        Cantera::AnyMap root_node = load_root_node(infile);
+        std::vector<std::string> names = CondensedPhaseSet::compatible_species(root_node, *thermo());
+        if (m_condensed) {
+            m_condensed->add_species(root_node, names, *thermo());
+        } else {
+            m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
+        }
+    });
 }
 
 bool Gas::has_condensed_candidates() const {

@@ -762,9 +762,11 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, ThrustCoefficient, momentum_thrust))
         .def_ro("pressure_thrust", &Goddard::ThrustCoefficient::pressure_thrust,
                 DOC(Goddard, ThrustCoefficient, pressure_thrust))
+        .def_ro("status", &Goddard::ThrustCoefficient::status,
+                DOC(Goddard, ThrustCoefficient, status))
         .def("__repr__", [](const Goddard::ThrustCoefficient& self) {
-            return std::format("<ThrustCoefficient Cf={:.4g} Cf_vacuum={:.4g}>",
-                               self.Cf, self.Cf_vacuum);
+            return std::format("<ThrustCoefficient {} Cf={:.4g} Cf_vacuum={:.4g}>",
+                               status_tag(self.status), self.Cf, self.Cf_vacuum);
         });
 
     // ---- MocNozzle ----

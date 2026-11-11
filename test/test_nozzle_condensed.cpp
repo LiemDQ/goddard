@@ -28,7 +28,6 @@
 using namespace Goddard;
 using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::is_ok;
-using Goddard::test_helpers::throws_solve_error;
 
 namespace {
 
@@ -295,6 +294,21 @@ TEST_F(PropellantNozzleTests, OneFailedStationLeavesTheOtherStationsValid) {
     EXPECT_FALSE(results.status.ok());
     EXPECT_EQ(results.first_failure().reason, FailureReason::OUT_OF_DATA_RANGE);
     EXPECT_EQ(results.first_failure().message, results.expansions[1].status.message);
+
+    // The station after the failed one is the station a solve without the failing ratio gives:
+    // nothing the failed solve left behind leaks into it.
+    Nozzle reference_nozzle(nozzle_gas, chamber_state, options);
+    const NozzleResults reference =
+        reference_nozzle.solve(ExpansionType::PRESSURE_RATIO, std::vector<double>{2.0, 5.0});
+    ASSERT_TRUE(is_ok(reference.status));
+    EXPECT_NEAR(results.expansions[2].thermo.pressure, reference.expansions[1].thermo.pressure,
+                1e-9 * reference.expansions[1].thermo.pressure);
+    EXPECT_NEAR(results.expansions[2].thermo.temperature, reference.expansions[1].thermo.temperature,
+                1e-9 * reference.expansions[1].thermo.temperature);
+    EXPECT_NEAR(results.expansions[2].mach, reference.expansions[1].mach,
+                1e-9 * reference.expansions[1].mach);
+    EXPECT_NEAR(results.expansions[0].mach, reference.expansions[0].mach,
+                1e-9 * reference.expansions[0].mach);
 }
 
 

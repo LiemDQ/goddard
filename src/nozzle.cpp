@@ -20,25 +20,19 @@ namespace Goddard {
 namespace {
 
 /**
- * Re-throw a frozen temperature-range failure, naming the station it happened at. Call it only
- * inside a `catch` block; any other failure is rethrown unchanged.
+ * The temperature-range failure of a frozen station solve, naming the station.
  *
  * A frozen expansion holds the condensed amounts fixed, so it cannot be carried past the
  * temperature range of a condensed species that is present. `Gas` reports that as a `SolveError`
  * with reason OUT_OF_DATA_RANGE; the nozzle adds the station index and the temperature [K] it
- * stopped at, as CEA does.
+ * stopped at, as CEA does. Call it only for a failure with that reason.
  *
  * @param error Failure raised by `Gas`.
  * @param station Index of the station being solved [-].
  * @param temperature Temperature the frozen iteration stopped at [K].
  */
-[[noreturn]] void rethrow_frozen_range_error(const SolveError& error, int station,
-                                             double temperature)
-{
-    if (error.reason() != FailureReason::OUT_OF_DATA_RANGE) {
-        throw;
-    }
-    throw SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
+SolveError frozen_range_error(const SolveError& error, int station, double temperature) {
+    return SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
         "Frozen expansion: {} at station {} (T = {:.6g} K)", error.status().message, station,
         temperature));
 }
@@ -95,11 +89,12 @@ ThroatCondition ThroatCondition::failed(SolveStatus status) {
 
 FiniteAreaChamber FiniteAreaChamber::failed(SolveStatus status) {
     FiniteAreaChamber chamber;
-    const SolveStatus not_computed = SolveStatus::not_computed(status);
-    chamber.injector = NozzleStation::failed(not_computed);
-    chamber.stagnation = NozzleStation::failed(not_computed);
-    chamber.combustion_end = NozzleStation::failed(not_computed);
-    chamber.throat = ThroatCondition::failed(not_computed);
+    // The stagnation state, combustion end and throat are outputs of the one coupled chamber
+    // solve, so they fail with its status.
+    chamber.injector = NozzleStation::failed(status);
+    chamber.stagnation = NozzleStation::failed(status);
+    chamber.combustion_end = NozzleStation::failed(status);
+    chamber.throat = ThroatCondition::failed(status);
     chamber.status = std::move(status);
     return chamber;
 }
@@ -231,9 +226,12 @@ NozzleResults Nozzle::solve(const NozzleProfile& profile, int num_stations) {
 
 std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_condition,
     ExpansionType expansion_type, const std::vector<double>& ratios) {
-
     validate_stations(expansion_type, ratios);
+    return solve_stations_unchecked(throat_condition, expansion_type, ratios);
+}
 
+std::vector<NozzleStation> Nozzle::solve_stations_unchecked(const ThroatCondition& throat_condition,
+    ExpansionType expansion_type, const std::vector<double>& ratios) {
     std::vector<NozzleStation> results;
     results.reserve(ratios.size());
     // Stations 0 and 1 are the chamber and the throat. A frozen station keeps the composition of
@@ -252,6 +250,11 @@ std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_
             status = SolveStatus::not_computed(frozen_state_status);
         } else {
             status = capture_failure(stage, [&] {
+                if (expansion_type == ExpansionType::PRESSURE_RATIO && !(ratio >= 1.0)) {
+                    throw SolveError(FailureReason::NO_SOLUTION, std::format(
+                        "the station pressure would exceed the stagnation pressure: the pressure "
+                        "ratio is {:.6g}, below 1.", ratio));
+                }
                 switch (expansion_type) {
                     case ExpansionType::SUPERSONIC_AREA_RATIO: {
                         result = solve_supersonic_area_expansion(
@@ -293,8 +296,10 @@ std::vector<NozzleStation> Nozzle::solve_stations(const ThroatCondition& throat_
 std::vector<NozzleStation> Nozzle::solve_stations(const FiniteAreaChamber& chamber,
     ExpansionType expansion_type, const std::vector<double>& ratios) {
 
+    validate_stations(expansion_type, ratios);
     // The expansion runs from the stagnation state, so pressure ratios are converted from
-    // P_inj/P to P_inf/P.
+    // P_inj/P to P_inf/P. A ratio between 1 and P_inj/P_inf then lies below 1 and its station
+    // fails with NO_SOLUTION.
     std::vector<double> stagnation_ratios = ratios;
     if (expansion_type == ExpansionType::PRESSURE_RATIO && chamber.status.ok()) {
         const double P_inf_over_P_inj = chamber.throat.P_inlet / chamber.injector_pressure;
@@ -303,7 +308,7 @@ std::vector<NozzleStation> Nozzle::solve_stations(const FiniteAreaChamber& chamb
         }
     }
     // A failed chamber has a failed throat, which makes every station NOT_COMPUTED.
-    return solve_stations(chamber.throat, expansion_type, stagnation_ratios);
+    return solve_stations_unchecked(chamber.throat, expansion_type, stagnation_ratios);
 }
 
 FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& injector_state,
@@ -340,10 +345,13 @@ FiniteAreaChamber Nozzle::solve_finite_area_chamber(const std::vector<double>& i
     }
 
     FiniteAreaChamber chamber;
+    const std::vector<double> saved_inlet_state = m_inlet_state;
     SolveStatus status = capture_failure("finite-area chamber", [&] {
         chamber = finite_area_chamber_or_throw(injector_state, contraction_mode, value, reltol);
     });
     if (!status.ok()) {
+        // The iteration left a trial stagnation state as the inlet state.
+        set_inlet_state(saved_inlet_state);
         chamber = FiniteAreaChamber::failed(std::move(status));
         // The injector face is the given state and does not depend on the chamber solve.
         NozzleStation injector;
@@ -543,7 +551,10 @@ ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
             try {
                 m_gas.set_state_SP(S_inlet, P_throat);
             } catch (const SolveError& error) {
-                rethrow_frozen_range_error(error, station, m_gas.temperature());
+                if (error.reason() == FailureReason::OUT_OF_DATA_RANGE) {
+                    throw frozen_range_error(error, station, m_gas.temperature());
+                }
+                throw;
             }
         }
         gamma_s = m_gas.gamma_s();
@@ -792,7 +803,10 @@ double Nozzle::iterate_temperature(
         try {
             m_gas.set_state_SP(throat_condition.S_inlet, P_exit);
         } catch (const SolveError& error) {
-            rethrow_frozen_range_error(error, station, m_gas.temperature());
+            if (error.reason() == FailureReason::OUT_OF_DATA_RANGE) {
+                throw frozen_range_error(error, station, m_gas.temperature());
+            }
+            throw;
         }
         return m_gas.temperature();
     }

@@ -4,9 +4,13 @@
 
 #include "cantera/base/ctexceptions.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace Goddard {
@@ -70,6 +74,10 @@ SolveStatus SolveStatus::failure(FailureReason reason, std::string message) {
 }
 
 SolveStatus SolveStatus::not_computed(const SolveStatus& upstream) {
+    if (upstream.reason == FailureReason::NOT_COMPUTED) {
+        // Already not computed: the message names the failure that caused it.
+        return upstream;
+    }
     SolveStatus status;
     status.reason = FailureReason::NOT_COMPUTED;
     status.message = upstream.stage.empty()
@@ -135,6 +143,8 @@ ConvergenceError::ConvergenceError(SolveStatus status)
 SolveStatus status_from_current_exception(std::string_view stage) {
     SolveStatus status;
     try {
+        // Only called from a catch block.
+        // cppcheck-suppress rethrowNoCurrentException
         throw;
     } catch (const SolveError& error) {
         status = error.status();
@@ -147,8 +157,25 @@ SolveStatus status_from_current_exception(std::string_view stage) {
     return status;
 }
 
+void validate_equilibrium_request(const std::string& XY, const std::string& solver) {
+    // The pairs Cantera's `equilibrate` accepts.
+    static const std::array<std::string_view, 6> pairs = {"TP", "TV", "HP", "SP", "SV", "UV"};
+    if (std::find(pairs.begin(), pairs.end(), XY) == pairs.end()) {
+        throw std::invalid_argument(std::format(
+            "equilibrate: '{}' is not a pair of properties to hold constant; use one of 'TP', "
+            "'TV', 'HP', 'SP', 'SV' or 'UV'.", XY));
+    }
+    if (solver != "auto" && solver != "element_potential" && solver != "gibbs" && solver != "vcs") {
+        throw std::invalid_argument(std::format(
+            "equilibrate: unknown solver '{}'; use 'auto', 'element_potential', 'gibbs' or "
+            "'vcs'.", solver));
+    }
+}
+
 void rethrow_backend_error(std::string_view operation) {
     try {
+        // Only called from a catch block.
+        // cppcheck-suppress rethrowNoCurrentException
         throw;
     } catch (const Cantera::CanteraError& error) {
         throw SolveError(FailureReason::THERMO_FAILURE,
@@ -158,6 +185,8 @@ void rethrow_backend_error(std::string_view operation) {
 
 void rethrow_backend_usage_error(std::string_view operation) {
     try {
+        // Only called from a catch block.
+        // cppcheck-suppress rethrowNoCurrentException
         throw;
     } catch (const Cantera::CanteraError& error) {
         throw std::invalid_argument(std::format("{}: {}", operation, backend_message(error)));

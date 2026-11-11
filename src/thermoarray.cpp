@@ -206,6 +206,13 @@ int ThermoArray::flat_index(long i, long j, long k) const {
 }
 
 std::vector<double> ThermoArray::get_state(int loc) const {
+	// A failed entry holds the state it had before the failed solve, not a solution.
+	status_at(loc).raise_if_failed();
+	return state_unchecked(loc);
+}
+
+std::vector<double> ThermoArray::state_unchecked(int loc) const {
+	check_location(loc);
 	std::vector<double> state = m_states->getState(loc);
 	const size_t n_condensed = num_condensed();
 	for (size_t k = 0; k < n_condensed; k++) {
@@ -215,6 +222,7 @@ std::vector<double> ThermoArray::get_state(int loc) const {
 }
 
 void ThermoArray::set_state(int loc, const std::vector<double>& state) {
+	check_location(loc);
 	const size_t n_condensed = num_condensed();
 	const size_t cantera_size = m_solution->thermo()->stateSize();
 
@@ -243,12 +251,14 @@ void ThermoArray::set_state(int loc, const std::vector<double>& state) {
 }
 
 std::vector<double> ThermoArray::get_condensed_moles(int loc) const {
+	check_location(loc);
 	const size_t n_condensed = num_condensed();
 	const auto first = m_condensed_moles.begin() + static_cast<long>(loc) * static_cast<long>(n_condensed);
 	return std::vector<double>(first, first + static_cast<long>(n_condensed));
 }
 
 void ThermoArray::set_condensed_moles(int loc, const std::vector<double>& moles) {
+	check_location(loc);
 	const size_t n_condensed = num_condensed();
 	if (moles.size() != n_condensed) {
 		throw std::invalid_argument(
@@ -301,12 +311,15 @@ void ThermoArray::equilibrate_location(int loc, Gas* condensed_gas, const std::s
 	int log_level) {
 
 	m_states->setLoc(loc);
-	const std::vector<double> state_before = get_state(loc);
+	const std::vector<double> state_before = state_unchecked(loc);
 	SolveStatus status = capture_failure(entry_label(loc), [&] {
 		if (condensed_gas == nullptr) {
+			// The message names the state the solve started from, which a failed solve may change.
+			const double start_temperature = m_solution->thermo()->temperature();
+			const double start_pressure = m_solution->thermo()->pressure();
 			translate_backend_errors(
-				std::format("equilibrium at constant {} with the '{}' solver, from T = {:.6g} K, P = {:.6g} Pa",
-					XY, solver, m_solution->thermo()->temperature(), m_solution->thermo()->pressure()),
+				[&] { return std::format("equilibrium at constant {} with the '{}' solver, from T = {:.6g} K, P = {:.6g} Pa",
+					XY, solver, start_temperature, start_pressure); },
 				[&] {
 					m_solution->thermo()->equilibrate(XY, solver, rtol, max_steps, max_iter,
 						estimate_equil, log_level);
@@ -332,6 +345,7 @@ void ThermoArray::equilibrate_location(int loc, Gas* condensed_gas, const std::s
 }
 
 void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
+	validate_equilibrium_request(XY, solver);
 
 	if (num_condensed() == 0) {
 		for (int loc = 0; loc < size(); loc++){
@@ -352,6 +366,7 @@ void ThermoArray::equilibrate(const std::string& XY, const std::string& solver, 
 }
 
 int ThermoArray::retry_failed(const std::string& XY, const std::string& solver, double rtol, int max_steps, int max_iter, int estimate_equil, int log_level){
+	validate_equilibrium_request(XY, solver);
 
 	std::unique_ptr<Gas> gas;
 	if (num_condensed() > 0) {
@@ -513,15 +528,25 @@ void ThermoArray::_update_states(Func&& f, const ArrayXd& arr1, const ArrayXd& a
 		check_dimensionality(len2, 1);
 	}
 
-	m_statuses.clear();
+	// An entry is written, and its status reset, only when its state could be set. A rejected
+	// state leaves the Solution at the entry it was at before, so that it still equals the
+	// stored entry at the buffered location (see the invariant in the header).
+	std::vector<double> saved_state(m_solution->thermo()->stateSize());
 	int loc = 0;
 	for (double v2: arr2){
 		for (double v1: arr1){
-			translate_backend_errors(
-				std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g})", entry_label(loc), v1, v2),
-				[&] { f(v1, v2); });
+			m_solution->thermo()->saveState(saved_state);
+			try {
+				translate_backend_errors(
+					[&] { return std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g})", entry_label(loc), v1, v2); },
+					[&] { f(v1, v2); });
+			} catch (...) {
+				m_solution->thermo()->restoreState(saved_state);
+				throw;
+			}
 			m_states->updateState(loc);
-			loc++;			
+			set_status(loc, {});
+			loc++;
 		}
 	}
 }
@@ -551,7 +576,8 @@ void ThermoArray::_update_states_with_composition(
 		check_dimensionality(len3, 2);
 	}
 
-	m_statuses.clear();
+	// See `_update_states` for what a rejected state leaves behind.
+	std::vector<double> saved_state(m_solution->thermo()->stateSize());
 	int loc = 0;
 	for (int i = 0; i < arr3.rows(); i++){
 		// Evaluate row into contiguous storage. ArrayXXd is column-major,
@@ -560,11 +586,18 @@ void ThermoArray::_update_states_with_composition(
 		ArrayXd row = arr3.row(i);
 		for (double v2: arr2){
 			for (double v1: arr1){
-				translate_backend_errors(
-					std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g}) and composition row {}",
-						entry_label(loc), v1, v2, i),
-					[&] { f(v1, v2, row.data()); });
+				m_solution->thermo()->saveState(saved_state);
+				try {
+					translate_backend_errors(
+						[&] { return std::format("ThermoArray: setting {} from the values ({:.6g}, {:.6g}) and composition row {}",
+							entry_label(loc), v1, v2, i); },
+						[&] { f(v1, v2, row.data()); });
+				} catch (...) {
+					m_solution->thermo()->restoreState(saved_state);
+					throw;
+				}
 				m_states->updateState(loc);
+				set_status(loc, {});
 				loc++;
 			}
 		}

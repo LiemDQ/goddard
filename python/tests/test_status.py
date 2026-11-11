@@ -119,6 +119,22 @@ def test_unknown_species_and_files_are_value_errors(h2o2_yaml):
         Gas(h2o2_yaml, phase_name="no_such_phase")
 
 
+def test_misspelt_equilibrium_request_is_a_value_error(h2o2_yaml):
+    gas = h2o2_gas(h2o2_yaml, GasChemistry.FROZEN)
+    with pytest.raises(ValueError, match="PT"):
+        gas.equilibrate("PT")
+    with pytest.raises(ValueError, match="gibs"):
+        gas.equilibrate("TP", "gibs")
+
+
+def test_unknown_species_in_a_combustor_is_a_value_error(h2o2_yaml):
+    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM)
+    combustor = goddard.Combustor(gas, {"H2": 1.0}, {"XX": 1.0})
+    with pytest.raises(ValueError):
+        combustor.solve(300.0, 300.0, np.array([10 * BAR]), np.array([6.0]),
+                        goddard.infinite_area_combustor([10 * BAR]))
+
+
 def test_rejected_state_is_a_solve_error_not_a_backend_error(h2o2_yaml):
     gas = h2o2_gas(h2o2_yaml, GasChemistry.FROZEN)
     with pytest.raises(SolveError) as info:
@@ -328,7 +344,11 @@ def test_thermoarray_reports_failed_operating_points(h2o2_yaml):
     assert "combustion at O/F" in states.status.stage
     assert states.status_at(1).reason == FailureReason.THERMO_FAILURE
     assert np.isnan(states.temperature()).all()
-    assert "4 of 4" in repr(states) or "4 " in repr(states)
+    assert repr(states) == "<ThermoArray shape=(2, 2) 4 of 4 entries failed>"
+    # A failed entry holds the state it had before the failed solve, not a solution.
+    with pytest.raises(SolveError) as caught:
+        states.get_state(0)
+    assert caught.value.status.reason == FailureReason.THERMO_FAILURE
     with pytest.raises(IndexError):
         states.status_at(99)
 
