@@ -17,37 +17,27 @@ namespace Goddard {
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas)
     : m_sol(std::move(gas))
-{
-    set_current_state_as_reference();
-}
+{}
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas,
          std::shared_ptr<CondensedPhaseSet> condensed)
     : m_sol(std::move(gas)), m_condensed(std::move(condensed))
-{
-    set_current_state_as_reference();
-}
+{}
 
 Gas::Gas(const Cantera::Solution& gas)
     : Gas(gas.clone())
-{
-    set_current_state_as_reference();
-}
+{}
 
 Gas::Gas(Cantera::Solution&& gas)
     : m_sol(gas.shared_from_this())
-{
-    set_current_state_as_reference();
-}
+{}
 
 Gas::Gas(const std::string& infile, 
         const std::string& phase_name)
     : m_sol(translate_backend_usage_errors(
         [&] { return std::format("Gas: cannot load phase '{}' from '{}'", phase_name, infile); },
         [&] { return Cantera::newSolution(infile, phase_name); }))
-{
-    set_current_state_as_reference();
-}
+{}
 
 Gas Gas::clone() const {
     Gas copy = *this;
@@ -268,7 +258,7 @@ ThermodynamicState Gas::snapshot(CompositionModel model) const {
     info.internal_energy = info.enthalpy - info.pressure / info.density;
     info.gibbs = info.enthalpy - info.temperature * info.entropy;
     info.molecular_weight = molecular_weight();
-    info.stagnation_enthalpy = m_H_stagnation;
+    info.stagnation_enthalpy = NaN; // set by the solver that knows the flow
 
     const ExpansionProperties props = expansion_properties(model);
     info.composition_model = model;
@@ -439,10 +429,6 @@ double Gas::isenthalpic_velocity(double H_stagnation) const {
     return std::sqrt(2.0 * (H_stagnation - enthalpy_mass()));
 }
 
-double Gas::isenthalpic_velocity() const {
-    return isenthalpic_velocity(m_H_stagnation);
-}
-
 double Gas::area_per_mdot(double velocity) const {
     return temperature() * Cantera::GasConstant
         / (pressure() * velocity * molecular_weight());
@@ -454,15 +440,6 @@ double Gas::mach(double velocity, CompositionModel model) const {
 
 double Gas::cstar(CompositionModel model) const {
     return Goddard::cstar(gamma_s(model), temperature(), molecular_weight());
-}
-
-double Gas::isp() const {
-    return isenthalpic_velocity();
-}
-
-double Gas::ivac() const {
-    double exit_velocity = isp();
-    return exit_velocity + temperature()*Cantera::GasConstant/(exit_velocity * molecular_weight());
 }
 
 // Mixture properties
@@ -529,7 +506,6 @@ void Gas::set_fuel_fraction(
 {
     translate_backend_usage_errors("Gas::set_fuel_fraction",
         [&] { thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 void Gas::set_fuel_fraction(
     double fuel_frac,
@@ -539,7 +515,6 @@ void Gas::set_fuel_fraction(
 {
     translate_backend_usage_errors("Gas::set_fuel_fraction",
         [&] { thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 
 void Gas::set_equivalence_ratio(
@@ -550,7 +525,6 @@ void Gas::set_equivalence_ratio(
 {
     translate_backend_usage_errors("Gas::set_equivalence_ratio",
         [&] { thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 void Gas::set_equivalence_ratio(
     double phi,
@@ -560,7 +534,6 @@ void Gas::set_equivalence_ratio(
 {
     translate_backend_usage_errors("Gas::set_equivalence_ratio",
         [&] { thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 
 void Gas::set_OF_ratio(
@@ -572,7 +545,6 @@ void Gas::set_OF_ratio(
     double frac = 1.0/(OF+1.0);
     translate_backend_usage_errors("Gas::set_OF_ratio",
         [&] { thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 void Gas::set_OF_ratio(
     double OF,
@@ -583,7 +555,6 @@ void Gas::set_OF_ratio(
     double frac = 1.0/(OF+1.0);
     translate_backend_usage_errors("Gas::set_OF_ratio",
         [&] { thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis); });
-    set_current_state_as_reference();
 }
 
 
@@ -1034,26 +1005,6 @@ Eigen::ArrayXd Gas::element_moles() const {
     return amounts;
 }
 
-
-// Reference state
-
-void Gas::set_stagnation_enthalpy(double H) { m_H_stagnation = H; }
-double Gas::get_stagnation_enthalpy() const { return m_H_stagnation; }
-void Gas::set_reference_entropy(double S) { m_S0 = S; }
-double Gas::get_reference_entropy() const { return m_S0; }
-
-void Gas::set_current_state_as_reference() {
-    if (m_sol) {
-        // Mixture values: a stagnation enthalpy taken from the gas phase alone would leave the
-        // condensed products out of the energy balance of every expansion that uses it.
-        m_H_stagnation = enthalpy_mass();
-        m_S0 = entropy_mass();
-    }
-    else {
-        m_H_stagnation = 1.0;
-        m_S0 = 1.0;
-    }
-}
 
 // Accessors
 

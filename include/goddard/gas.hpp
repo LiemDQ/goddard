@@ -56,7 +56,7 @@ public:
     
     /**
      * Create a new Gas with a deep copy of the underlying Solution object and of the condensed
-     * species set, if any. The stored reference stagnation enthalpy and entropy are preserved.
+     * species set, if any.
      *
      * @note Copying a `Gas` normally is shallow: the copy references the same `Solution` and the
      * same condensed species set.
@@ -243,12 +243,6 @@ public:
      */
     double isenthalpic_velocity(double H_stagnation) const;
     /**
-     * Velocity computed from the stored reference stagnation enthalpy
-     * (see set_stagnation_enthalpy()).
-     * @return velocity [m/s]
-     */
-    double isenthalpic_velocity() const;
-    /**
      * Nozzle area per unit mass flow rate at the current state, RT/(P M u) (RP-1311 eq. 6.12).
      * @param velocity flow velocity [m/s]
      * @return area per mass flow rate [m^2 s/kg]
@@ -268,17 +262,6 @@ public:
      * @return c* [m/s]
      */
     double cstar(CompositionModel model) const;
-    /**
-     * Isenthalpic velocity from the stored stagnation enthalpy, the specific impulse of an
-     * exit at the current state.
-     * @return specific impulse [m/s]
-     */
-    double isp() const;
-    /**
-     * Vacuum specific impulse of an exit at the current state, u + RT/(M u).
-     * @return vacuum specific impulse [m/s]
-     */
-    double ivac() const;
 
     // Mixture properties
     /**
@@ -320,9 +303,6 @@ public:
     /**
      * Set the composition from a fuel fraction, an equivalence ratio or an O/F ratio, keeping
      * temperature and pressure.
-     *
-     * These setters also make the new state the reference: the stored stagnation enthalpy and
-     * reference entropy are reset to those of the new mixture.
      */
     void set_fuel_fraction(
         double fuel_frac,
@@ -337,8 +317,7 @@ public:
 
     /**
      * Set the composition from an equivalence ratio phi [-] of the given fuel and oxidizer,
-     * keeping temperature and pressure. Makes the new state the reference, as
-     * `set_fuel_fraction` does.
+     * keeping temperature and pressure.
      */
     void set_equivalence_ratio(
         double phi,
@@ -353,8 +332,7 @@ public:
 
     /**
      * Set the composition from an oxidizer-to-fuel mass ratio O/F [-] of the given fuel and
-     * oxidizer, keeping temperature and pressure. Makes the new state the reference, as
-     * `set_fuel_fraction` does.
+     * oxidizer, keeping temperature and pressure.
      */
     void set_OF_ratio(
         double OF,
@@ -563,29 +541,6 @@ public:
     EquilibriumOptions equilibrium_options;
 
 
-    // Reference state
-    /**
-     * Set the stored reference stagnation enthalpy [J/kg].
-     *
-     * The reference value is used by isenthalpic_velocity() and other stagnation
-     * helpers and must be set explicitly. It does not change when the
-     * thermodynamic state of `Gas` changes.
-     */
-    void set_stagnation_enthalpy(double H);
-    /**
-     * Get the stored reference stagnation enthalpy [J/kg].
-     *
-     * See set_stagnation_enthalpy() for the semantics of the reference value.
-     */
-    double get_stagnation_enthalpy() const;
-    /** Set the stored reference specific entropy [J/(kg.K)]. */
-    void set_reference_entropy(double S);
-    /** Get the stored reference specific entropy [J/(kg.K)]. */
-    double get_reference_entropy() const;
-    
-
-    void set_current_state_as_reference();
-
     // Access to underlying Cantera objects
     /** Underlying Cantera Solution handle. Pass to solver constructors that accept one. */
     std::shared_ptr<Cantera::Solution> solution() const;
@@ -645,8 +600,6 @@ private:
     std::shared_ptr<Cantera::Solution> m_sol;
     /** Candidate condensed species and their amounts. Null means the `Gas` is gas-only. */
     std::shared_ptr<CondensedPhaseSet> m_condensed;
-    double m_H_stagnation = 0.0;
-    double m_S0 = 0.0;
     /** Constant-T, constant-P solves used by the most recent `equilibrate_*` call. */
     int m_equilibrium_solve_count = 0;
 

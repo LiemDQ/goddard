@@ -219,12 +219,8 @@ void bind_gas_properties(nb::module_& m) {
         .def("stagnation_pressure", &Goddard::Gas::stagnation_pressure,
              "velocity"_a, "model"_a = Goddard::CompositionModel::FROZEN,
              DOC(Goddard, Gas, stagnation_pressure))
-        .def("isenthalpic_velocity",
-             nb::overload_cast<double>(&Goddard::Gas::isenthalpic_velocity, nb::const_),
+        .def("isenthalpic_velocity", &Goddard::Gas::isenthalpic_velocity,
              "H_stagnation"_a, DOC(Goddard, Gas, isenthalpic_velocity))
-        .def("isenthalpic_velocity",
-             nb::overload_cast<>(&Goddard::Gas::isenthalpic_velocity, nb::const_),
-             DOC(Goddard, Gas, isenthalpic_velocity, 2))
         .def("mach", &Goddard::Gas::mach,
              "velocity"_a, "model"_a = Goddard::CompositionModel::FROZEN, DOC(Goddard, Gas, mach))
         .def("area_per_mdot", &Goddard::Gas::area_per_mdot,
@@ -279,18 +275,7 @@ void bind_gas_properties(nb::module_& m) {
         // ---- Snapshot ----
 
         .def("snapshot", &Goddard::Gas::snapshot, "model"_a = Goddard::CompositionModel::FROZEN,
-             DOC(Goddard, Gas, snapshot))
-
-        // ---- Reference state (read-write properties) ----
-
-        .def_prop_rw("stagnation_enthalpy_ref",
-            &Goddard::Gas::get_stagnation_enthalpy,
-            &Goddard::Gas::set_stagnation_enthalpy,
-            DOC(Goddard, Gas, get_stagnation_enthalpy))
-        .def_prop_rw("reference_entropy",
-            &Goddard::Gas::get_reference_entropy,
-            &Goddard::Gas::set_reference_entropy,
-            DOC(Goddard, Gas, get_reference_entropy));
+             DOC(Goddard, Gas, snapshot));
 
     gas_class.def("__repr__", [](const Goddard::Gas& self) {
         return std::format("<Gas '{}' T={:.6g} K P={:.6g} Pa species={} condensed={}>",

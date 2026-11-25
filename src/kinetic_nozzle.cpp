@@ -93,7 +93,6 @@ KineticNozzle::KineticNozzle(
 {
     m_gas.restore_state(m_inlet_state);
     check_no_condensed_phases(m_gas);
-    m_gas.set_current_state_as_reference();
 }
 
 // Parse a CanteraError from CVodes and return a diagnostic message with context.

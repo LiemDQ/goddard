@@ -453,7 +453,7 @@ FiniteAreaChamber Nozzle::finite_area_chamber_or_throw(const std::vector<double>
         // Combustion end is part of the chamber and therefore in equilibrium.
         combustion_end = solve_subsonic_area_expansion(
             throat, contraction_ratio, 0, throat.state, station_abstol);
-        const double velocity = m_gas.isenthalpic_velocity();
+        const double velocity = m_gas.isenthalpic_velocity(throat.H_stagnation);
         const double P_injector_calc = m_gas.pressure() + m_gas.density() * velocity * velocity;
 
         if (std::abs(1.0 - P_injector_calc / P_injector) < reltol) {
@@ -518,7 +518,6 @@ ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
 
 ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
     m_gas.restore_state(m_inlet_state);
-    m_gas.set_current_state_as_reference();
     const int station = 1;
 
     double P_inlet = m_gas.pressure();
@@ -561,7 +560,7 @@ ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
         }
         gamma_s = m_gas.gamma_s(m_station_model);
 
-        double velocity = m_gas.isenthalpic_velocity();
+        double velocity = m_gas.isenthalpic_velocity(H_inlet);
         double sonic_velocity = m_gas.speed_of_sound(m_station_model);
 
         Mach = velocity/sonic_velocity;
@@ -612,7 +611,7 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
     // monotonically from infinity at x = 0 to 1 at the throat, so [0, x_throat] brackets the root.
     // Pure Newton diverges near the throat, where dlnA/dlnP vanishes, and near stagnation, where
     // x is tiny; steps leaving the bracket fall back to bisection.
-    double velocity = m_gas.isenthalpic_velocity();
+    double velocity = m_gas.isenthalpic_velocity(throat_condition.H_stagnation);
     const double A_mdot_throat = m_gas.area_per_mdot(velocity);
     double temperature = m_gas.temperature();
     const bool is_equilibrium = set_station_chemistry(station);
@@ -643,7 +642,7 @@ NozzleStation Nozzle::solve_subsonic_area_expansion(const ThroatCondition& throa
                 throat_condition, pressure_ratio, temperature, composition, station);
         }
         gamma_s = m_gas.gamma_s(m_station_model);
-        velocity = m_gas.isenthalpic_velocity();
+        velocity = m_gas.isenthalpic_velocity(throat_condition.H_stagnation);
         const double sonic_velocity = m_gas.speed_of_sound(m_station_model);
         ln_area_ratio = std::log(m_gas.area_per_mdot(velocity) / A_mdot_throat);
         // (dlnA/dlnP)_s = (u^2 - a^2)/(gamma_s u^2), and x increases as P falls
@@ -713,7 +712,7 @@ NozzleStation Nozzle::iterate_area_expansion(
     double expansion_ratio, double pressure_ratio_guess, int station,
     const std::vector<double>& frozen_state, double abstol) {
 
-    double velocity = m_gas.isenthalpic_velocity();
+    double velocity = m_gas.isenthalpic_velocity(throat_condition.H_stagnation);
     const double A_mdot_thrt = m_gas.area_per_mdot(velocity);
 
     const bool is_equilibrium = set_station_chemistry(station);
@@ -740,7 +739,7 @@ NozzleStation Nozzle::iterate_area_expansion(
         }
 
         const double gamma_s = m_gas.gamma_s(m_station_model);
-        velocity = m_gas.isenthalpic_velocity();
+        velocity = m_gas.isenthalpic_velocity(throat_condition.H_stagnation);
         const double sonic_velocity = m_gas.speed_of_sound(m_station_model);
         const double Ae_At = m_gas.area_per_mdot(velocity)/A_mdot_thrt;
         // (dlnA/dlnP)_s = (u^2 - a^2)/(gamma_s u^2), and ln(P_inf/P_e) increases as P_e falls

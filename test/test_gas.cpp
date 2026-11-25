@@ -52,18 +52,6 @@ TEST_F(GasTests, ConstructFromReference) {
     ASSERT_NO_THROW({ Gas gas(*sol); });
 }
 
-// Reference state defaults
-
-TEST_F(GasTests, DefaultStagnationEnthalpy) {
-    Gas gas(sol);
-    EXPECT_DOUBLE_EQ(gas.get_stagnation_enthalpy(), sol->thermo()->enthalpy_mass());
-}
-
-TEST_F(GasTests, DefaultReferenceEntropy) {
-    Gas gas(sol);
-    EXPECT_DOUBLE_EQ(gas.get_reference_entropy(), sol->thermo()->entropy_mass());
-}
-
 // Basic properties match Cantera directly
 
 TEST_F(GasTests, BasicPropertiesMatchCantera) {
@@ -159,18 +147,6 @@ TEST_F(GasTests, IsenthalpicVelocityFromEnthalpyDrop) {
     EXPECT_NEAR(gas.isenthalpic_velocity(H_stag), std::sqrt(2.0 * 100000.0), 1e-9);
 }
 
-TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
-    Gas gas(sol);
-    // At construction, H_stag = enthalpy_mass, so velocity should be ~0
-    // (within floating point precision of sqrt(2*(H - H)) = sqrt(0))
-    EXPECT_NEAR(gas.isenthalpic_velocity(), 0.0, 1e-6);
-
-    // Set a higher stagnation enthalpy and verify it uses the stored value
-    double H_stag = gas.enthalpy_mass() + 100000.0;
-    gas.set_stagnation_enthalpy(H_stag);
-    EXPECT_NEAR(gas.isenthalpic_velocity(), std::sqrt(2.0 * 100000.0), 1e-9);
-}
-
 // Expansion properties
 
 TEST_F(GasTests, EquilibriumExpansionPropertiesMatchFunction) {
@@ -209,7 +185,7 @@ TEST_F(GasTests, SnapshotPopulatesAllFields) {
     EXPECT_DOUBLE_EQ(info.cp, gas.cp_mass());
     EXPECT_DOUBLE_EQ(info.gamma_s, gas.gamma_s(CompositionModel::FROZEN));
     EXPECT_DOUBLE_EQ(info.speed_of_sound, gas.speed_of_sound(CompositionModel::FROZEN));
-    EXPECT_DOUBLE_EQ(info.stagnation_enthalpy, gas.get_stagnation_enthalpy());
+    EXPECT_TRUE(std::isnan(info.stagnation_enthalpy)) << "a bare Gas has no flow to stagnate";
     EXPECT_FALSE(info.composition.empty());
 }
 
@@ -272,9 +248,6 @@ TEST_F(GasTests, CopySharesSolution) {
 
 TEST_F(GasTests, CloneIsIndependentDeepCopy) {
     Gas gas(sol);
-    gas.set_stagnation_enthalpy(1.234e6);
-    gas.set_reference_entropy(5.678e3);
-
     Gas cloned = gas.clone();
     EXPECT_NE(cloned.solution(), gas.solution());
     EXPECT_DOUBLE_EQ(cloned.temperature(), gas.temperature());
@@ -285,8 +258,6 @@ TEST_F(GasTests, CloneIsIndependentDeepCopy) {
     for (size_t i = 0; i < X_original.size(); i++) {
         EXPECT_DOUBLE_EQ(X_cloned[i], X_original[i]);
     }
-    EXPECT_DOUBLE_EQ(cloned.get_stagnation_enthalpy(), 1.234e6);
-    EXPECT_DOUBLE_EQ(cloned.get_reference_entropy(), 5.678e3);
 
     double T_original = gas.temperature();
     cloned.set_state_TP(1000.0, 1e5);

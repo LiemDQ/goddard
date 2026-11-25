@@ -195,15 +195,6 @@ def test_isenthalpic_velocity_explicit(gas):
     assert abs(v - 500.0) < 1.0
 
 
-def test_isenthalpic_velocity_stored(gas):
-    gas.set_state_TP(1000.0, 1e5)
-    h = gas.enthalpy_mass
-    H0 = h + 0.5 * 500.0**2
-    gas.stagnation_enthalpy_ref = H0
-    v = gas.isenthalpic_velocity()
-    assert abs(v - 500.0) < 1.0
-
-
 # ---------------------------------------------------------------------------
 # Expansion properties and equilibrium
 # ---------------------------------------------------------------------------
@@ -269,22 +260,6 @@ def test_frozen_and_equilibrium_properties(gas):
     assert gas.expansion_properties(CompositionModel.EQUILIBRIUM).gamma_s == pytest.approx(
         gas.equilibrium_gamma_s, rel=1e-12)
     assert gas.mach(gas.equilibrium_speed_of_sound, CompositionModel.EQUILIBRIUM) == pytest.approx(1.0)
-
-
-# ---------------------------------------------------------------------------
-# Reference state properties
-# ---------------------------------------------------------------------------
-
-def test_stagnation_enthalpy_ref(gas):
-    gas.stagnation_enthalpy_ref = 1e6
-    assert abs(gas.stagnation_enthalpy_ref - 1e6) < 1.0
-
-
-def test_reference_entropy(gas):
-    gas.set_state_TP(300.0, 1e5)
-    s = gas.entropy_mass
-    gas.reference_entropy = s
-    assert abs(gas.reference_entropy - s) < 1.0
 
 
 # ---------------------------------------------------------------------------

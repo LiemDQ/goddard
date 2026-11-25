@@ -1301,8 +1301,7 @@ static const char *__doc_Goddard_Gas_clear_phase_transition = R"doc(Clear the pi
 
 static const char *__doc_Goddard_Gas_clone =
 R"doc(Create a new Gas with a deep copy of the underlying Solution object
-and of the condensed species set, if any. The stored reference
-stagnation enthalpy and entropy are preserved.
+and of the condensed species set, if any.
 
 @note Copying a `Gas` normally is shallow: the copy references the
 same `Solution` and the same condensed species set.)doc";
@@ -1510,14 +1509,6 @@ static const char *__doc_Goddard_Gas_gas_mass_fraction =
 R"doc(Gas mass fraction w_g = 1 - sum_k n_k M_k [-]. 1 for a gas-only
 mixture.)doc";
 
-static const char *__doc_Goddard_Gas_get_reference_entropy = R"doc(Get the stored reference specific entropy [J/(kg.K)].)doc";
-
-static const char *__doc_Goddard_Gas_get_stagnation_enthalpy =
-R"doc(Get the stored reference stagnation enthalpy [J/kg].
-
-See set_stagnation_enthalpy() for the semantics of the reference
-value.)doc";
-
 static const char *__doc_Goddard_Gas_has_cantera_sln = R"doc(True if underlying Cantera Solution object has been initialized.)doc";
 
 static const char *__doc_Goddard_Gas_has_condensed_candidates = R"doc(True if any candidate condensed species is attached.)doc";
@@ -1536,36 +1527,12 @@ Parameter ``H_stagnation``:
 Returns:
     velocity [m/s])doc";
 
-static const char *__doc_Goddard_Gas_isenthalpic_velocity_2 =
-R"doc(Velocity computed from the stored reference stagnation enthalpy (see
-set_stagnation_enthalpy()).
-
-Returns:
-    velocity [m/s])doc";
-
-static const char *__doc_Goddard_Gas_isp =
-R"doc(Isenthalpic velocity from the stored stagnation enthalpy, the specific
-impulse of an exit at the current state.
-
-Returns:
-    specific impulse [m/s])doc";
-
-static const char *__doc_Goddard_Gas_ivac =
-R"doc(Vacuum specific impulse of an exit at the current state, u + RT/(M u).
-
-Returns:
-    vacuum specific impulse [m/s])doc";
-
 static const char *__doc_Goddard_Gas_kinetics = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_last_equilibrium_solve_count =
 R"doc(Number of constant-temperature, constant-pressure multiphase solves
 consumed by the most recent `equilibrate_TP/HP/SP` call [-]. Zero
 before the first call; a diagnostic only.)doc";
-
-static const char *__doc_Goddard_Gas_m_H_stagnation = R"doc()doc";
-
-static const char *__doc_Goddard_Gas_m_S0 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_m_condensed =
 R"doc(Candidate condensed species and their amounts. Null means the `Gas` is
@@ -1653,8 +1620,7 @@ simultaneously.)doc";
 
 static const char *__doc_Goddard_Gas_set_OF_ratio =
 R"doc(Set the composition from an oxidizer-to-fuel mass ratio O/F [-] of the
-given fuel and oxidizer, keeping temperature and pressure. Makes the
-new state the reference, as `set_fuel_fraction` does.)doc";
+given fuel and oxidizer, keeping temperature and pressure.)doc";
 
 static const char *__doc_Goddard_Gas_set_OF_ratio_2 = R"doc()doc";
 
@@ -1665,8 +1631,6 @@ mixture].
 Throws:
     std::invalid_argument if `moles` does not have one entry per
     candidate.)doc";
-
-static const char *__doc_Goddard_Gas_set_current_state_as_reference = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_set_element_moles =
 R"doc(Set the composition from elemental amounts, without equilibrating.
@@ -1696,18 +1660,13 @@ Throws:
 
 static const char *__doc_Goddard_Gas_set_equivalence_ratio =
 R"doc(Set the composition from an equivalence ratio phi [-] of the given
-fuel and oxidizer, keeping temperature and pressure. Makes the new
-state the reference, as `set_fuel_fraction` does.)doc";
+fuel and oxidizer, keeping temperature and pressure.)doc";
 
 static const char *__doc_Goddard_Gas_set_equivalence_ratio_2 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_set_fuel_fraction =
 R"doc(Set the composition from a fuel fraction, an equivalence ratio or an
-O/F ratio, keeping temperature and pressure.
-
-These setters also make the new state the reference: the stored
-stagnation enthalpy and reference entropy are reset to those of the
-new mixture.)doc";
+O/F ratio, keeping temperature and pressure.)doc";
 
 static const char *__doc_Goddard_Gas_set_fuel_fraction_2 = R"doc()doc";
 
@@ -1748,15 +1707,6 @@ Parameter ``high``:
 Throws:
     std::invalid_argument if either name is not a candidate of this
     `Gas` or the two are not polymorphs of one another.)doc";
-
-static const char *__doc_Goddard_Gas_set_reference_entropy = R"doc(Set the stored reference specific entropy [J/(kg.K)].)doc";
-
-static const char *__doc_Goddard_Gas_set_stagnation_enthalpy =
-R"doc(Set the stored reference stagnation enthalpy [J/kg].
-
-The reference value is used by isenthalpic_velocity() and other
-stagnation helpers and must be set explicitly. It does not change when
-the thermodynamic state of `Gas` changes.)doc";
 
 static const char *__doc_Goddard_Gas_set_state_HP = R"doc(Set state from specific enthalpy [J/kg] and pressure [Pa].)doc";
 
@@ -3179,9 +3129,7 @@ R"doc(Composition model of the station being solved; set by
 
 static const char *__doc_Goddard_Nozzle_reset_state = R"doc(Restore the solver's gas to the inlet state.)doc";
 
-static const char *__doc_Goddard_Nozzle_set_inlet_state =
-R"doc(Set the inlet (chamber) state the next solve expands from, and make it
-the reference.)doc";
+static const char *__doc_Goddard_Nozzle_set_inlet_state = R"doc(Set the inlet (chamber) state the next solve expands from.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_station_chemistry =
 R"doc(Set the composition model (`m_station_model`) for station `station`.

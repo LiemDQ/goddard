@@ -107,10 +107,10 @@ nb::class_<Goddard::Gas>(m, "Gas", DOC(Goddard, Gas))
 pybind11_mkdoc assigns a suffix to each overload in declaration order:
 
 ```cpp
-// First overload  -> DOC(Goddard, Gas, isenthalpic_velocity)
-double isenthalpic_velocity(double H_stagnation) const;
-// Second overload -> DOC(Goddard, Gas, isenthalpic_velocity, 2)
-double isenthalpic_velocity() const;
+// First overload  -> DOC(Goddard, Gas, set_OF_ratio)
+void set_OF_ratio(double OF, const std::string& fuel_comp, const std::string& ox_comp, ...);
+// Second overload -> DOC(Goddard, Gas, set_OF_ratio, 2)
+void set_OF_ratio(double OF, const Composition& fuel_comp, const Composition& ox_comp, ...);
 ```
 
 ### Keep argument annotations
