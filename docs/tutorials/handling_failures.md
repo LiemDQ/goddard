@@ -74,12 +74,13 @@ The grid a `Combustor` returns has a status per operating point:
 ```python
 states = combustor.solve(300.0, 300.0, pressures, mixture_ratios)
 
-states.ok()             # boolean array, same shape as states.temperature()
+states.ok               # boolean array, same shape as states.temperature
 states.num_failed
-states.status_at(states.flat_index(i, j))
+states.status_at((i, j))
+states.temperature      # nan at every failed entry
 ```
 
-A failed entry has no state: `states.get_state(loc)` raises `SolveError` with the entry's status instead of returning the state the entry held before the failed solve.
+A failed entry has no state: `states[i, j]` (a `Gas` at the entry) and `states.get_state((i, j))` raise `SolveError` with the entry's status instead of returning the state the entry held before the failed solve.
 
 ## Stopping at the first failure
 

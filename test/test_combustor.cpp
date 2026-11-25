@@ -525,8 +525,8 @@ TEST_F(H2O2CombustorTests, adiabaticSolveStoresEntriesByIndex) {
         pressures, mixture_ratios, options);
     ASSERT_EQ(states.shape(), (std::vector<long>{mixture_ratios.size(), pressures.size()}));
 
-    Eigen::ArrayXXd T = states.temperature();
-    Eigen::ArrayXXd P = states.pressure();
+    Eigen::ArrayXd T = states.temperature();
+    Eigen::ArrayXd P = states.pressure();
     auto thermo = Cantera::newSolution("h2o2.yaml", "ohmech")->thermo();
     for (long i = 0; i < mixture_ratios.size(); i++) {
         for (long j = 0; j < pressures.size(); j++) {
@@ -538,10 +538,11 @@ TEST_F(H2O2CombustorTests, adiabaticSolveStoresEntriesByIndex) {
                 single_pressure, single_ratio, options);
             thermo->restoreState(single.get_state(0));
 
-            EXPECT_NEAR(P(i, j), pressures(j), 1e-9 * pressures(j)) << "i = " << i << ", j = " << j;
-            EXPECT_NEAR(T(i, j), thermo->temperature(), 1e-9 * thermo->temperature())
+            const int loc = states.flat_index(i, j);
+            EXPECT_NEAR(P(loc), pressures(j), 1e-9 * pressures(j)) << "i = " << i << ", j = " << j;
+            EXPECT_NEAR(T(loc), thermo->temperature(), 1e-9 * thermo->temperature())
                 << "i = " << i << ", j = " << j;
-            EXPECT_EQ(states.get_state(states.flat_index(i, j)), single.get_state(0))
+            EXPECT_EQ(states.get_state(loc), single.get_state(0))
                 << "i = " << i << ", j = " << j;
         }
     }

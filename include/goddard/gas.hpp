@@ -606,11 +606,6 @@ public:
     }
 
 private:
-    // `ThermoArray` stores a clone of the condensed species set of the `Gas` it is built from.
-    // `CondensedPhaseSet` is an implementation detail, so it is reached through friendship rather
-    // than through a public accessor.
-    friend class ThermoArray;
-
     /**
      * One constant-temperature, constant-pressure multiphase Gibbs minimization.
      *

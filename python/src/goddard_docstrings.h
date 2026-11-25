@@ -598,8 +598,6 @@ static const char *__doc_Goddard_CondensedPhaseSet =
 R"doc(Candidate condensed species of a `Gas`. Implementation detail; see
 `condensed.hpp`.)doc";
 
-static const char *__doc_Goddard_CondensedPhaseSet_2 = R"doc()doc";
-
 static const char *__doc_Goddard_DetonationBranch =
 R"doc(Root of the Rayleigh line and the equilibrium Hugoniot for a wave
 faster than the Chapman-Jouguet (CJ) speed.
@@ -1209,8 +1207,6 @@ processes involving reactive flow.
 
 `Gas` is itself a wrapper class that carries very little data, and is
 cheap to copy.)doc";
-
-static const char *__doc_Goddard_Gas_3 = R"doc()doc";
 
 static const char *__doc_Goddard_GasChemistry =
 R"doc(Chemistry model of a flow solver, set in the solver's options or
@@ -4142,138 +4138,180 @@ validity checks of the MoC unit processes.)doc";
 static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc(Maximum number of iterations [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray =
-R"doc(Array of thermodynamic states with up to three dimensions, for
-broadcasting thermodynamic operations. Wraps `Cantera::SolutionArray`.
+R"doc(Array of thermodynamic states of one `Gas`, with one to three
+dimensions.
 
-If the third dimension is used, it indexes compositions. Entries are
-stored with the first dimension varying fastest; `flat_index` converts
-indices (i, j, k) to a storage location.)doc";
+Each entry is a `Gas` state vector (`Gas::save_state`), condensed
+amounts included, and its properties are evaluated through a private
+clone of the `Gas` the array was built from. Every property is
+therefore the mixture property `Gas` reports, condensed phases
+included.
 
-static const char *__doc_Goddard_ThermoArray_HP = R"doc(Set the enthalpy and pressure of the array.)doc";
+Entries are stored in row-major order, last index fastest, as numpy
+stores an array: the entry at indices (i, j, k) of an array with shape
+(n0, n1, n2) is at flat location `(i * n1 + j) * n2 + k` (see
+`flat_index`). The property getters return one value per entry in this
+order.
 
-static const char *__doc_Goddard_ThermoArray_HPX =
-R"doc(Set the enthalpy, pressure, and mole fractions (HPX) or mass fractions
-(HPY) of the array. The composition matrix columns should represent
-species and the rows should represent distinct compositions.)doc";
+Every entry carries the status of the last solve that wrote it. A
+failed entry has no state: its properties are NaN and its state
+accessors throw its status as `SolveError`.
 
-static const char *__doc_Goddard_ThermoArray_HPY = R"doc()doc";
+Copying a `ThermoArray` copies its states.)doc";
 
-static const char *__doc_Goddard_ThermoArray_SH = R"doc(Set the entropy and the enthalpy of the array.)doc";
+static const char *__doc_Goddard_ThermoArray_CompositionInput =
+R"doc(How a bulk setter writes the evaluator's state from one entry's
+values.)doc";
 
-static const char *__doc_Goddard_ThermoArray_SP = R"doc(Set the entropy and pressure of the array.)doc";
+static const char *__doc_Goddard_ThermoArray_CompositionInput_MASS = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_SPX =
-R"doc(Set the entropy, pressure, and mole fractions (SPX) or mass fractions
-(SPY) of the array. The composition matrix columns should represent
-species and the rows should represent distinct compositions.)doc";
+static const char *__doc_Goddard_ThermoArray_CompositionInput_MOLE = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_SPY = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_CompositionInput_NONE = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_TD = R"doc(Set the temperature and density of the array.)doc";
+static const char *__doc_Goddard_ThermoArray_HP = R"doc(Specific enthalpy [J/kg] and pressure [Pa].)doc";
 
-static const char *__doc_Goddard_ThermoArray_TP = R"doc(Set the temperature and pressure of the array.)doc";
+static const char *__doc_Goddard_ThermoArray_HPX = R"doc(Specific enthalpy [J/kg], pressure [Pa] and mole fractions [-].)doc";
 
-static const char *__doc_Goddard_ThermoArray_TPX =
-R"doc(Set the temperature, pressure, and mole fractions of the array. The
-mole fraction matrix columns should represent species and the rows
-should represent distinct compositions.)doc";
+static const char *__doc_Goddard_ThermoArray_HPY = R"doc(Specific enthalpy [J/kg], pressure [Pa] and mass fractions [-].)doc";
 
-static const char *__doc_Goddard_ThermoArray_TPY = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_SH = R"doc(Specific entropy [J/(kg.K)] and specific enthalpy [J/kg].)doc";
 
-static const char *__doc_Goddard_ThermoArray_TV = R"doc(Set the temperature [K] and specific volume [m^3/kg] of the array.)doc";
+static const char *__doc_Goddard_ThermoArray_SP = R"doc(Specific entropy [J/(kg.K)] and pressure [Pa].)doc";
+
+static const char *__doc_Goddard_ThermoArray_SPX = R"doc(Specific entropy [J/(kg.K)], pressure [Pa] and mole fractions [-].)doc";
+
+static const char *__doc_Goddard_ThermoArray_SPY = R"doc(Specific entropy [J/(kg.K)], pressure [Pa] and mass fractions [-].)doc";
+
+static const char *__doc_Goddard_ThermoArray_TD =
+R"doc(@name Bulk setters The two-variable setters need a 2-D array of shape
+(len(var1), len(var2)) and set the entry (i, j) from (var1[i],
+var2[j]). The setters with a composition need a 3-D array of shape
+(len(var1), len(var2), rows of the composition matrix) and set the
+entry (i, j, k) from (var1[i], var2[j]) and row k, whose columns are
+the species of `species_names`. A setter that takes no composition
+keeps each entry's composition and condensed amounts.
+
+Each setter resets the status of every entry it writes to ok. A state
+the thermodynamic backend rejects (e.g. a nonpositive temperature)
+throws `SolveError`: the entries set before it are written and ok, and
+the entry that was rejected and those after it keep their previous
+state and status.
+
+Throws:
+    std::length_error if the array's shape does not match the
+    arguments. @{
+
+Temperature [K] and density [kg/m^3].)doc";
+
+static const char *__doc_Goddard_ThermoArray_TP = R"doc(Temperature [K] and pressure [Pa].)doc";
+
+static const char *__doc_Goddard_ThermoArray_TPX = R"doc(Temperature [K], pressure [Pa] and mole fractions [-].)doc";
+
+static const char *__doc_Goddard_ThermoArray_TPY = R"doc(Temperature [K], pressure [Pa] and mass fractions [-].)doc";
+
+static const char *__doc_Goddard_ThermoArray_TV = R"doc(Temperature [K] and specific volume [m^3/kg].)doc";
 
 static const char *__doc_Goddard_ThermoArray_ThermoArray =
-R"doc(NOTE: `ThermoArray` is a straightforward extension of Cantera'
-`SolutionArray`. The most efficient solution, in terms of performance
-and repeated code, would be to make it a derived class of
-`SolutionArray`. Unfortunately, as of 2025-04-19 all of
-`SolutionArray`'s constructors are private, which makes it impossible
-to inherit from. The only way to construct a `SolutionArray` class is
-to call the `create` method.
+R"doc(Create an array with the given shape, every entry in the current state
+of `gas`.
 
-The alternative for now is to implement `ThermoArray` as a wrapper
-class that contains a pointer to a `SolutionArray`.
+The array evaluates its entries through its own clone of `gas`, so
+later changes to `gas` do not affect it.
 
-Entries are stored with the first dimension varying fastest: the entry
-at indices (i, j, k) of an array with shape (n0, n1, n2) is at flat
-location `i + j*n0 + k*n0*n1` (see `flat_index`).
+Parameter ``gas``:
+    Phase, species set and candidate condensed species of the entries.
 
-The array holds its own copy of the `Solution` passed to the
-constructor, so changes to that `Solution` made elsewhere (e.g.
-through a `Gas` or `Nozzle` sharing it) do not affect the stored
-states. Copies of a `ThermoArray` share the same storage.)doc";
+Parameter ``shape``:
+    Extent of each dimension: one to three non-negative values.
 
-static const char *__doc_Goddard_ThermoArray_ThermoArray_2 =
-R"doc(Create an array with the given shape. Every entry is initialized to
-the current state of `sol`. An empty `shape` leaves the shape unset;
-the first setter call then sets it.)doc";
+Throws:
+    std::invalid_argument if `shape` has no or more than three
+    dimensions, or a negative extent.)doc";
 
-static const char *__doc_Goddard_ThermoArray_ThermoArray_3 =
-R"doc(Create an array from a `Gas`, carrying over its candidate condensed
-species.
+static const char *__doc_Goddard_ThermoArray_UV = R"doc(Specific internal energy [J/kg] and specific volume [m^3/kg].)doc";
 
-The array stores its own clone of the gas's condensed species set, so
-the candidate list and the phase objects are independent of the `Gas`
-it was built from. Every entry additionally carries its own amount of
-each candidate, initialized to the amounts of `gas`.)doc";
-
-static const char *__doc_Goddard_ThermoArray_UV = R"doc(Set the internal energy and the volume of the array.)doc";
-
-static const char *__doc_Goddard_ThermoArray_check_dimensionality = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_broadcast =
+R"doc(Broadcast `set(v1, v2)` over a 2-D array, or over a 3-D array with the
+rows of `compositions` set first as `composition` says.)doc";
 
 static const char *__doc_Goddard_ThermoArray_check_location = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_check_ndim = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_check_shape = R"doc(Check that the array has `extents` as its shape.)doc";
+
+static const char *__doc_Goddard_ThermoArray_composition_rows = R"doc()doc";
 
 static const char *__doc_Goddard_ThermoArray_condensed_species_names = R"doc(Names of the candidate condensed species, in candidate order.)doc";
 
-static const char *__doc_Goddard_ThermoArray_enthalpy_mass =
-R"doc(Specific enthalpy of the gas phase [J/kg] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_cp_mass = R"doc(Frozen constant-pressure specific heat [J/(kg.K)].)doc";
 
-static const char *__doc_Goddard_ThermoArray_enthalpy_mole =
-R"doc(Molar enthalpy of the gas phase [J/kmol] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_cv_mass = R"doc(Frozen constant-volume specific heat [J/(kg.K)].)doc";
 
-static const char *__doc_Goddard_ThermoArray_entropy_mass =
-R"doc(Specific entropy of the gas phase [J/(kg.K)] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_density = R"doc(Density [kg/m^3].)doc";
 
-static const char *__doc_Goddard_ThermoArray_entropy_mole =
-R"doc(Molar entropy of the gas phase [J/(kmol.K)] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_enthalpy_mass = R"doc(Specific enthalpy [J/kg].)doc";
+
+static const char *__doc_Goddard_ThermoArray_entropy_mass = R"doc(Specific entropy [J/(kg.K)].)doc";
 
 static const char *__doc_Goddard_ThermoArray_entry_label =
 R"doc("entry (i, j, k)" for flat location `loc`, with as many indices as
 dimensions.)doc";
 
 static const char *__doc_Goddard_ThermoArray_equilibrate =
-R"doc(Equilibrate every entry, holding the two properties named by `XY`
-constant.
+R"doc(Equilibrate every entry with `Gas::equilibrate`, holding the two
+properties named by `XY` constant. The solver settings are the
+`equilibrium_options` of the `Gas` the array was built from.
 
 An entry whose equilibrium solve fails keeps the state it had before
 the call and records the failure (see `status_at`); the other entries
 are unaffected. Nothing is thrown for a failed solve.
 
-When the array carries condensed species each location is equilibrated
-through a `Gas` built on the array's phase and candidate set, so the
-condensed amounts take part and are written back; `rtol` and
-`max_steps` are forwarded to the Gibbs solver and the remaining
-arguments are ignored.
+Throws:
+    std::invalid_argument for an `XY` or `solver` that
+    `Gas::equilibrate` rejects.
 
 Throws:
-    std::invalid_argument if `XY` is not one of "TP", "TV", "HP",
-    "SP", "SV" or "UV", if `solver` is not "auto",
-    "element_potential", "gibbs" or "vcs", or if `solver` is "vcs" and
-    the array carries condensed species.)doc";
+    NotImplementedError for a property pair `Gas::equilibrate` does
+    not support with the array's condensed species.)doc";
 
 static const char *__doc_Goddard_ThermoArray_equilibrate_location =
-R"doc(Equilibrate the entry at `loc`; on failure restore its state and
-record the failure.)doc";
+R"doc(Equilibrate the entry at `loc`; on failure keep its state and record
+the failure.)doc";
+
+static const char *__doc_Goddard_ThermoArray_evaluate =
+R"doc(Evaluate `property` on the `Gas` of every entry, in storage order.
+Failed entries are NaN. The `Gas` passed to `property` is the array's
+private evaluator in the entry's state; it must not be kept.)doc";
 
 static const char *__doc_Goddard_ThermoArray_flat_index =
 R"doc(Flat storage location of the entry at indices (i, j, k). Indices
-beyond the array's number of dimensions must be zero.)doc";
+beyond the array's number of dimensions must be zero.
+
+Throws:
+    std::out_of_range if an index is outside its dimension.)doc";
+
+static const char *__doc_Goddard_ThermoArray_flat_index_2 =
+R"doc(Flat storage location of the entry at `indices`, one index per
+dimension.
+
+Throws:
+    std::invalid_argument if `indices` does not have `ndim()` entries.
+
+Throws:
+    std::out_of_range if an index is outside its dimension.)doc";
+
+static const char *__doc_Goddard_ThermoArray_gamma_s = R"doc(Isentropic exponent [-] in `model` (see `Gas::gamma_s`).)doc";
+
+static const char *__doc_Goddard_ThermoArray_gas_at =
+R"doc(Independent `Gas` in the state of the entry at flat location `loc`.
+
+Throws:
+    SolveError with the entry's status if the entry failed.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
+
+static const char *__doc_Goddard_ThermoArray_gas_mass_fraction = R"doc(Mass fraction of the gas phase [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray_get_condensed_moles =
 R"doc(Amounts of the candidate condensed species at flat location `loc`
@@ -4281,46 +4319,57 @@ R"doc(Amounts of the candidate condensed species at flat location `loc`
 array.
 
 Throws:
+    SolveError with the entry's status if the entry failed.
+
+Throws:
     std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_get_state =
-R"doc(State vector of the entry at flat location `loc`: the Cantera state of
-the gas phase followed by one entry per candidate condensed species
-(kmol per kg of mixture), exactly as `Gas::save_state()` lays it out.
+R"doc(State vector of the entry at flat location `loc`, laid out as
+`Gas::save_state()`: the Cantera state of the gas phase followed by
+one entry per candidate condensed species (kmol per kg of mixture).
 
 Throws:
     SolveError with the entry's status if the entry failed (see
-    `status_at`): it holds the state it had before the failed solve,
-    which is not a solution.
+    `status_at`).
 
 Throws:
     std::out_of_range if `loc` is not a location of the array.)doc";
 
-static const char *__doc_Goddard_ThermoArray_internal_energy_mass =
-R"doc(Specific internal energy of the gas phase [J/kg] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_internal_energy_mass = R"doc(Specific internal energy [J/kg], h - P/rho.)doc";
 
-static const char *__doc_Goddard_ThermoArray_internal_energy_mole =
-R"doc(Molar internal energy of the gas phase [J/kmol] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_load =
+R"doc(Put the evaluator in the state of the entry at `loc`, whatever its
+status.)doc";
 
-static const char *__doc_Goddard_ThermoArray_is_shape_set = R"doc(True once the array has a shape.)doc";
+static const char *__doc_Goddard_ThermoArray_m_gas = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_m_condensed = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_m_condensed_moles = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_m_shape_is_set = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_m_solution = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_m_shape = R"doc()doc";
 
 static const char *__doc_Goddard_ThermoArray_m_states = R"doc()doc";
 
 static const char *__doc_Goddard_ThermoArray_m_statuses = R"doc()doc";
 
-static const char *__doc_Goddard_ThermoArray_mean_molecular_weight =
-R"doc(Mean molecular weight of the gas phase [kg/kmol] of every entry; see
-`temperature` for the shape and `slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_mass_fractions =
+R"doc(Mass fractions of the gas-phase species [-]; laid out as
+`mole_fractions`.)doc";
+
+static const char *__doc_Goddard_ThermoArray_mixture_mass_fractions =
+R"doc(Mass fractions of the whole mixture [-] (see
+`Gas::mixture_mass_fractions`): one row per entry, one column per gas
+species followed by one per candidate condensed species.)doc";
+
+static const char *__doc_Goddard_ThermoArray_mixture_molecular_weight =
+R"doc(Mixture molecular weight [kg/kmol], CEA's "MW" (see
+`Gas::mixture_molecular_weight`).)doc";
+
+static const char *__doc_Goddard_ThermoArray_mole_fractions =
+R"doc(Mole fractions of the gas-phase species [-]: one row per entry in
+storage order, one column per species of `species_names`. A failed
+entry's row is NaN.)doc";
+
+static const char *__doc_Goddard_ThermoArray_molecular_weight =
+R"doc(Molecular weight [kg/kmol], CEA's "M" (see `Gas::molecular_weight`).)doc";
 
 static const char *__doc_Goddard_ThermoArray_ndim = R"doc(Number of dimensions, 1 to 3 [-].)doc";
 
@@ -4330,17 +4379,16 @@ gas-only array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_num_failed = R"doc(Number of entries whose solve failed [-].)doc";
 
-static const char *__doc_Goddard_ThermoArray_ok =
-R"doc(Whether each entry is ok, as 1 or 0; the shape and `slice` are those
-of the property getters (see `temperature`).)doc";
+static const char *__doc_Goddard_ThermoArray_ok = R"doc(Whether each entry is ok, one value per entry in storage order.)doc";
 
-static const char *__doc_Goddard_ThermoArray_pressure =
-R"doc(Pressure [Pa] of every entry; see `temperature` for the shape and
-`slice`.)doc";
+static const char *__doc_Goddard_ThermoArray_pressure = R"doc(Pressure [Pa].)doc";
 
-static const char *__doc_Goddard_ThermoArray_reshape = R"doc()doc";
+static const char *__doc_Goddard_ThermoArray_reshape =
+R"doc(Change the shape, keeping the entries in storage order.
 
-static const char *__doc_Goddard_ThermoArray_retrieve_thermo_data = R"doc(retrieve thermodynamic state values from SolutionArray.)doc";
+Throws:
+    std::invalid_argument if `shape` is not a valid shape (see the
+    constructor) or does not have `size()` entries.)doc";
 
 static const char *__doc_Goddard_ThermoArray_retry_failed =
 R"doc(Equilibrate again the entries whose last solve failed, e.g. with
@@ -4348,11 +4396,7 @@ another solver. Entries that are ok are left alone. See `equilibrate`
 for the arguments.
 
 Returns:
-    Number of entries still failed [-].
-
-Throws:
-    std::invalid_argument for an `XY` or `solver` that `equilibrate`
-    rejects.)doc";
+    Number of entries still failed [-].)doc";
 
 static const char *__doc_Goddard_ThermoArray_set_condensed_moles =
 R"doc(Set the amounts of the candidate condensed species at flat location
@@ -4366,12 +4410,10 @@ Throws:
     std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_set_state =
-R"doc(Set the entry at flat location `loc` from a state vector of the same
-phase.
-
-Accepts either the extended length returned by `get_state()` or the
-bare Cantera state length, in which case the condensed amounts of that
-entry are set to zero.
+R"doc(Set the entry at flat location `loc` from a state vector of the
+array's `Gas`, and mark it ok. Accepts the lengths
+`Gas::restore_state` accepts; the bare Cantera state length sets the
+condensed amounts to zero.
 
 Throws:
     std::invalid_argument if the vector has neither length.
@@ -4391,9 +4433,26 @@ static const char *__doc_Goddard_ThermoArray_shape = R"doc(Extent of each dimens
 
 static const char *__doc_Goddard_ThermoArray_size = R"doc(Number of entries [-].)doc";
 
-static const char *__doc_Goddard_ThermoArray_state_unchecked =
-R"doc(`get_state` without the check of the entry's status, for the retry of
-a failed entry.)doc";
+static const char *__doc_Goddard_ThermoArray_snapshot =
+R"doc(`Gas::snapshot` of the entry at flat location `loc`.
+
+Parameter ``loc``:
+    Flat location.
+
+Parameter ``model``:
+    Composition model of the derived properties.
+
+Throws:
+    SolveError with the entry's status if the entry failed.
+
+Throws:
+    std::out_of_range if `loc` is not a location of the array.)doc";
+
+static const char *__doc_Goddard_ThermoArray_species_names =
+R"doc(Names of the gas-phase species, in the order of the composition
+getters.)doc";
+
+static const char *__doc_Goddard_ThermoArray_speed_of_sound = R"doc(Speed of sound [m/s] in `model` (see `Gas::speed_of_sound`).)doc";
 
 static const char *__doc_Goddard_ThermoArray_status =
 R"doc(Outcome over the whole array: ok when every entry is, otherwise the
@@ -4408,37 +4467,12 @@ Throws:
     std::out_of_range if `loc` is not a location of the array.)doc";
 
 static const char *__doc_Goddard_ThermoArray_temperature =
-R"doc(Temperature [K] of every entry.
+R"doc(@name Property getters One value per entry in storage order (see
+`flat_index`), NaN for a failed entry. Each is the `Gas` property of
+the same name: a mixture property, per kg of gas plus condensed
+phases. @{
 
-Property getters: the result has shape (n0, 1) for a 1-D array and
-(n0, n1) for 2-D and 3-D arrays, where element (i, j) is the entry at
-`flat_index(i, j, slice)`. `slice` selects the index along the third
-dimension and must be 0 for arrays with fewer than 3 dimensions.
-
-The values are those of the gas phase alone: condensed species are not
-included in the energies, entropies or molecular weight.
-
-An entry whose solve failed (see `status_at`) is NaN in every property
-getter.)doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_2 = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_3 =
-R"doc(Updates thermodynamic state by broadcasting a function `f` with values
-in `var1` and `var2`.
-
-This template function is defined in the source file because it is a
-private method that is only used within the same source file.)doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_with_composition = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_with_composition_2 = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_with_mass_composition = R"doc()doc";
-
-static const char *__doc_Goddard_ThermoArray_update_states_with_mole_composition = R"doc()doc";
+Temperature [K].)doc";
 
 static const char *__doc_Goddard_ThermodynamicState =
 R"doc(Snapshot of the thermodynamic state of a mixture (see

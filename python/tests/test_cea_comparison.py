@@ -292,7 +292,7 @@ def test_isochoric_combustion_matches_cea(of_ratio, initial_pressure_pa):
     solver.solve(solution, cea.UV, u_reactants / cea.R, specific_volume, weights)
     assert solution.converged
 
-    gas.restore_state(burnt.get_state(0))
+    gas.restore_state(burnt.get_state((0, 0, 0)))
     # Tighter than ComparisonTolerances: gas-phase H2/O2 needs no cross-database allowance.
     assert_close_rel(gas.temperature, solution.T, 3e-3, "UV temperature")
     assert_close_rel(gas.pressure, solution.P * 1e5, 3e-3, "UV pressure")

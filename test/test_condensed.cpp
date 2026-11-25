@@ -1425,13 +1425,13 @@ TEST_F(CondensedStateTests, ThermoArrayEquilibratesEachLocationLikeGas) {
 
     ThermoArray states(gas, {2});
     ASSERT_EQ(states.num_condensed(), 3u);
-    states.equilibrate("HP", "gibbs", 1e-9, 20000);
+    states.equilibrate("HP", "gibbs");
 
     Gas reference = gas.clone();
     reference.equilibrate_HP(reference.enthalpy_mass(), reference.pressure());
 
     for (int loc = 0; loc < states.size(); loc++) {
-        EXPECT_NEAR(states.temperature()(loc, 0), reference.temperature(), 1e-9)
+        EXPECT_NEAR(states.temperature()(loc), reference.temperature(), 1e-9)
             << "location " << loc;
         const std::vector<double> moles = states.get_condensed_moles(loc);
         ASSERT_EQ(moles.size(), reference.condensed_moles().size());
@@ -1439,6 +1439,34 @@ TEST_F(CondensedStateTests, ThermoArrayEquilibratesEachLocationLikeGas) {
             EXPECT_NEAR(moles[k], reference.condensed_moles()[k], 1e-12) << "location " << loc;
         }
     }
+}
+
+TEST_F(CondensedStateTests, ThermoArrayPropertiesIncludeTheCondensedPhase) {
+    // CH4/O2 at O/F 0.5 and 1000 K carries graphite (MultiphaseTPTests.MethaneOxygenGraphiteAt1000K):
+    // the gas-phase values and the mixture values differ, and the array must report the mixture
+    // ones, as Gas does.
+    Gas gas = make_methane_oxygen_products();
+    gas.set_element_moles(methane_oxygen_elements(gas, 0.5), 1000.0, BAR);
+    gas.equilibrate_TP(1000.0, BAR);
+    ASSERT_TRUE(gas.has_condensed_phases());
+    ASSERT_LT(gas.gas_mass_fraction(), 1.0);
+
+    ThermoArray states(gas, {1});
+    const double rel = 1e-12;
+    EXPECT_NEAR(states.enthalpy_mass()(0), gas.enthalpy_mass(), rel * std::abs(gas.enthalpy_mass()));
+    EXPECT_NEAR(states.entropy_mass()(0), gas.entropy_mass(), rel * gas.entropy_mass());
+    EXPECT_NEAR(states.density()(0), gas.density(), rel * gas.density());
+    EXPECT_NEAR(states.molecular_weight()(0), gas.molecular_weight(), rel * gas.molecular_weight());
+    EXPECT_NEAR(states.gas_mass_fraction()(0), gas.gas_mass_fraction(), rel);
+    // The gas phase alone, which the array used to report, is a different number.
+    EXPECT_GT(std::abs(states.enthalpy_mass()(0) - gas.thermo()->enthalpy_mass()),
+              1e-3 * std::abs(gas.enthalpy_mass()));
+    // Mixture mass fractions cover the condensed species and sum to one.
+    const Eigen::ArrayXXd fractions = states.mixture_mass_fractions();
+    ASSERT_EQ(fractions.cols(), static_cast<long>(gas.num_species() + states.num_condensed()));
+    EXPECT_NEAR(fractions.row(0).sum(), 1.0, 1e-12);
+    EXPECT_NEAR(fractions.row(0).head(static_cast<long>(gas.num_species())).sum(),
+                gas.gas_mass_fraction(), 1e-12);
 }
 
 TEST_F(CondensedStateTests, ThermoArrayRejectsTheVcsSolverWithCondensedSpecies) {

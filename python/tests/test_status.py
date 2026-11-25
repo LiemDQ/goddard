@@ -330,27 +330,29 @@ def test_thermoarray_without_failures(h2o2_yaml):
     states = combustion_states(h2o2_yaml, 300.0)
     assert states.num_failed == 0
     assert states.status.ok
-    assert states.ok().dtype == bool and states.ok().all()
-    assert states.status_at(0).ok
-    assert np.isfinite(states.temperature()).all()
+    assert states.ok.dtype == bool and states.ok.shape == states.shape and states.ok.all()
+    assert states.status_at((0, 0)).ok
+    assert np.isfinite(states.temperature).all()
 
 
 def test_thermoarray_reports_failed_operating_points(h2o2_yaml):
     """A 1e5 K fuel stream has an enthalpy no combustion temperature can match."""
     states = combustion_states(h2o2_yaml, 1e5)
     assert states.num_failed == states.size == 4
-    assert not states.ok().any()
+    assert not states.ok.any()
     assert states.status.reason == FailureReason.THERMO_FAILURE
     assert "combustion at O/F" in states.status.stage
-    assert states.status_at(1).reason == FailureReason.THERMO_FAILURE
-    assert np.isnan(states.temperature()).all()
+    assert states.status_at((0, 1)).reason == FailureReason.THERMO_FAILURE
+    assert np.isnan(states.temperature).all()
     assert repr(states) == "<ThermoArray shape=(2, 2) 4 of 4 entries failed>"
     # A failed entry holds the state it had before the failed solve, not a solution.
     with pytest.raises(SolveError) as caught:
-        states.get_state(0)
+        states.get_state((0, 0))
     assert caught.value.status.reason == FailureReason.THERMO_FAILURE
+    with pytest.raises(SolveError):
+        states[0, 0]
     with pytest.raises(IndexError):
-        states.status_at(99)
+        states.status_at((2, 0))
 
 
 def test_combustor_rejects_nonpositive_temperature_and_pressure(h2o2_yaml):
