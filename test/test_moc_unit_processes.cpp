@@ -8,12 +8,13 @@
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/profile.hpp"
+#include <numbers>
 #include <cmath>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 namespace {
 

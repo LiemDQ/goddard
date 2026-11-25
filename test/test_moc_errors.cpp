@@ -7,6 +7,7 @@
 #include "goddard/error.hpp"
 #include "status_test_helpers.hpp"
 #include "cantera/core.h"
+#include <numbers>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -17,7 +18,7 @@ using namespace Goddard;
 using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::is_ok;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 namespace {
 

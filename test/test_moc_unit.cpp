@@ -5,12 +5,13 @@
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include <numbers>
 #include <cmath>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // Helper: create a MocNozzle configured for planar perfect gas
 static MocNozzle make_perfect_gas_solver(double gamma, double theta_max, int num_chars) {

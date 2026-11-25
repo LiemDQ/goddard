@@ -4,6 +4,7 @@
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
 #include "cantera/core.h"
+#include <numbers>
 #include <cmath>
 #include <fstream>
 #include <filesystem>
@@ -11,7 +12,7 @@
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // Helper: create a MocNozzle configured for planar perfect gas
 static MocNozzle make_perfect_gas_solver(
@@ -686,7 +687,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
     ASSERT_GE(ep.y.size(), 2u);
     double mach_area = 0.0, area = 0.0;
     for (size_t k = 1; k < ep.y.size(); k++) {
-        const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+        const double dA = std::numbers::pi * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
         mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
         area += dA;
     }

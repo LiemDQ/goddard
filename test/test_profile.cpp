@@ -1,5 +1,6 @@
 #include "goddard/profile.hpp"
 #include "goddard/numerics.hpp"
+#include <numbers>
 #include <cmath>
 #include <stdexcept>
 #include "gtest/gtest.h"
@@ -7,7 +8,7 @@
 using namespace Goddard;
 
 namespace {
-constexpr double DEG = M_PI / 180.0;
+constexpr double DEG = std::numbers::pi / 180.0;
 
 // area_ratio^2 recovered from radius_at(x_max()) should match the requested
 // area ratio (r_exit/r_throat)^2, since generation always sets r_throat=1.0

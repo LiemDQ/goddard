@@ -1,13 +1,14 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/profile.hpp"
+#include <numbers>
 #include <cmath>
 #include <string>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // Helper: create a MocNozzle configured for axisymmetric perfect-gas Rao design.
 // downstream_wall_curvature_radius is left at its default (0.382, positive), so

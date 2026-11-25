@@ -1,6 +1,7 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include <numbers>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -9,7 +10,7 @@
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // ============================================================
 // Grid-convergence tests: the MoC solution must converge as the
@@ -91,9 +92,9 @@ static double exit_plane_mass_flow_error(const MocResult& result, double gamma, 
         // Exit plane is a vertical cut (constant x): dx=0, so the downstream normal flux
         // reduces to cos(theta_avg)*dy.
         const double normal_flux = std::cos(theta_avg) * dy;
-        mdot += flux * normal_flux * (2.0 * M_PI * y_avg);
+        mdot += flux * normal_flux * (2.0 * std::numbers::pi * y_avg);
     }
-    const double mdot_reference = perfect_gas_mass_flux(1.0, gamma) * (M_PI * r_throat * r_throat);
+    const double mdot_reference = perfect_gas_mass_flux(1.0, gamma) * (std::numbers::pi * r_throat * r_throat);
     return (mdot - mdot_reference) / mdot_reference;
 }
 
@@ -103,7 +104,7 @@ static double area_mean_exit_mach(const MocResult& result) {
     const ExitPlane& ep = result.exit_plane;
     double mach_area = 0.0, area = 0.0;
     for (size_t k = 1; k < ep.y.size(); k++) {
-        const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+        const double dA = std::numbers::pi * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
         mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
         area += dA;
     }

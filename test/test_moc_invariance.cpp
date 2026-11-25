@@ -1,5 +1,6 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
+#include <numbers>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -49,7 +50,7 @@ MocResult solve_golden(const GoldenCase& c) {
     o.chemistry = GasChemistry::PERFECT_GAS;
     o.mode = MocMode::DESIGN_MIN_LENGTH;
     o.gamma = c.gamma;
-    o.theta_max = c.theta_max_deg * M_PI / 180.0;
+    o.theta_max = c.theta_max_deg * std::numbers::pi / 180.0;
     o.num_characteristics = c.num_characteristics;
     o.geometry.throat_radius = 1.0;
     MocNozzle solver(o);
@@ -380,7 +381,7 @@ TEST(MocThroatScaling, PlanarFanDesignAnalysisRoundTripIsScaleInvariant) {
         opts.chemistry = GasChemistry::PERFECT_GAS;
         opts.mode = MocMode::DESIGN_MIN_LENGTH;
         opts.gamma = 1.4;
-        opts.theta_max = 15.0 * M_PI / 180.0;
+        opts.theta_max = 15.0 * std::numbers::pi / 180.0;
         opts.num_characteristics = 16;
         opts.geometry.throat_radius = throat_radius;
         return MocNozzle(opts).solve();
@@ -451,7 +452,7 @@ TEST(MocThroatScaling, DesignMinLengthContourScalesWithThroatRadius) {
         o.chemistry = GasChemistry::PERFECT_GAS;
         o.mode = MocMode::DESIGN_MIN_LENGTH;
         o.gamma = c.gamma;
-        o.theta_max = c.theta_max_deg * M_PI / 180.0;
+        o.theta_max = c.theta_max_deg * std::numbers::pi / 180.0;
         o.num_characteristics = c.num_characteristics;
         o.geometry.throat_radius = k;
         const MocResult scaled = MocNozzle(o).solve();
@@ -482,7 +483,7 @@ TEST(MocThroatScaling, NonPositiveThroatRadiusIsRejected) {
         o.chemistry = GasChemistry::PERFECT_GAS;
         o.mode = MocMode::DESIGN_MIN_LENGTH;
         o.gamma = 1.4;
-        o.theta_max = 15.0 * M_PI / 180.0;
+        o.theta_max = 15.0 * std::numbers::pi / 180.0;
         o.num_characteristics = 10;
         o.geometry.throat_radius = throat_radius;
         EXPECT_THROW({ MocNozzle nozzle(o); }, std::invalid_argument) << "throat_radius = " << throat_radius;

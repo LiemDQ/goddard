@@ -1,3 +1,4 @@
+#include <numbers>
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -528,14 +529,14 @@ double start_line_mass_flow_error(
         // V dot n over the segment, where n is the downstream normal (dy, -dx)/|ds|; the
         // |ds| cancels against the area element, leaving the bare differences.
         const double normal_flux = std::cos(theta_avg) * dy - std::sin(theta_avg) * dx;
-        const double area_weight = axisymmetric ? (2.0 * M_PI * y_avg) : 1.0;
+        const double area_weight = axisymmetric ? (2.0 * std::numbers::pi * y_avg) : 1.0;
         mdot += flux * normal_flux * area_weight;
     }
 
     // 1-D critical mass flow through the throat, in the same normalization. The
     // axisymmetric case is the full disc; the planar case is the half-height the solver
     // actually meshes.
-    const double throat_area = axisymmetric ? (M_PI * r_throat * r_throat) : r_throat;
+    const double throat_area = axisymmetric ? (std::numbers::pi * r_throat * r_throat) : r_throat;
     const double mdot_reference = mass_flux(1.0) * throat_area;
     if (!(std::abs(mdot_reference) > 0.0)) return std::numeric_limits<double>::quiet_NaN();
 

@@ -5,6 +5,7 @@
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
 #include "status_test_helpers.hpp"
+#include <numbers>
 #include <cmath>
 #include <string>
 #include "gtest/gtest.h"
@@ -14,7 +15,7 @@ using Goddard::test_helpers::failed_with;
 using Goddard::test_helpers::is_ok;
 using Goddard::test_helpers::throws_solve_error;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // ============================================================
 //  Perfect-gas normal shock
@@ -234,7 +235,7 @@ TEST(ObliqueShock, WeakAngleBounds) {
 
             EXPECT_GT(weak_beta, mu)
                 << "Weak beta must exceed Mach angle at M=" << M;
-            EXPECT_LT(weak_beta, M_PI / 2.0)
+            EXPECT_LT(weak_beta, std::numbers::pi / 2.0)
                 << "Weak beta must be < 90 deg at M=" << M;
         }
     }
@@ -249,7 +250,7 @@ TEST(ObliqueShock, StrongAngleBounds) {
 
         EXPECT_GT(strong_beta, weak_beta)
             << "Strong beta must exceed weak beta at M=" << M;
-        EXPECT_LE(strong_beta, M_PI / 2.0)
+        EXPECT_LE(strong_beta, std::numbers::pi / 2.0)
             << "Strong beta must be <= 90 deg at M=" << M;
     }
 }
@@ -445,7 +446,7 @@ TEST(ObliqueShock, ZeroDeflectionIsMachWaveOrNormalShock) {
     const double M = 3.0;
     auto [weak_beta, strong_beta] = oblique_shock_wave_angle(M, 0.0, 1.4);
     EXPECT_NEAR(weak_beta, std::asin(1.0/M), 1e-14);
-    EXPECT_NEAR(strong_beta, M_PI/2, 1e-14);
+    EXPECT_NEAR(strong_beta, std::numbers::pi/2, 1e-14);
 
     ObliqueShockResult weak = oblique_shock_from_deflection(M, 0.0, 1.4, true);
     ASSERT_TRUE(weak.status.ok());

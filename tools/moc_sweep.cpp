@@ -15,6 +15,7 @@
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/profile.hpp"
 
+#include <numbers>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -66,7 +67,7 @@ MocOptions build_options(const Config& c) {
 
     if (c.mode == "minlength") {
         o.mode = MocMode::DESIGN_MIN_LENGTH;
-        o.theta_max = c.half_angle * M_PI / 180.0;
+        o.theta_max = c.half_angle * std::numbers::pi / 180.0;
         return o;
     }
     if (c.mode == "rao") {

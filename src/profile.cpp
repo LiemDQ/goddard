@@ -1,3 +1,4 @@
+#include <numbers>
 #include <string>
 #include <cmath>
 #include <fstream>
@@ -34,7 +35,7 @@ constexpr double RAO_PARABOLIC_MIN_LENGTH_RATIO = 0.60;
 constexpr double RAO_PARABOLIC_LENGTH_RATIO_STEP = 0.10;
 
 double to_radians(double deg) {
-    return deg/360.0 * 2 * M_PI;
+    return deg/360.0 * 2 * std::numbers::pi;
 }
     
 // -- NozzleProfile --
@@ -245,7 +246,7 @@ double NozzleProfile::radius_at(double x_query) const {
 
 double NozzleProfile::area_at(double x_query) const {
     double radius = radius_at(x_query);
-    return M_PI * radius * radius;
+    return std::numbers::pi * radius * radius;
 }
 
 double NozzleProfile::max_theta() const {

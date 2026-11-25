@@ -1,3 +1,4 @@
+#include <numbers>
 #include <cmath>
 #include <optional>
 #include <format>
@@ -415,10 +416,10 @@ MocResult MocNozzle::solve() {
         result.min_theta = lowest->theta;
         result.min_theta_x = lowest->x;
         result.min_theta_y = lowest->y;
-        if (result.min_theta < -0.5 * M_PI / 180.0) {
+        if (result.min_theta < -0.5 * std::numbers::pi / 180.0) {
             log.warning("Flow angle reaches {:.2f} deg at (x={:.3f}, y={:.3f} throat radii): a "
                 "compression is converging on the axis (a forming shock); the isentropic "
-                "solution downstream of it is approximate.", result.min_theta * 180.0 / M_PI,
+                "solution downstream of it is approximate.", result.min_theta * 180.0 / std::numbers::pi,
                 result.min_theta_x, result.min_theta_y);
         }
     }

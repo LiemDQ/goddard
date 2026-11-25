@@ -1,3 +1,4 @@
+#include <numbers>
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -76,7 +77,7 @@ SolveStatus attached_shock_status(double mach, double deflection_angle, double g
 /** (weak, strong) wave angles [rad] of an attached oblique shock; see `attached_shock_status`. */
 std::pair<double, double> attached_wave_angles(double mach, double deflection_angle, double gamma) {
     if (deflection_angle == 0.0) {
-        return {std::asin(1.0/mach), M_PI/2};
+        return {std::asin(1.0/mach), std::numbers::pi/2};
     }
 
     double tan_theta = std::tan(deflection_angle);
@@ -91,7 +92,7 @@ std::pair<double, double> attached_wave_angles(double mach, double deflection_an
         / std::pow(lambda, 3.0);
     chi = std::max(-1.0, std::min(chi, 1.0));
 
-    double weak_beta_cos = std::cos((4*M_PI + std::acos(chi))/3);
+    double weak_beta_cos = std::cos((4*std::numbers::pi + std::acos(chi))/3);
     double strong_beta_cos = std::cos((std::acos(chi))/3);
 
     double weak_beta = std::atan((M2-1 + 2*lambda*weak_beta_cos)
@@ -282,7 +283,7 @@ MaxDeflection max_deflection_real(Gas& gas, const std::vector<double>& state1, d
 {
     const double inverse_golden_ratio = (std::sqrt(5.0) - 1.0)/2.0;
     double lower = mach_angle;
-    double upper = M_PI/2;
+    double upper = std::numbers::pi/2;
     double inner_lower = upper - inverse_golden_ratio*(upper - lower);
     double inner_upper = lower + inverse_golden_ratio*(upper - lower);
     double theta_lower = deflection_at(gas, state1, u1, inner_lower, chemistry, opts);
@@ -341,12 +342,12 @@ ObliqueShockResult oblique_shock_from_deflection_real(Gas& gas, double u1, doubl
     if (deflection == 0.0) {
         // A Mach wave on the weak branch, a normal shock on the strong one
         gas.restore_state(state1);
-        return oblique_shock_real(gas, u1, weak ? mach_angle : M_PI/2, chemistry, opts);
+        return oblique_shock_real(gas, u1, weak ? mach_angle : std::numbers::pi/2, chemistry, opts);
     }
 
     // residual theta(beta) - deflection at the bracket ends
     double lower = weak ? mach_angle : max.wave_angle;
-    double upper = weak ? max.wave_angle : M_PI/2;
+    double upper = weak ? max.wave_angle : std::numbers::pi/2;
     double residual_lower = weak ? -deflection : max.deflection - deflection;
 
     double beta = 0.5*(lower + upper);
