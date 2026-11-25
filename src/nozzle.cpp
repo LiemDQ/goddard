@@ -129,13 +129,13 @@ NozzleResults NozzleResults::failed(const SolveStatus& inlet_status, std::size_t
 }
 
 Nozzle::Nozzle(const Gas& gas, NozzleOptions options)
-    : m_inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(std::move(options)) {
+    : m_inlet_state(gas.save_state()), m_gas(gas.clone()), m_opts(options) {
     validate_nozzle_options(m_opts);
     set_station_chemistry(0);
 }
 
 Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
-    : m_inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(std::move(options)) {
+    : m_inlet_state(std::move(state)), m_gas(gas.clone()), m_opts(options) {
     validate_nozzle_options(m_opts);
     set_station_chemistry(0);
 }

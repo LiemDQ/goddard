@@ -292,6 +292,9 @@ MocResult MocNozzle::solve() {
     }
     else {
         // Cantera-backed path for frozen/equilibrium chemistry; validate() checked m_gas.
+        if (!m_gas) {
+            throw std::logic_error("MocNozzle: real-gas solve without a Gas");
+        }
         NozzleOptions nozzle_opts;
         nozzle_opts.chemistry = options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);
