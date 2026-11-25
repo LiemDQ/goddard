@@ -180,10 +180,10 @@ ObliqueShockResult oblique_shock_from_deflection(
  * Normal, reflected and oblique shocks in a real gas, following Gordon & McBride, NASA RP-1311
  * Part I, chapter 7.
  *
- * The chemistry of the `Gas` selects the model behind the shock: PERFECT_GAS uses the perfect-gas
- * relations with `Gas::gamma_s()`, FROZEN holds the composition fixed, and EQUILIBRIUM brings the
- * post-shock gas to chemical equilibrium. KINETIC chemistry and condensed species are not
- * supported.
+ * The chemistry given to the constructor selects the model behind the shock: PERFECT_GAS uses
+ * the perfect-gas relations with the frozen cp/cv of the pre-shock gas, FROZEN holds the
+ * composition fixed, and EQUILIBRIUM brings the post-shock gas to chemical equilibrium. KINETIC
+ * chemistry and condensed species are not supported.
  *
  * The pre-shock state is the state of the `Gas` at construction. It is taken as given: it need not
  * be at equilibrium (e.g. an unburned fuel-oxidizer mixture), and its sound speed is always the
@@ -201,11 +201,12 @@ ObliqueShockResult oblique_shock_from_deflection(
 class ShockSolver {
 public:
     /**
-     * @param gas pre-shock gas and chemistry model. The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
+     * @param gas pre-shock gas. The solver works on its own copy of `gas`; the caller's `Gas` is not modified.
+     * @param chemistry model behind the shock: PERFECT_GAS, FROZEN or EQUILIBRIUM
      * @param options Newton tolerance on the log pressure and temperature ratios, and iteration limit
      * @throws std::invalid_argument for KINETIC chemistry
      */
-    ShockSolver(const Gas& gas, SolverOptions options = {});
+    ShockSolver(const Gas& gas, GasChemistry chemistry, SolverOptions options = {});
 
     /**
      * Normal shock.
@@ -240,7 +241,7 @@ public:
      * @param mach incident shock Mach number, with the frozen pre-shock sound speed [-]
      * @param incident_chemistry FROZEN or EQUILIBRIUM, for state 2
      * @param reflected_chemistry FROZEN or EQUILIBRIUM, for state 5
-     * @throws std::invalid_argument for any other chemistry, or if the solver's gas is PERFECT_GAS
+     * @throws std::invalid_argument for any other chemistry, or if the solver's chemistry is PERFECT_GAS
      */
     ReflectedShockResult reflected_shock(
         double mach, GasChemistry incident_chemistry, GasChemistry reflected_chemistry);
@@ -315,15 +316,15 @@ public:
     Gas post_shock_state() const;
 
 private:
-    /** Restore the pre-shock state and the construction chemistry. */
+    /** Restore the pre-shock state. */
     void reset() const;
     /** Frozen sound speed of the pre-shock state [m/s]. */
     double pre_shock_sound_speed() const;
     /** Incident and reflected shocks for PERFECT_GAS chemistry, from the incident Mach number. */
     ReflectedShockResult perfect_gas_reflected_shock(double mach);
     /**
-     * Record the outcome of a solve and restore the construction chemistry: the current state
-     * becomes the post-shock state if `status` is ok, and there is no post-shock state otherwise.
+     * Record the outcome of a solve: the current state becomes the post-shock state if `status` is
+     * ok, and there is no post-shock state otherwise.
      */
     void store_post_shock_state(const SolveStatus& status);
     /**

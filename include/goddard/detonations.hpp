@@ -142,7 +142,7 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
  *
  * The unburned gas (state 1) is the state of the `Gas` at construction. It is taken as given:
  * it need not be at equilibrium, and its sound speed is the frozen one. The products are always
- * at chemical equilibrium, whatever the chemistry of the `Gas`.
+ * at chemical equilibrium.
  *
  * The constructor solves nothing. The CJ detonation is solved by the first call that needs it
  * (any of the solve methods) and kept for the later ones.
@@ -160,10 +160,9 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
 class DetonationSolver {
 public:
     /**
-     * @param gas unburned gas: FROZEN or EQUILIBRIUM chemistry, with no condensed species
+     * @param gas unburned gas, with no condensed species
      * @param options Newton tolerance on the log pressure and temperature ratios, and iteration limit
-     * @throws std::invalid_argument for PERFECT_GAS or KINETIC chemistry, or if condensed species
-     * are present
+     * @throws std::invalid_argument if condensed species are present
      */
     DetonationSolver(const Gas& gas, SolverOptions options = {});
 
@@ -218,10 +217,10 @@ public:
     ReflectedDetonationResult reflected_detonation(double drive_factor = 1.0,
                                                    DetonationBranch branch = DetonationBranch::OVERDRIVEN);
 
-    /** Gas at the unburned state, with the chemistry it had at construction. An independent copy. */
+    /** Gas at the unburned state. An independent copy. */
     Gas pre_detonation_state() const;
     /**
-     * Gas at the products of the most recent solve, with EQUILIBRIUM chemistry. An independent
+     * Gas at the products of the most recent solve, at chemical equilibrium. An independent
      * copy.
      *
      * @throws SolveError if the most recent solve failed (with that solve's status), or if no
@@ -229,8 +228,8 @@ public:
      */
     Gas post_detonation_state() const;
     /**
-     * Gas behind the leading frozen shock of the most recent solve, with FROZEN chemistry. An
-     * independent copy.
+     * Gas behind the leading frozen shock of the most recent solve, with the unburned
+     * composition. An independent copy.
      *
      * @throws SolveError if the most recent incident detonation failed (with that solve's
      * status), or if no detonation has been solved yet
@@ -238,7 +237,7 @@ public:
     Gas von_neumann_state() const;
 
 private:
-    /** Restore the unburned state and the construction chemistry. */
+    /** Restore the unburned state. */
     void reset() const;
     /**
      * The CJ detonation, solved from the unburned state on the first call and stored with its
@@ -265,7 +264,6 @@ private:
     void store_failure(const SolveStatus& status);
 
     mutable Gas m_gas;
-    GasChemistry m_chemistry;
     SolverOptions m_options;
     std::vector<double> m_pre_detonation_state;
     /// Products of the most recent solve; meaningful only while `m_post_detonation_status` is ok.

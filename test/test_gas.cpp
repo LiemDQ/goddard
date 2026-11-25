@@ -45,29 +45,29 @@ protected:
 // Construction
 
 TEST_F(GasTests, ConstructFromSharedPtr) {
-    ASSERT_NO_THROW(Gas(sol, GasChemistry::FROZEN));
+    ASSERT_NO_THROW({ Gas gas(sol); });
 }
 
 TEST_F(GasTests, ConstructFromReference) {
-    ASSERT_NO_THROW(Gas(*sol, GasChemistry::EQUILIBRIUM));
+    ASSERT_NO_THROW({ Gas gas(*sol); });
 }
 
 // Reference state defaults
 
 TEST_F(GasTests, DefaultStagnationEnthalpy) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     EXPECT_DOUBLE_EQ(gas.get_stagnation_enthalpy(), sol->thermo()->enthalpy_mass());
 }
 
 TEST_F(GasTests, DefaultReferenceEntropy) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     EXPECT_DOUBLE_EQ(gas.get_reference_entropy(), sol->thermo()->entropy_mass());
 }
 
 // Basic properties match Cantera directly
 
 TEST_F(GasTests, BasicPropertiesMatchCantera) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     auto thermo = sol->thermo();
 
     EXPECT_DOUBLE_EQ(gas.temperature(), thermo->temperature());
@@ -83,45 +83,45 @@ TEST_F(GasTests, BasicPropertiesMatchCantera) {
 // Gamma_s
 
 TEST_F(GasTests, FrozenGammaIsCpOverCv) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     double expected = sol->thermo()->cp_mass() / sol->thermo()->cv_mass();
-    EXPECT_DOUBLE_EQ(gas.gamma_s(), expected);
+    EXPECT_DOUBLE_EQ(gas.gamma_s(CompositionModel::FROZEN), expected);
 }
 
 TEST_F(GasTests, EquilibriumGammaMatchesEquilibriumFunction) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     double expected = get_thermo_equilibrium_properties(*sol->thermo()).gamma_s;
-    EXPECT_DOUBLE_EQ(gas.gamma_s(), expected);
+    EXPECT_DOUBLE_EQ(gas.gamma_s(CompositionModel::EQUILIBRIUM), expected);
 }
 
 TEST_F(GasTests, FrozenAndEquilibriumGammaDiffer) {
-    Gas frozen(sol, GasChemistry::FROZEN);
-    Gas eq(sol, GasChemistry::EQUILIBRIUM);
+    Gas frozen(sol);
+    Gas eq(sol);
 
     // For a reactive mixture these should generally differ
-    EXPECT_NE(frozen.gamma_s(), eq.gamma_s());
+    EXPECT_NE(frozen.gamma_s(CompositionModel::FROZEN), eq.gamma_s(CompositionModel::EQUILIBRIUM));
 }
 
 // Speed of sound
 
 TEST_F(GasTests, SpeedOfSoundMatchesFreeFunction) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    double expected = gas_sonic_velocity(*sol->thermo(), gas.gamma_s());
-    EXPECT_DOUBLE_EQ(gas.speed_of_sound(), expected);
+    Gas gas(sol);
+    double expected = gas_sonic_velocity(*sol->thermo(), gas.gamma_s(CompositionModel::FROZEN));
+    EXPECT_DOUBLE_EQ(gas.speed_of_sound(CompositionModel::FROZEN), expected);
 }
 
 // Stagnation properties
 
 TEST_F(GasTests, StagnationEnthalpyAddsKineticEnergy) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     double velocity = 500.0;
     EXPECT_DOUBLE_EQ(gas.stagnation_enthalpy(velocity), gas.enthalpy_mass() + 0.5 * velocity * velocity);
 }
 
 TEST_F(GasTests, FrozenStagnationPressureConservesEntropyAndTotalEnthalpy) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     const double velocity = 500.0;
-    const double P_stagnation = gas.stagnation_pressure(velocity);
+    const double P_stagnation = gas.stagnation_pressure(velocity, CompositionModel::FROZEN);
     EXPECT_GT(P_stagnation, gas.pressure());
 
     Gas stagnation = gas.clone();
@@ -133,10 +133,10 @@ TEST_F(GasTests, FrozenStagnationPressureConservesEntropyAndTotalEnthalpy) {
 TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) {
     // The fixture state is at equilibrium. Decelerating it isentropically with shifting
     // equilibrium must reach the stagnation enthalpy h + v^2/2 at the returned pressure.
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     const double velocity = 1500.0;
     const double P_static = gas.pressure();
-    const double P_stagnation = gas.stagnation_pressure(velocity);
+    const double P_stagnation = gas.stagnation_pressure(velocity, CompositionModel::EQUILIBRIUM);
 
     EXPECT_DOUBLE_EQ(gas.pressure(), P_static) << "stagnation_pressure must not modify the state";
 
@@ -148,19 +148,19 @@ TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) 
 
     // Recombination during compression releases heat, so the equilibrium and frozen
     // stagnation pressures of this dissociated mixture differ well beyond solver tolerance.
-    Gas frozen(sol, GasChemistry::FROZEN);
-    const double P_stagnation_frozen = frozen.stagnation_pressure(velocity);
+    Gas frozen(sol);
+    const double P_stagnation_frozen = frozen.stagnation_pressure(velocity, CompositionModel::FROZEN);
     EXPECT_GT(std::abs(P_stagnation - P_stagnation_frozen) / P_stagnation_frozen, 1e-4);
 }
 
 TEST_F(GasTests, IsenthalpicVelocityFromEnthalpyDrop) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     double H_stag = gas.enthalpy_mass() + 100000.0;
     EXPECT_NEAR(gas.isenthalpic_velocity(H_stag), std::sqrt(2.0 * 100000.0), 1e-9);
 }
 
 TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     // At construction, H_stag = enthalpy_mass, so velocity should be ~0
     // (within floating point precision of sqrt(2*(H - H)) = sqrt(0))
     EXPECT_NEAR(gas.isenthalpic_velocity(), 0.0, 1e-6);
@@ -174,9 +174,9 @@ TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
 // Expansion properties
 
 TEST_F(GasTests, EquilibriumExpansionPropertiesMatchFunction) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     auto expected = get_thermo_equilibrium_properties(*sol->thermo());
-    auto result = gas.expansion_properties();
+    auto result = gas.expansion_properties(CompositionModel::EQUILIBRIUM);
 
     EXPECT_DOUBLE_EQ(result.dlV_dlT_P, expected.dlV_dlT_P);
     EXPECT_DOUBLE_EQ(result.dlV_dlP_T, expected.dlV_dlP_T);
@@ -185,8 +185,8 @@ TEST_F(GasTests, EquilibriumExpansionPropertiesMatchFunction) {
 }
 
 TEST_F(GasTests, FrozenExpansionPropertiesAreIdealGas) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    auto result = gas.expansion_properties();
+    Gas gas(sol);
+    auto result = gas.expansion_properties(CompositionModel::FROZEN);
 
     EXPECT_DOUBLE_EQ(result.dlV_dlT_P, 1.0);
     EXPECT_DOUBLE_EQ(result.dlV_dlP_T, -1.0);
@@ -197,8 +197,8 @@ TEST_F(GasTests, FrozenExpansionPropertiesAreIdealGas) {
 // Snapshot
 
 TEST_F(GasTests, SnapshotPopulatesAllFields) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    auto info = gas.snapshot();
+    Gas gas(sol);
+    auto info = gas.snapshot(CompositionModel::FROZEN);
 
     EXPECT_DOUBLE_EQ(info.temperature, gas.temperature());
     EXPECT_DOUBLE_EQ(info.pressure, gas.pressure());
@@ -207,16 +207,39 @@ TEST_F(GasTests, SnapshotPopulatesAllFields) {
     EXPECT_DOUBLE_EQ(info.entropy, gas.entropy_mass());
     EXPECT_DOUBLE_EQ(info.molecular_weight, gas.molecular_weight());
     EXPECT_DOUBLE_EQ(info.cp, gas.cp_mass());
-    EXPECT_DOUBLE_EQ(info.gamma_s, gas.gamma_s());
-    EXPECT_DOUBLE_EQ(info.speed_of_sound, gas.speed_of_sound());
+    EXPECT_DOUBLE_EQ(info.gamma_s, gas.gamma_s(CompositionModel::FROZEN));
+    EXPECT_DOUBLE_EQ(info.speed_of_sound, gas.speed_of_sound(CompositionModel::FROZEN));
     EXPECT_DOUBLE_EQ(info.stagnation_enthalpy, gas.get_stagnation_enthalpy());
     EXPECT_FALSE(info.composition.empty());
+}
+
+TEST_F(GasTests, EquilibriumSnapshotUsesShiftingEquilibriumDerivatives) {
+    Gas gas(sol);
+    const ThermodynamicState frozen = gas.snapshot(CompositionModel::FROZEN);
+    const ThermodynamicState equilibrium = gas.snapshot(CompositionModel::EQUILIBRIUM);
+    const ExpansionProperties expected = get_thermo_equilibrium_properties(gas);
+
+    EXPECT_EQ(frozen.composition_model, CompositionModel::FROZEN);
+    EXPECT_EQ(equilibrium.composition_model, CompositionModel::EQUILIBRIUM);
+    EXPECT_DOUBLE_EQ(equilibrium.gamma_s, expected.gamma_s);
+    EXPECT_DOUBLE_EQ(equilibrium.dlV_dlP_T, expected.dlV_dlP_T);
+    EXPECT_DOUBLE_EQ(equilibrium.dlV_dlT_P, expected.dlV_dlT_P);
+    // a^2 = gamma_s R T / M, with the equilibrium gamma_s
+    EXPECT_NEAR(equilibrium.speed_of_sound, gas.speed_of_sound(CompositionModel::EQUILIBRIUM),
+                1e-12 * equilibrium.speed_of_sound);
+    // Recombination absorbs part of a compression, so the dissociated mixture is softer at
+    // equilibrium than at frozen composition.
+    EXPECT_LT(equilibrium.gamma_s, frozen.gamma_s);
+    EXPECT_LT(equilibrium.speed_of_sound, frozen.speed_of_sound);
+    // The state itself does not depend on the composition model.
+    EXPECT_DOUBLE_EQ(equilibrium.temperature, frozen.temperature);
+    EXPECT_DOUBLE_EQ(equilibrium.enthalpy, frozen.enthalpy);
 }
 
 // Save/restore roundtrip
 
 TEST_F(GasTests, SaveRestoreRoundtrip) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
 
     std::vector<double> state;
     gas.copy_state(state);
@@ -234,7 +257,7 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
 // Copy semantics
 
 TEST_F(GasTests, CopySharesSolution) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     Gas copied = gas;
     EXPECT_EQ(copied.solution(), gas.solution());
 
@@ -243,13 +266,12 @@ TEST_F(GasTests, CopySharesSolution) {
 }
 
 TEST_F(GasTests, CloneIsIndependentDeepCopy) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     gas.set_stagnation_enthalpy(1.234e6);
     gas.set_reference_entropy(5.678e3);
 
     Gas cloned = gas.clone();
     EXPECT_NE(cloned.solution(), gas.solution());
-    EXPECT_EQ(cloned.chemistry, GasChemistry::EQUILIBRIUM);
     EXPECT_DOUBLE_EQ(cloned.temperature(), gas.temperature());
     EXPECT_DOUBLE_EQ(cloned.pressure(), gas.pressure());
     std::vector<double> X_original = gas.mole_fractions();

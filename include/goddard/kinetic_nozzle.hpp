@@ -63,7 +63,7 @@ struct KineticNozzleResults {
 class KineticNozzle {
 public:
 
-    // Construct from Solution reference (builds Gas internally with FROZEN chemistry)
+    // Construct from Solution reference (builds a Gas internally)
     KineticNozzle(
         Cantera::Solution& gas,
         NozzleProfile& profile,

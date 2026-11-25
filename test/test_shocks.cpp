@@ -466,12 +466,12 @@ TEST(ObliqueShock, BelowMachAngleIsInvalid) {
 namespace {
 
 /** Gas from h2o2.yaml at T [K], P [Pa] and the given mole fractions. */
-Gas make_gas(const std::string& composition, GasChemistry chemistry,
+Gas make_gas(const std::string& composition,
              double T = 300.0, double P = Cantera::OneAtm) {
     Goddard::setup_defaults();
     auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
     sol->thermo()->setState_TPX(T, P, composition);
-    return Gas(sol, chemistry);
+    return Gas(sol);
 }
 
 // The shock Newton iteration stops once the step in ln(P2/P1) and ln(T2/T1) is below
@@ -509,7 +509,7 @@ class ShockSolverArgonTests : public ::testing::TestWithParam<GasChemistry> {};
 TEST_P(ShockSolverArgonTests, NormalShockMatchesPerfectGas) {
     // Argon has cp = 5R/2 exactly in h2o2.yaml and no reactions, so frozen and equilibrium
     // shocks both reduce to the perfect-gas relations with gamma = 5/3.
-    ShockSolver solver(make_gas("AR:1", GetParam()));
+    ShockSolver solver(make_gas("AR:1"), GetParam());
     for (double M : {1.5, 3.0, 6.0}) {
         expect_shock_near(solver.normal_shock(M), normal_shock(M, 5.0/3.0), RATIO_TOL,
                           std::string(chemistry_name(GetParam())) + " M=" + std::to_string(M));
@@ -519,7 +519,7 @@ TEST_P(ShockSolverArgonTests, NormalShockMatchesPerfectGas) {
 TEST_P(ShockSolverArgonTests, ReflectedShockMatchesPerfectGas) {
     // Regression test: the reflected shock must start from state 2 and the particle velocity
     // u_p, not from state 1 and u1.
-    ShockSolver solver(make_gas("AR:1", GetParam()));
+    ShockSolver solver(make_gas("AR:1"), GetParam());
     for (double M : {1.5, 3.0, 6.0}) {
         const std::string label = std::string(chemistry_name(GetParam())) + " M=" + std::to_string(M);
         ReflectedShockResult actual = solver.reflected_shock(M);
@@ -531,7 +531,7 @@ TEST_P(ShockSolverArgonTests, ReflectedShockMatchesPerfectGas) {
 }
 
 TEST_P(ShockSolverArgonTests, ObliqueShockMatchesPerfectGas) {
-    ShockSolver solver(make_gas("AR:1", GetParam()));
+    ShockSolver solver(make_gas("AR:1"), GetParam());
     const double gamma = 5.0/3.0;
     const double M = 3.0;
 
@@ -592,8 +592,8 @@ TEST_F(ShockSolverFrozenTests, ApproachesPerfectGas) {
     ASSERT_TRUE(r_perf.status.ok());
 
     gas->thermo()->restoreState(initial_state);
-    Gas g(*gas, GasChemistry::FROZEN);
-    ShockSolver solver(g, {.abstol = 5e-5});
+    Gas g(*gas);
+    ShockSolver solver(g, GasChemistry::FROZEN, {.abstol = 5e-5});
     ShockResult r_cant = solver.normal_shock(mach);
     ASSERT_TRUE(r_cant.status.ok());
 
@@ -622,8 +622,8 @@ TEST_F(ShockSolverFrozenTests, RankineHugoniot) {
     double P1 = gas->thermo()->pressure();
     double h1 = gas->thermo()->enthalpy_mass();
 
-    Gas g(*gas, GasChemistry::FROZEN);
-    ShockSolver solver(g, {.abstol = 5e-5});
+    Gas g(*gas);
+    ShockSolver solver(g, GasChemistry::FROZEN, {.abstol = 5e-5});
     ShockResult r = solver.normal_shock(mach);
     ASSERT_TRUE(r.status.ok());
 
@@ -651,8 +651,8 @@ TEST_F(ShockSolverFrozenTests, RankineHugoniot) {
 }
 
 TEST_F(ShockSolverFrozenTests, InvalidSubsonic) {
-    Gas g(*gas, GasChemistry::FROZEN);
-    ShockSolver solver(g, {.abstol = 5e-5});
+    Gas g(*gas);
+    ShockSolver solver(g, GasChemistry::FROZEN, {.abstol = 5e-5});
     EXPECT_TRUE(failed_with(solver.normal_shock(0.5).status, FailureReason::NO_SOLUTION));
     EXPECT_TRUE(failed_with(solver.reflected_shock(0.5).status, FailureReason::NO_SOLUTION));
     EXPECT_TRUE(failed_with(solver.oblique_shock_from_wave_angle(2.0, 0.9*std::asin(0.5)).status,
@@ -662,8 +662,8 @@ TEST_F(ShockSolverFrozenTests, InvalidSubsonic) {
 }
 
 TEST_F(ShockSolverFrozenTests, DetachedShockIsInvalid) {
-    Gas g(*gas, GasChemistry::FROZEN);
-    ShockSolver solver(g);
+    Gas g(*gas);
+    ShockSolver solver(g, GasChemistry::FROZEN);
     const double theta_max = solver.max_deflection(3.0);
     for (bool weak : {true, false}) {
         const ObliqueShockResult r = solver.oblique_shock_from_deflection(3.0, theta_max + 1e-3, weak);
@@ -684,12 +684,12 @@ protected:
 };
 
 TEST_F(ShockSolverEquilibriumTests, ConservesMassMomentumEnergy) {
-    Gas pre = make_gas("N2:0.79, O2:0.21", GasChemistry::EQUILIBRIUM);
+    Gas pre = make_gas("N2:0.79, O2:0.21");
     const double rho1 = pre.density();
     const double P1 = pre.pressure();
     const double h1 = pre.enthalpy_mass();
 
-    ShockSolver solver(pre);
+    ShockSolver solver(pre, GasChemistry::EQUILIBRIUM);
     const double u1 = MACH*get_frozen_properties(solver.pre_shock_state()).speed_of_sound;
     ShockResult r = solver.normal_shock_from_velocity(u1);
     ASSERT_TRUE(r.status.ok());
@@ -709,8 +709,8 @@ TEST_F(ShockSolverEquilibriumTests, ConservesMassMomentumEnergy) {
 }
 
 TEST_F(ShockSolverEquilibriumTests, DissociationLowersTemperatureAndRaisesDensity) {
-    ShockSolver frozen(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
-    ShockSolver equilibrium(make_gas("N2:0.79, O2:0.21", GasChemistry::EQUILIBRIUM));
+    ShockSolver frozen(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
+    ShockSolver equilibrium(make_gas("N2:0.79, O2:0.21"), GasChemistry::EQUILIBRIUM);
     ShockResult r_frozen = frozen.normal_shock(MACH);
     ShockResult r_equilibrium = equilibrium.normal_shock(MACH);
     ASSERT_TRUE(r_frozen.status.ok());
@@ -727,8 +727,8 @@ TEST_F(ShockSolverEquilibriumTests, ReflectedShockBringsGasToRest) {
     // W_R = u_p/(rho5/rho2 - 1), the jump conditions across the reflected shock are
     //   P5 - P2 = rho2 (u_p + W_R) u_p,   h5 - h2 = u_p (u_p + 2 W_R)/2.
     const std::string air = "N2:0.79, O2:0.21";
-    ShockSolver incident(make_gas(air, GasChemistry::EQUILIBRIUM));
-    ShockSolver reflected(make_gas(air, GasChemistry::EQUILIBRIUM));
+    ShockSolver incident(make_gas(air), GasChemistry::EQUILIBRIUM);
+    ShockSolver reflected(make_gas(air), GasChemistry::EQUILIBRIUM);
     const double mach = 5.0;
 
     const double u1 = mach*get_frozen_properties(reflected.pre_shock_state()).speed_of_sound;
@@ -751,15 +751,15 @@ TEST_F(ShockSolverEquilibriumTests, ReflectedShockBringsGasToRest) {
                 RATIO_TOL*state5.pressure());
     EXPECT_NEAR(state5.enthalpy_mass() - h2, 0.5*particle_velocity*(particle_velocity + 2*wave_speed),
                 RATIO_TOL*0.5*particle_velocity*(particle_velocity + 2*wave_speed));
-    EXPECT_NEAR(r.reflected.mach_in*state2.speed_of_sound(), particle_velocity + wave_speed,
+    EXPECT_NEAR(r.reflected.mach_in*state2.speed_of_sound(CompositionModel::EQUILIBRIUM), particle_velocity + wave_speed,
                 RATIO_TOL*(particle_velocity + wave_speed));
 }
 
 TEST_F(ShockSolverEquilibriumTests, MixedChemistryReflectedShock) {
     // Frozen incident shock followed by an equilibrium reflected shock (CEA's incident_frozen)
     const std::string air = "N2:0.79, O2:0.21";
-    ShockSolver solver(make_gas(air, GasChemistry::EQUILIBRIUM));
-    ShockSolver frozen(make_gas(air, GasChemistry::FROZEN));
+    ShockSolver solver(make_gas(air), GasChemistry::EQUILIBRIUM);
+    ShockSolver frozen(make_gas(air), GasChemistry::FROZEN);
     const double mach = 5.0;
 
     ReflectedShockResult mixed = solver.reflected_shock(mach, GasChemistry::FROZEN, GasChemistry::EQUILIBRIUM);
@@ -774,7 +774,7 @@ TEST_F(ShockSolverEquilibriumTests, MixedChemistryReflectedShock) {
 TEST_F(ShockSolverEquilibriumTests, ObliqueRoundTrip) {
     // theta(beta) followed by beta(theta) recovers beta on both branches. Bisection stops at a
     // deflection residual of 1e-6 rad; d(theta)/d(beta) is O(1) away from the maximum.
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::EQUILIBRIUM));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::EQUILIBRIUM);
     const double mach = 7.0;
     const double theta_max = solver.max_deflection(mach);
     for (double beta_deg : {20.0, 80.0}) {
@@ -799,9 +799,9 @@ TEST(ShockSolverPerfectGas, MatchesFreeFunction) {
     auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
     sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
 
-    Gas g(*sol, GasChemistry::PERFECT_GAS);
-    double gamma = g.gamma_s();
-    ShockSolver solver(g);
+    Gas g(*sol);
+    double gamma = g.gamma_s(CompositionModel::FROZEN);
+    ShockSolver solver(g, GasChemistry::PERFECT_GAS);
 
     for (double mach : {1.5, 2.0, 3.0, 5.0}) {
         expect_shock_near(solver.normal_shock(mach), normal_shock(mach, gamma), 1e-12, "normal");
@@ -817,9 +817,9 @@ TEST(ShockSolverPerfectGas, ObliqueMatchesFreeFunction) {
     auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
     sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
 
-    Gas g(*sol, GasChemistry::PERFECT_GAS);
-    double gamma = g.gamma_s();
-    ShockSolver solver(g);
+    Gas g(*sol);
+    double gamma = g.gamma_s(CompositionModel::FROZEN);
+    ShockSolver solver(g, GasChemistry::PERFECT_GAS);
 
     double mach = 3.0;
     double theta = 15.0 * DEG;
@@ -844,15 +844,14 @@ TEST(ShockSolverState, PreShockStateRestored) {
     double T_orig = sol->thermo()->temperature();
     double P_orig = sol->thermo()->pressure();
 
-    Gas g(*sol, GasChemistry::EQUILIBRIUM);
-    ShockSolver solver(g, {.abstol = 5e-5});
+    Gas g(*sol);
+    ShockSolver solver(g, GasChemistry::EQUILIBRIUM, {.abstol = 5e-5});
     solver.reflected_shock(3.0, GasChemistry::FROZEN, GasChemistry::EQUILIBRIUM);
 
-    // pre_shock_state() should restore original T and P, and the construction chemistry
+    // pre_shock_state() should restore original T and P
     const Gas& pre = solver.pre_shock_state();
     EXPECT_NEAR(pre.temperature(), T_orig, 1e-10);
     EXPECT_NEAR(pre.pressure(), P_orig, 1e-6);
-    EXPECT_EQ(pre.chemistry, GasChemistry::EQUILIBRIUM);
 }
 
 TEST(ShockSolverState, PostShockStateDiffers) {
@@ -861,8 +860,8 @@ TEST(ShockSolverState, PostShockStateDiffers) {
     sol->thermo()->setState_TPX(300.0, Cantera::OneAtm, "N2:0.79, O2:0.21");
     double T_orig = sol->thermo()->temperature();
 
-    Gas g(*sol, GasChemistry::FROZEN);
-    ShockSolver solver(g, {.abstol = 5e-5});
+    Gas g(*sol);
+    ShockSolver solver(g, GasChemistry::FROZEN, {.abstol = 5e-5});
     solver.normal_shock(2.0);
 
     // post_shock_state() should have a different temperature
@@ -881,10 +880,10 @@ TEST(ShockSolverState, PerfectGasPostShockStateFollowsJump) {
     const double T1 = sol->thermo()->temperature();
     const double P1 = sol->thermo()->pressure();
 
-    Gas g(*sol, GasChemistry::PERFECT_GAS);
+    Gas g(*sol);
     const std::vector<double> Y1 = g.mass_fractions();
-    const double a1 = g.speed_of_sound();
-    ShockSolver solver(g);
+    const double a1 = g.speed_of_sound(CompositionModel::FROZEN);
+    ShockSolver solver(g, GasChemistry::PERFECT_GAS);
 
     auto expect_post_shock = [&](double temperature_ratio, double pressure_ratio,
                                  const std::string& label) {
@@ -933,15 +932,15 @@ TEST(ShockSolverState, PerfectGasPostShockStateFollowsJump) {
 // ============================================================
 
 TEST(ShockSolverUnsupported, KineticRejected) {
-    EXPECT_THROW(ShockSolver(make_gas("N2:0.79, O2:0.21", GasChemistry::KINETIC)), std::invalid_argument);
+    EXPECT_THROW(ShockSolver(make_gas("N2:0.79, O2:0.21"), GasChemistry::KINETIC), std::invalid_argument);
 }
 
 TEST(ShockSolverUnsupported, PerShockChemistryMustBeFrozenOrEquilibrium) {
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
     EXPECT_THROW(solver.reflected_shock(3.0, GasChemistry::KINETIC, GasChemistry::FROZEN), std::invalid_argument);
     EXPECT_THROW(solver.reflected_shock(3.0, GasChemistry::FROZEN, GasChemistry::PERFECT_GAS), std::invalid_argument);
 
-    ShockSolver perfect(make_gas("N2:0.79, O2:0.21", GasChemistry::PERFECT_GAS));
+    ShockSolver perfect(make_gas("N2:0.79, O2:0.21"), GasChemistry::PERFECT_GAS);
     EXPECT_THROW(perfect.reflected_shock(3.0, GasChemistry::FROZEN, GasChemistry::FROZEN), std::invalid_argument);
 }
 
@@ -975,12 +974,12 @@ TEST(PerfectGasShockFailures, NegativeDeflectionHasNoSolution) {
 }
 
 TEST(ShockSolverFailures, PostShockStateIsUnavailableBeforeASolve) {
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
     EXPECT_TRUE(throws_solve_error([&] { solver.post_shock_state(); }, FailureReason::NOT_COMPUTED));
 }
 
 TEST(ShockSolverFailures, PostShockStateFollowsTheMostRecentSolve) {
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
     ASSERT_TRUE(is_ok(solver.normal_shock(2.0).status));
     EXPECT_GT(solver.post_shock_state().pressure(), solver.pre_shock_state().pressure());
 
@@ -994,7 +993,7 @@ TEST(ShockSolverFailures, PostShockStateFollowsTheMostRecentSolve) {
 }
 
 TEST(ShockSolverFailures, ReflectedShockOfAFailedIncidentShockIsNotComputed) {
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
     const ReflectedShockResult r = solver.reflected_shock(0.5);
     EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
     EXPECT_TRUE(failed_with(r.incident.status, FailureReason::NO_SOLUTION));
@@ -1006,7 +1005,7 @@ TEST(ShockSolverFailures, ReflectedShockOfAFailedIncidentShockIsNotComputed) {
 }
 
 TEST(ShockSolverFailures, VelocityBelowTheSoundSpeedHasNoSolution) {
-    ShockSolver solver(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN));
+    ShockSolver solver(make_gas("N2:0.79, O2:0.21"), GasChemistry::FROZEN);
     const ShockResult r = solver.normal_shock_from_velocity(100.0);
     EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
     EXPECT_TRUE(std::isnan(r.static_pressure_ratio));
@@ -1015,7 +1014,7 @@ TEST(ShockSolverFailures, VelocityBelowTheSoundSpeedHasNoSolution) {
 TEST(ShockSolverFailures, EquilibriumShockBelowTheDetonationSpeedDoesNotConverge) {
     // Stoichiometric H2/O2 reacts behind a slow shock: an equilibrium shock below the
     // Chapman-Jouguet speed has no steady solution, and the Newton iteration cannot find one.
-    ShockSolver solver(make_gas("H2:2, O2:1", GasChemistry::EQUILIBRIUM));
+    ShockSolver solver(make_gas("H2:2, O2:1"), GasChemistry::EQUILIBRIUM);
     const ShockResult r = solver.normal_shock(2.0);
     EXPECT_TRUE(failed_with(r.status, FailureReason::NOT_CONVERGED));
     EXPECT_TRUE(std::isnan(r.static_pressure_ratio));

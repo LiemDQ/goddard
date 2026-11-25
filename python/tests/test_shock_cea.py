@@ -92,9 +92,9 @@ def _cea_shock_tube(product_names, incident_frozen, reflected_frozen):
 
 
 def _goddard_solver():
-    gas = goddard.Gas(NASA9_GAS, "gas", GasChemistry.EQUILIBRIUM, set(_product_species()))
+    gas = goddard.Gas(NASA9_GAS, "gas", set(_product_species()))
     gas.set_state_TPX(TEMPERATURE, PRESSURE, MOLE_FRACTIONS)
-    return goddard.ShockSolver(gas)
+    return goddard.ShockSolver(gas, GasChemistry.EQUILIBRIUM)
 
 
 @pytest.mark.parametrize("incident_chemistry,reflected_chemistry", CHEMISTRY_CASES,

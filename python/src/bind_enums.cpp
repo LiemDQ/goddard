@@ -29,6 +29,10 @@ void bind_enums(nb::module_& m) {
         .value("EQUILIBRIUM", Goddard::GasChemistry::EQUILIBRIUM, DOC(Goddard, GasChemistry, EQUILIBRIUM))
         .value("KINETIC", Goddard::GasChemistry::KINETIC, DOC(Goddard, GasChemistry, KINETIC));
 
+    nb::enum_<Goddard::CompositionModel>(m, "CompositionModel", DOC(Goddard, CompositionModel))
+        .value("FROZEN", Goddard::CompositionModel::FROZEN, DOC(Goddard, CompositionModel, FROZEN))
+        .value("EQUILIBRIUM", Goddard::CompositionModel::EQUILIBRIUM, DOC(Goddard, CompositionModel, EQUILIBRIUM));
+
     nb::enum_<Goddard::ExpansionType>(m, "ExpansionType", DOC(Goddard, ExpansionType))
         .value("SUPERSONIC_AREA_RATIO", Goddard::ExpansionType::SUPERSONIC_AREA_RATIO, DOC(Goddard, ExpansionType, SUPERSONIC_AREA_RATIO))
         .value("SUBSONIC_AREA_RATIO", Goddard::ExpansionType::SUBSONIC_AREA_RATIO, DOC(Goddard, ExpansionType, SUBSONIC_AREA_RATIO))

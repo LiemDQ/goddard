@@ -179,13 +179,12 @@ def split_product_names(names):
              if name not in gas_names and name not in condensed_names])
 
 
-def goddard_products(product_names, chemistry=GasChemistry.FROZEN):
+def goddard_products(product_names):
     """Product Gas holding exactly the species CEA was given."""
     gas_names, condensed_names, missing = split_product_names(product_names)
     assert not missing, f"CEA products absent from Goddard's data: {missing}"
     return Gas(NASA9_GAS, phase_name="products", species=set(gas_names),
-               condensed_file=NASA9_CONDENSED, condensed_species=set(condensed_names),
-               chemistry=chemistry)
+               condensed_file=NASA9_CONDENSED, condensed_species=set(condensed_names))
 
 
 def element_moles_of(stream, products):
@@ -237,7 +236,7 @@ METHANE_OXYGEN_TP = [(T, P, OF)
 def methane_oxygen():
     """Product Gas and CEA product list for CH4/O2."""
     names = run_isolated(_cea_product_names, ["CH4", "O2"])
-    return goddard_products(names, chemistry=GasChemistry.EQUILIBRIUM), names
+    return goddard_products(names), names
 
 
 def methane_oxygen_state(products, of_ratio):
@@ -285,7 +284,7 @@ def test_methane_oxygen_tp(methane_oxygen, methane_oxygen_tp_reference, point):
     assert_close_abs(condensed_mole_fraction(products, "C(gr)"),
                      reference["X"].get("C(gr)", 0.0), 5e-5, "X[C(gr)]")
     assert_close_rel(products.mean_molecular_weight, reference["M"], 1e-4, "M")
-    assert_close_rel(products.gamma_s, reference["gamma_s"], 5e-5, "gamma_s")
+    assert_close_rel(products.equilibrium_gamma_s, reference["gamma_s"], 5e-5, "gamma_s")
 
     properties = goddard.equilibrium_properties(products)
     assert_close_rel(properties.spec_heat_p, reference["cp_eq"] * 1e3, 5e-4, "cp_eq")

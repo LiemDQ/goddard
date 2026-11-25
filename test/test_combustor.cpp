@@ -1358,11 +1358,11 @@ TEST(FiniteAreaCombustorResults, StationsAccessorsAndReportUseStagnationState) {
     NozzleResults exits = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, nozzle_opts.expansion_ratios);
     NozzleResults comb_end_result = nozzle.solve(ExpansionType::SUBSONIC_AREA_RATIO, 2.0);
 
-    Gas station_gas(Cantera::newSolution("h2o2.yaml", "ohmech"), GasChemistry::EQUILIBRIUM);
+    Gas station_gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
     auto equilibrium_station = [&station_gas](const std::vector<double>& state) {
         station_gas.restore_state(state);
         NozzleStation station;
-        station.thermo = station_gas.snapshot();
+        station.thermo = station_gas.snapshot(CompositionModel::EQUILIBRIUM);
         station.state = state;
         return station;
     };

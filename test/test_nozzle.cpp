@@ -106,6 +106,37 @@ TEST_F(NozzleTests, StationsCarryStateVelocityMachAndArea) {
     EXPECT_NEAR(by_pressure.expansions.front().area_ratio, 10.0, 1e-3);
 }
 
+TEST_F(NozzleTests, StationDerivativesFollowTheFreezingStation) {
+    // frozen_NFZ = 2: the chamber, the throat and station 2 are reached from equilibrium flow;
+    // the flow freezes at station 2, so station 3 is frozen.
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 2;
+    Nozzle nozzle(*gas, options);
+    NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO,
+                                         std::vector<double>{3.0, 10.0});
+    ASSERT_TRUE(results.status.ok());
+    ASSERT_EQ(results.expansions.size(), 2u);
+
+    EXPECT_EQ(results.inlet.thermo.composition_model, CompositionModel::EQUILIBRIUM);
+    EXPECT_EQ(results.throat.thermo.composition_model, CompositionModel::EQUILIBRIUM);
+    EXPECT_EQ(results.expansions[0].thermo.composition_model, CompositionModel::EQUILIBRIUM);
+    EXPECT_EQ(results.expansions[1].thermo.composition_model, CompositionModel::FROZEN);
+
+    // Each station's gamma_s and sound speed are those of its own state in its own model.
+    Gas station_gas(gas);
+    for (const NozzleStation& station : results.expansions) {
+        station_gas.restore_state(station.state);
+        const CompositionModel model = station.thermo.composition_model;
+        EXPECT_NEAR(station.thermo.gamma_s, station_gas.gamma_s(model), 1e-12 * station.thermo.gamma_s);
+        EXPECT_NEAR(station.thermo.speed_of_sound, station_gas.speed_of_sound(model),
+                    1e-12 * station.thermo.speed_of_sound);
+    }
+    // The frozen station holds its composition: gamma_s is cp/cv.
+    station_gas.restore_state(results.expansions[1].state);
+    EXPECT_NEAR(results.expansions[1].thermo.gamma_s, station_gas.cp_mass() / station_gas.cv_mass(),
+                1e-12 * results.expansions[1].thermo.gamma_s);
+}
+
 TEST_F(NozzleTests, NozzleStateManagement) {
     Nozzle nozzle(*gas, options);
 
@@ -814,7 +845,6 @@ protected:
         products.equilibrate("HP", "vcs");
         injector_state = products.save_state();
         products.restore_state(injector_state);
-        products.chemistry = GasChemistry::EQUILIBRIUM;
         injector_enthalpy = products.enthalpy_mass();
     }
 
@@ -843,7 +873,7 @@ protected:
     /** Equilibrium Mach number of a station on the isentrope with stagnation enthalpy h_inj. */
     double mach_of(const std::vector<double>& state) {
         products.restore_state(state);
-        return products.isenthalpic_velocity(injector_enthalpy) / products.speed_of_sound();
+        return products.isenthalpic_velocity(injector_enthalpy) / products.speed_of_sound(CompositionModel::EQUILIBRIUM);
     }
 
     Gas products;

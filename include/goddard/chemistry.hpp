@@ -4,12 +4,12 @@ namespace Goddard {
 
 using Composition = Cantera::Composition;
 
-/** Chemistry model used for derived properties such as `gamma_s` and for flow solvers. */
+/**
+ * Chemistry model of a flow solver, set in the solver's options or arguments. A `Gas` has no
+ * chemistry model of its own; its derived properties take a `CompositionModel`.
+ */
 enum class GasChemistry {
-    /**
-     * Calorically perfect gas: the flow solvers hold the ratio of specific heats constant.
-     * `Gas` property getters treat it as FROZEN.
-     */
+    /// Calorically perfect gas: the flow solver holds the ratio of specific heats constant.
     PERFECT_GAS,
     /// Composition held fixed; thermodynamic properties vary with temperature.
     FROZEN,
@@ -18,6 +18,27 @@ enum class GasChemistry {
     /// Finite-rate chemistry from the reaction mechanism.
     KINETIC
 };
+
+/**
+ * How the composition responds when the state of a `Gas` is perturbed. Selects the derivatives
+ * behind `Gas::gamma_s`, `Gas::speed_of_sound`, `Gas::expansion_properties` and the other derived
+ * properties.
+ */
+enum class CompositionModel {
+    /// Composition held fixed: cp/cv, and the frozen sound speed.
+    FROZEN,
+    /// Composition shifts to remain at chemical equilibrium (RP-1311 eqs. 2.56-2.66).
+    EQUILIBRIUM
+};
+
+/**
+ * Composition model of a flow solver's chemistry: EQUILIBRIUM for EQUILIBRIUM chemistry, FROZEN
+ * for every other model.
+ */
+inline CompositionModel composition_model(GasChemistry chemistry) {
+    return chemistry == GasChemistry::EQUILIBRIUM ? CompositionModel::EQUILIBRIUM
+                                                  : CompositionModel::FROZEN;
+}
 
 /**
  * @brief Property held constant together with pressure by the multiphase equilibrium solver.

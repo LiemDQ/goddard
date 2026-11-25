@@ -199,7 +199,7 @@ TEST_F(MocErrorsFrozenTest, BasicFrozenCaseConverges) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
@@ -218,7 +218,7 @@ TEST_F(MocErrorsFrozenTest, BasicEquilibriumCaseConverges) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 

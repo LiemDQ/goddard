@@ -82,8 +82,9 @@ void bind_shocks(nb::module_& m) {
 
     // ShockSolver — chemistry-dispatched solver with state management
     nb::class_<Goddard::ShockSolver>(m, "ShockSolver", DOC(Goddard, ShockSolver))
-        .def(nb::init<const Goddard::Gas&, Goddard::SolverOptions>(),
-             "gas"_a, "options"_a = Goddard::SolverOptions(), DOC(Goddard, ShockSolver, ShockSolver))
+        .def(nb::init<const Goddard::Gas&, Goddard::GasChemistry, Goddard::SolverOptions>(),
+             "gas"_a, "chemistry"_a, "options"_a = Goddard::SolverOptions(),
+             DOC(Goddard, ShockSolver, ShockSolver))
         .def("normal_shock", &Goddard::ShockSolver::normal_shock,
              "mach"_a, DOC(Goddard, ShockSolver, normal_shock))
         .def("normal_shock_from_velocity", &Goddard::ShockSolver::normal_shock_from_velocity,

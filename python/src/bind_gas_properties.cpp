@@ -36,16 +36,6 @@ void def_mixture(Class& cls, const char* name, Method method, const char* doc) {
         }, "fuel"_a, "oxidizer"_a, "basis"_a = "mole", doc);
 }
 
-const char* chemistry_name(Goddard::GasChemistry chemistry) {
-    switch (chemistry) {
-        case Goddard::GasChemistry::PERFECT_GAS: return "PERFECT_GAS";
-        case Goddard::GasChemistry::FROZEN: return "FROZEN";
-        case Goddard::GasChemistry::EQUILIBRIUM: return "EQUILIBRIUM";
-        case Goddard::GasChemistry::KINETIC: return "KINETIC";
-    }
-    return "UNKNOWN";
-}
-
 } // namespace
 
 void bind_gas_properties(nb::module_& m) {
@@ -57,8 +47,7 @@ void bind_gas_properties(nb::module_& m) {
         // YAML-based constructor. An empty `species` set takes the phase as the file
         // defines it; a non-empty one restricts the phase to those species via
         // Gas::create_from_species, which orders them as in the file, so the iteration order
-        // of the set does not matter. `species` follows `chemistry` so that existing
-        // positional calls of the form Gas(file, phase, chemistry) keep working.
+        // of the set does not matter.
         // `condensed_file` attaches candidate condensed species from a second data file:
         // `all_condensed` offers every compatible species of that file, otherwise the names
         // of `condensed_species` are offered. An empty `condensed_file` leaves the Gas
@@ -67,16 +56,15 @@ void bind_gas_properties(nb::module_& m) {
              [](Goddard::Gas* self,
                 const std::string& yaml_file,
                 const std::string& phase_name,
-                Goddard::GasChemistry chemistry,
                 const std::unordered_set<std::string>& species,
                 const std::string& condensed_file,
                 const std::unordered_set<std::string>& condensed_species,
                 bool all_condensed) {
                  Goddard::Gas gas = species.empty()
-                     ? Goddard::Gas(yaml_file, phase_name, chemistry)
+                     ? Goddard::Gas(yaml_file, phase_name)
                      : Goddard::Gas::create_from_species(
                            yaml_file, phase_name,
-                           std::vector<std::string>(species.begin(), species.end()), chemistry);
+                           std::vector<std::string>(species.begin(), species.end()));
 
                  if (!condensed_file.empty()) {
                      if (all_condensed) {
@@ -90,12 +78,12 @@ void bind_gas_properties(nb::module_& m) {
                  }
                  new (self) Goddard::Gas(std::move(gas));
              },
-             "yaml_file"_a, "phase_name"_a, "chemistry"_a = Goddard::GasChemistry::FROZEN,
+             "yaml_file"_a, "phase_name"_a,
              "species"_a = std::unordered_set<std::string>{},
              "condensed_file"_a = "",
              "condensed_species"_a = std::unordered_set<std::string>{},
              "all_condensed"_a = false,
-             DOC(Goddard, Gas, Gas, 4))
+             DOC(Goddard, Gas, Gas, 5))
          .def("clone", &Goddard::Gas::clone, DOC(Goddard, Gas, clone))
         // ---- Read-only thermodynamic properties ----
 
@@ -107,8 +95,22 @@ void bind_gas_properties(nb::module_& m) {
         .def_prop_ro("cp_mass", &Goddard::Gas::cp_mass, DOC(Goddard, Gas, cp_mass))
         .def_prop_ro("cv_mass", &Goddard::Gas::cv_mass, DOC(Goddard, Gas, cv_mass))
         .def_prop_ro("mean_molecular_weight", &Goddard::Gas::molecular_weight, DOC(Goddard, Gas, molecular_weight))
-        .def_prop_ro("gamma_s", &Goddard::Gas::gamma_s, DOC(Goddard, Gas, gamma_s))
-        .def_prop_ro("speed_of_sound", &Goddard::Gas::speed_of_sound, DOC(Goddard, Gas, speed_of_sound))
+        // Properties take the frozen composition model; the equilibrium_* properties and the
+        // `model` argument of the methods below give the equilibrium values.
+        .def_prop_ro("gamma_s",
+             [](const Goddard::Gas& gas) { return gas.gamma_s(Goddard::CompositionModel::FROZEN); },
+             "Frozen isentropic exponent cp/cv [-] at the current state.")
+        .def_prop_ro("equilibrium_gamma_s",
+             [](const Goddard::Gas& gas) { return gas.gamma_s(Goddard::CompositionModel::EQUILIBRIUM); },
+             "Equilibrium isentropic exponent -(d log P / d log V)_s [-] at the current state, with "
+             "the composition shifting to remain at chemical equilibrium.")
+        .def_prop_ro("speed_of_sound",
+             [](const Goddard::Gas& gas) { return gas.speed_of_sound(Goddard::CompositionModel::FROZEN); },
+             "Frozen speed of sound [m/s] at the current state, consistent with `gamma_s`.")
+        .def_prop_ro("equilibrium_speed_of_sound",
+             [](const Goddard::Gas& gas) { return gas.speed_of_sound(Goddard::CompositionModel::EQUILIBRIUM); },
+             "Equilibrium speed of sound [m/s] at the current state, consistent with "
+             "`equilibrium_gamma_s`.")
         .def_prop_ro("num_species", &Goddard::Gas::num_species, DOC(Goddard, Gas, num_species))
         .def_prop_ro("species_names", &Goddard::Gas::species_names,
              DOC(Goddard, Gas, species_names))
@@ -193,7 +195,8 @@ void bind_gas_properties(nb::module_& m) {
         .def("stagnation_enthalpy", &Goddard::Gas::stagnation_enthalpy,
              "velocity"_a, DOC(Goddard, Gas, stagnation_enthalpy))
         .def("stagnation_pressure", &Goddard::Gas::stagnation_pressure,
-             "velocity"_a, DOC(Goddard, Gas, stagnation_pressure))
+             "velocity"_a, "model"_a = Goddard::CompositionModel::FROZEN,
+             DOC(Goddard, Gas, stagnation_pressure))
         .def("isenthalpic_velocity",
              nb::overload_cast<double>(&Goddard::Gas::isenthalpic_velocity, nb::const_),
              "H_stagnation"_a, DOC(Goddard, Gas, isenthalpic_velocity))
@@ -201,10 +204,11 @@ void bind_gas_properties(nb::module_& m) {
              nb::overload_cast<>(&Goddard::Gas::isenthalpic_velocity, nb::const_),
              DOC(Goddard, Gas, isenthalpic_velocity, 2))
         .def("mach", &Goddard::Gas::mach,
-             "velocity"_a, DOC(Goddard, Gas, mach))
+             "velocity"_a, "model"_a = Goddard::CompositionModel::FROZEN, DOC(Goddard, Gas, mach))
         .def("area_per_mdot", &Goddard::Gas::area_per_mdot,
              "velocity"_a, DOC(Goddard, Gas, area_per_mdot))
-        .def("cstar", &Goddard::Gas::cstar, DOC(Goddard, Gas, cstar))
+        .def("cstar", &Goddard::Gas::cstar, "model"_a = Goddard::CompositionModel::FROZEN,
+             DOC(Goddard, Gas, cstar))
 
         // ---- Mixture ratios ----
 
@@ -236,7 +240,7 @@ void bind_gas_properties(nb::module_& m) {
         // ---- Expansion and equilibrium ----
 
         .def("expansion_properties", &Goddard::Gas::expansion_properties,
-             DOC(Goddard, Gas, expansion_properties))
+             "model"_a = Goddard::CompositionModel::FROZEN, DOC(Goddard, Gas, expansion_properties))
         .def("equilibrate", &Goddard::Gas::equilibrate,
              "XY"_a, "solver"_a="gibbs", DOC(Goddard, Gas, equilibrate))
         .def("equilibrate_TP", &Goddard::Gas::equilibrate_TP,
@@ -252,7 +256,7 @@ void bind_gas_properties(nb::module_& m) {
 
         // ---- Snapshot ----
 
-        .def("snapshot", &Goddard::Gas::snapshot,
+        .def("snapshot", &Goddard::Gas::snapshot, "model"_a = Goddard::CompositionModel::FROZEN,
              DOC(Goddard, Gas, snapshot))
 
         // ---- Reference state (read-write properties) ----
@@ -264,16 +268,12 @@ void bind_gas_properties(nb::module_& m) {
         .def_prop_rw("reference_entropy",
             &Goddard::Gas::get_reference_entropy,
             &Goddard::Gas::set_reference_entropy,
-            DOC(Goddard, Gas, get_reference_entropy))
-
-        // ---- Chemistry mode ----
-
-        .def_rw("chemistry", &Goddard::Gas::chemistry, DOC(Goddard, Gas, chemistry));
+            DOC(Goddard, Gas, get_reference_entropy));
 
     gas_class.def("__repr__", [](const Goddard::Gas& self) {
-        return std::format("<Gas '{}' T={:.6g} K P={:.6g} Pa species={} condensed={} chemistry={}>",
+        return std::format("<Gas '{}' T={:.6g} K P={:.6g} Pa species={} condensed={}>",
                            self.name(), self.temperature(), self.pressure(), self.num_species(),
-                           self.condensed_species_names().size(), chemistry_name(self.chemistry));
+                           self.condensed_species_names().size());
     });
     def_mixture(gas_class, "fuel_fraction",
         nb::overload_cast<const std::string&, const std::string&, Cantera::ThermoBasis>(

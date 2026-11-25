@@ -49,7 +49,7 @@ Gas make_gas(const std::string& name, const std::vector<std::string>& species) {
     phase["state"]["T"] = 298.15;
     phase["state"]["P"] = Cantera::OneAtm;
 
-    return Gas(Cantera::newSolution(phase, root), GasChemistry::EQUILIBRIUM);
+    return Gas(Cantera::newSolution(phase, root));
 }
 
 /** Gas phase spanning the elements of every condensed species used in these tests. */
@@ -487,7 +487,7 @@ TEST_F(CondensedGasTests, CopiesShareTheCondensedSetAndCloneDoesNot) {
 
 class GasOnlyEquilibriumTests : public ::testing::Test {
 protected:
-    GasOnlyEquilibriumTests() : gas("h2o2.yaml", "ohmech", GasChemistry::EQUILIBRIUM) {
+    GasOnlyEquilibriumTests() : gas("h2o2.yaml", "ohmech") {
         setup_defaults();
         gas.set_state_TPX(3500.0, 70.0 * Cantera::OneAtm, "H2O:0.9, H2:0.05, O2:0.03, OH:0.02");
     }
@@ -581,7 +581,8 @@ TEST_F(GasOnlyEquilibriumTests, MixtureOverloadsMatchTheThermoPhaseOverloads) {
     EXPECT_NEAR(from_gas.gas_moles, 1.0 / gas.molecular_weight(), 1e-15);
     EXPECT_DOUBLE_EQ(from_gas.total_moles, from_gas.gas_moles);
     EXPECT_NEAR(from_gas.density, gas.density(), 1e-9 * gas.density());
-    EXPECT_NEAR(from_gas.speed_of_sound, gas.speed_of_sound(), 1e-9 * gas.speed_of_sound());
+    EXPECT_NEAR(from_gas.speed_of_sound, gas.speed_of_sound(CompositionModel::EQUILIBRIUM),
+                1e-9 * gas.speed_of_sound(CompositionModel::EQUILIBRIUM));
     EXPECT_DOUBLE_EQ(from_gas.frozen_spec_heat_p, gas.cp_mass());
     EXPECT_DOUBLE_EQ(from_gas.frozen_gamma, gas.cp_mass() / gas.cv_mass());
     EXPECT_FALSE(from_gas.pinned_transition);
@@ -755,14 +756,13 @@ constexpr double BAR = 1.0e5;
 /** Product gas spanning `elements`, frozen so no accidental call needs the WP-A derivatives. */
 Gas make_products(const std::vector<std::string>& elements) {
     setup_defaults();
-    return Gas::create_from_elements(NASA9_GAS, "products", elements, GasChemistry::FROZEN);
+    return Gas::create_from_elements(NASA9_GAS, "products", elements);
 }
 
 /** Reactant stream: a phase of the named species from the reactant database at 298.15 K. */
 Gas make_reactants(const std::vector<std::string>& species, const std::string& mass_fractions) {
     setup_defaults();
-    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", species,
-                                             GasChemistry::FROZEN);
+    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", species);
     reactants.set_state_TPY(298.15, Cantera::OneAtm, mass_fractions);
     return reactants;
 }
@@ -996,8 +996,7 @@ Gas make_hydrogen_oxygen_products() {
 
 Eigen::ArrayXd hydrogen_oxygen_elements(const Gas& products) {
     setup_defaults();
-    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", {"H2", "O2"},
-                                             GasChemistry::FROZEN);
+    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", {"H2", "O2"});
     reactants.set_state_TPX(298.15, Cantera::OneAtm, "H2:100, O2:60");
     return map_elements(reactants, products);
 }
@@ -1196,7 +1195,7 @@ Gas make_beryllium_products() {
     }
 
     setup_defaults();
-    Gas products = Gas::create_from_species(NASA9_GAS, "products", species, GasChemistry::FROZEN);
+    Gas products = Gas::create_from_species(NASA9_GAS, "products", species);
     products.add_all_condensed_species(NASA9_CONDENSED);
     return products;
 }

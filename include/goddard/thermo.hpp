@@ -38,8 +38,8 @@ inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
  * Snapshot of the thermodynamic state of a mixture (see `Gas::snapshot`).
  *
  * Specific quantities are per kg of mixture (gas plus condensed phases). `gamma_s`,
- * `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in the chemistry the state was taken with:
- * equilibrium or frozen.
+ * `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in `composition_model`: equilibrium or
+ * frozen.
  */
 class ThermodynamicState {
 public:
@@ -72,6 +72,8 @@ public:
     double dlV_dlT_P;
     /// Speed of sound [m/s].
     double speed_of_sound;
+    /** Composition model of `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound`. */
+    CompositionModel composition_model = CompositionModel::FROZEN;
     /// Stagnation enthalpy [J/kg] the flow velocity is measured from.
     double stagnation_enthalpy;
     /**

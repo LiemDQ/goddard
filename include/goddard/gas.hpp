@@ -26,8 +26,7 @@ public:
      * @note The created `Gas` will reference the same `Solution` object pointed to
      * by the `shared_ptr`.  
      */
-    explicit Gas(std::shared_ptr<Cantera::Solution> gas,
-                 GasChemistry chemistry = GasChemistry::FROZEN);
+    explicit Gas(std::shared_ptr<Cantera::Solution> gas);
 
     /**
      * Create a `Gas` that carries a set of candidate condensed species.
@@ -36,33 +35,28 @@ public:
      * resulting `Gas` share both; `clone()` deep-copies both.
      */
     Gas(std::shared_ptr<Cantera::Solution> gas,
-        std::shared_ptr<CondensedPhaseSet> condensed,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        std::shared_ptr<CondensedPhaseSet> condensed);
 
 
     /**
      * @note This constructor copies the `Solution` object. 
      */
-    Gas(const Cantera::Solution& gas,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+    Gas(const Cantera::Solution& gas);
     
     /**
      * @note This constructor will reference the same `Solution` object. 
      */
-    Gas(Cantera::Solution&& gas,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+    Gas(Cantera::Solution&& gas);
 
     /**
      * Create `Gas` from input data file. 
      */
     Gas(const std::string& infile, 
-        const std::string& phase_name,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::string& phase_name);
     
     /**
      * Create a new Gas with a deep copy of the underlying Solution object and of the condensed
-     * species set, if any. The chemistry mode and stored reference stagnation enthalpy and
-     * entropy are preserved.
+     * species set, if any. The stored reference stagnation enthalpy and entropy are preserved.
      *
      * @note Copying a `Gas` normally is shallow: the copy references the same `Solution` and the
      * same condensed species set.
@@ -70,13 +64,11 @@ public:
     Gas clone() const;
 
     static Gas create(const std::string& infile, 
-        const std::string& phase_name,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::string& phase_name);
     
     static Gas create_from_elements(const std::string& infile,
         const std::string& name, 
-        const std::vector<std::string>& elements,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::vector<std::string>& elements);
     
     /**
      * Create a `Gas` whose phase holds the named species of an input file.
@@ -87,13 +79,11 @@ public:
      * @param infile Cantera YAML input file.
      * @param name Name of the new phase.
      * @param species Species names, matched exactly.
-     * @param chemistry Chemistry model of the `Gas`.
      * @throws std::invalid_argument if a species is not in the file.
      */
     static Gas create_from_species(const std::string& infile, 
         const std::string& name,
-        const std::vector<std::string>& species,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::vector<std::string>& species);
 
     // State setters
     /** Set state from temperature [K] and density [kg/m^3]. */
@@ -151,9 +141,12 @@ public:
      *
      * All properties are mixture properties (per kg of gas plus condensed phases) and the
      * composition is the mixture mass fractions of `mixture_mass_fractions()`, with the condensed
-     * species appended after the gas species.
+     * species appended after the gas species. `gamma_s`, the volume derivatives and the speed of
+     * sound are in `model`, which the result records.
+     *
+     * @param model Composition model of the derived properties.
      */
-    ThermodynamicState snapshot() const;
+    ThermodynamicState snapshot(CompositionModel model) const;
     std::string name() const;
     void set_name(const std::string& name);
 
@@ -206,14 +199,17 @@ public:
      */
     double gamma() const;
     /**
-     * Effective ratio of specific heats used for compressible-flow calculations.
+     * Isentropic exponent -(d log P / d log V)_s [-] at the current state.
      *
-     * The result depends on the active GasChemistry mode: PERFECT_GAS uses cp/cv,
-     * FROZEN holds composition fixed, EQUILIBRIUM accounts for shifting equilibrium.
+     * @param model FROZEN gives cp/cv; EQUILIBRIUM lets the composition shift with the state.
      */
-    double gamma_s() const;
-    /** Speed of sound [m/s] at the current state, consistent with gamma_s(). */
-    double speed_of_sound() const;
+    double gamma_s(CompositionModel model) const;
+    /**
+     * Speed of sound [m/s] at the current state, consistent with `gamma_s(model)`.
+     *
+     * @param model Composition model of the sound speed.
+     */
+    double speed_of_sound(CompositionModel model) const;
     /**
      * Stagnation (total) enthalpy h0 = h + v^2/2.
      * @param velocity flow velocity [m/s]
@@ -223,14 +219,14 @@ public:
     /**
      * Stagnation pressure obtained by isentropic deceleration from the current state.
      *
-     * The deceleration follows the active GasChemistry mode: EQUILIBRIUM re-equilibrates the
-     * mixture at constant entropy, and every other mode holds the composition fixed. The current
-     * state is not modified.
+     * EQUILIBRIUM re-equilibrates the mixture at constant entropy during the deceleration, and
+     * FROZEN holds the composition fixed. The current state is not modified.
      *
      * @param velocity flow velocity [m/s]
+     * @param model Composition model of the deceleration.
      * @return stagnation pressure [Pa]
      */
-    double stagnation_pressure(double velocity) const;
+    double stagnation_pressure(double velocity, CompositionModel model) const;
     /**
      * Velocity that produces a given stagnation enthalpy from the current static state.
      * @param H_stagnation target stagnation enthalpy [J/kg]
@@ -252,15 +248,17 @@ public:
     /**
      * Mach number at the current state for a given velocity.
      * @param velocity flow velocity [m/s]
+     * @param model Composition model of the sound speed.
      */
-    double mach(double velocity) const;
+    double mach(double velocity, CompositionModel model) const;
     /**
      * Characteristic velocity from the perfect-gas formula, using the current temperature,
-     * molecular weight and `gamma_s()`. This is an estimate: the c* of a rocket case is the
+     * molecular weight and `gamma_s(model)`. This is an estimate: the c* of a rocket case is the
      * one in `RocketPerformance`, computed from the throat mass flux.
+     * @param model Composition model of gamma_s.
      * @return c* [m/s]
      */
-    double cstar() const;
+    double cstar(CompositionModel model) const;
     /**
      * Isenthalpic velocity from the stored stagnation enthalpy, the specific impulse of an
      * exit at the current state.
@@ -363,10 +361,13 @@ public:
 
     // Expansion properties
     /**
-     * Compute expansion-related thermodynamic derivatives at the current state:
-     * gamma_s, dlnV/dlnT|_P, dlnV/dlnP|_T, and cp.
+     * Expansion-related thermodynamic derivatives at the current state: gamma_s, dlnV/dlnT|_P,
+     * dlnV/dlnP|_T, and cp. EQUILIBRIUM returns `get_thermo_equilibrium_properties`, with every
+     * field set. FROZEN sets only these four fields; `get_frozen_properties` sets them all.
+     *
+     * @param model Composition model of the derivatives.
      */
-    ExpansionProperties expansion_properties() const;
+    ExpansionProperties expansion_properties(CompositionModel model) const;
     /**
      * Equilibrate the gas mixture, holding two thermodynamic properties constant.
      *
@@ -594,12 +595,6 @@ public:
     inline bool has_cantera_sln() const {
         return m_sol != nullptr;
     }
-
-    /**
-     * Chemistry model of derived properties: `gamma_s`, `speed_of_sound`,
-     * `expansion_properties` and `stagnation_pressure` follow it.
-     */
-    GasChemistry chemistry;
 
 private:
     // `ThermoArray` stores a clone of the condensed species set of the `Gas` it is built from.

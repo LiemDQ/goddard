@@ -353,6 +353,8 @@ void bind_structs(nb::module_& m) {
              DOC(Goddard, ThermodynamicState, dlV_dlT_P))
         .def_ro("speed_of_sound", &Goddard::ThermodynamicState::speed_of_sound,
              DOC(Goddard, ThermodynamicState, speed_of_sound))
+        .def_ro("composition_model", &Goddard::ThermodynamicState::composition_model,
+             DOC(Goddard, ThermodynamicState, composition_model))
         .def_ro("stagnation_enthalpy", &Goddard::ThermodynamicState::stagnation_enthalpy,
              DOC(Goddard, ThermodynamicState, stagnation_enthalpy))
         .def_ro("composition", &Goddard::ThermodynamicState::composition,

@@ -12,7 +12,7 @@ Every solver in Goddard reports failure the same way.
 ```python
 import goddard as gd
 
-shock = gd.ShockSolver(gas).normal_shock(0.8)
+shock = gd.ShockSolver(gas, gd.GasChemistry.FROZEN).normal_shock(0.8)
 
 shock.status.ok          # False
 shock.status.reason      # FailureReason.NO_SOLUTION

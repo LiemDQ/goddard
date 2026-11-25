@@ -373,6 +373,8 @@ class Nozzle {
     std::vector<double> m_inlet_state;
     Gas m_gas;
     NozzleOptions m_opts;
+    /** Composition model of the station being solved; set by `set_station_chemistry`. */
+    CompositionModel m_station_model = CompositionModel::EQUILIBRIUM;
 
     /*
      * Station solvers. `station` is the index of the station being solved (see
@@ -436,7 +438,7 @@ class Nozzle {
     bool is_equilibrium_station(int station) const;
 
     /**
-     * Set the gas chemistry for station `station`.
+     * Set the composition model (`m_station_model`) for station `station`.
      *
      * @return True for an equilibrium station.
      */

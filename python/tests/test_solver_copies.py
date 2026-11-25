@@ -15,19 +15,18 @@ def h2o2_yaml():
 
 
 def snapshot(gas):
-    return gas.temperature, gas.pressure, np.array(gas.mass_fractions), gas.chemistry
+    return gas.temperature, gas.pressure, np.array(gas.mass_fractions)
 
 
 def assert_unchanged(gas, before):
-    T, P, Y, chemistry = before
+    T, P, Y = before
     assert gas.temperature == T
     assert gas.pressure == P
     np.testing.assert_array_equal(np.array(gas.mass_fractions), Y)
-    assert gas.chemistry == chemistry
 
 
 def test_nozzle_leaves_gas_unchanged(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(3000.0, 2e6, "H2:2, O2:1")
     gas.equilibrate("HP")
     before = snapshot(gas)
@@ -37,7 +36,7 @@ def test_nozzle_leaves_gas_unchanged(h2o2_yaml):
 
 
 def test_combustor_leaves_gas_unchanged(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(300.0, 1e6, "H2:1")
     before = snapshot(gas)
 
@@ -48,11 +47,11 @@ def test_combustor_leaves_gas_unchanged(h2o2_yaml):
 
 
 def test_shock_solver_leaves_gas_and_earlier_states_unchanged(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.FROZEN)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(300.0, 1e5, "H2:2, O2:1, AR:7")
     before = snapshot(gas)
 
-    solver = goddard.ShockSolver(gas)
+    solver = goddard.ShockSolver(gas, GasChemistry.FROZEN)
     solver.normal_shock(3.0)
     assert_unchanged(gas, before)
 
@@ -67,7 +66,7 @@ def test_shock_solver_leaves_gas_and_earlier_states_unchanged(h2o2_yaml):
 
 
 def test_detonation_solver_leaves_gas_unchanged(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.FROZEN)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(300.0, 1e5, "H2:2, O2:1")
     before = snapshot(gas)
 

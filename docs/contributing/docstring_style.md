@@ -150,8 +150,7 @@ Functions in `python/goddard/convenience.py` and other pure-Python modules use
 **Google-style** docstrings. mkdocstrings auto-detects this format:
 
 ```python
-def gas_from_yaml(yaml_file, phase_name="", species=None,
-                  chemistry=GasChemistry.FROZEN):
+def gas_from_yaml(yaml_file, phase_name="", species=None):
     """Create a Gas from a YAML thermodynamic data file.
 
     Args:
@@ -160,7 +159,6 @@ def gas_from_yaml(yaml_file, phase_name="", species=None,
             first phase found.
         species: Optional list of species names to include. If None, all
             species in the phase are used.
-        chemistry: GasChemistry mode for derived property calculations.
 
     Returns:
         Gas object initialized from the YAML data.

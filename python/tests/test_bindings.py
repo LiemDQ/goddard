@@ -16,7 +16,7 @@ def h2o2_yaml():
 
 @pytest.fixture
 def burnt(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(3000.0, 2e6, "H2:2, O2:1")
     gas.equilibrate("HP")
     return gas
@@ -24,9 +24,9 @@ def burnt(h2o2_yaml):
 
 def test_convergence_error_carries_solver_details(h2o2_yaml):
     """An equilibrium shock below the CJ speed of an exothermic mixture does not converge."""
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(300.0, 1e5, "H2:2, O2:1")
-    solver = goddard.ShockSolver(gas)
+    solver = goddard.ShockSolver(gas, GasChemistry.EQUILIBRIUM)
     result = solver.normal_shock(1.5)
     assert result.status.reason == goddard.FailureReason.NOT_CONVERGED
     with pytest.raises(goddard.ConvergenceError) as info:
@@ -67,7 +67,7 @@ def test_gas_flow_helpers(burnt):
     expected = burnt.temperature * 8314.46261815324 / (
         burnt.pressure * velocity * burnt.mean_molecular_weight)
     assert burnt.area_per_mdot(velocity) == pytest.approx(expected, rel=1e-6)
-    assert 1000.0 < burnt.cstar() < 3000.0
+    assert 1000.0 < burnt.cstar(goddard.CompositionModel.EQUILIBRIUM) < 3000.0
 
 
 def test_gas_mixture_ratios(h2o2_yaml):
@@ -91,12 +91,12 @@ def test_reprs(burnt):
     assert repr(results.throat).startswith("<ThroatCondition ")
     assert repr(results.expansions[0]).startswith("<NozzleStation ok A/At=")
     assert repr(results.expansions[0].thermo).startswith("<ThermodynamicState T=")
-    shock = goddard.ShockSolver(burnt.clone()).normal_shock(2.0)
+    shock = goddard.ShockSolver(burnt.clone(), GasChemistry.EQUILIBRIUM).normal_shock(2.0)
     assert repr(shock).startswith("<ShockResult ok ")
 
 
 def test_thermo_array_shape_properties(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
     states = combustor.solve(300.0, 300.0, np.array([1e6, 2e6]), np.array([6.0]),
                                        goddard.infinite_area_combustor([1e6, 2e6]))

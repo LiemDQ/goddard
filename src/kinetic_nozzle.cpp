@@ -45,7 +45,7 @@ KineticNozzle::KineticNozzle(
     double mass_flow_rate,
     NozzleOptions options)
 : profile(prof), mdot(mass_flow_rate), opts(options), m_throat_solver(gas, options),
-  m_gas(gas, GasChemistry::FROZEN)
+  m_gas(gas)
 {
     m_inlet_state.resize(gas.thermo()->stateSize());
     gas.thermo()->saveState(m_inlet_state);
@@ -58,12 +58,12 @@ KineticNozzle::KineticNozzle(
         std::vector<double> inlet_state,
         NozzleOptions options)
 : profile(prof), mdot(mass_flow_rate), opts(options), m_throat_solver(gas, inlet_state, options),
-  m_inlet_state(std::move(inlet_state)), m_gas(gas, GasChemistry::FROZEN)
+  m_inlet_state(std::move(inlet_state)), m_gas(gas)
 {
 }
 
-// Gas constructors: use provided Gas, override chemistry to FROZEN. `options.chemistry` selects
-// the throat model; the throat Nozzle rejects KINETIC.
+// Gas constructors: use a copy of the provided Gas. `options.chemistry` selects the throat model;
+// the throat Nozzle rejects KINETIC.
 KineticNozzle::KineticNozzle(
     const Gas& gas,
     NozzleProfile& prof,
@@ -74,7 +74,6 @@ KineticNozzle::KineticNozzle(
   m_gas(gas.clone())
 {
     check_no_condensed_phases(m_gas);
-    m_gas.chemistry = GasChemistry::FROZEN;
     m_inlet_state.resize(m_gas.thermo()->stateSize());
     m_gas.thermo()->saveState(m_inlet_state);
 }
@@ -92,7 +91,6 @@ KineticNozzle::KineticNozzle(
   m_inlet_state(std::move(inlet_state)),
   m_gas(gas.clone())
 {
-    m_gas.chemistry = GasChemistry::FROZEN;
     m_gas.restore_state(m_inlet_state);
     check_no_condensed_phases(m_gas);
     m_gas.set_current_state_as_reference();
@@ -250,7 +248,7 @@ void KineticNozzle::integrate(KineticNozzleResults& results, double dt_max, doub
         m_gas.thermo()->getConcentrations(conc.data());
 
         u = m_gas.isenthalpic_velocity(H0);
-        M = u / m_gas.speed_of_sound();
+        M = u / m_gas.speed_of_sound(CompositionModel::FROZEN);
 
         for (size_t k = 0; k < n_species; k++) {
             if (conc[k] < conc_threshold) {
@@ -263,7 +261,7 @@ void KineticNozzle::integrate(KineticNozzleResults& results, double dt_max, doub
                 freeze_idx = static_cast<int>(k);
             }
         }
-        ThermodynamicState station_thermo = m_gas.snapshot();
+        ThermodynamicState station_thermo = m_gas.snapshot(CompositionModel::FROZEN);
         station_thermo.stagnation_enthalpy = H0;
         const std::string freezing_species = (Da_min < std::numeric_limits<double>::max())
             ? m_gas.thermo()->speciesName(static_cast<size_t>(freeze_idx)) : std::string();

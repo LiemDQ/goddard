@@ -112,8 +112,8 @@ struct JumpGuess {
 };
 
 /**
- * Initial estimate of the CJ jump, RP-1311 section 8.3. `gas` holds the unburned gas on entry,
- * with EQUILIBRIUM chemistry, and an arbitrary state on exit.
+ * Initial estimate of the CJ jump, RP-1311 section 8.3. `gas` holds the unburned gas on entry and
+ * an arbitrary state on exit.
  */
 JumpGuess chapman_jouguet_initial_estimate(Gas& gas) {
     const double R = Cantera::GasConstant;
@@ -126,7 +126,7 @@ JumpGuess chapman_jouguet_initial_estimate(Gas& gas) {
     const double pressure_ratio_0 = 15.0;
     gas.equilibrate_HP(h1 + 0.75*R*T1/M1*pressure_ratio_0, pressure_ratio_0*P1);
     const double temperature_ratio_0 = gas.temperature()/T1;
-    const ExpansionProperties props = gas.expansion_properties();
+    const ExpansionProperties props = gas.expansion_properties(CompositionModel::EQUILIBRIUM);
     const double gamma_s = props.gamma_s;
     const double cp = props.spec_heat_p;
     const double M2 = gas.molecular_weight();
@@ -174,7 +174,7 @@ JumpGuess driven_initial_guess(const DetonationResult& chapman_jouguet, double d
 /**
  * Assemble a real-gas detonation result from the jump to the products.
  *
- * `gas` holds the products on entry and on exit, with EQUILIBRIUM chemistry. `von_neumann_state`
+ * `gas` holds the equilibrium products on entry and on exit. `von_neumann_state`
  * receives the state behind the frozen shock at the same wave speed.
  */
 DetonationResult real_gas_detonation(Gas& gas, const std::vector<double>& unburned_state,
@@ -184,19 +184,17 @@ DetonationResult real_gas_detonation(Gas& gas, const std::vector<double>& unburn
     const std::vector<double> products_state = gas.save_state();
     const double products_molecular_weight = gas.molecular_weight();
     const double u2 = velocity/jump.density_ratio;
-    const double mach_out = u2/gas.speed_of_sound();
-    const double P02 = gas.stagnation_pressure(u2);
+    const double mach_out = u2/gas.speed_of_sound(CompositionModel::EQUILIBRIUM);
+    const double P02 = gas.stagnation_pressure(u2, CompositionModel::EQUILIBRIUM);
 
     gas.restore_state(unburned_state);
-    gas.chemistry = GasChemistry::FROZEN;
     const double unburned_molecular_weight = gas.molecular_weight();
-    const double a1 = gas.speed_of_sound();
-    const double P01 = gas.stagnation_pressure(velocity);
+    const double a1 = gas.speed_of_sound(CompositionModel::FROZEN);
+    const double P01 = gas.stagnation_pressure(velocity, CompositionModel::FROZEN);
     const ShockResult von_neumann = incident_shock(gas, velocity, 0.0, GasChemistry::FROZEN, opts);
     gas.copy_state(von_neumann_state);
 
     gas.restore_state(products_state);
-    gas.chemistry = GasChemistry::EQUILIBRIUM;
 
     DetonationResult result;
     result.velocity = velocity;
@@ -288,30 +286,17 @@ ReflectedDetonationResult reflected_detonation(double drive_factor, double gamma
 // ===== DetonationSolver =====
 
 DetonationSolver::DetonationSolver(const Gas& gas, SolverOptions options)
-    : m_gas(gas.clone()), m_chemistry(m_gas.chemistry), m_options(options),
+    : m_gas(gas.clone()), m_options(options),
       m_post_detonation_status(SolveStatus::failure(FailureReason::NOT_COMPUTED,
           "DetonationSolver: no detonation has been solved yet.")),
       m_von_neumann_status(m_post_detonation_status)
 {
-    switch (m_chemistry) {
-        case GasChemistry::PERFECT_GAS:
-            throw std::invalid_argument(
-                "DetonationSolver: PERFECT_GAS chemistry has no heat release; use "
-                "chapman_jouguet_detonation() and detonation() instead.");
-        case GasChemistry::KINETIC:
-            throw std::invalid_argument(
-                "DetonationSolver: KINETIC chemistry is not supported; use FROZEN or EQUILIBRIUM.");
-        case GasChemistry::FROZEN:
-        case GasChemistry::EQUILIBRIUM:
-            break;
-    }
     check_no_condensed_phases(m_gas);
     m_gas.copy_state(m_pre_detonation_state);
 }
 
 void DetonationSolver::reset() const {
     m_gas.restore_state(m_pre_detonation_state);
-    m_gas.chemistry = m_chemistry;
 }
 
 void DetonationSolver::store_failure(const SolveStatus& status) {
@@ -335,7 +320,6 @@ const DetonationResult& DetonationSolver::cached_chapman_jouguet() {
 
 DetonationResult DetonationSolver::solve_chapman_jouguet() {
     reset();
-    m_gas.chemistry = GasChemistry::EQUILIBRIUM;
     const double T1 = m_gas.temperature();
 
     // A mixture that releases no heat has no detonation, and the CJ Jacobian is singular at its
@@ -351,7 +335,7 @@ DetonationResult DetonationSolver::solve_chapman_jouguet() {
 
     const JumpGuess guess = chapman_jouguet_initial_estimate(m_gas);
     m_gas.restore_state(m_pre_detonation_state);
-    const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::CHAPMAN_JOUGUET, 0.0,
+    const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::CHAPMAN_JOUGUET, 0.0, CompositionModel::EQUILIBRIUM,
         guess.pressure_ratio, guess.temperature_ratio, m_options);
     check_no_condensed_products(m_gas);
     if (!(jump.pressure_ratio > 1.0 && jump.density_ratio > 1.0)) {
@@ -361,7 +345,7 @@ DetonationResult DetonationSolver::solve_chapman_jouguet() {
     }
 
     // u2 = a2, so u1 = (rho2/rho1) a2
-    const double velocity = jump.density_ratio*m_gas.speed_of_sound();
+    const double velocity = jump.density_ratio*m_gas.speed_of_sound(CompositionModel::EQUILIBRIUM);
     const DetonationResult result = real_gas_detonation(m_gas, m_pre_detonation_state, velocity,
         1.0, jump, m_options, m_chapman_jouguet_von_neumann_state);
     result.von_neumann.status.raise_if_failed();
@@ -431,8 +415,7 @@ DetonationResult DetonationSolver::solve_driven(double velocity, double drive_fa
     const JumpGuess guess = driven_initial_guess(m_chapman_jouguet, drive_factor, momentum_coeff, branch);
     // The overdriven and under-driven roots solve the incident-shock jump conditions with the
     // products at equilibrium; the initial guess selects the root.
-    m_gas.chemistry = GasChemistry::EQUILIBRIUM;
-    const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::INCIDENT, velocity,
+    const ShockJump jump = solve_shock_jump(m_gas, JumpCondition::INCIDENT, velocity, CompositionModel::EQUILIBRIUM,
         guess.pressure_ratio, guess.temperature_ratio, m_options);
     check_no_condensed_products(m_gas);
 
@@ -471,15 +454,15 @@ ReflectedDetonationResult DetonationSolver::reflected_detonation(double drive_fa
 
     const SolveStatus status = capture_failure("reflected shock", [&] {
         m_gas.restore_state(m_post_detonation_state);
-        m_gas.chemistry = GasChemistry::EQUILIBRIUM;
 
         // Lab-frame velocity of the products, which the reflected shock brings to rest
         const double particle_velocity = result.incident.velocity*(1.0 - 1.0/result.incident.density_ratio);
         // Initial guess: the perfect-gas reflected shock with the equilibrium gamma of the products
-        const double gamma_s = m_gas.gamma_s();
+        const double gamma_s = m_gas.gamma_s(CompositionModel::EQUILIBRIUM);
         const ShockResult guess = Goddard::normal_shock(
-            reflected_shock_mach(particle_velocity/m_gas.speed_of_sound(), gamma_s), gamma_s);
-        result.reflected = reflected_shock_from_state2(m_gas, particle_velocity, GasChemistry::EQUILIBRIUM,
+            reflected_shock_mach(particle_velocity/m_gas.speed_of_sound(CompositionModel::EQUILIBRIUM), gamma_s), gamma_s);
+        result.reflected = reflected_shock_from_state2(m_gas, particle_velocity,
+            GasChemistry::EQUILIBRIUM, GasChemistry::EQUILIBRIUM,
             guess.static_pressure_ratio, guess.static_temperature_ratio, m_options);
         check_no_condensed_products(m_gas);
         m_gas.copy_state(m_post_detonation_state);
@@ -502,14 +485,12 @@ Gas DetonationSolver::pre_detonation_state() const {
 Gas DetonationSolver::post_detonation_state() const {
     m_post_detonation_status.raise_if_failed();
     m_gas.restore_state(m_post_detonation_state);
-    m_gas.chemistry = GasChemistry::EQUILIBRIUM;
     return m_gas.clone();
 }
 
 Gas DetonationSolver::von_neumann_state() const {
     m_von_neumann_status.raise_if_failed();
     m_gas.restore_state(m_von_neumann_state);
-    m_gas.chemistry = GasChemistry::FROZEN;
     return m_gas.clone();
 }
 

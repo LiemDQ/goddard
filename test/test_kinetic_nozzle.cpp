@@ -472,8 +472,8 @@ TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
     // physically correct because acoustic timescales are much shorter than
     // chemical timescales (see §5 of reference).
     s_gas->thermo()->restoreState(s_inlet_state);
-    Gas frozen_gas(*s_gas, GasChemistry::FROZEN);
-    double gamma_frozen = frozen_gas.gamma_s();
+    Gas frozen_gas(*s_gas);
+    double gamma_frozen = frozen_gas.gamma_s(CompositionModel::FROZEN);
 
     NozzleOptions frozen_opts;
     frozen_opts.chemistry = GasChemistry::FROZEN;

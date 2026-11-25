@@ -31,15 +31,13 @@ double normal_shock_control_factor(int iter) {
     return cf;
 }
 
-/** Set a trial downstream state: frozen composition, or equilibrium at (T, P), per `gas.chemistry`. */
-void set_trial_state(Gas& gas, double T, double P) {
-    switch (gas.chemistry) {
-        case GasChemistry::EQUILIBRIUM:
+/** Set a trial downstream state: frozen composition, or equilibrium at (T, P), per `model`. */
+void set_trial_state(Gas& gas, double T, double P, CompositionModel model) {
+    switch (model) {
+        case CompositionModel::EQUILIBRIUM:
             gas.equilibrate_TP(T, P);
             break;
-        case GasChemistry::PERFECT_GAS:
-        case GasChemistry::FROZEN:
-        case GasChemistry::KINETIC:
+        case CompositionModel::FROZEN:
             gas.set_state_TP(T, P);
             break;
     }
@@ -53,13 +51,13 @@ ShockResult failed_shock(SolveStatus status) {
     return result;
 }
 
-ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
+ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity, CompositionModel model,
                            double pressure_ratio_guess, double temperature_ratio_guess,
                            const SolverOptions& opts)
 {
-    if (condition == JumpCondition::CHAPMAN_JOUGUET && gas.chemistry != GasChemistry::EQUILIBRIUM) {
+    if (condition == JumpCondition::CHAPMAN_JOUGUET && model != CompositionModel::EQUILIBRIUM) {
         throw std::invalid_argument(
-            "solve_shock_jump: a Chapman-Jouguet detonation requires EQUILIBRIUM chemistry.");
+            "solve_shock_jump: a Chapman-Jouguet detonation requires EQUILIBRIUM products.");
     }
     const double R = Cantera::GasConstant;
     const double h_up = gas.enthalpy_mass();
@@ -78,8 +76,8 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
     options.step_abstol = opts.abstol;
     options.max_iterations = opts.max_iterations + 1;
     const NewtonSystemResult<2> result = newton_solve(guess, [&](const Eigen::Vector2d& x) {
-        set_trial_state(gas, std::exp(x(1))*T_up, std::exp(x(0))*P_up);
-        const ExpansionProperties props = gas.expansion_properties();
+        set_trial_state(gas, std::exp(x(1))*T_up, std::exp(x(0))*P_up, model);
+        const ExpansionProperties props = gas.expansion_properties(model);
         const double dlogV_dlogT = props.dlV_dlT_P;
         const double dlogV_dlogP = props.dlV_dlP_T;
         const double pressure_ratio = std::exp(x(0));
@@ -148,7 +146,7 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
             std::string message = condition == JumpCondition::CHAPMAN_JOUGUET
                 ? "the Chapman-Jouguet jump conditions did not converge."
                 : "the shock jump conditions did not converge.";
-            if (condition == JumpCondition::INCIDENT && gas.chemistry == GasChemistry::EQUILIBRIUM) {
+            if (condition == JumpCondition::INCIDENT && model == CompositionModel::EQUILIBRIUM) {
                 message += " With EQUILIBRIUM chemistry, a mixture that releases heat has no "
                            "shock below its Chapman-Jouguet detonation speed.";
             }
@@ -158,7 +156,7 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
             throw ConvergenceError("the shock jump Newton step is not finite.",
                 result.iterations, opts.abstol, largest_step);
     }
-    set_trial_state(gas, std::exp(result.x(1))*T_up, std::exp(result.x(0))*P_up);
+    set_trial_state(gas, std::exp(result.x(1))*T_up, std::exp(result.x(0))*P_up, model);
 
     ShockJump jump;
     jump.pressure_ratio = std::exp(result.x(0));
@@ -173,23 +171,18 @@ ShockJump solve_shock_jump_with_chemistry(Gas& gas, JumpCondition condition, dou
                                           const SolverOptions& opts)
 {
     const std::vector<double> upstream_state = gas.save_state();
-    gas.chemistry = GasChemistry::FROZEN;
-    ShockJump jump = solve_shock_jump(gas, condition, velocity, pressure_ratio_guess, temperature_ratio_guess, opts);
+    ShockJump jump = solve_shock_jump(gas, condition, velocity, CompositionModel::FROZEN,
+        pressure_ratio_guess, temperature_ratio_guess, opts);
     if (chemistry == GasChemistry::EQUILIBRIUM) {
         gas.restore_state(upstream_state);
-        gas.chemistry = GasChemistry::EQUILIBRIUM;
-        jump = solve_shock_jump(gas, condition, velocity, jump.pressure_ratio, jump.temperature_ratio, opts);
+        jump = solve_shock_jump(gas, condition, velocity, CompositionModel::EQUILIBRIUM,
+            jump.pressure_ratio, jump.temperature_ratio, opts);
     }
-    gas.chemistry = chemistry;
     return jump;
 }
 
-double frozen_sound_speed(Gas& gas) {
-    const GasChemistry chemistry = gas.chemistry;
-    gas.chemistry = GasChemistry::FROZEN;
-    const double sound_speed = gas.speed_of_sound();
-    gas.chemistry = chemistry;
-    return sound_speed;
+double frozen_sound_speed(const Gas& gas) {
+    return gas.speed_of_sound(CompositionModel::FROZEN);
 }
 
 ShockJump incident_jump(Gas& gas, double u1, GasChemistry chemistry, const SolverOptions& opts) {
@@ -210,29 +203,31 @@ ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
             "speed {:.6g} m/s (Mach {:.6g}).", u_normal, a1, u_normal/a1)));
     }
     u_normal = std::max(u_normal, a1);
-    gas.chemistry = GasChemistry::FROZEN;
-    const double P01 = gas.stagnation_pressure(std::hypot(u_normal, u_tangential));
+    const double P01 = gas.stagnation_pressure(std::hypot(u_normal, u_tangential), CompositionModel::FROZEN);
 
     const ShockJump jump = incident_jump(gas, u_normal, chemistry, opts);
     const double u_normal2 = u_normal/jump.density_ratio;
+    const CompositionModel model = composition_model(chemistry);
 
     ShockResult result;
     result.mach_in = u_normal/a1;
-    result.mach_out = u_normal2/gas.speed_of_sound();
+    result.mach_out = u_normal2/gas.speed_of_sound(model);
     result.static_pressure_ratio = jump.pressure_ratio;
     result.static_temperature_ratio = jump.temperature_ratio;
     result.density_ratio = jump.density_ratio;
-    result.total_pressure_ratio = gas.stagnation_pressure(std::hypot(u_normal2, u_tangential))/P01;
+    result.total_pressure_ratio = gas.stagnation_pressure(std::hypot(u_normal2, u_tangential), model)/P01;
     return result;
 }
 
-ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity, GasChemistry chemistry,
+ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity,
+                                        GasChemistry incident_chemistry, GasChemistry chemistry,
                                         double pressure_ratio_guess, double temperature_ratio_guess,
                                         const SolverOptions& opts)
 {
     const std::vector<double> state2 = gas.save_state();
-    const GasChemistry incident_chemistry = gas.chemistry;
-    const double a2 = gas.speed_of_sound();
+    const CompositionModel incident_model = composition_model(incident_chemistry);
+    const CompositionModel model = composition_model(chemistry);
+    const double a2 = gas.speed_of_sound(incident_model);
 
     const ShockJump jump = solve_shock_jump_with_chemistry(gas, JumpCondition::REFLECTED, particle_velocity,
         chemistry, pressure_ratio_guess, temperature_ratio_guess, opts);
@@ -241,18 +236,16 @@ ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity, GasC
 
     ShockResult result;
     result.mach_in = u_in/a2;
-    result.mach_out = wave_speed/gas.speed_of_sound();
+    result.mach_out = wave_speed/gas.speed_of_sound(model);
     result.static_pressure_ratio = jump.pressure_ratio;
     result.static_temperature_ratio = jump.temperature_ratio;
     result.density_ratio = jump.density_ratio;
 
-    const double P05 = gas.stagnation_pressure(wave_speed);
+    const double P05 = gas.stagnation_pressure(wave_speed, model);
     const std::vector<double> state5 = gas.save_state();
     gas.restore_state(state2);
-    gas.chemistry = incident_chemistry;
-    const double P02 = gas.stagnation_pressure(u_in);
+    const double P02 = gas.stagnation_pressure(u_in, incident_model);
     gas.restore_state(state5);
-    gas.chemistry = chemistry;
     result.total_pressure_ratio = P05/P02;
     return result;
 }

@@ -78,12 +78,12 @@ double hugoniot_residual(const DetonationResult& r, double gamma, double heat_re
 }
 
 /** Gas from h2o2.yaml at T [K], P [Pa] and the given mole fractions. */
-Gas make_gas(const std::string& composition, GasChemistry chemistry,
+Gas make_gas(const std::string& composition,
              double T = 298.15, double P = Cantera::OneAtm) {
     Goddard::setup_defaults();
     auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
     sol->thermo()->setState_TPX(T, P, composition);
-    return Gas(sol, chemistry);
+    return Gas(sol);
 }
 
 // One-gamma reacting mixture: reactant R and product P are isomers (one argon atom each, so the
@@ -96,7 +96,7 @@ constexpr double HEAT_RELEASE = 40.0;   // q/(R T1)
 constexpr double T1 = 300.0;            // K
 constexpr double P1 = 1e5;              // Pa
 
-Gas make_one_gamma_gas(GasChemistry chemistry) {
+Gas make_one_gamma_gas() {
     Goddard::setup_defaults();
     const double R = Cantera::GasConstant;
     const double cp = GAMMA/(GAMMA - 1.0)*R;                 // J/(kmol K)
@@ -121,7 +121,7 @@ Gas make_one_gamma_gas(GasChemistry chemistry) {
          << ", cp0: " << cp << ", T-max: 100000.0}\n";
     Cantera::AnyMap root = Cantera::AnyMap::fromYamlString(yaml.str());
     Cantera::AnyMap phase = root["phases"].asVector<Cantera::AnyMap>()[0];
-    return Gas(Cantera::newSolution(phase, root), chemistry);
+    return Gas(Cantera::newSolution(phase, root));
 }
 
 } // namespace
@@ -236,18 +236,18 @@ TEST(PerfectGasDetonation, InvalidInputs) {
 //  DetonationSolver on the one-gamma mixture: must reproduce the free functions
 // ============================================================
 
-class OneGammaDetonationTests : public ::testing::TestWithParam<GasChemistry> {};
+class OneGammaDetonationTests : public ::testing::Test {};
 
-TEST_P(OneGammaDetonationTests, ChapmanJouguetMatchesPerfectGas) {
-    DetonationSolver solver(make_one_gamma_gas(GetParam()));
+TEST_F(OneGammaDetonationTests, ChapmanJouguetMatchesPerfectGas) {
+    DetonationSolver solver(make_one_gamma_gas());
     const DetonationResult cj = solver.chapman_jouguet();
     expect_detonation_near(cj, chapman_jouguet_detonation(GAMMA, HEAT_RELEASE), RATIO_TOL, "CJ");
     const double a1 = std::sqrt(GAMMA*Cantera::GasConstant*T1/solver.pre_detonation_state().molecular_weight());
     EXPECT_NEAR(cj.velocity, cj.mach_in*a1, max_fp_error(cj.velocity, 1e-12, 0.0));
 }
 
-TEST_P(OneGammaDetonationTests, DrivenDetonationsMatchPerfectGas) {
-    DetonationSolver solver(make_one_gamma_gas(GetParam()));
+TEST_F(OneGammaDetonationTests, DrivenDetonationsMatchPerfectGas) {
+    DetonationSolver solver(make_one_gamma_gas());
     for (double f : {1.01, 1.2, 2.0}) {
         for (DetonationBranch branch : BRANCHES) {
             expect_detonation_near(solver.detonation(f, branch), detonation(f, GAMMA, HEAT_RELEASE, branch),
@@ -256,8 +256,8 @@ TEST_P(OneGammaDetonationTests, DrivenDetonationsMatchPerfectGas) {
     }
 }
 
-TEST_P(OneGammaDetonationTests, ReflectedDetonationMatchesPerfectGas) {
-    DetonationSolver solver(make_one_gamma_gas(GetParam()));
+TEST_F(OneGammaDetonationTests, ReflectedDetonationMatchesPerfectGas) {
+    DetonationSolver solver(make_one_gamma_gas());
     for (double f : {1.0, 1.5}) {
         for (DetonationBranch branch : BRANCHES) {
             const std::string label = "f=" + std::to_string(f) + " " + branch_name(branch);
@@ -270,19 +270,13 @@ TEST_P(OneGammaDetonationTests, ReflectedDetonationMatchesPerfectGas) {
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(Chemistry, OneGammaDetonationTests,
-    ::testing::Values(GasChemistry::FROZEN, GasChemistry::EQUILIBRIUM),
-    [](const ::testing::TestParamInfo<GasChemistry>& param_info) {
-        return std::string(param_info.param == GasChemistry::EQUILIBRIUM ? "EQUILIBRIUM" : "FROZEN");
-    });
-
 // ============================================================
 //  DetonationSolver on stoichiometric H2/O2
 // ============================================================
 
 class HydrogenOxygenDetonationTests : public ::testing::Test {
 protected:
-    HydrogenOxygenDetonationTests() : solver(make_gas(MIXTURE, GasChemistry::FROZEN)) {
+    HydrogenOxygenDetonationTests() : solver(make_gas(MIXTURE)) {
         const Gas& pre = solver.pre_detonation_state();
         rho1 = pre.density();
         P1 = pre.pressure();
@@ -310,7 +304,7 @@ TEST_F(HydrogenOxygenDetonationTests, ChapmanJouguetConservesMassMomentumEnergy)
     EXPECT_NEAR(post.pressure() + rho2*u2*u2, P1 + rho1*u1*u1, RATIO_TOL*(rho1*u1*u1));
     EXPECT_NEAR(post.enthalpy_mass() + 0.5*u2*u2, h1 + 0.5*u1*u1, RATIO_TOL*(0.5*u1*u1));
     // Jouguet condition: the products leave at their equilibrium sound speed
-    EXPECT_NEAR(u2, post.speed_of_sound(), RATIO_TOL*u2);
+    EXPECT_NEAR(u2, post.speed_of_sound(CompositionModel::EQUILIBRIUM), RATIO_TOL*u2);
 
     // The products are at equilibrium: re-equilibrating at (T2, P2) does not move them.
     Gas check = post.clone();
@@ -354,18 +348,17 @@ TEST_F(HydrogenOxygenDetonationTests, DrivenDetonationConservesMassMomentumEnerg
         const double u2 = u1/r.density_ratio;
         EXPECT_NEAR(post.pressure() + rho2*u2*u2, P1 + rho1*u1*u1, RATIO_TOL*(rho1*u1*u1)) << branch_name(branch);
         EXPECT_NEAR(post.enthalpy_mass() + 0.5*u2*u2, h1 + 0.5*u1*u1, RATIO_TOL*(0.5*u1*u1)) << branch_name(branch);
-        EXPECT_NEAR(r.mach_out, u2/post.speed_of_sound(), 1e-12*r.mach_out) << branch_name(branch);
+        EXPECT_NEAR(r.mach_out, u2/post.speed_of_sound(CompositionModel::EQUILIBRIUM), 1e-12*r.mach_out) << branch_name(branch);
     }
 }
 
 TEST_F(HydrogenOxygenDetonationTests, VonNeumannStateIsFrozenShock) {
     const DetonationResult cj = solver.chapman_jouguet();
-    ShockSolver frozen(make_gas(MIXTURE, GasChemistry::FROZEN));
+    ShockSolver frozen(make_gas(MIXTURE), GasChemistry::FROZEN);
     expect_shock_near(cj.von_neumann, frozen.normal_shock_from_velocity(cj.velocity), 1e-12, "von Neumann");
     // The spike: the leading shock compresses more than the whole detonation
     EXPECT_GT(cj.von_neumann.static_pressure_ratio, cj.static_pressure_ratio);
     const Gas& spike = solver.von_neumann_state();
-    EXPECT_EQ(spike.chemistry, GasChemistry::FROZEN);
     EXPECT_NEAR(spike.pressure(), cj.von_neumann.static_pressure_ratio*P1, 1e-10*spike.pressure());
 }
 
@@ -377,7 +370,7 @@ TEST_F(HydrogenOxygenDetonationTests, ReflectedShockBringsProductsToRest) {
     const double P2 = state2.pressure();
     const double rho2 = state2.density();
     const double h2 = state2.enthalpy_mass();
-    const double a2 = state2.speed_of_sound();
+    const double a2 = state2.speed_of_sound(CompositionModel::EQUILIBRIUM);
 
     const ReflectedDetonationResult r = solver.reflected_detonation();
     ASSERT_TRUE(r.status.ok());
@@ -396,7 +389,7 @@ TEST_F(HydrogenOxygenDetonationTests, ReflectedShockBringsProductsToRest) {
 
 TEST_F(HydrogenOxygenDetonationTests, UnburnedChemistryDoesNotChangeResult) {
     // The unburned gas is taken as given, and the products are always at equilibrium.
-    DetonationSolver equilibrium(make_gas(MIXTURE, GasChemistry::EQUILIBRIUM));
+    DetonationSolver equilibrium(make_gas(MIXTURE));
     expect_detonation_near(equilibrium.chapman_jouguet(), solver.chapman_jouguet(), 1e-12, "CJ");
 }
 
@@ -421,16 +414,16 @@ TEST_F(HydrogenOxygenDetonationTests, SlowerThanChapmanJouguetIsInvalid) {
 
 class DiluteDetonationTests : public ::testing::Test {
 protected:
-    static Gas make_dilute_gas(GasChemistry chemistry) {
-        return make_gas("H2:0.05, O2:0.05, AR:0.9", chemistry, 300.0, 10.0*133.322387415);
+    static Gas make_dilute_gas() {
+        return make_gas("H2:0.05, O2:0.05, AR:0.9", 300.0, 10.0*133.322387415);
     }
 };
 
 TEST_F(DiluteDetonationTests, OverdrivenMatchesEquilibriumShock) {
     // Above the CJ speed (~1094 m/s) an equilibrium normal shock is an overdriven detonation;
     // ShockSolver reaches it from the frozen shock, DetonationSolver from the CJ-fitted guess.
-    DetonationSolver detonations(make_dilute_gas(GasChemistry::FROZEN));
-    ShockSolver shocks(make_dilute_gas(GasChemistry::EQUILIBRIUM));
+    DetonationSolver detonations(make_dilute_gas());
+    ShockSolver shocks(make_dilute_gas(), GasChemistry::EQUILIBRIUM);
     ASSERT_LT(detonations.chapman_jouguet().velocity, 1100.0);
     for (double u1 : {1100.0, 1200.0, 1400.0}) {
         const DetonationResult r = detonations.detonation_from_velocity(u1, DetonationBranch::OVERDRIVEN);
@@ -450,7 +443,7 @@ TEST_F(DiluteDetonationTests, OverdrivenMatchesEquilibriumShock) {
 TEST_F(DiluteDetonationTests, NearChapmanJouguetNeverReturnsWrongBranch) {
     // Close to the CJ speed the two roots merge; the solver may fail to converge, but it must
     // not return a result from the other branch.
-    DetonationSolver solver(make_dilute_gas(GasChemistry::FROZEN));
+    DetonationSolver solver(make_dilute_gas());
     for (double excess : {1e-8, 1e-6, 1e-4}) {
         for (DetonationBranch branch : BRANCHES) {
             const DetonationResult r = solver.detonation(1.0 + excess, branch);
@@ -472,15 +465,10 @@ TEST_F(DiluteDetonationTests, NearChapmanJouguetNeverReturnsWrongBranch) {
 //  DetonationSolver: unsupported inputs and state management
 // ============================================================
 
-TEST(DetonationSolverUnsupported, RejectsPerfectGasAndKinetic) {
-    EXPECT_THROW(DetonationSolver(make_gas("H2:2, O2:1", GasChemistry::KINETIC)), std::invalid_argument);
-    EXPECT_THROW(DetonationSolver(make_gas("H2:2, O2:1", GasChemistry::PERFECT_GAS)), std::invalid_argument);
-}
-
 TEST(DetonationSolverUnsupported, MixtureWithoutHeatReleaseHasNoDetonation) {
     // Air at 298 K releases no heat. The constructor does not solve, so it does not throw.
     std::unique_ptr<DetonationSolver> solver;
-    ASSERT_NO_THROW(solver = std::make_unique<DetonationSolver>(make_gas("N2:0.79, O2:0.21", GasChemistry::FROZEN)));
+    ASSERT_NO_THROW(solver = std::make_unique<DetonationSolver>(make_gas("N2:0.79, O2:0.21")));
     const DetonationResult cj = solver->chapman_jouguet();
     EXPECT_TRUE(failed_with(cj.status, FailureReason::NO_SOLUTION));
     EXPECT_TRUE(std::isnan(cj.velocity));
@@ -489,12 +477,12 @@ TEST(DetonationSolverUnsupported, MixtureWithoutHeatReleaseHasNoDetonation) {
 }
 
 TEST(DetonationSolverUnsupported, InertArgonHasNoDetonationEither) {
-    DetonationSolver solver(make_gas("AR:1", GasChemistry::EQUILIBRIUM));
+    DetonationSolver solver(make_gas("AR:1"));
     EXPECT_TRUE(failed_with(solver.chapman_jouguet().status, FailureReason::NO_SOLUTION));
 }
 
 TEST(DetonationSolverFailures, ConstructorSolvesNothingAndFirstUseSolvesTheChapmanJouguetState) {
-    DetonationSolver solver(make_gas("H2:2, O2:1", GasChemistry::FROZEN));
+    DetonationSolver solver(make_gas("H2:2, O2:1"));
     // No detonation has been solved yet, so there are no product states
     EXPECT_TRUE(throws_solve_error([&] { solver.post_detonation_state(); }, FailureReason::NOT_COMPUTED));
     EXPECT_TRUE(throws_solve_error([&] { solver.von_neumann_state(); }, FailureReason::NOT_COMPUTED));
@@ -511,7 +499,7 @@ TEST(DetonationSolverFailures, ConstructorSolvesNothingAndFirstUseSolvesTheChapm
 }
 
 TEST(DetonationSolverFailures, FailedChapmanJouguetSolveIsCached) {
-    DetonationSolver solver(make_gas("AR:1", GasChemistry::FROZEN));
+    DetonationSolver solver(make_gas("AR:1"));
     const DetonationResult first = solver.chapman_jouguet();
     const DetonationResult second = solver.chapman_jouguet();
     ASSERT_TRUE(failed_with(first.status, FailureReason::NO_SOLUTION));
@@ -520,15 +508,15 @@ TEST(DetonationSolverFailures, FailedChapmanJouguetSolveIsCached) {
 }
 
 TEST(DetonationSolverFailures, ReflectedDetonationOfAFailedIncidentDetonationIsNotComputed) {
-    DetonationSolver solver(make_gas("H2:2, O2:1", GasChemistry::FROZEN));
+    DetonationSolver solver(make_gas("H2:2, O2:1"));
     const ReflectedDetonationResult r = solver.reflected_detonation(0.99);
     EXPECT_TRUE(failed_with(r.status, FailureReason::NO_SOLUTION));
     EXPECT_EQ(r.reflected.status.reason, FailureReason::NOT_COMPUTED);
     EXPECT_TRUE(std::isnan(r.reflected.static_pressure_ratio));
 }
 
-TEST(DetonationSolverState, AccessorsRestoreStatesAndChemistry) {
-    Gas gas = make_gas("H2:2, O2:1", GasChemistry::FROZEN);
+TEST(DetonationSolverState, AccessorsRestoreStates) {
+    Gas gas = make_gas("H2:2, O2:1");
     const double T_initial = gas.temperature();
     const double P_initial = gas.pressure();
     DetonationSolver solver(gas);
@@ -539,14 +527,11 @@ TEST(DetonationSolverState, AccessorsRestoreStatesAndChemistry) {
     const Gas& pre = solver.pre_detonation_state();
     EXPECT_NEAR(pre.temperature(), T_initial, 1e-10);
     EXPECT_NEAR(pre.pressure(), P_initial, 1e-6);
-    EXPECT_EQ(pre.chemistry, GasChemistry::FROZEN);
 
     const Gas& post = solver.post_detonation_state();
-    EXPECT_EQ(post.chemistry, GasChemistry::EQUILIBRIUM);
     EXPECT_NEAR(post.temperature(), overdriven.static_temperature_ratio*T_initial, 1e-8*post.temperature());
 
     const Gas& spike = solver.von_neumann_state();
-    EXPECT_EQ(spike.chemistry, GasChemistry::FROZEN);
     EXPECT_NEAR(spike.temperature(), overdriven.von_neumann.static_temperature_ratio*T_initial,
                 1e-8*spike.temperature());
 

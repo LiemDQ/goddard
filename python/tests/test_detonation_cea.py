@@ -108,7 +108,7 @@ def _cea_chapman_jouguet(product_names, mole_fractions, T1, P1_bar):
 
 
 def _goddard_solver(product_names, mole_fractions, T1, P1):
-    gas = goddard.Gas(NASA9_GAS, "gas", GasChemistry.FROZEN, set(product_names))
+    gas = goddard.Gas(NASA9_GAS, "gas", set(product_names))
     gas.set_state_TPX(T1, P1, mole_fractions)
     return goddard.DetonationSolver(gas)
 
@@ -131,8 +131,8 @@ def test_chapman_jouguet_matches_cea(mole_fractions, T1, P1_bar):
     assert_close_rel(cj.molecular_weight_ratio, expected["M_M1"], RATIO_RTOL, "M/M1")
 
     products_state = solver.post_detonation_state()
-    assert_close_rel(products_state.gamma_s, expected["gamma_s"], RATIO_RTOL, "gamma_s")
-    assert_close_rel(products_state.speed_of_sound, expected["sonic_velocity"], RATIO_RTOL,
+    assert_close_rel(products_state.equilibrium_gamma_s, expected["gamma_s"], RATIO_RTOL, "gamma_s")
+    assert_close_rel(products_state.equilibrium_speed_of_sound, expected["sonic_velocity"], RATIO_RTOL,
                      "sound speed")
 
 

@@ -41,14 +41,13 @@ constexpr double BAR = 1.0e5;
 /** Product gas spanning `elements`. */
 Gas make_products(const std::vector<std::string>& elements) {
     setup_defaults();
-    return Gas::create_from_elements(NASA9_GAS, "products", elements, GasChemistry::FROZEN);
+    return Gas::create_from_elements(NASA9_GAS, "products", elements);
 }
 
 /** Reactant stream: a phase of the named species from the reactant database at 298.15 K. */
 Gas make_reactants(const std::vector<std::string>& species, const std::string& mass_fractions) {
     setup_defaults();
-    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", species,
-                                             GasChemistry::FROZEN);
+    Gas reactants = Gas::create_from_species(NASA9_REACTANTS, "reactants", species);
     reactants.set_state_TPY(298.15, Cantera::OneAtm, mass_fractions);
     return reactants;
 }
@@ -103,7 +102,6 @@ Gas make_propellant_reactants() {
 std::vector<double> burn_propellant(const Gas& products, double pressure) {
     Gas fuel = make_propellant_reactants();
     Gas combustor_gas = products;
-    combustor_gas.chemistry = GasChemistry::FROZEN;
 
     CombustorOptions options;
     options.mixture_type = MixtureRatioType::FUEL_FRAC;
@@ -132,7 +130,7 @@ Gas make_beryllium_products() {
     }
 
     setup_defaults();
-    Gas products = Gas::create_from_species(NASA9_GAS, "products", species, GasChemistry::FROZEN);
+    Gas products = Gas::create_from_species(NASA9_GAS, "products", species);
     products.add_all_condensed_species(NASA9_CONDENSED);
     return products;
 }
@@ -155,9 +153,8 @@ protected:
           chamber_state(burn_propellant(products, 70.0 * BAR)) {}
 
     /** A mixture restored to `state`, sharing the candidate set of `products`. */
-    Gas at_state(const std::vector<double>& state, GasChemistry chemistry) {
+    Gas at_state(const std::vector<double>& state) {
         Gas gas = products;
-        gas.chemistry = chemistry;
         gas.restore_state(state);
         return gas;
     }
@@ -173,7 +170,7 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     {
         // `at_state` hands out mixtures that share one Cantera `Solution`, so the chamber values
         // are read out before any other station is restored.
-        Gas chamber = at_state(chamber_state, GasChemistry::EQUILIBRIUM);
+        Gas chamber = at_state(chamber_state);
         chamber_enthalpy = chamber.enthalpy_mass();
         chamber_entropy = chamber.entropy_mass();
         chamber_pressure = chamber.pressure();
@@ -181,7 +178,6 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     }
 
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::EQUILIBRIUM;
     NozzleOptions options;
     options.chemistry = GasChemistry::EQUILIBRIUM;
     options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
@@ -195,9 +191,9 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     EXPECT_NEAR(results.throat.S_inlet, chamber_entropy, 1e-10 * std::abs(chamber_entropy));
 
     // The throat is sonic by definition; the solver drives |1 - 1/M^2| below its tolerance.
-    Gas throat = at_state(results.throat.state, GasChemistry::EQUILIBRIUM);
+    Gas throat = at_state(results.throat.state);
     const double throat_mach = throat.isenthalpic_velocity(results.throat.H_stagnation)
-        / throat.speed_of_sound();
+        / throat.speed_of_sound(CompositionModel::EQUILIBRIUM);
     EXPECT_NEAR(std::abs(1.0 - 1.0 / (throat_mach * throat_mach)), 0.0, 4e-4);
 
     ASSERT_EQ(results.expansions.size(), 2u);
@@ -205,7 +201,7 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     double previous_pressure = chamber_pressure;
     for (const std::vector<double>* state :
          {&results.throat.state, &results.expansions[0].state, &results.expansions[1].state}) {
-        Gas station = at_state(*state, GasChemistry::EQUILIBRIUM);
+        Gas station = at_state(*state);
 
         EXPECT_LT(station.gas_mass_fraction(), 1.0) << "no condensate at P = " << station.pressure();
         EXPECT_GT(condensed_moles_of(station, "AL2O3(a)") + condensed_moles_of(station, "AL2O3(L)"),
@@ -224,7 +220,6 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
 
 TEST_F(PropellantNozzleTests, FrozenExpansionHoldsTheCondensedAmounts) {
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::FROZEN;
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;   // equilibrium up to the throat, frozen beyond it
@@ -236,12 +231,12 @@ TEST_F(PropellantNozzleTests, FrozenExpansionHoldsTheCondensedAmounts) {
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO,
                                          std::vector<double>{2.0, 5.0});
 
-    Gas throat = at_state(results.throat.state, GasChemistry::FROZEN);
+    Gas throat = at_state(results.throat.state);
     const std::vector<double> throat_moles = throat.condensed_moles();
     ASSERT_GT(condensed_moles_of(throat, "AL2O3(L)"), 0.0);
 
     for (const NozzleStation& station : results.expansions) {
-        Gas exit = at_state(station.state, GasChemistry::FROZEN);
+        Gas exit = at_state(station.state);
         EXPECT_EQ(exit.condensed_moles(), throat_moles);
         EXPECT_FALSE(station.thermo.pinned_transition);
     }
@@ -249,7 +244,6 @@ TEST_F(PropellantNozzleTests, FrozenExpansionHoldsTheCondensedAmounts) {
 
 TEST_F(PropellantNozzleTests, FrozenExpansionStopsWhereTheAluminaWouldFreeze) {
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::FROZEN;
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;
@@ -269,7 +263,6 @@ TEST_F(PropellantNozzleTests, FrozenExpansionStopsWhereTheAluminaWouldFreeze) {
 
 TEST_F(PropellantNozzleTests, OneFailedStationLeavesTheOtherStationsValid) {
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::FROZEN;
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;
@@ -326,7 +319,6 @@ protected:
 
     Gas at_state(const std::vector<double>& state) {
         Gas gas = products;
-        gas.chemistry = GasChemistry::EQUILIBRIUM;
         gas.restore_state(state);
         return gas;
     }
@@ -340,7 +332,6 @@ TEST_F(BerylliumNozzleTests, ThroatIsPinnedAtTheBerylliaMeltingPoint) {
     EXPECT_NEAR(chamber.temperature(), 3018.89, 0.05);  // CEA; observed 0.02 K
 
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::EQUILIBRIUM;
     NozzleOptions options;
     options.chemistry = GasChemistry::EQUILIBRIUM;
 
@@ -361,7 +352,6 @@ TEST_F(BerylliumNozzleTests, ThroatIsPinnedAtTheBerylliaMeltingPoint) {
 
 TEST_F(BerylliumNozzleTests, PressureRatioStationFollowsTheSolidPolymorph) {
     Gas nozzle_gas = products;
-    nozzle_gas.chemistry = GasChemistry::EQUILIBRIUM;
     NozzleOptions options;
     options.chemistry = GasChemistry::EQUILIBRIUM;
     options.expansion_type = ExpansionType::PRESSURE_RATIO;
@@ -435,7 +425,6 @@ TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecular
 class CondensedGuardTests : public ::testing::Test {
 protected:
     CondensedGuardTests() : products(make_propellant_products()) {
-        products.chemistry = GasChemistry::FROZEN;
         products.restore_state(burn_propellant(products, 70.0 * BAR));
     }
 
@@ -458,11 +447,11 @@ TEST_F(CondensedGuardTests, MethodOfCharacteristicsRejectsCondensedPhases) {
     ASSERT_TRUE(products.has_condensed_phases());
 
     ThroatCondition throat;
-    throat.speed_of_sound = products.speed_of_sound();
+    throat.speed_of_sound = products.speed_of_sound(CompositionModel::FROZEN);
     throat.H_stagnation = products.enthalpy_mass();
     throat.P_inlet = products.pressure();
     throat.S_inlet = products.entropy_mass();
-    throat.gamma_s = products.gamma_s();
+    throat.gamma_s = products.gamma_s(CompositionModel::FROZEN);
     throat.dlV_dlP_T = -1.0;
     throat.dlV_dlT_P = 1.0;
     throat.state = products.save_state();
@@ -474,7 +463,7 @@ TEST_F(CondensedGuardTests, MethodOfCharacteristicsRejectsCondensedPhases) {
 TEST_F(CondensedGuardTests, ShockSolverRejectsCondensedPhases) {
     ASSERT_TRUE(products.has_condensed_phases());
 
-    ShockSolver solver(products);
+    ShockSolver solver(products, GasChemistry::FROZEN);
     EXPECT_THROW(solver.normal_shock(2.0), std::invalid_argument);
     EXPECT_THROW(solver.normal_shock_from_velocity(3000.0), std::invalid_argument);
     EXPECT_THROW(solver.reflected_shock(2.0), std::invalid_argument);

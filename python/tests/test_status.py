@@ -20,8 +20,8 @@ def h2o2_yaml():
     return os.path.join(find_data_dir(), "h2o2.yaml")
 
 
-def h2o2_gas(h2o2_yaml, chemistry, composition="H2:2, O2:1", T=300.0, P=1e5):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=chemistry)
+def h2o2_gas(h2o2_yaml, composition="H2:2, O2:1", T=300.0, P=1e5):
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     gas.set_state_TPX(T, P, composition)
     return gas
 
@@ -91,8 +91,8 @@ def test_raise_if_failed_raises_solve_error_for_no_solution():
 
 def test_raise_if_failed_raises_convergence_error_with_iteration_data(h2o2_yaml):
     """An equilibrium shock below the CJ speed of an exothermic mixture does not converge."""
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM)
-    status = goddard.ShockSolver(gas).normal_shock(2.0).status
+    gas = h2o2_gas(h2o2_yaml)
+    status = goddard.ShockSolver(gas, GasChemistry.EQUILIBRIUM).normal_shock(2.0).status
     assert status.reason == FailureReason.NOT_CONVERGED
     with pytest.raises(ConvergenceError) as info:
         status.raise_if_failed()
@@ -110,7 +110,7 @@ def test_raise_if_failed_raises_convergence_error_with_iteration_data(h2o2_yaml)
 # ---------------------------------------------------------------------------
 
 def test_unknown_species_and_files_are_value_errors(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.FROZEN)
+    gas = h2o2_gas(h2o2_yaml)
     with pytest.raises(ValueError, match="NOT_A_SPECIES"):
         gas.set_state_TPX(300.0, 1e5, "H2:1, NOT_A_SPECIES:1")
     with pytest.raises(ValueError):
@@ -120,7 +120,7 @@ def test_unknown_species_and_files_are_value_errors(h2o2_yaml):
 
 
 def test_misspelt_equilibrium_request_is_a_value_error(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.FROZEN)
+    gas = h2o2_gas(h2o2_yaml)
     with pytest.raises(ValueError, match="PT"):
         gas.equilibrate("PT")
     with pytest.raises(ValueError, match="gibs"):
@@ -128,7 +128,7 @@ def test_misspelt_equilibrium_request_is_a_value_error(h2o2_yaml):
 
 
 def test_unknown_species_in_a_combustor_is_a_value_error(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM)
+    gas = h2o2_gas(h2o2_yaml)
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"XX": 1.0})
     with pytest.raises(ValueError):
         combustor.solve(300.0, 300.0, np.array([10 * BAR]), np.array([6.0]),
@@ -136,7 +136,7 @@ def test_unknown_species_in_a_combustor_is_a_value_error(h2o2_yaml):
 
 
 def test_rejected_state_is_a_solve_error_not_a_backend_error(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.FROZEN)
+    gas = h2o2_gas(h2o2_yaml)
     with pytest.raises(SolveError) as info:
         gas.set_state_TP(0.0, 1e5)
     error = info.value
@@ -183,7 +183,7 @@ def test_shock_results_carry_status_and_nan_fields():
 
 
 def test_shock_solver_post_state_follows_the_most_recent_solve(h2o2_yaml):
-    solver = goddard.ShockSolver(h2o2_gas(h2o2_yaml, GasChemistry.FROZEN, "N2:0.79, O2:0.21"))
+    solver = goddard.ShockSolver(h2o2_gas(h2o2_yaml, "N2:0.79, O2:0.21"), GasChemistry.FROZEN)
     with pytest.raises(SolveError) as info:
         solver.post_shock_state()
     assert info.value.status.reason == FailureReason.NOT_COMPUTED
@@ -206,7 +206,7 @@ def test_detonation_results_carry_status(h2o2_yaml):
     with pytest.raises(ValueError):
         goddard.chapman_jouguet_detonation(1.0, heat_release)
 
-    solver = goddard.DetonationSolver(h2o2_gas(h2o2_yaml, GasChemistry.FROZEN))
+    solver = goddard.DetonationSolver(h2o2_gas(h2o2_yaml))
     reflected = solver.reflected_detonation(0.99)
     assert reflected.status.reason == FailureReason.NO_SOLUTION
     assert reflected.reflected.status.reason == FailureReason.NOT_COMPUTED
@@ -215,7 +215,7 @@ def test_detonation_results_carry_status(h2o2_yaml):
 
 def test_detonation_solver_is_lazy_and_failures_are_in_the_result(h2o2_yaml):
     # Argon releases no heat. Construction does not solve, so it cannot fail.
-    inert = goddard.DetonationSolver(h2o2_gas(h2o2_yaml, GasChemistry.FROZEN, "AR:1"))
+    inert = goddard.DetonationSolver(h2o2_gas(h2o2_yaml, "AR:1"))
     with pytest.raises(SolveError) as info:
         inert.post_detonation_state()  # nothing has been solved yet
     assert info.value.status.reason == FailureReason.NOT_COMPUTED
@@ -226,7 +226,7 @@ def test_detonation_solver_is_lazy_and_failures_are_in_the_result(h2o2_yaml):
         inert.post_detonation_state()
     assert info.value.status.reason == FailureReason.NO_SOLUTION
 
-    solver = goddard.DetonationSolver(h2o2_gas(h2o2_yaml, GasChemistry.FROZEN))
+    solver = goddard.DetonationSolver(h2o2_gas(h2o2_yaml))
     with pytest.raises(SolveError):
         solver.von_neumann_state()
     cj = solver.chapman_jouguet()
@@ -236,7 +236,7 @@ def test_detonation_solver_is_lazy_and_failures_are_in_the_result(h2o2_yaml):
 
 
 def test_nozzle_results_carry_status_per_station(h2o2_yaml):
-    nozzle = goddard.Nozzle(h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM, "H2O:1", 3500.0, 70 * BAR))
+    nozzle = goddard.Nozzle(h2o2_gas(h2o2_yaml, "H2O:1", 3500.0, 70 * BAR))
     results = nozzle.solve_ratios(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0, 10.0])
     assert results.status.ok and results.throat.status.ok
     assert all(station.status.ok for station in results.expansions)
@@ -251,7 +251,7 @@ def test_nozzle_results_carry_status_per_station(h2o2_yaml):
 
 def test_failed_throat_makes_every_station_not_computed(h2o2_yaml):
     """Cold H2/O2 is not at equilibrium, which the equilibrium throat iteration does not tolerate."""
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM, "H2:2, O2:1", 300.0, 70 * BAR)
+    gas = h2o2_gas(h2o2_yaml, "H2:2, O2:1", 300.0, 70 * BAR)
     results = goddard.Nozzle(gas).solve_ratios(
         goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0, 10.0])
     assert results.throat.status.reason == FailureReason.NOT_CONVERGED
@@ -262,7 +262,7 @@ def test_failed_throat_makes_every_station_not_computed(h2o2_yaml):
 
 
 def test_finite_area_chamber_status_and_choked_flux(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM, "H2O:1", 3500.0, 70 * BAR)
+    gas = h2o2_gas(h2o2_yaml, "H2O:1", 3500.0, 70 * BAR)
     gas.equilibrate("HP")
     nozzle = goddard.Nozzle(gas)
     injector_state = gas.save_state() if hasattr(gas, "save_state") else None
@@ -278,7 +278,7 @@ def test_finite_area_chamber_status_and_choked_flux(h2o2_yaml):
 
 
 def test_kinetic_nozzle_status_incomplete_when_steps_run_out(h2o2_yaml):
-    gas = h2o2_gas(h2o2_yaml, GasChemistry.EQUILIBRIUM, "H2O:0.9, H2:0.05, O2:0.03, OH:0.02", 3500.0, 70 * BAR)
+    gas = h2o2_gas(h2o2_yaml, "H2O:0.9, H2:0.05, O2:0.03, OH:0.02", 3500.0, 70 * BAR)
     gas.equilibrate("HP")
     profile = goddard.conical_nozzle(4.0)
     nozzle = goddard.KineticNozzle(gas, profile, 1.0)
@@ -319,7 +319,7 @@ def test_moc_result_status_agrees_with_failure_code():
 # ---------------------------------------------------------------------------
 
 def combustion_states(h2o2_yaml, fuel_temperature):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
     pressures = np.array([10 * BAR, 20 * BAR])
     return combustor.solve(fuel_temperature, 300.0, pressures, np.array([4.0, 6.0]),
@@ -354,7 +354,7 @@ def test_thermoarray_reports_failed_operating_points(h2o2_yaml):
 
 
 def test_combustor_rejects_nonpositive_temperature_and_pressure(h2o2_yaml):
-    gas = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    gas = Gas(h2o2_yaml, phase_name="ohmech")
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
     options = goddard.infinite_area_combustor([10 * BAR])
     with pytest.raises(ValueError):

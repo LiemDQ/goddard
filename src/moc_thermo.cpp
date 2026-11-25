@@ -28,7 +28,7 @@ MocThermo MocThermo::tabulated(Gas& gas, GasChemistry chemistry, const ThroatCon
     }
     thermo.m_T_ref = gas.temperature();
     thermo.m_P_ref = throat.P_inlet;
-    double a_throat = gas.speed_of_sound();
+    const double a_throat = gas.speed_of_sound(composition_model(chemistry));
     thermo.m_table.build_table(
         *gas.thermo(),
         chemistry == GasChemistry::EQUILIBRIUM,

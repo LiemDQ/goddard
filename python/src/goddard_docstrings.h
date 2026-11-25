@@ -669,6 +669,17 @@ R"doc(Element amounts of a reactant stream [kmol per kg of stream] re-
 indexed onto the element order of the product gas. Product elements
 the stream does not have are zero.)doc";
 
+static const char *__doc_Goddard_CompositionModel =
+R"doc(How the composition responds when the state of a `Gas` is perturbed.
+Selects the derivatives behind `Gas::gamma_s`, `Gas::speed_of_sound`,
+`Gas::expansion_properties` and the other derived properties.)doc";
+
+static const char *__doc_Goddard_CompositionModel_EQUILIBRIUM =
+R"doc(Composition shifts to remain at chemical equilibrium (RP-1311 eqs.
+2.56-2.66).)doc";
+
+static const char *__doc_Goddard_CompositionModel_FROZEN = R"doc(Composition held fixed: cp/cv, and the frozen sound speed.)doc";
+
 static const char *__doc_Goddard_CondensedPhaseSet =
 R"doc(Candidate condensed species of a `Gas`. Implementation detail; see
 `condensed.hpp`.)doc";
@@ -746,7 +757,7 @@ overdriven and under-driven detonations at a given wave speed.
 The unburned gas (state 1) is the state of the `Gas` at construction.
 It is taken as given: it need not be at equilibrium, and its sound
 speed is the frozen one. The products are always at chemical
-equilibrium, whatever the chemistry of the `Gas`.
+equilibrium.
 
 The constructor solves nothing. The CJ detonation is solved by the
 first call that needs it (any of the solve methods) and kept for the
@@ -767,16 +778,14 @@ the solver runs.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_DetonationSolver =
 R"doc(Parameter ``gas``:
-    unburned gas: FROZEN or EQUILIBRIUM chemistry, with no condensed
-    species
+    unburned gas, with no condensed species
 
 Parameter ``options``:
     Newton tolerance on the log pressure and temperature ratios, and
     iteration limit
 
 Throws:
-    std::invalid_argument for PERFECT_GAS or KINETIC chemistry, or if
-    condensed species are present)doc";
+    std::invalid_argument if condensed species are present)doc";
 
 static const char *__doc_Goddard_DetonationSolver_cached_chapman_jouguet =
 R"doc(The CJ detonation, solved from the unburned state on the first call
@@ -840,8 +849,6 @@ static const char *__doc_Goddard_DetonationSolver_m_chapman_jouguet_state = R"do
 
 static const char *__doc_Goddard_DetonationSolver_m_chapman_jouguet_von_neumann_state = R"doc()doc";
 
-static const char *__doc_Goddard_DetonationSolver_m_chemistry = R"doc()doc";
-
 static const char *__doc_Goddard_DetonationSolver_m_gas = R"doc()doc";
 
 static const char *__doc_Goddard_DetonationSolver_m_options = R"doc()doc";
@@ -865,16 +872,14 @@ R"doc(Status of the most recent incident detonation; NOT_COMPUTED until one
 has been solved.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_post_detonation_state =
-R"doc(Gas at the products of the most recent solve, with EQUILIBRIUM
-chemistry. An independent copy.
+R"doc(Gas at the products of the most recent solve, at chemical equilibrium.
+An independent copy.
 
 Throws:
     SolveError if the most recent solve failed (with that solve's
     status), or if no detonation has been solved yet)doc";
 
-static const char *__doc_Goddard_DetonationSolver_pre_detonation_state =
-R"doc(Gas at the unburned state, with the chemistry it had at construction.
-An independent copy.)doc";
+static const char *__doc_Goddard_DetonationSolver_pre_detonation_state = R"doc(Gas at the unburned state. An independent copy.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_reflected_detonation =
 R"doc(Detonation reflected as a shock from the closed end of a tube, with
@@ -895,7 +900,7 @@ Returns:
     fails, `incident` is still valid and `post_detonation_state()`
     throws.)doc";
 
-static const char *__doc_Goddard_DetonationSolver_reset = R"doc(Restore the unburned state and the construction chemistry.)doc";
+static const char *__doc_Goddard_DetonationSolver_reset = R"doc(Restore the unburned state.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_solve_chapman_jouguet =
 R"doc(CJ jump and states from the unburned state.
@@ -917,8 +922,8 @@ R"doc(Record a failed solve: there is then no post-detonation or von Neumann
 state.)doc";
 
 static const char *__doc_Goddard_DetonationSolver_von_neumann_state =
-R"doc(Gas behind the leading frozen shock of the most recent solve, with
-FROZEN chemistry. An independent copy.
+R"doc(Gas behind the leading frozen shock of the most recent solve, with the
+unburned composition. An independent copy.
 
 Throws:
     SolveError if the most recent incident detonation failed (with
@@ -1294,8 +1299,9 @@ cheap to copy.)doc";
 static const char *__doc_Goddard_Gas_3 = R"doc()doc";
 
 static const char *__doc_Goddard_GasChemistry =
-R"doc(Chemistry model used for derived properties such as `gamma_s` and for
-flow solvers.)doc";
+R"doc(Chemistry model of a flow solver, set in the solver's options or
+arguments. A `Gas` has no chemistry model of its own; its derived
+properties take a `CompositionModel`.)doc";
 
 static const char *__doc_Goddard_GasChemistry_EQUILIBRIUM =
 R"doc(Composition at chemical equilibrium at every state (shifting
@@ -1308,8 +1314,8 @@ temperature.)doc";
 static const char *__doc_Goddard_GasChemistry_KINETIC = R"doc(Finite-rate chemistry from the reaction mechanism.)doc";
 
 static const char *__doc_Goddard_GasChemistry_PERFECT_GAS =
-R"doc(Calorically perfect gas: the flow solvers hold the ratio of specific
-heats constant. `Gas` property getters treat it as FROZEN.)doc";
+R"doc(Calorically perfect gas: the flow solver holds the ratio of specific
+heats constant.)doc";
 
 static const char *__doc_Goddard_Gas_Gas =
 R"doc(@note The created `Gas` will reference the same `Solution` object
@@ -1373,16 +1379,12 @@ pinned state).)doc";
 
 static const char *__doc_Goddard_Gas_check_for_valid_cantera = R"doc()doc";
 
-static const char *__doc_Goddard_Gas_chemistry =
-R"doc(Chemistry model of derived properties: `gamma_s`, `speed_of_sound`,
-`expansion_properties` and `stagnation_pressure` follow it.)doc";
-
 static const char *__doc_Goddard_Gas_clear_phase_transition = R"doc(Clear the pinned phase transition, if any.)doc";
 
 static const char *__doc_Goddard_Gas_clone =
 R"doc(Create a new Gas with a deep copy of the underlying Solution object
-and of the condensed species set, if any. The chemistry mode and
-stored reference stagnation enthalpy and entropy are preserved.
+and of the condensed species set, if any. The stored reference
+stagnation enthalpy and entropy are preserved.
 
 @note Copying a `Gas` normally is shallow: the copy references the
 same `Solution` and the same condensed species set.)doc";
@@ -1433,17 +1435,17 @@ Parameter ``name``:
 Parameter ``species``:
     Species names, matched exactly.
 
-Parameter ``chemistry``:
-    Chemistry model of the `Gas`.
-
 Throws:
     std::invalid_argument if a species is not in the file.)doc";
 
 static const char *__doc_Goddard_Gas_cstar =
 R"doc(Characteristic velocity from the perfect-gas formula, using the
-current temperature, molecular weight and `gamma_s()`. This is an
+current temperature, molecular weight and `gamma_s(model)`. This is an
 estimate: the c* of a rocket case is the one in `RocketPerformance`,
 computed from the throat mass flux.
+
+Parameter ``model``:
+    Composition model of gamma_s.
 
 Returns:
     c* [m/s])doc";
@@ -1545,8 +1547,13 @@ and oxidizer [-].)doc";
 static const char *__doc_Goddard_Gas_equivalence_ratio_3 = R"doc()doc";
 
 static const char *__doc_Goddard_Gas_expansion_properties =
-R"doc(Compute expansion-related thermodynamic derivatives at the current
-state: gamma_s, dlnV/dlnT|_P, dlnV/dlnP|_T, and cp.)doc";
+R"doc(Expansion-related thermodynamic derivatives at the current state:
+gamma_s, dlnV/dlnT|_P, dlnV/dlnP|_T, and cp. EQUILIBRIUM returns
+`get_thermo_equilibrium_properties`, with every field set. FROZEN sets
+only these four fields; `get_frozen_properties` sets them all.
+
+Parameter ``model``:
+    Composition model of the derivatives.)doc";
 
 static const char *__doc_Goddard_Gas_fuel_fraction =
 R"doc(Fuel fraction of the current mixture, as a blend of the given fuel and
@@ -1561,12 +1568,11 @@ static const char *__doc_Goddard_Gas_fuel_fraction_2 = R"doc()doc";
 static const char *__doc_Goddard_Gas_gamma = R"doc(Convenience for the standard cp/cv adiabatic index.)doc";
 
 static const char *__doc_Goddard_Gas_gamma_s =
-R"doc(Effective ratio of specific heats used for compressible-flow
-calculations.
+R"doc(Isentropic exponent -(d log P / d log V)_s [-] at the current state.
 
-The result depends on the active GasChemistry mode: PERFECT_GAS uses
-cp/cv, FROZEN holds composition fixed, EQUILIBRIUM accounts for
-shifting equilibrium.)doc";
+Parameter ``model``:
+    FROZEN gives cp/cv; EQUILIBRIUM lets the composition shift with
+    the state.)doc";
 
 static const char *__doc_Goddard_Gas_gas_mass_fraction =
 R"doc(Gas mass fraction w_g = 1 - sum_k n_k M_k [-]. 1 for a gas-only
@@ -1643,7 +1649,10 @@ static const char *__doc_Goddard_Gas_mach =
 R"doc(Mach number at the current state for a given velocity.
 
 Parameter ``velocity``:
-    flow velocity [m/s])doc";
+    flow velocity [m/s]
+
+Parameter ``model``:
+    Composition model of the sound speed.)doc";
 
 static const char *__doc_Goddard_Gas_mass_fractions =
 R"doc(Mass fractions of the *gas* phase [-], summing to 1 over the gas
@@ -1853,7 +1862,11 @@ R"doc(Return a ThermodynamicState struct containing all current properties.
 All properties are mixture properties (per kg of gas plus condensed
 phases) and the composition is the mixture mass fractions of
 `mixture_mass_fractions()`, with the condensed species appended after
-the gas species.)doc";
+the gas species. `gamma_s`, the volume derivatives and the speed of
+sound are in `model`, which the result records.
+
+Parameter ``model``:
+    Composition model of the derived properties.)doc";
 
 static const char *__doc_Goddard_Gas_solution =
 R"doc(Underlying Cantera Solution handle. Pass to solver constructors that
@@ -1911,7 +1924,11 @@ Returns:
 static const char *__doc_Goddard_Gas_species_names = R"doc(Names of the gas-phase species, in phase order.)doc";
 
 static const char *__doc_Goddard_Gas_speed_of_sound =
-R"doc(Speed of sound [m/s] at the current state, consistent with gamma_s().)doc";
+R"doc(Speed of sound [m/s] at the current state, consistent with
+`gamma_s(model)`.
+
+Parameter ``model``:
+    Composition model of the sound speed.)doc";
 
 static const char *__doc_Goddard_Gas_stagnation_enthalpy =
 R"doc(Stagnation (total) enthalpy h0 = h + v^2/2.
@@ -1926,12 +1943,15 @@ static const char *__doc_Goddard_Gas_stagnation_pressure =
 R"doc(Stagnation pressure obtained by isentropic deceleration from the
 current state.
 
-The deceleration follows the active GasChemistry mode: EQUILIBRIUM re-
-equilibrates the mixture at constant entropy, and every other mode
-holds the composition fixed. The current state is not modified.
+EQUILIBRIUM re-equilibrates the mixture at constant entropy during the
+deceleration, and FROZEN holds the composition fixed. The current
+state is not modified.
 
 Parameter ``velocity``:
     flow velocity [m/s]
+
+Parameter ``model``:
+    Composition model of the deceleration.
 
 Returns:
     stagnation pressure [Pa])doc";
@@ -3206,6 +3226,10 @@ static const char *__doc_Goddard_Nozzle_m_inlet_state = R"doc()doc";
 
 static const char *__doc_Goddard_Nozzle_m_opts = R"doc()doc";
 
+static const char *__doc_Goddard_Nozzle_m_station_model =
+R"doc(Composition model of the station being solved; set by
+`set_station_chemistry`.)doc";
+
 static const char *__doc_Goddard_Nozzle_reset_state = R"doc(Restore the solver's gas to the inlet state.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_inlet_state =
@@ -3213,7 +3237,7 @@ R"doc(Set the inlet (chamber) state the next solve expands from, and make it
 the reference.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_station_chemistry =
-R"doc(Set the gas chemistry for station `station`.
+R"doc(Set the composition model (`m_station_model`) for station `station`.
 
 Returns:
     True for an equilibrium station.)doc";
@@ -4081,11 +4105,11 @@ static const char *__doc_Goddard_ShockSolver =
 R"doc(Normal, reflected and oblique shocks in a real gas, following Gordon &
 McBride, NASA RP-1311 Part I, chapter 7.
 
-The chemistry of the `Gas` selects the model behind the shock:
-PERFECT_GAS uses the perfect-gas relations with `Gas::gamma_s()`,
-FROZEN holds the composition fixed, and EQUILIBRIUM brings the post-
-shock gas to chemical equilibrium. KINETIC chemistry and condensed
-species are not supported.
+The chemistry given to the constructor selects the model behind the
+shock: PERFECT_GAS uses the perfect-gas relations with the frozen
+cp/cv of the pre-shock gas, FROZEN holds the composition fixed, and
+EQUILIBRIUM brings the post-shock gas to chemical equilibrium. KINETIC
+chemistry and condensed species are not supported.
 
 The pre-shock state is the state of the `Gas` at construction. It is
 taken as given: it need not be at equilibrium (e.g. an unburned fuel-
@@ -4105,8 +4129,11 @@ oblique detonations and are not modelled.)doc";
 
 static const char *__doc_Goddard_ShockSolver_ShockSolver =
 R"doc(Parameter ``gas``:
-    pre-shock gas and chemistry model. The solver works on its own
-    copy of `gas`; the caller's `Gas` is not modified.
+    pre-shock gas. The solver works on its own copy of `gas`; the
+    caller's `Gas` is not modified.
+
+Parameter ``chemistry``:
+    model behind the shock: PERFECT_GAS, FROZEN or EQUILIBRIUM
 
 Parameter ``options``:
     Newton tolerance on the log pressure and temperature ratios, and
@@ -4260,7 +4287,7 @@ Parameter ``reflected_chemistry``:
 
 Throws:
     std::invalid_argument for any other chemistry, or if the solver's
-    gas is PERFECT_GAS)doc";
+    chemistry is PERFECT_GAS)doc";
 
 static const char *__doc_Goddard_ShockSolver_reflected_shock_from_velocity =
 R"doc(Incident and reflected shocks in a shock tube, from the incident shock
@@ -4282,12 +4309,12 @@ Parameter ``incident_chemistry``:
 Parameter ``reflected_chemistry``:
     FROZEN or EQUILIBRIUM, for state 5)doc";
 
-static const char *__doc_Goddard_ShockSolver_reset = R"doc(Restore the pre-shock state and the construction chemistry.)doc";
+static const char *__doc_Goddard_ShockSolver_reset = R"doc(Restore the pre-shock state.)doc";
 
 static const char *__doc_Goddard_ShockSolver_store_post_shock_state =
-R"doc(Record the outcome of a solve and restore the construction chemistry:
-the current state becomes the post-shock state if `status` is ok, and
-there is no post-shock state otherwise.)doc";
+R"doc(Record the outcome of a solve: the current state becomes the post-
+shock state if `status` is ok, and there is no post-shock state
+otherwise.)doc";
 
 static const char *__doc_Goddard_SolveStatus =
 R"doc(Outcome of a solve. Every result a solver returns carries one, as its
@@ -4671,12 +4698,16 @@ R"doc(Snapshot of the thermodynamic state of a mixture (see
 `Gas::snapshot`).
 
 Specific quantities are per kg of mixture (gas plus condensed phases).
-`gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in the
-chemistry the state was taken with: equilibrium or frozen.)doc";
+`gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in
+`composition_model`: equilibrium or frozen.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_composition =
 R"doc(Mass fractions of the mixture [-] by species name, condensed species
 included. Species with a zero fraction are omitted.)doc";
+
+static const char *__doc_Goddard_ThermodynamicState_composition_model =
+R"doc(Composition model of `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and
+`speed_of_sound`.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_cp =
 R"doc(Constant-pressure specific heat at frozen composition [J/(kg.K)], as
@@ -4842,6 +4873,10 @@ Parameter ``angle2``:
 static const char *__doc_Goddard_characteristic_isentropic_PT_from_parent =
 R"doc(Set temperature and pressure based on isentropic relations and
 thermodynamic state of upstream characteristic node.)doc";
+
+static const char *__doc_Goddard_composition_model =
+R"doc(Composition model of a flow solver's chemistry: EQUILIBRIUM for
+EQUILIBRIUM chemistry, FROZEN for every other model.)doc";
 
 static const char *__doc_Goddard_compute_thrust_coefficient =
 R"doc(Compute thrust coefficient by integrating over the MoC exit plane.

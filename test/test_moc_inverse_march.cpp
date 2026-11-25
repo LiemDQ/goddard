@@ -525,7 +525,7 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
         opts.nozzle_profile = profile;
 
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-        MocNozzle nozzle(Gas(gas, chemistry), opts);
+        MocNozzle nozzle(Gas(gas), opts);
         return nozzle.solve();
     };
 
@@ -545,7 +545,7 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
     NozzleOptions nozzle_opts_frozen;
     nozzle_opts_frozen.chemistry = GasChemistry::FROZEN;
-    Nozzle nozzle_1d_frozen(Gas(gas, GasChemistry::FROZEN), nozzle_opts_frozen);
+    Nozzle nozzle_1d_frozen(Gas(gas), nozzle_opts_frozen);
     auto result_1d_frozen = nozzle_1d_frozen.solve(
         ExpansionType::SUPERSONIC_AREA_RATIO, frozen_result.area_ratio);
     ASSERT_FALSE(result_1d_frozen.expansions.empty());
@@ -553,7 +553,7 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
 
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
     NozzleOptions nozzle_opts_equil;
-    Nozzle nozzle_1d_equil(Gas(gas, GasChemistry::EQUILIBRIUM), nozzle_opts_equil);
+    Nozzle nozzle_1d_equil(Gas(gas), nozzle_opts_equil);
     auto result_1d_equil = nozzle_1d_equil.solve(
         ExpansionType::SUPERSONIC_AREA_RATIO, equil_result.area_ratio);
     ASSERT_FALSE(result_1d_equil.expansions.empty());

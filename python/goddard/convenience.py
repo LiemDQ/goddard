@@ -400,7 +400,7 @@ def pass_diagnostics_table(result: MocResult) -> dict[str, np.ndarray]:
     }
 
 
-def from_cantera(ct_solution: Any, chemistry: GasChemistry = GasChemistry.FROZEN) -> Gas:
+def from_cantera(ct_solution: Any) -> Gas:
     """Create a Gas from a Python cantera.Solution object.
 
     The Gas is rebuilt from the Solution's source file, phase name and species, and set to its
@@ -412,7 +412,6 @@ def from_cantera(ct_solution: Any, chemistry: GasChemistry = GasChemistry.FROZEN
 
     Args:
         ct_solution: A cantera.Solution Python object loaded from a YAML file.
-        chemistry: GasChemistry mode for the Gas (default: FROZEN).
 
     Returns:
         Gas object with state synchronized from the input Cantera solution.
@@ -425,8 +424,7 @@ def from_cantera(ct_solution: Any, chemistry: GasChemistry = GasChemistry.FROZEN
     species_names = set(ct_solution.species_names)
     name = ct_solution.name
 
-    gas = Gas(source, phase_name=name, species=species_names,
-              chemistry=chemistry)
+    gas = Gas(source, phase_name=name, species=species_names)
 
     T = ct_solution.T
     P = ct_solution.P
@@ -439,21 +437,20 @@ def from_cantera(ct_solution: Any, chemistry: GasChemistry = GasChemistry.FROZEN
     return gas
 
 
-def gas_from_yaml(yaml_file: str, phase_name: str = "", species: Iterable[str] | None = None,
-                  chemistry: GasChemistry = GasChemistry.FROZEN) -> Gas:
+def gas_from_yaml(yaml_file: str, phase_name: str = "",
+                  species: Iterable[str] | None = None) -> Gas:
     """Create a Gas from a YAML thermodynamic data file.
 
     Args:
         yaml_file: Path to a Cantera YAML thermodynamic data file.
         phase_name: Name of the phase in the YAML file (default: "").
         species: Set of species names to include (default: all).
-        chemistry: GasChemistry mode (default: FROZEN).
 
     Returns:
         Gas object.
     """
     return Gas(yaml_file, phase_name=phase_name,
-               species=set(species) if species is not None else set(), chemistry=chemistry)
+               species=set(species) if species is not None else set())
 
 
 def reactant_gas(file: str, composition: Mapping[str, float], T: float, P: float = 101325.0,

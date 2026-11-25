@@ -309,8 +309,7 @@ Gas make_methane_oxygen_gas(double T, double P) {
     // A CEA-style product list rather than every C/H/O species of the database: with all of them
     // offered, `MultiPhaseEquil` does not converge at this rich, cool state.
     Gas gas = Gas::create_from_species(
-        NASA9_GAS, "gas", {"CH4", "CO", "CO2", "H", "H2", "H2O", "O", "O2", "OH", "C"},
-        GasChemistry::EQUILIBRIUM);
+        NASA9_GAS, "gas", {"CH4", "CO", "CO2", "H", "H2", "H2O", "O", "O2", "OH", "C"});
     gas.set_state_TPX(T, P, Composition{{"CH4", (1.0 / 1.5) / 16.04246},
                                         {"O2", (0.5 / 1.5) / 31.9988}});
     gas.add_condensed_species(NASA9_CONDENSED, {"C(gr)", "H2O(L)", "H2O(cr)"});
@@ -319,7 +318,7 @@ Gas make_methane_oxygen_gas(double T, double P) {
 
 /** H2/O2 in a 100:60 molar ratio, cold enough for the product water to condense. */
 Gas make_hydrogen_oxygen_gas(double T, double P) {
-    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"H", "O"}, GasChemistry::EQUILIBRIUM);
+    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"H", "O"});
     gas.set_state_TPX(T, P, Composition{{"H2", 100.0}, {"O2", 60.0}});
     gas.add_condensed_species(NASA9_CONDENSED, {"H2O(L)", "H2O(cr)"});
     return gas;
@@ -330,8 +329,7 @@ Gas make_hydrogen_oxygen_gas(double T, double P) {
  * Molar masses [kg/kmol] are those of the elemental formulas above.
  */
 Gas make_ap_aluminium_gas(double T, double P, const std::vector<std::string>& condensed) {
-    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"N", "H", "Cl", "O", "C", "Al"},
-                                        GasChemistry::EQUILIBRIUM);
+    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"N", "H", "Cl", "O", "C", "Al"});
 
     const double perchlorate = 0.72 / 117.48906;
     const double binder = 0.10 / 14.39543;
@@ -520,7 +518,7 @@ TEST(CondensedEquilibriumTests, MixtureOverloadsReduceToTheGasOnlyOnes) {
 }
 
 TEST_F(PropertyTests, GasOverloadReproducesTheGoldenValues) {
-    Gas gas(sln, GasChemistry::EQUILIBRIUM);
+    Gas gas(sln);
     const ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(gas);
 
     EXPECT_NEAR(props.dlV_dlT_P, expected_props.dlV_dlT_P,
@@ -544,7 +542,7 @@ TEST_F(PropertyTests, GasOverloadReproducesTheGoldenValues) {
 }
 
 TEST_F(DerivativeTests, GasOverloadReproducesTheGoldenDerivatives) {
-    Gas gas(sln, GasChemistry::EQUILIBRIUM);
+    Gas gas(sln);
     const EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(gas);
 
     Eigen::ArrayXd exp_dpi_dlogT_P(n_elements);
