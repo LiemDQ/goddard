@@ -4,10 +4,10 @@
 Characteristics. Supports design (minimum-length and Rao thrust-optimized) and
 analysis modes.
 
-Angles are in radians throughout, with deliberate exceptions for inputs a user
-types by hand: the [`NozzleProfile`](#goddard.NozzleProfile) contour generators,
-the `conical_nozzle`/`bezier_nozzle` helpers and `moc_design` take angles in
-degrees. Every such parameter carries a `_deg` suffix.
+Angles are in radians throughout, including the
+[`NozzleProfile`](#goddard.NozzleProfile) contour generators, the
+`conical_nozzle`/`bezier_nozzle` helpers and `moc_design`. Use `math.radians` to
+convert from degrees.
 
 ## Solver
 

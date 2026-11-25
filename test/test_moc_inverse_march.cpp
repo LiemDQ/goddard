@@ -353,7 +353,7 @@ TEST(InverseMarch, ConicalConvergesAtCleanThroat) {
             const int n = levels[li];
             MocOptions opts = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, n);
             opts.geometry.downstream_wall_curvature_radius = 2.0; // KL start line, clean throat
-            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 2.0, 1.0, 15.0, 120);
+            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 2.0, 1.0, 15.0 * DEG, 120);
 
             MocNozzle solver(opts);
             MocResult result = solver.solve();
@@ -419,7 +419,7 @@ TEST(InverseMarch, ConicalDefaultThroatReachesExit) {
         for (int n : {31, 61}) {
             MocOptions opts = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, n);
             opts.geometry.downstream_wall_curvature_radius = 0.382;
-            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0, 60);
+            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0 * DEG, 60);
             MocResult result = MocNozzle(opts).solve();
             EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
@@ -510,7 +510,7 @@ protected:
 };
 
 TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 2.0, 1.0, 15.0, 120);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 2.0, 1.0, 15.0 * DEG, 120);
 
     auto solve_with = [&](GasChemistry chemistry) {
         MocOptions opts;

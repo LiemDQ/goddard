@@ -16,6 +16,12 @@ void DirectMarch::seed() {
     // already carries its own wall point, so no separate anchor is seeded.
     if (m_start.family.has_value()) {
         CharacteristicPoint throat_lip{};
+        // The march uses only the lip's position and angle; the state reported for it is the
+        // sonic one upstream of the corner. M = 1 starts the Prandtl-Meyer table, so the lookup
+        // cannot leave it, and a failure would leave only this reported state unset.
+        if (m_ctx.thermo.set_state_from_mach(throat_lip, 1.0) == MocErrorCode::NONE) {
+            throat_lip.nu = 0.0;
+        }
         throat_lip.x = 0.0;
         throat_lip.y = 1.0;
         // The lip angle anchors the first wall solve in DESIGN_MIN_LENGTH, where it equals

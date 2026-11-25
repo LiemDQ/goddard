@@ -289,26 +289,24 @@ void bind_moc(nb::module_& m) {
 
         // ---- Contour generators ----
         //
-        // Shape angles are in degrees here, as the C++ generators define them; every other
-        // angle in the MoC API is in radians. The _deg suffix is there to keep that visible at
-        // the call site.
+        // Shape angles are in radians, like every other angle in the MoC API.
 
         .def_static("conical", &Goddard::NozzleProfile::generate_conical_nozzle,
                     "area_ratio"_a, "r_expansion_curve"_a, "r_throat"_a = 1.0,
-                    "angle_deg"_a = 15.0, "n_points"_a = 50,
+                    "theta_n"_a = 15.0 * std::numbers::pi / 180.0, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_conical_nozzle))
         .def_static("rao_top", &Goddard::NozzleProfile::generate_Rao_TOP_nozzle,
                     "area_ratio"_a, "r_throat"_a = 1.0, "length_frac"_a = 0.8,
                     "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_Rao_TOP_nozzle))
         .def_static("bezier", &Goddard::NozzleProfile::generate_bezier_nozzle,
-                    "area_ratio"_a, "theta_n_deg"_a, "theta_e_deg"_a,
+                    "area_ratio"_a, "theta_n"_a, "theta_e"_a,
                     "r_expansion_curve"_a = 0.382, "r_throat"_a = 1.0,
                     "length_frac"_a = 0.8, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_bezier_nozzle))
         .def_static("throat_expansion_curve",
                     &Goddard::NozzleProfile::generate_throat_expansion_curve,
-                    "theta_n_deg"_a, "r_expansion_curve"_a, "r_throat"_a, "n_points"_a = 50,
+                    "theta_n"_a, "r_expansion_curve"_a, "r_throat"_a, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_throat_expansion_curve))
 
         // ---- I/O ----
@@ -530,16 +528,16 @@ void bind_moc(nb::module_& m) {
         }, "Mach angle at every point, in radians.")
         .def_prop_ro("pressure", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::pressure);
-        }, "Static pressure at every point: [Pa], or P/P0 for perfect gas.")
+        }, "Static pressure P/P0 at every point [-].")
         .def_prop_ro("temperature", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::temperature);
-        }, "Static temperature at every point: [K], or T/T0 for perfect gas.")
+        }, "Static temperature T/T0 at every point [-].")
         .def_prop_ro("gamma_s", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::gamma_s);
         }, "Local isentropic exponent at every point [-].")
         .def_prop_ro("V", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::V);
-        }, "Velocity at every point: [m/s], or the Mach number for perfect gas.")
+        }, "Velocity V/a0 at every point [-], with a0 the stagnation speed of sound.")
 
         // ---- Boundary and chain queries ----
 
@@ -735,6 +733,12 @@ void bind_moc(nb::module_& m) {
         .def_ro("area_ratio", &Goddard::MocResult::area_ratio, DOC(Goddard, MocResult, area_ratio))
         .def_ro("throat_radius", &Goddard::MocResult::throat_radius,
                 DOC(Goddard, MocResult, throat_radius))
+        .def_ro("stagnation_pressure", &Goddard::MocResult::stagnation_pressure,
+                DOC(Goddard, MocResult, stagnation_pressure))
+        .def_ro("stagnation_temperature", &Goddard::MocResult::stagnation_temperature,
+                DOC(Goddard, MocResult, stagnation_temperature))
+        .def_ro("stagnation_sound_speed", &Goddard::MocResult::stagnation_sound_speed,
+                DOC(Goddard, MocResult, stagnation_sound_speed))
         .def_ro("pass_diagnostics", &Goddard::MocResult::pass_diagnostics,
                 DOC(Goddard, MocResult, pass_diagnostics))
         .def_ro("init_diagnostics", &Goddard::MocResult::init_diagnostics,

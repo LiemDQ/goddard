@@ -17,7 +17,7 @@ namespace Goddard {
  * profile built with the default `r_throat = 1.0` is expressed in throat radii.
  * 
  * Angles returned by the query methods are in **radians**; the static generators take their
- * shape angles in **degrees**, matching the convention used to tabulate them.
+ * shape angles in **radians** as well.
  * */
 class NozzleProfile {
 public:
@@ -158,14 +158,14 @@ public:
      * @param r_expansion_curve Radius of curvature of the throat expansion arc, as a multiple
      * of `r_throat`. Zero gives a sharp throat corner.
      * @param r_throat Throat radius, in length units. 
-     * @param theta_n Conical expansion angle from the centerline, in degrees.
+     * @param theta_n Conical expansion angle from the centerline, in radians.
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range, or if the
      * expansion arc alone already exceeds the exit radius.
      */
     static NozzleProfile generate_conical_nozzle(
         double area_ratio, double r_expansion_curve,
-        double r_throat = 1.0, double theta_n = 15.0, 
+        double r_throat = 1.0, double theta_n = 15.0 * std::numbers::pi / 180.0, 
         size_t n_points = 50);
 
     /**
@@ -184,7 +184,7 @@ public:
      * @param area_ratio Ratio of the exit area to the throat area. Must be at least 3.55,
      * the lower bound of Rao's tabulated data.
      * @param r_throat Throat radius, in length units. 
-     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. Must be
+     * @param length_frac Fraction of length of comparable 15-degree (0.2618 rad) conical nozzle. Must be
      * between 0.6 and 1.0.
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range.
@@ -196,12 +196,12 @@ public:
      * Generate a parabolic nozzle parametrized by Bezier curves. 
      * 
      * @param area_ratio Ratio of the exit area to the throat area.
-     * @param theta_n Maximum expansion angle from centerline, in degrees.
-     * @param theta_e Expansion angle from centerline at the nozzle exit, in degrees.
+     * @param theta_n Maximum expansion angle from centerline, in radians.
+     * @param theta_e Expansion angle from centerline at the nozzle exit, in radians.
      * @param r_expansion_curve Radius of curvature of the expansion region 
      * as a fraction of the throat radius.
      * @param r_throat Throat radius, in length units. 
-     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. 
+     * @param length_frac Fraction of length of comparable 15-degree (0.2618 rad) conical nozzle. 
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range.
      */
@@ -218,7 +218,7 @@ public:
      * This is the leading segment shared by the conical and Bézier contours, useful on its own
      * as the wall geometry a method-of-characteristics solve is seeded against.
      *
-     * @param theta_n Wall angle the arc turns to, measured from the centerline, in degrees.
+     * @param theta_n Wall angle the arc turns to, measured from the centerline, in radians.
      * @param r_expansion_curve Radius of curvature of the arc, as a fraction of `r_throat`.
      * @param r_throat Throat radius, in length units.
      * @param n_points Number of points in the arc.

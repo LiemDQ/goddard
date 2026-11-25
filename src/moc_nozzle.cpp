@@ -300,6 +300,9 @@ MocResult MocNozzle::solve() {
             throat = nozzle.solve_throat_conditions();
             throat.status.raise_if_failed();
             thermo = MocThermo::tabulated(*m_gas, options.chemistry, throat);
+            result.stagnation_pressure = thermo->P_ref();
+            result.stagnation_temperature = thermo->T_ref();
+            result.stagnation_sound_speed = thermo->V_ref();
         } catch (...) {
             record_initialization_failure(result, initialization_status,
                 "Throat and expansion table construction failed: ");

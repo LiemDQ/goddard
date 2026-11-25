@@ -279,10 +279,10 @@ struct ExitPlane {
     std::vector<double> y;           ///< Radial (or transverse) station, in the unit of NozzleGeometry::throat_radius.
     std::vector<double> mach;        ///< Local Mach number.
     std::vector<double> theta;       ///< Local flow angle, in radians.
-    std::vector<double> pressure;    ///< Static pressure; Pa for frozen/equilibrium, normalized by the stagnation pressure for perfect gas.
-    std::vector<double> temperature; ///< Static temperature; K for frozen/equilibrium, normalized by the stagnation temperature for perfect gas.
+    std::vector<double> pressure;    ///< Static pressure P/P0 [-].
+    std::vector<double> temperature; ///< Static temperature T/T0 [-].
     std::vector<double> gamma_s;     ///< Local isentropic exponent.
-    std::vector<double> velocity;    ///< Dimensional V (m/s) for frozen/equilibrium; equal to the Mach number for perfect gas.
+    std::vector<double> velocity;    ///< Velocity V/a0 [-], with a0 the stagnation speed of sound.
 };
 
 /**
@@ -514,6 +514,18 @@ struct MocResult {
     /// The NozzleGeometry::throat_radius of the solve: the length unit of every length in
     /// this result, and the reference compute_thrust_coefficient() normalizes by.
     double throat_radius = 1.0;
+    /**
+     * Stagnation pressure P0 [Pa] that the pressures of the net and exit plane are divided by.
+     * NaN for a perfect gas, whose solve has no dimensional scale.
+     */
+    double stagnation_pressure = NaN;
+    /// Stagnation temperature T0 [K] that temperatures are divided by. NaN for a perfect gas.
+    double stagnation_temperature = NaN;
+    /**
+     * Stagnation speed of sound a0 [m/s], in the solve's composition model, that velocities are
+     * divided by. NaN for a perfect gas.
+     */
+    double stagnation_sound_speed = NaN;
 
     /// Per-pass marching-front geometry; one entry per kernel pass, in order. Recorded by the
     /// inverse march only; empty for minimum-length design.

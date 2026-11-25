@@ -1,5 +1,6 @@
 """Smoke tests for MoC bindings — no solver calls, just imports and construction."""
 import inspect
+import math
 import subprocess
 import sys
 
@@ -276,7 +277,7 @@ def test_min_length_design_records_no_fronts():
     """The chain ladder of a minimum-length design keeps its characteristics in chains."""
     from goddard import moc_design, MocStartLine
 
-    result = moc_design(15.0)
+    result = moc_design(math.radians(15.0))
     assert result.net.fronts == []
     assert len(result.net.chains) > 0
     assert result.init_diagnostics.start_line_used != MocStartLine.AUTO

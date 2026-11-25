@@ -281,8 +281,8 @@ def test_kinetic_nozzle_status_incomplete_when_steps_run_out(h2o2_yaml):
     gas = h2o2_gas(h2o2_yaml, "H2O:0.9, H2:0.05, O2:0.03, OH:0.02", 3500.0, 70 * BAR)
     gas.equilibrate("HP")
     profile = goddard.conical_nozzle(4.0)
-    nozzle = goddard.KineticNozzle(gas, profile, 1.0)
-    truncated = nozzle.solve(dt_max=1e-6, dx_max=1e-3, max_steps=3)
+    nozzle = goddard.KineticNozzle(gas, profile, 0.01, 1.0)
+    truncated = nozzle.solve(dt_max=1e-6, dx_max=0.1, max_steps=3)
     assert truncated.status.reason == FailureReason.INCOMPLETE
     assert len(truncated.stations) == 3
     assert all(math.isfinite(station.velocity) for station in truncated.stations)

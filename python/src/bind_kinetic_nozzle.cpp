@@ -58,29 +58,33 @@ void bind_kinetic_nozzle(nb::module_& m) {
              [](Goddard::KineticNozzle* self,
                 Goddard::Gas gas,
                 Goddard::NozzleProfile profile,
+                double throat_radius,
                 double mdot,
                 Goddard::NozzleOptions options) {
-                 new (self) Goddard::KineticNozzle(gas, profile, mdot, std::move(options));
+                 new (self) Goddard::KineticNozzle(gas, profile, throat_radius, mdot, options);
              },
-             "gas"_a, "profile"_a, "mdot"_a, "options"_a=Goddard::NozzleOptions{},
+             "gas"_a, "profile"_a, "throat_radius"_a, "mdot"_a, "options"_a=Goddard::NozzleOptions{},
              DOC(Goddard, KineticNozzle, KineticNozzle, 3))
         .def("__init__",
              [](Goddard::KineticNozzle* self,
                 Goddard::Gas gas,
                 Goddard::NozzleProfile profile,
+                double throat_radius,
                 double mdot,
                 std::vector<double> state,
                 Goddard::NozzleOptions options) {
-                 new (self) Goddard::KineticNozzle(gas, profile, mdot, std::move(state),
-                                                    std::move(options));
+                 new (self) Goddard::KineticNozzle(gas, profile, throat_radius, mdot, std::move(state),
+                                                    options);
              },
-             "gas"_a, "profile"_a, "mdot"_a, "state"_a, "options"_a=Goddard::NozzleOptions{},
+             "gas"_a, "profile"_a, "throat_radius"_a, "mdot"_a, "state"_a, "options"_a=Goddard::NozzleOptions{},
              DOC(Goddard, KineticNozzle, KineticNozzle, 4))
         .def("solve", &Goddard::KineticNozzle::solve,
-             "dt_max"_a = 1e-6, "dx_max"_a = 1e-3, "max_steps"_a = 100000,
+             "dt_max"_a = 1e-6, "dx_max"_a = 0.1, "max_steps"_a = 100000,
              DOC(Goddard, KineticNozzle, solve))
         .def_rw("profile", &Goddard::KineticNozzle::profile,
                 DOC(Goddard, KineticNozzle, profile))
         .def_rw("mdot",    &Goddard::KineticNozzle::mdot,
-                DOC(Goddard, KineticNozzle, mdot));
+                DOC(Goddard, KineticNozzle, mdot))
+        .def_rw("throat_radius", &Goddard::KineticNozzle::throat_radius,
+                DOC(Goddard, KineticNozzle, throat_radius));
 }

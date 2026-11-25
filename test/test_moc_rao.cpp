@@ -81,10 +81,10 @@ NozzleProfile conical_nozzle_matching_length(double area_ratio, double target_le
     double lo_deg = 1.0, hi_deg = 45.0;
     for (int i = 0; i < 60; i++) {
         const double mid_deg = 0.5 * (lo_deg + hi_deg);
-        NozzleProfile p = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, mid_deg, n_points);
+        NozzleProfile p = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, mid_deg * DEG, n_points);
         if (p.length() > target_length) lo_deg = mid_deg; else hi_deg = mid_deg;
     }
-    return NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 0.5 * (lo_deg + hi_deg), n_points);
+    return NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 0.5 * (lo_deg + hi_deg) * DEG, n_points);
 }
 
 } // namespace

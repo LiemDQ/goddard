@@ -1,6 +1,7 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/gas.hpp"
+#include <limits>
 #include "goddard/profile.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
@@ -46,11 +47,12 @@ protected:
 
         // Conical profile: throat r=0.01 m at x=0, exit r=0.01414 m at x=0.1 m
         // Area ratio at exit = (0.01414/0.01)^2 ≈ 2.0
-        s_profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+        // The profile is expressed in throat radii, with s_throat_radius setting the scale.
+        s_profile = make_conical_profile(0.01, 0.01414, 0.1, 100).scaled(1.0/s_throat_radius);
         double length = s_profile.x_max() - s_profile.x_min();
         int min_steps = 20000;
 
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
         s_results = nozzle.solve(1e-6, length/min_steps, 100000);
     }
 
@@ -75,6 +77,7 @@ protected:
     static std::vector<double> s_inlet_state;
     static NozzleProfile s_profile;
     static KineticNozzleResults s_results;
+    static constexpr double s_throat_radius = 0.01; // m
     static constexpr double s_mdot = 1.0; // kg/s — scale-invariant for physics tests
 };
 
@@ -89,28 +92,38 @@ KineticNozzleResults KineticNozzleTests::s_results;
 
 TEST_F(KineticNozzleTests, EquilibriumThroatModelConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts);
     });
 }
 
 TEST_F(KineticNozzleTests, FrozenThroatModelConstructs) {
     opts.chemistry = GasChemistry::FROZEN;
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts);
     });
 }
 
 TEST_F(KineticNozzleTests, ExplicitInletStateConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, s_inlet_state, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, s_inlet_state, opts);
     });
+}
+
+TEST_F(KineticNozzleTests, ThroatRadiusAndProfileScaleAreValidated) {
+    for (double bad_radius : {0.0, -0.01, std::numeric_limits<double>::quiet_NaN()}) {
+        EXPECT_THROW(KineticNozzle(*s_gas, s_profile, bad_radius, s_mdot), std::invalid_argument);
+    }
+    // A profile in metres (throat radius 0.01) is not in throat radii
+    NozzleProfile profile_in_metres = s_profile.scaled(s_throat_radius);
+    EXPECT_THROW(KineticNozzle(*s_gas, profile_in_metres, s_throat_radius, s_mdot),
+                 std::invalid_argument);
 }
 
 TEST_F(KineticNozzleTests, KineticThroatModelThrows) {
     // GasChemistry::KINETIC is not a valid throat model for KineticNozzle
     opts.chemistry = GasChemistry::KINETIC;
     EXPECT_THROW(
-        { KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts); },
+        { KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts); },
         std::invalid_argument);
 }
 
@@ -119,10 +132,10 @@ TEST_F(KineticNozzleTests, GasConstructorKineticThroatModelThrows) {
     opts.chemistry = GasChemistry::KINETIC;
     Gas gas(*s_gas);
     EXPECT_THROW(
-        { KineticNozzle nozzle(gas, s_profile, s_mdot, opts); },
+        { KineticNozzle nozzle(gas, s_profile, s_throat_radius, s_mdot, opts); },
         std::invalid_argument);
     EXPECT_THROW(
-        { KineticNozzle nozzle(gas, s_profile, s_mdot, s_inlet_state, opts); },
+        { KineticNozzle nozzle(gas, s_profile, s_throat_radius, s_mdot, s_inlet_state, opts); },
         std::invalid_argument);
 }
 
@@ -138,9 +151,9 @@ TEST_F(KineticNozzleTests, GasConstructorUsesThroatModelFromOptions) {
         double T_reference = temperature_of(reference.solve_throat_conditions().state);
 
         s_gas->thermo()->restoreState(s_inlet_state);
-        KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, opts);
+        KineticNozzle nozzle(Gas(*s_gas), s_profile, s_throat_radius, s_mdot, opts);
         // One step is enough: only the throat is checked.
-        KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
+        KineticNozzleResults results = nozzle.solve(1e-6, 0.1, 1);
         double T_throat = temperature_of(results.throat.state);
 
         EXPECT_NEAR(T_throat, T_reference, max_fp_error(T_reference, 1e-10, 1e-8))
@@ -171,8 +184,8 @@ TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
 
     // The Gas holds the chamber state; only the supplied state is cold.
     s_gas->thermo()->restoreState(s_inlet_state);
-    KineticNozzle nozzle(Gas(*s_gas), s_profile, s_mdot, cold_state, opts);
-    KineticNozzleResults results = nozzle.solve(1e-6, 1e-3, 1);
+    KineticNozzle nozzle(Gas(*s_gas), s_profile, s_throat_radius, s_mdot, cold_state, opts);
+    KineticNozzleResults results = nozzle.solve(1e-6, 0.1, 1);
     double T_throat = temperature_of(results.throat.state);
 
     EXPECT_NEAR(T_throat, T_throat_reference, max_fp_error(T_throat_reference, 1e-10, 1e-8))
@@ -204,7 +217,7 @@ TEST_F(KineticNozzleTests, StepLimitedSolveIsIncompleteAndKeepsTheStationsSolved
     // of the nozzle that was integrated stays valid.
     const int max_steps = 3;
     double length = s_profile.x_max() - s_profile.x_min();
-    KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+    KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
     KineticNozzleResults truncated = nozzle.solve(1e-6, length/20000, max_steps);
 
     EXPECT_TRUE(failed_with(truncated.status, FailureReason::INCOMPLETE, "max_steps"));
@@ -222,7 +235,7 @@ TEST_F(KineticNozzleTests, StepLimitedSolveIsIncompleteAndKeepsTheStationsSolved
 }
 
 TEST_F(KineticNozzleTests, NonpositiveStepArgumentsAreRejected) {
-    KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+    KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
     EXPECT_THROW(nozzle.solve(0.0, 1e-4, 100), std::invalid_argument);
     EXPECT_THROW(nozzle.solve(-1e-6, 1e-4, 100), std::invalid_argument);
     EXPECT_THROW(nozzle.solve(1e-6, 0.0, 100), std::invalid_argument);
@@ -256,7 +269,7 @@ TEST_F(KineticNozzleTests, StagnationEnthalpyConservedAtEveryStation) {
         double H0_station = h + 0.5 * station.velocity * station.velocity;
         EXPECT_NEAR(H0_station, H0, max_fp_error(H0, 1e-2, 1.0))
             << "Stagnation enthalpy not conserved at station " << i
-            << " (x=" << station.x << " m)";
+            << " (x=" << station.x << " throat radii)";
     }
 }
 

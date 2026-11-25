@@ -348,11 +348,11 @@ TEST(MocThroatScaling, ConicalAxisymmetricAnalysisIsScaleInvariant) {
 
     MocOptions unit_opts = analysis_options(flow, 15, 1.0);
     unit_opts.geometry.downstream_wall_curvature_radius = 0.382;
-    unit_opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0, 60);
+    unit_opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0 * std::numbers::pi / 180.0, 60);
 
     MocOptions scaled_opts = analysis_options(flow, 15, k);
     scaled_opts.geometry.downstream_wall_curvature_radius = 0.382; // a multiple of throat_radius
-    const NozzleProfile scaled_contour = NozzleProfile::generate_conical_nozzle(4.0, 0.382, k, 15.0, 60);
+    const NozzleProfile scaled_contour = NozzleProfile::generate_conical_nozzle(4.0, 0.382, k, 15.0 * std::numbers::pi / 180.0, 60);
     scaled_opts.nozzle_profile = scaled_contour;
 
     const MocResult unit = MocNozzle(unit_opts).solve();
@@ -495,10 +495,10 @@ TEST(MocThroatScaling, NonPositiveThroatRadiusIsRejected) {
 // start line would be built at a throat that is not on the wall.
 TEST(MocThroatScaling, AnalysisContourMustMatchThroatRadius) {
     MocOptions o = analysis_options(MocFlowKind::AXISYMMETRIC, 15, kThroatScale);
-    o.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0, 60);
+    o.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0 * std::numbers::pi / 180.0, 60);
     EXPECT_THROW({ MocNozzle nozzle(o); }, std::invalid_argument);
 
     // The same contour in the geometry's units is accepted.
-    o.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, kThroatScale, 15.0, 60);
+    o.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, kThroatScale, 15.0 * std::numbers::pi / 180.0, 60);
     EXPECT_NO_THROW({ MocNozzle nozzle(o); });
 }

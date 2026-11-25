@@ -425,10 +425,10 @@ TEST_F(CondensedGuardTests, KineticNozzleRejectsCondensedPhases) {
     NozzleProfile profile;
     for (int i = 0; i < 20; i++) {
         const double fraction = static_cast<double>(i) / 19.0;
-        profile.push_back({0.1 * fraction, 0.01 + 0.004 * fraction});
+        profile.push_back({10.0 * fraction, 1.0 + 0.4 * fraction});
     }
 
-    EXPECT_THROW(KineticNozzle(products, profile, 1.0), NotImplementedError);
+    EXPECT_THROW(KineticNozzle(products, profile, 0.01, 1.0), NotImplementedError);
 }
 
 TEST_F(CondensedGuardTests, MethodOfCharacteristicsRejectsCondensedPhases) {

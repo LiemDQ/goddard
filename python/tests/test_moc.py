@@ -235,7 +235,7 @@ def test_thrust_coefficient_ambient(planar_result):
 def test_convenience_moc_design():
     from goddard import moc_design
 
-    result = moc_design(15.0)
+    result = moc_design(math.radians(15.0))
     assert result.status.ok
     assert result.exit_mach > 1.0
 
@@ -243,7 +243,7 @@ def test_convenience_moc_design():
 def test_convenience_moc_analysis():
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
+    design = moc_design(math.radians(15.0))
     assert design.status.ok
 
     result = moc_analysis(design.profile)
@@ -253,7 +253,7 @@ def test_convenience_moc_analysis():
 def test_convenience_analysis_from_csv(tmp_path):
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
+    design = moc_design(math.radians(15.0))
     csv_path = str(tmp_path / "wall.csv")
     design.profile.save_csv(csv_path)
 
@@ -264,7 +264,7 @@ def test_convenience_analysis_from_csv(tmp_path):
 def test_convenience_axisymmetric():
     from goddard import moc_design, MocFlowKind
 
-    result = moc_design(15.0, flow_type=MocFlowKind.AXISYMMETRIC)
+    result = moc_design(math.radians(15.0), flow_type=MocFlowKind.AXISYMMETRIC)
     assert result.status.ok
     assert result.exit_mach > 1.0
 
@@ -272,7 +272,7 @@ def test_convenience_axisymmetric():
 def test_convenience_analysis_from_pathlib(tmp_path):
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
+    design = moc_design(math.radians(15.0))
     csv_path = tmp_path / "wall.csv"
     design.profile.save_csv(str(csv_path))
 
@@ -295,7 +295,7 @@ AREA_RATIO = 8.0
 @pytest.mark.parametrize("factory,args", [
     ("conical_nozzle", (AREA_RATIO,)),
     ("rao_nozzle", (AREA_RATIO,)),
-    ("bezier_nozzle", (AREA_RATIO, 30.0, 8.0)),
+    ("bezier_nozzle", (AREA_RATIO, math.radians(30.0), math.radians(8.0))),
 ])
 def test_generated_contours(factory, args):
     import goddard
@@ -313,7 +313,7 @@ def test_throat_expansion_curve():
     from goddard import NozzleProfile
 
     arc = NozzleProfile.throat_expansion_curve(
-        theta_n_deg=30.0, r_expansion_curve=0.382, r_throat=1.0)
+        theta_n=math.radians(30.0), r_expansion_curve=0.382, r_throat=1.0)
     assert len(arc) > 0
     assert np.all(np.diff(arc.x) > 0)
     assert arc.y[0] == pytest.approx(1.0)
@@ -384,7 +384,7 @@ def test_pass_diagnostics_table():
     from goddard import moc_design
     from goddard.moc_diagnostics import pass_diagnostics_table
 
-    table = pass_diagnostics_table(moc_design(15.0))
+    table = pass_diagnostics_table(moc_design(math.radians(15.0)))
     assert "pass_index" in table
     assert "max_spacing" in table
     lengths = {len(column) for column in table.values()}
@@ -436,10 +436,10 @@ def test_convenience_moc_with_gas_defaults_to_frozen_chemistry():
     gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
     gas.set_state_TPX(3000.0, 3e6, {"H2O": 0.8, "OH": 0.1, "H2": 0.05, "O2": 0.05})
 
-    default = goddard.moc_design(15.0, num_characteristics=7, gas=gas)
-    frozen = goddard.moc_design(15.0, num_characteristics=7, gas=gas,
+    default = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas)
+    frozen = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas,
                                 chemistry=goddard.GasChemistry.FROZEN)
-    perfect = goddard.moc_design(15.0, num_characteristics=7)
+    perfect = goddard.moc_design(math.radians(15.0), num_characteristics=7)
     assert default.status.ok
     assert default.exit_mach == frozen.exit_mach
     # The combustion products have frozen gamma near 1.2: for the same wall angle the
@@ -447,5 +447,37 @@ def test_convenience_moc_with_gas_defaults_to_frozen_chemistry():
     assert default.exit_mach < 0.95 * perfect.exit_mach
 
     with pytest.raises(ValueError):
-        goddard.moc_design(15.0, num_characteristics=7, gas=gas,
+        goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas,
                            chemistry=goddard.GasChemistry.PERFECT_GAS)
+
+
+def test_moc_states_are_relative_to_the_stagnation_state():
+    """Every chemistry reports P/P0, T/T0 and V/a0; a real-gas result carries P0, T0 and a0."""
+    import os
+    import goddard
+    from conftest import find_data_dir
+
+    gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
+    gas.set_state_TPX(3000.0, 3e6, {"H2O": 0.8, "OH": 0.1, "H2": 0.05, "O2": 0.05})
+    real = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas)
+    assert real.status.ok
+    assert real.stagnation_temperature == pytest.approx(3000.0, rel=1e-12)
+    assert real.stagnation_pressure == pytest.approx(3e6, rel=1e-12)
+    assert real.stagnation_sound_speed == pytest.approx(gas.speed_of_sound, rel=1e-12)
+
+    # Dimensional exit velocity from the energy equation, u = sqrt(2 (h0 - h)), with h from
+    # the exit pressure and temperature at frozen composition.
+    ep = real.exit_plane
+    exit_gas = gas.clone()
+    exit_gas.set_state_TP(ep.temperature[0] * real.stagnation_temperature,
+                          ep.pressure[0] * real.stagnation_pressure)
+    u = math.sqrt(2.0 * (gas.enthalpy_mass - exit_gas.enthalpy_mass))
+    assert ep.velocity[0] * real.stagnation_sound_speed == pytest.approx(u, rel=1e-3)
+
+    perfect = goddard.moc_design(math.radians(15.0), num_characteristics=7)
+    assert math.isnan(perfect.stagnation_pressure)
+    gamma = 1.4
+    T_ratio = 1.0 / (1.0 + 0.5 * (gamma - 1.0) * perfect.exit_plane.mach**2)
+    np.testing.assert_allclose(perfect.exit_plane.temperature, T_ratio, rtol=1e-12)
+    np.testing.assert_allclose(perfect.exit_plane.velocity,
+                               perfect.exit_plane.mach * np.sqrt(T_ratio), rtol=1e-12)

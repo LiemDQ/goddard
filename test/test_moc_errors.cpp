@@ -306,7 +306,7 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     opts.geometry.throat_radius = 1.0;
     // downstream_wall_curvature_radius left at its positive default (0.382):
     // build_start_line() takes the Kliegel-Levine transonic path.
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0 * DEG, 60);
 
     MocNozzle nozzle(opts);
     MocResult result;
@@ -349,7 +349,7 @@ TEST(MocErrorsFailureHonesty, FailedSolveHasNaNScalarsAndNoThrustCoefficient) {
     opts.gamma = 1.4;
     opts.num_characteristics = 8;
     opts.geometry.throat_radius = 1.0;
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0 * DEG, 60);
 
     MocNozzle nozzle(opts);
     const MocResult result = nozzle.solve();

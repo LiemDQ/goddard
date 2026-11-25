@@ -60,10 +60,10 @@ void MocInitialization::set_state_from_critical_velocity_ratio(
     }
 
     // For a real gas the M*<->M algebra is not available in closed form, but its defining
-    // relation is: a* is the throat speed of sound, so V follows directly and the
-    // PrandtlMeyerTable can be looked up by velocity.
+    // relation is: a* is the throat speed of sound, so V/a0 = M* a*/a0 follows directly and
+    // the PrandtlMeyerTable can be looked up by velocity.
     throw_if_thermo_error(
-        m_thermo->set_state_from_V(pt, m_star * throat.speed_of_sound),
+        m_thermo->set_state_from_V(pt, m_star * throat.speed_of_sound / m_thermo->V_ref()),
         "Transonic start line (critical velocity ratio, real gas)");
 }
 
@@ -274,10 +274,9 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
     points.reserve(num_points);
 
     CharacteristicPoint sonic_point;
-    sonic_point.temperature = 1.0; // should be 1.0 by definition
-    sonic_point.pressure = 1.0;
+    throw_if_thermo_error(m_thermo->set_state_from_mach(sonic_point, 1.0),
+        "Centered expansion (sonic point)");
     sonic_point.cantera_state = throat.state;
-    sonic_point.mach = 1.0; // by definition
     sonic_point.theta = 0.0; // by definition
     sonic_point.nu = 0.0;
     sonic_point.x = 0.0;

@@ -83,7 +83,7 @@ MocOptions build_options(const Config& c) {
     const double profile_arg =
         (c.flow == "planar") ? c.area_ratio * c.area_ratio : c.area_ratio;
     o.nozzle_profile =
-        NozzleProfile::generate_conical_nozzle(profile_arg, c.r_arc, 1.0, c.half_angle, 60);
+        NozzleProfile::generate_conical_nozzle(profile_arg, c.r_arc, 1.0, c.half_angle * std::numbers::pi / 180.0, 60);
     return o;
 }
 

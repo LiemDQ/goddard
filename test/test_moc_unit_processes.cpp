@@ -182,7 +182,7 @@ TEST(MocUnitProcesses, IterativeSolverAgreesWithAxisymmetricAlgebraicToSecondOrd
 
 TEST(MocUnitProcesses, IntersectRayWithWallHitsConicalContour) {
     NozzleProfile wall = NozzleProfile::generate_conical_nozzle(
-        /*area_ratio=*/4.0, /*r_expansion_curve=*/0.0, /*r_throat=*/1.0, /*theta_n=*/15.0, 50);
+        /*area_ratio=*/4.0, /*r_expansion_curve=*/0.0, /*r_throat=*/1.0, /*theta_n=*/15.0 * DEG, 50);
 
     // From near the axis, well inside the nozzle, a steeply rising ray (45 deg, steeper than
     // the wall's 15 deg half-angle) is guaranteed to catch the diverging wall within its span.
@@ -198,7 +198,7 @@ TEST(MocUnitProcesses, IntersectRayWithWallHitsConicalContour) {
 }
 
 TEST(MocUnitProcesses, IntersectRayWithWallMissesWhenPointingAway) {
-    NozzleProfile wall = NozzleProfile::generate_conical_nozzle(4.0, 0.0, 1.0, 15.0, 50);
+    NozzleProfile wall = NozzleProfile::generate_conical_nozzle(4.0, 0.0, 1.0, 15.0 * DEG, 50);
 
     // A ray starting well inside the nozzle (below the wall everywhere) angled downward: it
     // descends while the wall only ever rises, so it can never catch the contour.

@@ -79,7 +79,7 @@ def frozen_nozzle(*, frozen_NFZ: int = 0) -> NozzleOptions:
     return NozzleOptions(chemistry=GasChemistry.FROZEN, frozen_NFZ=frozen_NFZ)
 
 def conical_nozzle(area_ratio: float, *, r_expansion_curve: float = 0.382,
-                   r_throat: float = 1.0, angle_deg: float = 15.0,
+                   r_throat: float = 1.0, theta_n: float = math.radians(15.0),
                    n_points: int = 50) -> NozzleProfile:
     """Generate a conical nozzle contour.
 
@@ -88,7 +88,7 @@ def conical_nozzle(area_ratio: float, *, r_expansion_curve: float = 0.382,
         r_expansion_curve: Radius of curvature of the throat expansion arc, in the
             same length units as ``r_throat``. Zero gives a sharp throat corner.
         r_throat: Throat radius, in length units.
-        angle_deg: Conical expansion half-angle, in degrees.
+        theta_n: Conical expansion half-angle, in radians.
         n_points: Number of points in the contour.
 
     Returns:
@@ -96,7 +96,7 @@ def conical_nozzle(area_ratio: float, *, r_expansion_curve: float = 0.382,
     """
     return NozzleProfile.conical(
         area_ratio=area_ratio, r_expansion_curve=r_expansion_curve,
-        r_throat=r_throat, angle_deg=angle_deg, n_points=n_points)
+        r_throat=r_throat, theta_n=theta_n, n_points=n_points)
 
 
 def rao_nozzle(area_ratio: float, *, r_throat: float = 1.0, length_frac: float = 0.8,
@@ -119,15 +119,15 @@ def rao_nozzle(area_ratio: float, *, r_throat: float = 1.0, length_frac: float =
         length_frac=length_frac, n_points=n_points)
 
 
-def bezier_nozzle(area_ratio: float, theta_n_deg: float, theta_e_deg: float, *,
+def bezier_nozzle(area_ratio: float, theta_n: float, theta_e: float, *,
                   r_expansion_curve: float = 0.382, r_throat: float = 1.0,
                   length_frac: float = 0.8, n_points: int = 50) -> NozzleProfile:
     """Generate a parabolic nozzle contour parametrized by Bezier curves.
 
     Args:
         area_ratio: Exit area divided by throat area.
-        theta_n_deg: Maximum wall angle from the centerline, in degrees.
-        theta_e_deg: Wall angle at the nozzle exit, in degrees.
+        theta_n: Maximum wall angle from the centerline, in radians.
+        theta_e: Wall angle at the nozzle exit, in radians.
         r_expansion_curve: Radius of curvature of the expansion region, as a
             fraction of the throat radius.
         r_throat: Throat radius, in length units.
@@ -138,7 +138,7 @@ def bezier_nozzle(area_ratio: float, theta_n_deg: float, theta_e_deg: float, *,
         NozzleProfile.
     """
     return NozzleProfile.bezier(
-        area_ratio=area_ratio, theta_n_deg=theta_n_deg, theta_e_deg=theta_e_deg,
+        area_ratio=area_ratio, theta_n=theta_n, theta_e=theta_e,
         r_expansion_curve=r_expansion_curve, r_throat=r_throat,
         length_frac=length_frac, n_points=n_points)
 
@@ -157,14 +157,14 @@ def _build_nozzle(opts: MocOptions, gas: Gas | None) -> MocNozzle:
     return MocNozzle(opts)
 
 
-def moc_design(theta_max_deg: float, *, num_characteristics: int = 10, gamma: float = 1.4,
+def moc_design(theta_max: float, *, num_characteristics: int = 10, gamma: float = 1.4,
                flow_type: MocFlowKind | None = None, chemistry: GasChemistry | None = None,
                throat_radius: float = 1.0, geometry: NozzleGeometry | None = None,
                log_level: MocLogLevel | None = None, gas: Gas | None = None) -> MocResult:
     """Design a minimum-length nozzle using the Method of Characteristics.
 
     Args:
-        theta_max_deg: Maximum wall angle in degrees.
+        theta_max: Maximum wall angle, in radians.
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
@@ -190,7 +190,7 @@ def moc_design(theta_max_deg: float, *, num_characteristics: int = 10, gamma: fl
     opts.mode = MocMode.DESIGN_MIN_LENGTH
     opts.num_characteristics = num_characteristics
     opts.gamma = gamma
-    opts.theta_max = math.radians(theta_max_deg)
+    opts.theta_max = theta_max
     if geometry is not None:
         opts.geometry = geometry
     else:

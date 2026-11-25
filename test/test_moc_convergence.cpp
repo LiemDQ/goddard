@@ -392,7 +392,7 @@ TEST(MocDefaultOptionsConvergence, ConicalDefaultThroatConvergesAcrossN) {
             opts.num_characteristics = n;
             opts.geometry.throat_radius = 1.0;
             opts.geometry.downstream_wall_curvature_radius = 0.382; // == generate_conical_nozzle's arc below
-            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0, 60);
+            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0 * DEG, 60);
             // start_line: left at its MocOptions default (AUTO).
 
             MocNozzle solver(opts);
@@ -492,7 +492,7 @@ static MocResult solve_conical_kl_analysis(
     // failure mode with a threshold tight enough to trigger it).
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
     opts.kl_max_wall_angle_error = 0.2; // below the 0.25 default; kept explicit so the helper is independent of it
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 15.0 * DEG, 60);
     MocNozzle solver(opts);
     return solver.solve();
 }

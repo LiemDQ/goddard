@@ -3,6 +3,7 @@
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "cantera/core.h"
 #include <numbers>
 #include <cmath>
@@ -712,5 +713,64 @@ TEST(MocThrust, ExitPlaneHasGammaAndVelocity) {
             << "gamma_s should be > 1";
         EXPECT_GT(result.exit_plane.velocity[i], 0.0)
             << "velocity should be positive";
+    }
+}
+
+// ============================================================
+// Nondimensional point state: P/P0, T/T0 and V/a0 for every chemistry
+// ============================================================
+
+TEST(MocNormalization, PerfectGasPointsFollowTheIsentropicRelations) {
+    const double gamma = 1.4;
+    auto result = make_perfect_gas_solver(gamma, 15.0 * DEG, 7).solve();
+    ASSERT_TRUE(result.status.ok());
+    EXPECT_TRUE(std::isnan(result.stagnation_pressure)) << "a perfect gas has no dimensional scale";
+    EXPECT_TRUE(std::isnan(result.stagnation_temperature));
+    EXPECT_TRUE(std::isnan(result.stagnation_sound_speed));
+
+    for (const CharacteristicPoint& pt : result.net.points) {
+        // T0/T = 1 + (gamma-1)/2 M^2, P/P0 = (T/T0)^(gamma/(gamma-1)), V/a0 = M sqrt(T/T0)
+        const double T_ratio = 1.0 / (1.0 + 0.5 * (gamma - 1.0) * pt.mach * pt.mach);
+        EXPECT_NEAR(pt.temperature, T_ratio, 1e-12) << "point at x = " << pt.x << ", y = " << pt.y << ", M = " << pt.mach << ", nu = " << pt.nu << ", theta = " << pt.theta;
+        EXPECT_NEAR(pt.pressure, std::pow(T_ratio, gamma / (gamma - 1.0)), 1e-12);
+        EXPECT_NEAR(pt.V, pt.mach * std::sqrt(T_ratio), 1e-12);
+    }
+}
+
+TEST(MocNormalization, RealGasPointsAreRelativeToTheStagnationState) {
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    const Gas stagnation(sol->clone());
+    const double T0 = stagnation.temperature();
+    const double P0 = stagnation.pressure();
+    const double a0 = stagnation.speed_of_sound(CompositionModel::FROZEN);
+    const double h0 = stagnation.enthalpy_mass();
+
+    MocOptions opts;
+    opts.chemistry = GasChemistry::FROZEN;
+    opts.theta_max = 15.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+    MocResult result = MocNozzle(stagnation, opts).solve();
+    ASSERT_TRUE(result.status.ok()) << result.status.message;
+
+    EXPECT_DOUBLE_EQ(result.stagnation_temperature, T0);
+    EXPECT_DOUBLE_EQ(result.stagnation_pressure, P0);
+    EXPECT_DOUBLE_EQ(result.stagnation_sound_speed, a0);
+
+    // Each point's Cantera state, scaled by the stagnation values, must reproduce the point's
+    // normalized fields, and its velocity must satisfy the energy equation h0 = h + V^2/2. The
+    // state and the fields are interpolated separately from the Prandtl-Meyer table, so they
+    // agree to its interpolation error, not to round-off; a wrong reference (the throat
+    // temperature instead of T0, say) is off by ~10%.
+    Gas point_gas = stagnation.clone();
+    ASSERT_FALSE(result.net.points.empty());
+    for (const CharacteristicPoint& pt : result.net.points) {
+        point_gas.thermo()->restoreState(pt.cantera_state);
+        EXPECT_NEAR(pt.temperature, point_gas.temperature() / T0, 1e-3 * pt.temperature);
+        EXPECT_NEAR(pt.pressure, point_gas.pressure() / P0, 1e-3 * pt.pressure);
+        const double velocity = pt.V * a0;
+        EXPECT_NEAR(0.5 * velocity * velocity, h0 - point_gas.enthalpy_mass(),
+                    1e-3 * (h0 - point_gas.enthalpy_mass()));
     }
 }

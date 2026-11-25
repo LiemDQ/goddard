@@ -34,9 +34,8 @@ constexpr double RAO_PARABOLIC_MIN_EXP_RATIO_LOG10 =  0.550258197;
 constexpr double RAO_PARABOLIC_MIN_LENGTH_RATIO = 0.60;
 constexpr double RAO_PARABOLIC_LENGTH_RATIO_STEP = 0.10;
 
-double to_radians(double deg) {
-    return deg/360.0 * 2 * std::numbers::pi;
-}
+constexpr double RAO_REFERENCE_CONE_ANGLE = 15.0 * std::numbers::pi / 180.0;
+constexpr double HALF_PI = 0.5 * std::numbers::pi;
     
 // -- NozzleProfile --
 
@@ -48,8 +47,8 @@ NozzleProfile NozzleProfile::generate_conical_nozzle(
     size_t n_points)
 {
     NozzleProfile profile;
-    if (theta_n <= 0.0 || theta_n >= 90.0 ) {
-        throw std::invalid_argument("Specified angle must be between 0 and 90 degrees.");
+    if (theta_n <= 0.0 || theta_n >= HALF_PI) {
+        throw std::invalid_argument("Specified angle must be between 0 and pi/2 radians.");
     }
     if (area_ratio <= 1.0) {
         throw std::invalid_argument("Area ratio must be greater than 1.");
@@ -65,7 +64,7 @@ NozzleProfile NozzleProfile::generate_conical_nozzle(
         throw std::invalid_argument("Profile must have at least two points.");
     }
 
-    const double rad = to_radians(theta_n);
+    const double rad = theta_n;
     const double r_exit = std::sqrt(area_ratio)*r_throat;
 
     // Generate the throat expansion arc. The conic line extends from it 
@@ -138,8 +137,10 @@ NozzleProfile NozzleProfile::generate_Rao_TOP_nozzle(
         bound_opts
     };
 
-    double theta_n = theta_n_intp.interpolate(length_frac, log10(area_ratio));
-    double theta_e = theta_e_intp.interpolate(length_frac, log10(area_ratio));
+    // The tables are tabulated in degrees.
+    constexpr double DEGREES_TO_RADIANS = std::numbers::pi / 180.0;
+    double theta_n = DEGREES_TO_RADIANS * theta_n_intp.interpolate(length_frac, log10(area_ratio));
+    double theta_e = DEGREES_TO_RADIANS * theta_e_intp.interpolate(length_frac, log10(area_ratio));
    
     return NozzleProfile::generate_bezier_nozzle(
         area_ratio, theta_n, theta_e, 0.382, r_throat, length_frac, n_points);
@@ -164,13 +165,13 @@ NozzleProfile NozzleProfile::generate_bezier_nozzle(
     }
 
     double r_exit = std::sqrt(area_ratio*r_throat*r_throat);
-    double length = length_frac*(r_exit-r_throat) / tan(to_radians(15.0));
-    double theta_exp_rad = to_radians(theta_n - 90.0);
+    double length = length_frac*(r_exit-r_throat) / tan(RAO_REFERENCE_CONE_ANGLE);
+    double theta_exp_rad = (theta_n - HALF_PI);
     double n_x = r_expansion_curve*r_throat*cos(theta_exp_rad);
     double n_y = r_expansion_curve*r_throat*sin(theta_exp_rad) + r_expansion_curve*r_throat + r_throat;
     
-    double theta_n_rad = to_radians(theta_n);
-    double theta_e_rad = to_radians(theta_e);
+    double theta_n_rad = theta_n;
+    double theta_e_rad = theta_e;
     double slope_n = tan(theta_n_rad);
     double slope_e = tan(theta_e_rad);
 
@@ -396,12 +397,12 @@ void NozzleProfile::populate_throat_expansion_curve(
     double theta_n, double r_expansion_curve, 
     double r_throat, size_t n_points) {
 
-    double theta_exp_rad = to_radians(theta_n - 90.0);
+    double theta_exp_rad = (theta_n - HALF_PI);
     //Generate expansion curve
     for (size_t i = 0; i < n_points; i++) {
         double frac = static_cast<double>(i) / static_cast<double>(n_points - 1);
         
-        double theta = frac*(theta_exp_rad - to_radians(-90.0)) + to_radians(-90.0);
+        double theta = frac*(theta_exp_rad + HALF_PI) - HALF_PI;
         double x_coord = r_expansion_curve*r_throat*cos(theta);
         double r_coord = r_expansion_curve*r_throat*sin(theta) + r_expansion_curve*r_throat + r_throat;
         push_back({x_coord, r_coord});

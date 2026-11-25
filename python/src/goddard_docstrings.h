@@ -303,9 +303,11 @@ static const char *__doc_Goddard_CharacteristicPoint =
 R"doc(One node of the characteristic mesh: the flow state at a point, plus
 the two Riemann invariants carried through it.
 
-For perfect-gas solves the thermodynamic quantities are normalized by
-their stagnation values and `V` holds the Mach number; for frozen and
-equilibrium chemistry they are dimensional SI.
+The state is nondimensional for every chemistry: pressure, temperature
+and velocity are divided by the stagnation pressure P0, temperature T0
+and speed of sound a0, which a real-gas MocResult reports
+(`stagnation_pressure`, `stagnation_temperature`,
+`stagnation_sound_speed`).
 
 Plain data: the thermodynamic state is filled in by MocThermo (see
 moc_thermo.hpp), not by a method on this type.)doc";
@@ -314,7 +316,7 @@ static const char *__doc_Goddard_CharacteristicPoint_K_minus = R"doc(Riemann inv
 
 static const char *__doc_Goddard_CharacteristicPoint_K_plus = R"doc(Riemann invariant carried along the C+ characteristic.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_V = R"doc(Velocity in m/s; equal to the Mach number for perfect gas.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_V = R"doc(Velocity V/a0 [-], with a0 the stagnation speed of sound.)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_cantera_state =
 R"doc(Serialized Cantera state; empty for perfect-gas solves. Internal
@@ -330,13 +332,9 @@ R"doc(Mach angle asin(1/M), in radians. Sets the characteristic slopes theta
 
 static const char *__doc_Goddard_CharacteristicPoint_nu = R"doc(Prandtl-Meyer angle (or generalized PM function), in radians.)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_pressure =
-R"doc(Static pressure; Pa, or normalized by the stagnation pressure for
-perfect gas.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_pressure = R"doc(Static pressure P/P0 [-].)doc";
 
-static const char *__doc_Goddard_CharacteristicPoint_temperature =
-R"doc(Static temperature; K, or normalized by the stagnation temperature
-for perfect gas.)doc";
+static const char *__doc_Goddard_CharacteristicPoint_temperature = R"doc(Static temperature T/T0 [-].)doc";
 
 static const char *__doc_Goddard_CharacteristicPoint_theta = R"doc(Flow angle, in radians.)doc";
 
@@ -1056,19 +1054,13 @@ static const char *__doc_Goddard_ExitPlane_gamma_s = R"doc(Local isentropic expo
 
 static const char *__doc_Goddard_ExitPlane_mach = R"doc(Local Mach number.)doc";
 
-static const char *__doc_Goddard_ExitPlane_pressure =
-R"doc(Static pressure; Pa for frozen/equilibrium, normalized by the
-stagnation pressure for perfect gas.)doc";
+static const char *__doc_Goddard_ExitPlane_pressure = R"doc(Static pressure P/P0 [-].)doc";
 
-static const char *__doc_Goddard_ExitPlane_temperature =
-R"doc(Static temperature; K for frozen/equilibrium, normalized by the
-stagnation temperature for perfect gas.)doc";
+static const char *__doc_Goddard_ExitPlane_temperature = R"doc(Static temperature T/T0 [-].)doc";
 
 static const char *__doc_Goddard_ExitPlane_theta = R"doc(Local flow angle, in radians.)doc";
 
-static const char *__doc_Goddard_ExitPlane_velocity =
-R"doc(Dimensional V (m/s) for frozen/equilibrium; equal to the Mach number
-for perfect gas.)doc";
+static const char *__doc_Goddard_ExitPlane_velocity = R"doc(Velocity V/a0 [-], with a0 the stagnation speed of sound.)doc";
 
 static const char *__doc_Goddard_ExitPlane_y =
 R"doc(Radial (or transverse) station, in the unit of
@@ -1859,8 +1851,14 @@ The throat is solved with the chemistry of `NozzleOptions::chemistry`
 (EQUILIBRIUM or FROZEN). From there a Lagrangian reactor is marched
 along the profile, its volume following the area change, and the
 velocity follows from the stagnation enthalpy. The first point of the
-profile is taken as the throat. Profile coordinates are in metres: the
-solver advances x by u dt. Condensed species are not supported.)doc";
+profile is taken as the throat.
+
+The profile is expressed in throat radii (its throat radius is 1),
+like the wall contour of `MocNozzle`, and `throat_radius` [m] sets the
+physical scale. The reactor integration is in SI units: the solver
+advances x by u dt with x converted to metres, so residence times and
+Damkohler numbers are physical. Stations and `dx_max` are in throat
+radii. Condensed species are not supported.)doc";
 
 static const char *__doc_Goddard_KineticNozzleResults = R"doc(Result of a `KineticNozzle::solve`.)doc";
 
@@ -1904,7 +1902,9 @@ static const char *__doc_Goddard_KineticNozzleStation_thermo = R"doc(Mixture sta
 
 static const char *__doc_Goddard_KineticNozzleStation_velocity = R"doc(Flow velocity [m/s].)doc";
 
-static const char *__doc_Goddard_KineticNozzleStation_x = R"doc(Axial position [m].)doc";
+static const char *__doc_Goddard_KineticNozzleStation_x =
+R"doc(Axial position [throat radii], in the length unit of the input
+profile.)doc";
 
 static const char *__doc_Goddard_KineticNozzle_KineticNozzle = R"doc()doc";
 
@@ -1917,7 +1917,11 @@ R"doc(Parameter ``gas``:
     modified.
 
 Parameter ``profile``:
-    Diverging wall contour starting at the throat [m].
+    Diverging wall contour starting at the throat [throat radii]; the
+    radius at its first point must be 1.
+
+Parameter ``throat_radius``:
+    Physical throat radius [m], positive.
 
 Parameter ``mass_flow_rate``:
     Mass flow rate [kg/s].
@@ -1926,7 +1930,8 @@ Parameter ``options``:
     Throat chemistry (EQUILIBRIUM or FROZEN).
 
 Throws:
-    std::invalid_argument for KINETIC throat chemistry.
+    std::invalid_argument for KINETIC throat chemistry, a nonpositive
+    `throat_radius`, or a profile whose throat radius is not 1.
 
 Throws:
     NotImplementedError if `gas` holds condensed species.)doc";
@@ -1937,7 +1942,11 @@ R"doc(Parameter ``gas``:
     is used. The solver works on its own copy.
 
 Parameter ``profile``:
-    Diverging wall contour starting at the throat [m].
+    Diverging wall contour starting at the throat [throat radii]; the
+    radius at its first point must be 1.
+
+Parameter ``throat_radius``:
+    Physical throat radius [m], positive.
 
 Parameter ``mass_flow_rate``:
     Mass flow rate [kg/s].
@@ -1949,7 +1958,8 @@ Parameter ``options``:
     Throat chemistry (EQUILIBRIUM or FROZEN).
 
 Throws:
-    std::invalid_argument for KINETIC throat chemistry.
+    std::invalid_argument for KINETIC throat chemistry, a nonpositive
+    `throat_radius`, or a profile whose throat radius is not 1.
 
 Throws:
     NotImplementedError if the inlet state holds condensed species.)doc";
@@ -1971,7 +1981,7 @@ static const char *__doc_Goddard_KineticNozzle_mdot = R"doc(Mass flow rate [kg/s
 
 static const char *__doc_Goddard_KineticNozzle_opts = R"doc(Throat chemistry (EQUILIBRIUM or FROZEN).)doc";
 
-static const char *__doc_Goddard_KineticNozzle_profile = R"doc(Wall contour [m]; its first point is the throat.)doc";
+static const char *__doc_Goddard_KineticNozzle_profile = R"doc(Wall contour [throat radii]; its first point is the throat.)doc";
 
 static const char *__doc_Goddard_KineticNozzle_solve =
 R"doc(Solve the throat, then integrate the finite-rate expansion from the
@@ -1982,7 +1992,8 @@ Parameter ``dt_max``:
     Largest time step [s].
 
 Parameter ``dx_max``:
-    Largest axial step [m].
+    Largest axial step [throat radii]; the default is 0.1 (1 mm for a
+    1 cm throat).
 
 Parameter ``max_steps``:
     Largest number of steps [-].
@@ -1995,6 +2006,8 @@ Returns:
 Throws:
     std::invalid_argument for a nonpositive `dt_max`, `dx_max` or
     `max_steps`.)doc";
+
+static const char *__doc_Goddard_KineticNozzle_throat_radius = R"doc(Physical throat radius [m] that scales the profile.)doc";
 
 static const char *__doc_Goddard_MixtureRatioType = R"doc(How a mixture ratio value is interpreted.)doc";
 
@@ -2554,6 +2567,19 @@ R"doc(True when the net actually reached the exit plane; false only for a
 front-based (ANALYSIS/DESIGN_RAO) solve that failed partway -- always
 true for minimum-length design.)doc";
 
+static const char *__doc_Goddard_MocResult_stagnation_pressure =
+R"doc(Stagnation pressure P0 [Pa] that the pressures of the net and exit
+plane are divided by. NaN for a perfect gas, whose solve has no
+dimensional scale.)doc";
+
+static const char *__doc_Goddard_MocResult_stagnation_sound_speed =
+R"doc(Stagnation speed of sound a0 [m/s], in the solve's composition model,
+that velocities are divided by. NaN for a perfect gas.)doc";
+
+static const char *__doc_Goddard_MocResult_stagnation_temperature =
+R"doc(Stagnation temperature T0 [K] that temperatures are divided by. NaN
+for a perfect gas.)doc";
+
 static const char *__doc_Goddard_MocResult_status =
 R"doc(Outcome of the solve; ok when the march completed. A failed status
 carries the generic reason of the failure, its message and where it
@@ -2694,8 +2720,7 @@ profile built with the default `r_throat = 1.0` is expressed in throat
 radii.
 
 Angles returned by the query methods are in **radians**; the static
-generators take their shape angles in **degrees**, matching the
-convention used to tabulate them.)doc";
+generators take their shape angles in **radians** as well.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_area_at =
 R"doc(Calculate the cross-sectional area of nozzle at x-position assuming
@@ -2744,8 +2769,8 @@ Parameter ``r_throat``:
     Throat radius, in length units.
 
 Parameter ``length_frac``:
-    Fraction of length of comparable 15-degree conical nozzle. Must be
-    between 0.6 and 1.0.
+    Fraction of length of comparable 15-degree (0.2618 rad) conical
+    nozzle. Must be between 0.6 and 1.0.
 
 Parameter ``n_points``:
     Number of points in the profile.
@@ -2760,10 +2785,10 @@ Parameter ``area_ratio``:
     Ratio of the exit area to the throat area.
 
 Parameter ``theta_n``:
-    Maximum expansion angle from centerline, in degrees.
+    Maximum expansion angle from centerline, in radians.
 
 Parameter ``theta_e``:
-    Expansion angle from centerline at the nozzle exit, in degrees.
+    Expansion angle from centerline at the nozzle exit, in radians.
 
 Parameter ``r_expansion_curve``:
     Radius of curvature of the expansion region as a fraction of the
@@ -2773,7 +2798,8 @@ Parameter ``r_throat``:
     Throat radius, in length units.
 
 Parameter ``length_frac``:
-    Fraction of length of comparable 15-degree conical nozzle.
+    Fraction of length of comparable 15-degree (0.2618 rad) conical
+    nozzle.
 
 Parameter ``n_points``:
     Number of points in the profile.
@@ -2799,7 +2825,7 @@ Parameter ``r_throat``:
     Throat radius, in length units.
 
 Parameter ``theta_n``:
-    Conical expansion angle from the centerline, in degrees.
+    Conical expansion angle from the centerline, in radians.
 
 Parameter ``n_points``:
     Number of points in the profile.
@@ -2818,7 +2844,7 @@ solve is seeded against.
 
 Parameter ``theta_n``:
     Wall angle the arc turns to, measured from the centerline, in
-    degrees.
+    radians.
 
 Parameter ``r_expansion_curve``:
     Radius of curvature of the arc, as a fraction of `r_throat`.

@@ -127,6 +127,12 @@ ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity, C
                 break;
             }
         }
+        // The energy row is in K kmol/kg; dividing it by T_up/M_up makes it dh/(R T_up/M_up),
+        // nondimensional like the momentum row. Scaling a row leaves the Newton step unchanged.
+        const double energy_scale = mw_up/T_up;
+        f_h *= energy_scale;
+        J_hP *= energy_scale;
+        J_hT *= energy_scale;
 
         NewtonSystemFunction<2> function;
         function.value << f_P, f_h;
