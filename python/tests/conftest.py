@@ -106,34 +106,34 @@ def cantera_save_state(yaml_path: str, phase_name: str,
     return [sol.T, sol.density] + list(sol.Y)
 
 
-def build_goddard_problem(case: RocketTestCase):
-    """Build a Goddard RocketProblem from a RocketTestCase specification."""
+def solve_goddard_case(case: RocketTestCase):
+    """Solve a RocketTestCase with the Goddard RocketSolver.
+
+    Returns:
+        The RocketResult of the single operating point of the case.
+    """
     import goddard
 
-    data_dir = find_data_dir()
-    yaml_path = os.path.join(data_dir, case.thermo_file)
-
-    chem_params = goddard.ChemicalParameters()
-    chem_params.thermo_file = yaml_path
-    chem_params.species = case.species
-    chem_params.fuel_state = goddard.PhaseSpecification(
-        case.fuel.temperature, 101325.0, case.fuel.cantera_composition) 
-    chem_params.oxidizer_state = goddard.PhaseSpecification(
-        case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition)
-    chem_params.OF_ratios = [case.of_ratio]
-
-    case_params = goddard.RocketCaseParameters()
-    case_params.name = case.name
-    case_params.combustor_options = goddard.infinite_area_combustor(
-        [case.chamber_pressure_bar * 1e5])  # bar -> Pa
+    yaml_path = os.path.join(find_data_dir(), case.thermo_file)
+    products = goddard.Gas(yaml_path, case.phase_name, species=case.species)
 
     if case.nozzle_chemistry == "equilibrium":
-        case_params.nozzle_options = goddard.equilibrium_nozzle(*case.area_ratios)
+        nozzle = goddard.equilibrium_nozzle()
     else:
-        case_params.nozzle_options = goddard.frozen_nozzle(
-            *case.area_ratios, frozen_NFZ=case.frozen_NFZ)
+        nozzle = goddard.frozen_nozzle(frozen_NFZ=case.frozen_NFZ)
 
-    return goddard.RocketProblem(chem_params, [case_params], case.phase_name)
+    point = goddard.RocketPoint(
+        fuel=goddard.PhaseSpecification(
+            case.fuel.temperature, 101325.0, case.fuel.cantera_composition),
+        oxidizer=goddard.PhaseSpecification(
+            case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition),
+        mixture_ratio=case.of_ratio,
+        chamber_pressure=case.chamber_pressure_bar * 1e5,  # bar -> Pa
+        combustor=goddard.infinite_area_combustor(),
+        nozzle=nozzle,
+        expansion_ratios=list(case.area_ratios),
+        label=case.name)
+    return goddard.RocketSolver(products).solve(point)
 
 
 # ---------------------------------------------------------------------------

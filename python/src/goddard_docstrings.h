@@ -346,82 +346,6 @@ static const char *__doc_Goddard_CharacteristicPoint_x = R"doc(Axial position, i
 
 static const char *__doc_Goddard_CharacteristicPoint_y = R"doc(Radial (or transverse) position, in length units.)doc";
 
-static const char *__doc_Goddard_ChemicalParameters =
-R"doc(Thermodynamic data, reactants and mixture ratios of a `RocketProblem`.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_OF_ratios =
-R"doc(Mixture ratios of the problem, interpreted through
-`CombustorOptions::mixture_type` of each case (O/F ratios by default).
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_all_condensed_species =
-R"doc(Offer every species of `condensed_file` whose elements the product
-phase has.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_condensed_file =
-R"doc(Cantera YAML file holding candidate condensed product species, e.g.
-`data/nasa9_condensed.yaml`.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_condensed_species =
-R"doc(Condensed species of `condensed_file` to offer as candidates. Ignored
-if `all_condensed_species`.
-
-In Python, assign a whole set: adding to the attribute acts on a copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_fuel_state =
-R"doc(Fuel stream state. `composition` is always a **mole-fraction** map.
-Its keys are product species names when `reactant_file` is empty, and
-species of `reactant_file` otherwise (e.g. `H2(L)`, `RP-1`). CEA-style
-weight percentages must be converted to mole fractions by the caller.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_fuel_weight_percentages =
-R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty.
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_mixtures =
-R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty.
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_oxidizer_state =
-R"doc(Oxidizer stream state; see `fuel_state` for how `composition` is
-interpreted.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_phi_ratios =
-R"doc(Not implemented: `RocketProblem::solve` raises `NotImplementedError`
-if non-empty.
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_reactant_file =
-R"doc(Cantera YAML file holding the reactant species, e.g.
-`data/nasa9_reactants.yaml`.
-
-When set, the fuel and oxidizer are built as separate `Gas` streams
-from this file and their element amounts and enthalpies are
-transferred to the products, so reactants need not be product species.
-When empty, the reactant compositions refer to product species and the
-combustor blends them in the product phase, as before.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_species =
-R"doc(Gas-phase product species of `thermo_file` to include, names matched
-exactly. Every product species must be listed: species not named are
-dropped from the phase.
-
-In Python, assign a whole set: adding to the attribute acts on a copy.)doc";
-
-static const char *__doc_Goddard_ChemicalParameters_thermo_file =
-R"doc(Cantera YAML file holding the gas-phase product species, e.g.
-`nasa9_gas.yaml`.)doc";
-
 static const char *__doc_Goddard_CombustionProcess =
 R"doc(Thermodynamic constraint held fixed while the reactants burn to
 equilibrium.)doc";
@@ -450,18 +374,8 @@ R"doc(Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)].)doc
 
 static const char *__doc_Goddard_CombustorOptions_mixture_type = R"doc(How the mixture ratios passed to the solver are interpreted.)doc";
 
-static const char *__doc_Goddard_CombustorOptions_pressures =
-R"doc(Pressures [Pa]. For `CombustionProcess::ISOBARIC` these are the
-chamber pressures. For `CombustionProcess::ISOCHORIC` they are the
-initial pressures of the unburnt reactants; the chamber pressure is
-the result of the constant-volume combustion. Read by `RocketProblem`;
-the `Combustor::solve` overloads take their pressures as an argument.
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
 static const char *__doc_Goddard_CombustorOptions_process =
-R"doc(Combustion constraint. With `ISOCHORIC` in a `RocketProblem`, the
+R"doc(Combustion constraint. With `ISOCHORIC` in a `RocketSolver`, the
 constant-volume equilibrium state is used as the stagnation state of a
 steady isentropic nozzle expansion, so the reported performance is
 that idealization. It is not a Chapman-Jouguet detonation model.)doc";
@@ -1418,7 +1332,21 @@ sum_k n_k cp_k(T).)doc";
 
 static const char *__doc_Goddard_Gas_create = R"doc()doc";
 
-static const char *__doc_Goddard_Gas_create_from_elements = R"doc()doc";
+static const char *__doc_Goddard_Gas_create_from_elements =
+R"doc(Create a `Gas` whose phase holds every species of an input file made
+of the given elements, as CEA selects products from reactants.
+
+Parameter ``infile``:
+    Cantera YAML input file, e.g. `nasa9_gas.yaml`.
+
+Parameter ``name``:
+    Name of the new phase.
+
+Parameter ``elements``:
+    Element symbols, e.g. `{"H", "O"}`.
+
+Throws:
+    std::invalid_argument if the phase cannot be built from the file.)doc";
 
 static const char *__doc_Goddard_Gas_create_from_species =
 R"doc(Create a `Gas` whose phase holds the named species of an input file.
@@ -2762,17 +2690,6 @@ R"doc(Chemistry of the expansion: EQUILIBRIUM, or FROZEN downstream of
 station `frozen_NFZ`. `Nozzle` rejects KINETIC (use `KineticNozzle`)
 and does not implement PERFECT_GAS.)doc";
 
-static const char *__doc_Goddard_NozzleOptions_expansion_ratios =
-R"doc(Station ratios, interpreted by `expansion_type`: area ratios A/A_t
-[-], or pressure ratios P_inlet/P [-] (chamber over station pressure,
-as CEA's `pi/p`). Read by `RocketProblem`; the `Nozzle::solve`
-overloads take their ratios as an argument.
-
-In Python, assign a whole list: item assignment and append act on a
-copy.)doc";
-
-static const char *__doc_Goddard_NozzleOptions_expansion_type = R"doc(How `expansion_ratios` are interpreted. Read by `RocketProblem`.)doc";
-
 static const char *__doc_Goddard_NozzleOptions_frozen_NFZ =
 R"doc(Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber
 (the default, and CEA's default freezing point), 1 the throat, and 2
@@ -3423,7 +3340,26 @@ Throws:
 
 static const char *__doc_Goddard_Nozzle_throw_invalid_expansion_ratio = R"doc()doc";
 
-static const char *__doc_Goddard_Nozzle_validate_freezing_station = R"doc()doc";
+static const char *__doc_Goddard_Nozzle_validate =
+R"doc(Check nozzle options and station arguments without a gas or a solve:
+what the constructor and `validate_stations` check together.
+
+Parameter ``options``:
+    Nozzle options.
+
+Parameter ``expansion_type``:
+    How `ratios` are interpreted.
+
+Parameter ``ratios``:
+    Station ratios; see `validate_stations`.
+
+Throws:
+    std::invalid_argument for KINETIC chemistry, a negative
+    `frozen_NFZ`, a freezing station beyond the last station, or a
+    ratio outside its domain.
+
+Throws:
+    NotImplementedError for PERFECT_GAS chemistry.)doc";
 
 static const char *__doc_Goddard_Nozzle_validate_stations =
 R"doc(Check the arguments of a station solve without solving anything.
@@ -3653,14 +3589,6 @@ R"doc(Outcome of the solve: the failure of the incident shock, else that of
 the reflected shock. When the reflected shock fails, `incident` is
 still valid.)doc";
 
-static const char *__doc_Goddard_RocketCaseParameters = R"doc(Combustor and nozzle settings of one case of a `RocketProblem`.)doc";
-
-static const char *__doc_Goddard_RocketCaseParameters_combustor_options = R"doc(Chamber model, pressures [Pa] and combustion process.)doc";
-
-static const char *__doc_Goddard_RocketCaseParameters_name = R"doc(Case name, the key of the case in `RocketProblemResults`.)doc";
-
-static const char *__doc_Goddard_RocketCaseParameters_nozzle_options = R"doc(Nozzle chemistry, freezing station and exit stations.)doc";
-
 static const char *__doc_Goddard_RocketPerformance =
 R"doc(Rocket performance of one exit, as CEA reports it.
 
@@ -3669,7 +3597,9 @@ every value is NaN.)doc";
 
 static const char *__doc_Goddard_RocketPerformance_CF = R"doc(Thrust coefficient at optimum expansion [-].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_area_ratio = R"doc(Exit area over throat area, Ae/At [-].)doc";
+static const char *__doc_Goddard_RocketPerformance_area_ratio =
+R"doc(Exit area over throat area, Ae/At [-], from the mass fluxes at the
+throat and the exit.)doc";
 
 static const char *__doc_Goddard_RocketPerformance_cstar = R"doc(Characteristic velocity c* [m/s].)doc";
 
@@ -3687,388 +3617,207 @@ static const char *__doc_Goddard_RocketPerformance_ivac_s = R"doc(Vacuum specifi
 
 static const char *__doc_Goddard_RocketPerformance_mach_number = R"doc(Exit Mach number [-].)doc";
 
-static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc(Chamber (or stagnation) pressure over exit pressure, Pc/Pe [-].)doc";
+static const char *__doc_Goddard_RocketPerformance_pressure_ratio = R"doc(Stagnation pressure over exit pressure, P_0/Pe [-].)doc";
 
 static const char *__doc_Goddard_RocketPerformance_status =
 R"doc(Ok when the stagnation, throat and exit stations were all solved;
 otherwise the failure of the first of them that was not.)doc";
 
-static const char *__doc_Goddard_RocketProblem =
-R"doc(CEA-style rocket problem: combustion followed by an isentropic nozzle
-expansion, for every case, mixture ratio and chamber pressure.)doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_OF_ratios = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_chemistry = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_combustor_type = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_expansion_ratios = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_expansion_type = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_finite_area_chambers =
-R"doc(Finite-area chambers, indexed like `nozzle_states`; empty for
-`INFINITE_AREA`.)doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_frozen_NFZ =
-R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.)doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_inlet_states = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_mixture_type =
-R"doc(How `OF_ratios` are interpreted; see `CombustorOptions::mixture_type`.)doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_nozzle_states = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_pressures = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemCaseResult_process = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults =
-R"doc(Results of a `RocketProblem`: a flat list of stations over every case,
-mixture ratio and pressure, with accessors by operating point and a
-CEA-style report.
-
-An operating point that could not be solved does not stop the problem:
-its stations are in the list with a failed `status` and NaN states,
-and `status()` and `failed_stations()` say whether and where that
-happened.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_2 =
-R"doc(Results of a `RocketProblem`: a flat list of stations over every case,
-mixture ratio and pressure, with accessors by operating point and a
-CEA-style report.
-
-An operating point that could not be solved does not stop the problem:
-its stations are in the list with a failed `status` and NaN states,
-and `status()` and `failed_stations()` say whether and where that
-happened.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_chemistry = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_combustor_type = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_expansion_ratios = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_expansion_type = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_frozen_NFZ =
-R"doc(Freezing station of a FROZEN nozzle; see `NozzleOptions::frozen_NFZ`.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_mass_flux =
-R"doc(Mass flux mdot/Ac [kg/(m^2 s)] of each operating point, row-major over
-(of_index, pressure_index); empty for `CombustorType::INFINITE_AREA`.
-Not derivable from a station's `ThermodynamicState`, so it is captured
-here for the report.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_mixture_type = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_of_ratios = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_pressures = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_CaseMeta_process = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_RocketProblemResults =
-R"doc(Build the flat station list from the results of every case.
-
-Parameter ``case_results``:
-    Per-case combustion and nozzle states, consumed by this call.
-
-Parameter ``gas``:
-    Product mixture the states were computed with. It carries the
-    candidate condensed species, so each station's state vector is
-    read back with the condensed amounts it was saved with.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_calculate_performance =
-R"doc(Rocket performance from the stagnation, throat and exit states.
-
-c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit
-velocity follows from the enthalpy drop h_0 - h_e, the area ratio from
-mass conservation, and CF = u_e / c*.
-
-Parameter ``chamber``:
-    Stagnation state the nozzle expands from (the chamber of an
-    infinite-area combustor).
-
-Parameter ``throat``:
-    Throat state.
-
-Parameter ``exit``:
-    Exit state.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_case_names = R"doc(Names of all cases, in no particular order.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_chamber =
-R"doc(Chamber station of one operating point. For a finite-area combustor,
-the injector face.
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case or the station does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_combustion_end =
-R"doc(Combustion-end station of a finite-area combustor.
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case uses an infinite-area combustor, or
-    if the case or the station does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_exits =
-R"doc(Exit stations of one operating point, ordered by expansion index.
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_failed_stations =
-R"doc(The stations that were not solved, in list order.
-
-Parameter ``case_name``:
-    Case to read. Empty reads every case.
-
-Throws:
-    std::runtime_error if the case does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_m_case_meta = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_m_gas = R"doc(Product mixture used to read the stored station states back.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_m_stations = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_of_ratios =
-R"doc(Mixture ratios of a case [-], interpreted through its
-`CombustorOptions::mixture_type`.
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_performance =
-R"doc(Rocket performance of one operating point at one exit station, from
-its stagnation, throat and exit states (see `calculate_performance`).
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``exit_index``:
-    Index into the exit stations of the operating point [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Returns:
-    The performance; all NaN, with a failed `status`, if one of the
-    three stations was not solved.
-
-Throws:
-    std::runtime_error if the case or a station does not exist, or if
-    `exit_index` is out of range.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_report =
-R"doc(CEA-style formatted text report.
-
-An operating point whose chamber or throat was not solved is reported
-as a short notice with the failure; one with failed exits keeps its
-table, with NaN in the failed columns and the failures listed below
-it.
-
-Parameter ``case_name``:
-    Case to report. Empty reports every case, sorted by name.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_resolve_case = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblemResults_stagnation =
-R"doc(Stagnation state that the nozzle expands from: the "inf" state of a
-finite-area combustor, or the chamber state of an infinite-area
-combustor.
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case or the station does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_stations = R"doc(Every station of every case, as one flat list.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_stations_of_type =
-R"doc(All stations of one type in one case.
-
-Parameter ``type``:
-    Station type.
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case does not exist, or if `case_name`
-    is empty and the results hold several cases.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_status =
-R"doc(Outcome of the whole problem: ok when every station was solved,
-otherwise the status of the first failed station, whose message also
-gives the number of failed stations.)doc";
-
-static const char *__doc_Goddard_RocketProblemResults_throat =
-R"doc(Throat station of one operating point.
-
-Parameter ``of_index``:
-    Index into the case's mixture ratios [-].
-
-Parameter ``pressure_index``:
-    Index into the case's chamber pressures [-].
-
-Parameter ``case_name``:
-    Case to read. May be empty when the results hold a single case.
-
-Throws:
-    std::runtime_error if the case or the station does not exist.)doc";
-
-static const char *__doc_Goddard_RocketProblem_RocketProblem =
-R"doc(Parameter ``chem_params``:
-    Thermodynamic data, reactants and mixture ratios.
-
-Parameter ``cases``:
-    Combustor and nozzle settings of each case.
-
-Parameter ``phase_name``:
-    Phase of `chem_params.thermo_file` to build the products from;
-    empty selects the first phase in the file.
-
-Parameter ``transport``:
-    Not implemented; `solve` raises NotImplementedError if true.
-
-Parameter ``ionized_species``:
-    Not implemented; `solve` raises NotImplementedError if true.
-
-Parameter ``trace``:
-    Not implemented; `solve` raises NotImplementedError if non-zero.)doc";
-
-static const char *__doc_Goddard_RocketProblem_chemical_params =
-R"doc(Thermodynamic data, reactants and mixture ratios. The product phase is
-built from it by the constructor; later changes affect only the
-reactants and mixture ratios.)doc";
-
-static const char *__doc_Goddard_RocketProblem_include_ionized_species = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
-
-static const char *__doc_Goddard_RocketProblem_include_transport = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
-
-static const char *__doc_Goddard_RocketProblem_m_condensed_prototype =
-R"doc(Product gas carrying the candidate condensed species, built once so
-that every `Gas` handed to a solver shares the same set. Empty when no
-`condensed_file` was given.)doc";
-
-static const char *__doc_Goddard_RocketProblem_m_sln = R"doc()doc";
-
-static const char *__doc_Goddard_RocketProblem_problem_cases =
-R"doc(Cases to solve.
+static const char *__doc_Goddard_RocketPoint =
+R"doc(One operating point of a rocket: the reactants and how they burn, and
+the nozzle they expand through.
+
+A sweep is a list of points; `RocketSolver::solve` returns one
+`RocketResult` per point, in the same order. Fields that every point
+of a sweep shares are copied into each point.)doc";
+
+static const char *__doc_Goddard_RocketPoint_chamber_pressure =
+R"doc(Pressure [Pa]: the chamber pressure of an infinite-area chamber, the
+injector-face pressure of a finite-area chamber, or the initial
+reactant pressure for `CombustionProcess::ISOCHORIC` combustion.)doc";
+
+static const char *__doc_Goddard_RocketPoint_combustor = R"doc(Chamber model, mixture ratio type and combustion process.)doc";
+
+static const char *__doc_Goddard_RocketPoint_expansion_ratios =
+R"doc(Exit stations, in the order they are solved: area ratios A/A_t [-], or
+pressure ratios P_0/P [-] (stagnation over station pressure, as CEA's
+`pi/p`). May be empty.
 
 In Python, assign a whole list: item assignment and append act on a
 copy.)doc";
 
-static const char *__doc_Goddard_RocketProblem_product_gas =
-R"doc(Product `Gas` for one solver stage. Every returned `Gas` references
-the same `Solution` and the same candidate condensed species set, so
-attaching candidates once in the constructor is enough for the
-combustor and the nozzle to see them. The chemistry mode is left at
-its default: the combustor does not read it, and the nozzle and the
-results set their own.)doc";
+static const char *__doc_Goddard_RocketPoint_expansion_type = R"doc(How `expansion_ratios` are interpreted.)doc";
 
-static const char *__doc_Goddard_RocketProblem_reactant_gas =
-R"doc(Reactant stream `Gas` built from `ChemicalParameters::reactant_file`
-and set to `state`.)doc";
+static const char *__doc_Goddard_RocketPoint_fuel =
+R"doc(Fuel stream: temperature [K], pressure [Pa] and mole fractions. The
+species are those of the reactant file of the solver, or product
+species when the solver has no reactant file.)doc";
 
-static const char *__doc_Goddard_RocketProblem_solution = R"doc()doc";
+static const char *__doc_Goddard_RocketPoint_label =
+R"doc(Optional name of the point, copied to the result and printed in the
+report.)doc";
 
-static const char *__doc_Goddard_RocketProblem_solve =
-R"doc(Solve every case.
+static const char *__doc_Goddard_RocketPoint_mixture_ratio =
+R"doc(Mixture ratio [-], interpreted by `combustor.mixture_type` (O/F by
+default).)doc";
 
-Returns:
-    Stations and performance of every case, mixture ratio and
-    pressure.
+static const char *__doc_Goddard_RocketPoint_nozzle = R"doc(Nozzle chemistry and freezing station.)doc";
+
+static const char *__doc_Goddard_RocketPoint_oxidizer = R"doc(Oxidizer stream; see `fuel`.)doc";
+
+static const char *__doc_Goddard_RocketResult =
+R"doc(Result of one `RocketPoint`.
+
+For an infinite-area chamber `chamber`, `stagnation` and
+`combustion_end` are the same state: the gas is at rest in the whole
+chamber. For a finite-area chamber `chamber` is the injector face,
+`combustion_end` the end of the constant-area section and `stagnation`
+the state "inf" the nozzle expands from.
+
+Every station carries the stagnation enthalpy of the point in
+`thermo.stagnation_enthalpy`. A station that was not solved has a
+failed status and NaN values; the stations downstream of it are
+`NOT_COMPUTED`.)doc";
+
+static const char *__doc_Goddard_RocketResult_chamber = R"doc(Chamber station; the injector face of a finite-area chamber.)doc";
+
+static const char *__doc_Goddard_RocketResult_combustion_end = R"doc(End of the combustion chamber.)doc";
+
+static const char *__doc_Goddard_RocketResult_contraction_ratio =
+R"doc(Contraction ratio A_c/A_t [-]: solved for a `FINITE_MASS_FLUX`
+chamber, infinite for an infinite-area one. NaN when the chamber was
+not solved.)doc";
+
+static const char *__doc_Goddard_RocketResult_exits = R"doc(One station per `point.expansion_ratios` entry, in order.)doc";
+
+static const char *__doc_Goddard_RocketResult_mass_flux =
+R"doc(Mass flux through the chamber, mdot/A_c [kg/(m^2 s)]: derived for a
+`FINITE_CONTRACTION_RATIO` chamber, 0 for an infinite-area one. NaN
+when the chamber was not solved.)doc";
+
+static const char *__doc_Goddard_RocketResult_performance = R"doc(Performance at each exit, indexed like `exits`.)doc";
+
+static const char *__doc_Goddard_RocketResult_point = R"doc(The point that was solved.)doc";
+
+static const char *__doc_Goddard_RocketResult_stagnation = R"doc(Stagnation state the nozzle expands from.)doc";
+
+static const char *__doc_Goddard_RocketResult_status =
+R"doc(Ok when every station was solved; otherwise the status of the first
+that was not.)doc";
+
+static const char *__doc_Goddard_RocketResult_throat = R"doc(Sonic throat.)doc";
+
+static const char *__doc_Goddard_RocketSolver =
+R"doc(CEA-style rocket problem: combustion followed by an isentropic nozzle
+expansion, for a list of operating points.
+
+The product `Gas` fixes the species of the problem: its gas-phase
+species and its candidate condensed species are the possible
+combustion products.
+
+Reactants are given in one of two ways: - with a reactant file, the
+fuel and oxidizer compositions name species of that file (e.g.
+`H2(L)`, `RP-1`), which need not be product species; element amounts
+and enthalpies are transferred to the products by element name. -
+without one, the compositions name product species and are blended in
+the product phase.
+
+Every point is checked before any is solved, so a bad argument raises
+before the sweep starts. A point whose solve fails is reported in its
+result and the sweep goes on.)doc";
+
+static const char *__doc_Goddard_RocketSolver_RocketSolver =
+R"doc(Parameter ``products``:
+    Product gas. The solver works on its own copy.
+
+Parameter ``reactant_file``:
+    Cantera YAML file holding the reactant species, e.g.
+    `nasa9_reactants.yaml`; empty when the reactants are product
+    species.)doc";
+
+static const char *__doc_Goddard_RocketSolver_check_implemented = R"doc(Reject the solver-level options that are not implemented.)doc";
+
+static const char *__doc_Goddard_RocketSolver_combust =
+R"doc(Combustion state of a point: a one-entry array whose status reports a
+failed solve.)doc";
+
+static const char *__doc_Goddard_RocketSolver_include_ionized_species = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
+
+static const char *__doc_Goddard_RocketSolver_include_transport = R"doc(Not implemented: `solve` raises `NotImplementedError` if true.)doc";
+
+static const char *__doc_Goddard_RocketSolver_m_combustor =
+R"doc(Combustor of the most recent point, and the reactant streams it was
+built for.)doc";
+
+static const char *__doc_Goddard_RocketSolver_m_combustor_fuel = R"doc()doc";
+
+static const char *__doc_Goddard_RocketSolver_m_combustor_oxidizer = R"doc()doc";
+
+static const char *__doc_Goddard_RocketSolver_m_nozzle = R"doc(Nozzle of the most recent point, and the options it was built with.)doc";
+
+static const char *__doc_Goddard_RocketSolver_m_nozzle_options = R"doc()doc";
+
+static const char *__doc_Goddard_RocketSolver_m_products = R"doc()doc";
+
+static const char *__doc_Goddard_RocketSolver_m_reactant_file = R"doc()doc";
+
+static const char *__doc_Goddard_RocketSolver_m_reactant_phases =
+R"doc(Reactant phases of `m_reactant_file`, by species list; built on first
+use.)doc";
+
+static const char *__doc_Goddard_RocketSolver_nozzle_for =
+R"doc(Nozzle with the given options, reusing the one of the previous point
+when they match.)doc";
+
+static const char *__doc_Goddard_RocketSolver_reactant_gas =
+R"doc(Reactant stream `Gas` of `m_reactant_file` at the state of `stream`.)doc";
+
+static const char *__doc_Goddard_RocketSolver_reactant_phase =
+R"doc(Phase of `m_reactant_file` holding the species of `composition`.
 
 Throws:
-    NotImplementedError if an unimplemented option is set
-    (`include_transport`, `include_ionized_species`, `trace_cutoff`,
-    `mixtures`, `phi_ratios`, `fuel_weight_percentages`).)doc";
+    std::invalid_argument if a species is not in the reactant file.)doc";
 
-static const char *__doc_Goddard_RocketProblem_thermo = R"doc()doc";
+static const char *__doc_Goddard_RocketSolver_solve =
+R"doc(Solve one point.
 
-static const char *__doc_Goddard_RocketProblem_trace_cutoff = R"doc(Not implemented: `solve` raises `NotImplementedError` if non-zero.)doc";
+Throws:
+    std::invalid_argument for an invalid point (see `validate`).
 
-static const char *__doc_Goddard_RocketStation =
-R"doc(One station of one operating point of a rocket problem.
+Throws:
+    NotImplementedError for an unimplemented option.)doc";
 
-When the station was not solved (`status.ok()` is false) `thermo` is
-NaN.)doc";
+static const char *__doc_Goddard_RocketSolver_solve_2 =
+R"doc(Solve a list of points.
 
-static const char *__doc_Goddard_RocketStation_area_ratio =
-R"doc(A/A_t [-]: 0 for CHAMBER and STAGNATION, A_c/A_t for COMBUSTION_END, 1
-for THROAT, Ae/At for EXIT (also for pressure-ratio exits). NaN when
-the station failed (`status` not ok).)doc";
+Returns:
+    One result per point, in the order of `points`.
 
-static const char *__doc_Goddard_RocketStation_case_name = R"doc(Name of the case the station belongs to.)doc";
+Throws:
+    std::invalid_argument if any point is invalid, before anything is
+    solved.
 
-static const char *__doc_Goddard_RocketStation_expansion_index =
-R"doc(Index into the case's `NozzleOptions::expansion_ratios` [-]; only
-meaningful for EXIT.)doc";
+Throws:
+    NotImplementedError for an unimplemented option.)doc";
 
-static const char *__doc_Goddard_RocketStation_of_index =
-R"doc(Index into the case's mixture ratios (`ChemicalParameters::OF_ratios`)
-[-].)doc";
+static const char *__doc_Goddard_RocketSolver_solve_validated = R"doc(Solve a point that `validate` accepted.)doc";
 
-static const char *__doc_Goddard_RocketStation_pressure_index = R"doc(Index into the case's pressures (`CombustorOptions::pressures`) [-].)doc";
+static const char *__doc_Goddard_RocketSolver_trace_cutoff = R"doc(Not implemented: `solve` raises `NotImplementedError` if non-zero.)doc";
 
-static const char *__doc_Goddard_RocketStation_status =
-R"doc(Outcome of the solve that produced the station. A station downstream
-of a failed one (the throat and exits of a failed chamber, for
-example) has reason `NOT_COMPUTED`.)doc";
+static const char *__doc_Goddard_RocketSolver_validate =
+R"doc(Check a point without solving it.
 
-static const char *__doc_Goddard_RocketStation_thermo =
-R"doc(Mixture state of the station. Its `stagnation_enthalpy` [J/kg] is the
-enthalpy of the stagnation state of the station's operating point (see
-`RocketProblemResults::stagnation`), which the adiabatic expansion
-conserves.)doc";
+Throws:
+    std::invalid_argument for a reactant without composition or with a
+    nonpositive temperature or pressure, a nonpositive chamber
+    pressure, a mixture ratio out of range, an invalid finite-area
+    chamber, or an exit station or freezing station the nozzle
+    rejects.
 
-static const char *__doc_Goddard_RocketStation_type = R"doc(Kind of station.)doc";
+Throws:
+    NotImplementedError for an unimplemented option, such as
+    `PHI_RATIO` with a reactant file or a finite-area chamber frozen
+    at the combustion end.)doc";
 
 static const char *__doc_Goddard_ShockResult =
 R"doc(Jump conditions across one normal shock, in the frame of that shock.
@@ -4381,18 +4130,6 @@ for oblique shock searches, and the corrector residuals and point
 validity checks of the MoC unit processes.)doc";
 
 static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc(Maximum number of iterations [-].)doc";
-
-static const char *__doc_Goddard_StationType = R"doc(Kind of a station of a rocket problem.)doc";
-
-static const char *__doc_Goddard_StationType_CHAMBER = R"doc(Chamber state. For a finite-area combustor, the injector face.)doc";
-
-static const char *__doc_Goddard_StationType_COMBUSTION_END = R"doc(Finite-area combustor only: end of the constant-area chamber.)doc";
-
-static const char *__doc_Goddard_StationType_EXIT = R"doc(Nozzle exit station, one per expansion ratio.)doc";
-
-static const char *__doc_Goddard_StationType_STAGNATION = R"doc(Finite-area combustor only: stagnation state "inf" at P_inf.)doc";
-
-static const char *__doc_Goddard_StationType_THROAT = R"doc(Sonic throat.)doc";
 
 static const char *__doc_Goddard_ThermoArray =
 R"doc(Array of thermodynamic states with up to three dimensions, for
@@ -5224,6 +4961,34 @@ Returns:
 
 Throws:
     std::invalid_argument if gamma <= 1)doc";
+
+static const char *__doc_Goddard_rocket_performance =
+R"doc(Rocket performance from the stagnation, throat and exit states.
+
+c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit
+velocity follows from the enthalpy drop h_0 - h_e, the area ratio from
+mass conservation, and CF = u_e / c*.
+
+Parameter ``stagnation``:
+    Stagnation state the nozzle expands from (the chamber of an
+    infinite-area combustor).
+
+Parameter ``throat``:
+    Throat state.
+
+Parameter ``exit``:
+    Exit state.)doc";
+
+static const char *__doc_Goddard_rocket_report =
+R"doc(CEA-style text report of one result.
+
+A point whose chamber or throat was not solved is reported as a short
+notice with the failure; one with failed exits keeps its table, with
+NaN in the failed columns and the failures listed below it.)doc";
+
+static const char *__doc_Goddard_rocket_report_2 =
+R"doc(CEA-style text report of a list of results, one page per result, in
+order.)doc";
 
 static const char *__doc_Goddard_summarize_front_shear =
 R"doc(Reduce a pass-diagnostics history to the front-shear summary above.

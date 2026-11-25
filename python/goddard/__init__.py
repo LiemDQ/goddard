@@ -11,7 +11,6 @@ from goddard._core import (
     CompositionModel,
     GasChemistry,
     ExpansionType,
-    StationType,
     # MoC enums
     MocFlowKind,
     MocMode,
@@ -28,12 +27,13 @@ from goddard._core import (
     NozzleStation,
     NozzleResults,
     FiniteAreaChamber,
-    RocketCaseParameters,
-    ChemicalParameters,
     ThermodynamicState,
     PhaseSpecification,
-    RocketStation,
     RocketPerformance,
+    RocketPoint,
+    RocketResult,
+    rocket_performance,
+    rocket_report,
     ExpansionProperties,
     EquilibriumDerivatives,
     EquilibriumOptions,
@@ -50,8 +50,6 @@ from goddard._core import (
     MocCrossings,
     ThrustCoefficient,
     # Classes
-    RocketProblem,
-    RocketProblemResults,
     ThermoArray,
     BaseCombustor,
     Combustor,
@@ -102,9 +100,6 @@ from goddard._core import (
 )
 
 from goddard.convenience import (
-    supersonic_ratio,
-    subsonic_ratio,
-    pressure_ratio,
     infinite_area_combustor,
     finite_mass_flux_combustor,
     finite_contraction_ratio_combustor,
@@ -122,6 +117,8 @@ from goddard.convenience import (
     bezier_nozzle,
 )
 
+from goddard.rocket import RocketResults, RocketSolver
+
 from goddard import moc_diagnostics, plotting
 
 # Thermodynamic data files shipped with the package (absent in a source checkout, where the
@@ -138,7 +135,6 @@ __all__ = [
     "CompositionModel",
     "GasChemistry",
     "ExpansionType",
-    "StationType",
     "MocFlowKind",
     "MocMode",
     "MocLogLevel",
@@ -153,12 +149,15 @@ __all__ = [
     "NozzleStation",
     "NozzleResults",
     "FiniteAreaChamber",
-    "RocketCaseParameters",
-    "ChemicalParameters",
     "ThermodynamicState",
     "PhaseSpecification",
-    "RocketStation",
     "RocketPerformance",
+    "RocketPoint",
+    "RocketResult",
+    "rocket_performance",
+    "rocket_report",
+    "RocketSolver",
+    "RocketResults",
     "ExpansionProperties",
     "EquilibriumDerivatives",
     "EquilibriumOptions",
@@ -173,8 +172,6 @@ __all__ = [
     "MocFailure",
     "MocCrossings",
     "ThrustCoefficient",
-    "RocketProblem",
-    "RocketProblemResults",
     "ThermoArray",
     "BaseCombustor",
     "Combustor",
@@ -215,9 +212,6 @@ __all__ = [
     "chapman_jouguet_detonation",
     "detonation",
     "reflected_detonation",
-    "supersonic_ratio",
-    "subsonic_ratio",
-    "pressure_ratio",
     "infinite_area_combustor",
     "finite_mass_flux_combustor",
     "finite_contraction_ratio_combustor",

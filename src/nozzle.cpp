@@ -140,20 +140,22 @@ Nozzle::Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options)
     set_station_chemistry(0);
 }
 
-void Nozzle::validate_freezing_station(size_t num_stations) const {
+void Nozzle::validate_stations(ExpansionType expansion_type, const std::vector<double>& ratios) const {
+    validate(m_opts, expansion_type, ratios);
+}
+
+void Nozzle::validate(const NozzleOptions& options, ExpansionType expansion_type,
+                      const std::vector<double>& ratios) {
+    validate_nozzle_options(options);
     // Stations 0 and 1 are the chamber and the throat.
-    const size_t last_station = num_stations + 1;
-    if (m_opts.chemistry == GasChemistry::FROZEN
-        && static_cast<size_t>(m_opts.frozen_NFZ) > last_station) {
+    const size_t last_station = ratios.size() + 1;
+    if (options.chemistry == GasChemistry::FROZEN
+        && static_cast<size_t>(options.frozen_NFZ) > last_station) {
         throw std::invalid_argument(std::format(
             "Nozzle: frozen_NFZ = {} lies beyond the last station ({}), so the flow would never "
             "freeze. Station 0 is the chamber, 1 the throat and 2 onward the expansion stations.",
-            m_opts.frozen_NFZ, last_station));
+            options.frozen_NFZ, last_station));
     }
-}
-
-void Nozzle::validate_stations(ExpansionType expansion_type, const std::vector<double>& ratios) const {
-    validate_freezing_station(ratios.size());
     for (double ratio : ratios) {
         switch (expansion_type) {
             case ExpansionType::SUPERSONIC_AREA_RATIO:
@@ -881,7 +883,7 @@ double Nozzle::throat_area_per_mdot(const ThroatCondition& throat) {
         / (throat.thermo.pressure * throat.velocity * throat.thermo.molecular_weight);
 }
 
-void Nozzle::throw_invalid_expansion_ratio(double expansion, double min) const {
+void Nozzle::throw_invalid_expansion_ratio(double expansion, double min) {
     throw std::invalid_argument(std::format("Specified expansion ratio must be greater than {}. Actual value: {:.6g}\n", min, expansion));
 }
 

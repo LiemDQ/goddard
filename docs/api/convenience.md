@@ -10,12 +10,6 @@ Factory functions and helpers that simplify common workflows.
 
 ::: goddard.condensed_species
 
-::: goddard.supersonic_ratio
-
-::: goddard.subsonic_ratio
-
-::: goddard.pressure_ratio
-
 ::: goddard.infinite_area_combustor
 
 ::: goddard.finite_mass_flux_combustor

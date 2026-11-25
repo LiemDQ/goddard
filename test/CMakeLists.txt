@@ -11,6 +11,7 @@ add_executable(
     test_equilibrium.cpp
     test_thermoarray.cpp
     test_combustor.cpp
+    test_rocket.cpp
     test_cea_loader.cpp
     test_cea_integration.cpp
     cea_loader.cpp
@@ -64,7 +65,7 @@ set(GODDARD_SLOW_TEST_SUITES
     "BerylliumNozzleTests.*:BerylliumRocketTests.*:CondensedGasTests.*:CondensedGuardTests.*"
     ":CondensedSetTests.*:CondensedStateTests.*:DewPointTests.*:GasOnlyEquilibriumTests.*"
     ":MultiphaseHPTests.*:MultiphaseTPTests.*:PropellantNozzleTests.*:PropellantTests.*"
-    ":RocketProblemCondensedTests.*")
+    ":RocketSolverCondensedTests.*")
 string(JOIN "" GODDARD_SLOW_TEST_FILTER ${GODDARD_SLOW_TEST_SUITES})
 gtest_discover_tests(goddardTests
     TEST_PREFIX "goddard"

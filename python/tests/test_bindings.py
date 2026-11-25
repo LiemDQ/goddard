@@ -99,7 +99,7 @@ def test_thermo_array_shape_properties(h2o2_yaml):
     gas = Gas(h2o2_yaml, phase_name="ohmech")
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
     states = combustor.solve(300.0, 300.0, np.array([1e6, 2e6]), np.array([6.0]),
-                                       goddard.infinite_area_combustor([1e6, 2e6]))
+                                       goddard.infinite_area_combustor())
     assert states.size == 2
     assert states.ndim == 2
     assert list(states.shape) == [1, 2]

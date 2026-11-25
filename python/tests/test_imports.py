@@ -23,28 +23,18 @@ def test_import_enums():
     assert ExpansionType.PRESSURE_RATIO is not None
 
 
-def test_import_station_type():
-    from goddard import StationType
-
-    assert StationType.CHAMBER is not None
-    assert StationType.STAGNATION is not None
-    assert StationType.COMBUSTION_END is not None
-    assert StationType.THROAT is not None
-    assert StationType.EXIT is not None
-
-
 def test_import_structs():
     from goddard import (
         CombustorOptions, NozzleOptions, ThroatCondition,
-        NozzleStation, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
-        ChemicalParameters, ThermodynamicState, RocketPerformance,
-        ExpansionProperties, EquilibriumDerivatives,
+        NozzleStation, NozzleResults, FiniteAreaChamber, RocketPoint, RocketResult,
+        ThermodynamicState, RocketPerformance, ExpansionProperties, EquilibriumDerivatives,
+        CompositionModel,
     )
 
 
 def test_import_classes():
     from goddard import (
-        RocketProblem, RocketProblemResults, ThermoArray,
+        RocketSolver, RocketResults, ThermoArray,
         Combustor, Nozzle, Gas, MocNozzle, ShockSolver
     )
 
@@ -119,7 +109,7 @@ def test_import_errors():
 
 def test_import_convenience():
     from goddard import (
-        supersonic_ratio, subsonic_ratio, pressure_ratio,
+        rocket_performance, rocket_report,
         infinite_area_combustor, finite_mass_flux_combustor,
         finite_contraction_ratio_combustor,
         equilibrium_nozzle, frozen_nozzle, from_cantera,
@@ -131,9 +121,7 @@ def test_combustor_options_construction():
 
     opts = CombustorOptions()
     opts.type = CombustorType.INFINITE_AREA
-    opts.pressures = [1e6, 2e6]
     assert opts.type == CombustorType.INFINITE_AREA
-    assert opts.pressures == [1e6, 2e6]
 
 
 def test_combustor_options_process():
@@ -147,14 +135,11 @@ def test_combustor_options_process():
 
 
 def test_nozzle_options_construction():
-    from goddard import NozzleOptions, GasChemistry, ExpansionType
+    from goddard import NozzleOptions, GasChemistry
 
     opts = NozzleOptions()
     opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
-    opts.expansion_ratios = [3.0, 5.0, 10.0]
     assert opts.chemistry == GasChemistry.EQUILIBRIUM
-    assert opts.expansion_ratios == [3.0, 5.0, 10.0]
 
 
 def test_nozzle_helpers_always_return_options():
@@ -162,24 +147,26 @@ def test_nozzle_helpers_always_return_options():
     assert isinstance(equilibrium_nozzle(), NozzleOptions)
     assert equilibrium_nozzle().chemistry == GasChemistry.EQUILIBRIUM
     assert frozen_nozzle().chemistry == GasChemistry.FROZEN
-    assert frozen_nozzle(5.0, frozen_NFZ=1).frozen_NFZ == 1
+    assert frozen_nozzle(frozen_NFZ=1).frozen_NFZ == 1
 
 
-def test_convenience_supersonic_ratio():
-    from goddard import supersonic_ratio, ExpansionType, GasChemistry
+def test_rocket_point_construction():
+    from goddard import RocketPoint, ExpansionType
 
-    opts = supersonic_ratio(3.0, 5.0, 10.0)
-    assert opts.expansion_type == ExpansionType.SUPERSONIC_AREA_RATIO
-    assert opts.chemistry == GasChemistry.EQUILIBRIUM
-    assert opts.expansion_ratios == [3.0, 5.0, 10.0]
+    point = RocketPoint(mixture_ratio=6.0, chamber_pressure=1e6, expansion_ratios=[3.0, 5.0, 10.0],
+                        label="demo")
+    assert point.expansion_type == ExpansionType.SUPERSONIC_AREA_RATIO
+    assert point.mixture_ratio == 6.0
+    assert point.chamber_pressure == 1e6
+    assert point.expansion_ratios == [3.0, 5.0, 10.0]
+    assert point.label == "demo"
 
 
 def test_convenience_combustor():
     from goddard import infinite_area_combustor, CombustorType
 
-    opts = infinite_area_combustor([1e6])
+    opts = infinite_area_combustor()
     assert opts.type == CombustorType.INFINITE_AREA
-    assert opts.pressures == [1e6]
 
 
 def test_import_condensed_api():

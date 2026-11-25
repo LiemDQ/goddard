@@ -11,7 +11,7 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/moc_thermo.hpp"
 #include "goddard/nozzle.hpp"
-#include "goddard/problem.hpp"
+#include "goddard/rocket.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/shocks.hpp"
 #include "goddard/thermoarray.hpp"
@@ -180,7 +180,6 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     Gas nozzle_gas = products;
     NozzleOptions options;
     options.chemistry = GasChemistry::EQUILIBRIUM;
-    options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
     // A throat that needed more than five iterations would have thrown a ConvergenceError.
@@ -223,7 +222,6 @@ TEST_F(PropellantNozzleTests, FrozenExpansionHoldsTheCondensedAmounts) {
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;   // equilibrium up to the throat, frozen beyond it
-    options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
     // Area ratio 20 would drive the frozen temperature below the melting point of alumina, which
@@ -247,7 +245,6 @@ TEST_F(PropellantNozzleTests, FrozenExpansionStopsWhereTheAluminaWouldFreeze) {
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;
-    options.expansion_type = ExpansionType::PRESSURE_RATIO;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
     // Far enough to drive the frozen temperature below the 2327 K melting point of alumina,
@@ -266,7 +263,6 @@ TEST_F(PropellantNozzleTests, OneFailedStationLeavesTheOtherStationsValid) {
     NozzleOptions options;
     options.chemistry = GasChemistry::FROZEN;
     options.frozen_NFZ = 1;
-    options.expansion_type = ExpansionType::PRESSURE_RATIO;
 
     // The pressure ratio of 1000 drives the frozen temperature below the melting point of
     // alumina (see the previous test); the stations around it do not.
@@ -354,7 +350,6 @@ TEST_F(BerylliumNozzleTests, PressureRatioStationFollowsTheSolidPolymorph) {
     Gas nozzle_gas = products;
     NozzleOptions options;
     options.chemistry = GasChemistry::EQUILIBRIUM;
-    options.expansion_type = ExpansionType::PRESSURE_RATIO;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
     NozzleResults results = nozzle.solve(ExpansionType::PRESSURE_RATIO, 10.0);
@@ -369,22 +364,16 @@ TEST_F(BerylliumNozzleTests, PressureRatioStationFollowsTheSolidPolymorph) {
 }
 
 
-// ---- Rocket problem results ----
+// ---- Rocket solver results ----
 
-TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecularWeight) {
+TEST(RocketSolverCondensedTests, ReportsCondensedProductsAndTheMixtureMolecularWeight) {
     setup_defaults();
 
-    ChemicalParameters chem_params;
-    chem_params.thermo_file = NASA9_GAS;
-    for (const std::string& name : make_products({"N", "H", "Cl", "O", "Al"}).species_names()) {
-        chem_params.species.insert(name);
-    }
-    chem_params.reactant_file = NASA9_REACTANTS;
-    chem_params.condensed_file = NASA9_CONDENSED;
-    chem_params.all_condensed_species = true;
+    Gas products = make_products({"N", "H", "Cl", "O", "Al"});
+    products.add_all_condensed_species(NASA9_CONDENSED);
 
-    // The reactant composition of `ChemicalParameters` is a mole-fraction map; the propellant is
-    // specified by mass, so convert it through the reactant phase itself.
+    // A reactant composition is a mole-fraction map; the propellant is specified by mass, so
+    // convert it through the reactant phase itself.
     Gas propellant = make_propellant_reactants();
     Composition composition;
     {
@@ -394,27 +383,26 @@ TEST(RocketProblemCondensedTests, ReportsCondensedProductsAndTheMixtureMolecular
             composition[names[i]] = fractions[i];
         }
     }
-    chem_params.fuel_state = PhaseSpecification(298.15, Cantera::OneAtm, composition);
-    chem_params.oxidizer_state = chem_params.fuel_state;
-    chem_params.OF_ratios = {1.0};
 
-    RocketCaseParameters case_params;
-    case_params.name = "ap_al";
-    case_params.combustor_options.mixture_type = MixtureRatioType::FUEL_FRAC;
-    case_params.combustor_options.pressures = {70.0 * BAR};
-    case_params.nozzle_options.chemistry = GasChemistry::EQUILIBRIUM;
-    case_params.nozzle_options.expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
-    case_params.nozzle_options.expansion_ratios = {5.0};
+    RocketPoint point;
+    point.label = "ap_al";
+    point.fuel = PhaseSpecification(298.15, Cantera::OneAtm, composition);
+    point.oxidizer = point.fuel;
+    point.mixture_ratio = 1.0;
+    point.combustor.mixture_type = MixtureRatioType::FUEL_FRAC;
+    point.chamber_pressure = 70.0 * BAR;
+    point.nozzle.chemistry = GasChemistry::EQUILIBRIUM;
+    point.expansion_ratios = {5.0};
 
-    RocketProblem problem(chem_params, {case_params}, "gas");
-    RocketProblemResults results = problem.solve();
+    RocketSolver solver(products, NASA9_REACTANTS);
+    const RocketResult result = solver.solve(point);
 
-    const RocketStation& chamber = results.chamber(0, 0, "ap_al");
-    EXPECT_LT(chamber.thermo.gas_mass_fraction, 1.0);
-    EXPECT_GT(chamber.thermo.gas_mass_fraction, 0.0);
-    EXPECT_LT(chamber.thermo.mixture_molecular_weight, chamber.thermo.molecular_weight);
+    ASSERT_TRUE(result.status.ok()) << result.status.describe();
+    EXPECT_LT(result.chamber.thermo.gas_mass_fraction, 1.0);
+    EXPECT_GT(result.chamber.thermo.gas_mass_fraction, 0.0);
+    EXPECT_LT(result.chamber.thermo.mixture_molecular_weight, result.chamber.thermo.molecular_weight);
 
-    const std::string report = results.report("ap_al");
+    const std::string report = rocket_report(result);
     EXPECT_NE(report.find("MW, MOL WT"), std::string::npos) << report;
     EXPECT_NE(report.find("AL2O3(L)"), std::string::npos) << report;
 }

@@ -48,21 +48,12 @@ struct CombustorOptions {
     CombustorType type = CombustorType::INFINITE_AREA;
     /// How the mixture ratios passed to the solver are interpreted.
     MixtureRatioType mixture_type = MixtureRatioType::OF_RATIO;
-    /**
-     * Pressures [Pa]. For `CombustionProcess::ISOBARIC` these are the chamber pressures. For
-     * `CombustionProcess::ISOCHORIC` they are the initial pressures of the unburnt reactants;
-     * the chamber pressure is the result of the constant-volume combustion. Read by
-     * `RocketProblem`; the `Combustor::solve` overloads take their pressures as an argument.
-     *
-     * In Python, assign a whole list: item assignment and append act on a copy.
-     */
-    std::vector<double> pressures;
     /** Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)]. */
     double mass_flux = 0.0;
     /** Contraction ratio A_c/A_t [-] of a `FINITE_CONTRACTION_RATIO` chamber. */
     double contraction_ratio = 0.0;
     /**
-     * Combustion constraint. With `ISOCHORIC` in a `RocketProblem`, the constant-volume
+     * Combustion constraint. With `ISOCHORIC` in a `RocketSolver`, the constant-volume
      * equilibrium state is used as the stagnation state of a steady isentropic nozzle
      * expansion, so the reported performance is that idealization. It is not a
      * Chapman-Jouguet detonation model.
@@ -91,6 +82,18 @@ class BaseCombustor {
     /** Names of the gas-phase product species, in phase order. */
     inline std::vector<std::string> get_combustion_species() {return m_gas.thermo()->speciesNames();}
 
+    /**
+     * Check that the combustor options describe a supported combustor.
+     *
+     * The combustor itself is the same for every `CombustorType`: for `FINITE_MASS_FLUX` and
+     * `FINITE_CONTRACTION_RATIO` it produces the injector-face state, and the finite-area chamber
+     * is solved afterwards by `Nozzle::solve_finite_area_chamber`.
+     *
+     * @throws std::invalid_argument for a finite-area type with `contraction_ratio` <= 1 or
+     * `mass_flux` <= 0, or combined with `CombustionProcess::ISOCHORIC`.
+     */
+    static void validate_options(const CombustorOptions& options);
+
     protected:
     mutable Gas m_gas;
 
@@ -118,17 +121,6 @@ class BaseCombustor {
      */
     ThermoArray reactant_states(const std::vector<long>& shape) const;
 
-    /**
-     * Check that the combustor options describe a supported combustor.
-     *
-     * The combustor itself is the same for every `CombustorType`: for `FINITE_MASS_FLUX` and
-     * `FINITE_CONTRACTION_RATIO` it produces the injector-face state, and the finite-area chamber
-     * is solved afterwards by `Nozzle::solve_finite_area_chamber`.
-     *
-     * @throws std::invalid_argument for a finite-area type with `contraction_ratio` <= 1 or
-     * `mass_flux` <= 0, or combined with `CombustionProcess::ISOCHORIC`.
-     */
-    static void validate_options(const CombustorOptions& options);
 
     /**
      * Reject an empty input grid before any entry of it is read.

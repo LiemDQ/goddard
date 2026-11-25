@@ -104,6 +104,7 @@ nav:
       - Gas: api/gas.md
       - Combustor: api/combustor.md
       - Nozzle: api/nozzle.md
+      - Rocket: api/rocket.md
       - Method of Characteristics: api/moc.md
       - Kinetic Nozzle: api/kinetic_nozzle.md
       - Shocks: api/shocks.md

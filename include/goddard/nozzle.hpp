@@ -32,16 +32,6 @@ struct NozzleOptions {
      * `Nozzle` rejects KINETIC (use `KineticNozzle`) and does not implement PERFECT_GAS.
      */
     GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
-    /// How `expansion_ratios` are interpreted. Read by `RocketProblem`.
-    ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
-    /**
-     * Station ratios, interpreted by `expansion_type`: area ratios A/A_t [-], or pressure ratios
-     * P_inlet/P [-] (chamber over station pressure, as CEA's `pi/p`). Read by `RocketProblem`;
-     * the `Nozzle::solve` overloads take their ratios as an argument.
-     *
-     * In Python, assign a whole list: item assignment and append act on a copy.
-     */
-    std::vector<double> expansion_ratios;
     /**
      * Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber (the default, and
      * CEA's default freezing point), 1 the throat, and 2 onward the expansion stations in the
@@ -355,6 +345,20 @@ class Nozzle {
      */
     void validate_stations(ExpansionType expansion_type, const std::vector<double>& ratios) const;
 
+    /**
+     * Check nozzle options and station arguments without a gas or a solve: what the constructor
+     * and `validate_stations` check together.
+     *
+     * @param options Nozzle options.
+     * @param expansion_type How `ratios` are interpreted.
+     * @param ratios Station ratios; see `validate_stations`.
+     * @throws std::invalid_argument for KINETIC chemistry, a negative `frozen_NFZ`, a freezing
+     * station beyond the last station, or a ratio outside its domain.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
+    static void validate(const NozzleOptions& options, ExpansionType expansion_type,
+                         const std::vector<double>& ratios);
+
     /** Isentropic exponent of the solver's gas at its current state [-]. */
     double get_gamma_s();
 
@@ -450,7 +454,7 @@ class Nozzle {
      */
     NozzleStation station_at_state(const std::vector<double>& state, int station);
 
-    void throw_invalid_expansion_ratio(double expansion_ratio, double min_ratio) const;
+    static void throw_invalid_expansion_ratio(double expansion_ratio, double min_ratio);
 
     /** Throat solve proper. @throws SolveError if it fails. */
     ThroatCondition throat_conditions_or_throw(double abstol);
@@ -465,8 +469,6 @@ class Nozzle {
      */
     std::vector<NozzleStation> solve_stations_unchecked(const ThroatCondition& throat_condition,
         ExpansionType expansion_type, const std::vector<double>& ratios);
-
-    void validate_freezing_station(size_t num_stations) const;
 
     /** Inlet station, throat and overall status shared by the `solve` overloads. */
     NozzleResults solve_inlet_and_throat();

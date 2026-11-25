@@ -34,8 +34,7 @@ set(GODDARD_PUBLIC_HEADERS
     "${PROJECT_SOURCE_DIR}/include/goddard/characteristic_net.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/prandtlmeyer.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/profile.hpp"
-    "${PROJECT_SOURCE_DIR}/include/goddard/problem.hpp"
-    "${PROJECT_SOURCE_DIR}/include/goddard/rocket_results.hpp"
+    "${PROJECT_SOURCE_DIR}/include/goddard/rocket.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/shocks.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/detonations.hpp"
     "${PROJECT_SOURCE_DIR}/include/goddard/thermoarray.hpp"
@@ -108,7 +107,7 @@ nanobind_add_module(
     src/bind_enums.cpp
     src/bind_errors.cpp
     src/bind_structs.cpp
-    src/bind_problem.cpp
+    src/bind_rocket.cpp
     src/bind_thermoarray.cpp
     src/bind_combustor.cpp
     src/bind_nozzle.cpp

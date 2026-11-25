@@ -66,6 +66,15 @@ public:
     static Gas create(const std::string& infile, 
         const std::string& phase_name);
     
+    /**
+     * Create a `Gas` whose phase holds every species of an input file made of the given
+     * elements, as CEA selects products from reactants.
+     *
+     * @param infile Cantera YAML input file, e.g. `nasa9_gas.yaml`.
+     * @param name Name of the new phase.
+     * @param elements Element symbols, e.g. `{"H", "O"}`.
+     * @throws std::invalid_argument if the phase cannot be built from the file.
+     */
     static Gas create_from_elements(const std::string& infile,
         const std::string& name, 
         const std::vector<std::string>& elements);

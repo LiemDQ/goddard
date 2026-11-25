@@ -84,6 +84,28 @@ void bind_gas_properties(nb::module_& m) {
              "condensed_species"_a = std::unordered_set<std::string>{},
              "all_condensed"_a = false,
              DOC(Goddard, Gas, Gas, 5))
+        // Element-based product selection: every species of the file made of these elements.
+        // The condensed arguments work as in the constructor.
+        .def_static("from_elements",
+             [](const std::string& yaml_file, const std::string& phase_name,
+                const std::vector<std::string>& elements, const std::string& condensed_file,
+                const std::unordered_set<std::string>& condensed_species, bool all_condensed) {
+                 Goddard::Gas gas = Goddard::Gas::create_from_elements(yaml_file, phase_name, elements);
+                 if (!condensed_file.empty()) {
+                     if (all_condensed) {
+                         gas.add_all_condensed_species(condensed_file);
+                     } else {
+                         std::vector<std::string> names(condensed_species.begin(),
+                                                        condensed_species.end());
+                         std::sort(names.begin(), names.end());
+                         gas.add_condensed_species(condensed_file, names);
+                     }
+                 }
+                 return gas;
+             },
+             "yaml_file"_a, "phase_name"_a, "elements"_a, "condensed_file"_a = "",
+             "condensed_species"_a = std::unordered_set<std::string>{}, "all_condensed"_a = false,
+             DOC(Goddard, Gas, create_from_elements))
          .def("clone", &Goddard::Gas::clone, DOC(Goddard, Gas, clone))
         // ---- Read-only thermodynamic properties ----
 

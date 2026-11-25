@@ -10,7 +10,7 @@ from goddard import (
     ConvergenceError, FailureReason, Gas, GasChemistry, SolveError, SolveStatus,
 )
 from conftest import find_data_dir
-from test_rocket_results import build_h2o2_problem
+from test_rocket_results import h2o2_point, h2o2_solver
 
 BAR = 1e5  # Pa
 
@@ -132,7 +132,7 @@ def test_unknown_species_in_a_combustor_is_a_value_error(h2o2_yaml):
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"XX": 1.0})
     with pytest.raises(ValueError):
         combustor.solve(300.0, 300.0, np.array([10 * BAR]), np.array([6.0]),
-                        goddard.infinite_area_combustor([10 * BAR]))
+                        goddard.infinite_area_combustor())
 
 
 def test_rejected_state_is_a_solve_error_not_a_backend_error(h2o2_yaml):
@@ -323,7 +323,7 @@ def combustion_states(h2o2_yaml, fuel_temperature):
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
     pressures = np.array([10 * BAR, 20 * BAR])
     return combustor.solve(fuel_temperature, 300.0, pressures, np.array([4.0, 6.0]),
-                           goddard.infinite_area_combustor(list(pressures)))
+                           goddard.infinite_area_combustor())
 
 
 def test_thermoarray_without_failures(h2o2_yaml):
@@ -356,7 +356,7 @@ def test_thermoarray_reports_failed_operating_points(h2o2_yaml):
 def test_combustor_rejects_nonpositive_temperature_and_pressure(h2o2_yaml):
     gas = Gas(h2o2_yaml, phase_name="ohmech")
     combustor = goddard.Combustor(gas, {"H2": 1.0}, {"O2": 1.0})
-    options = goddard.infinite_area_combustor([10 * BAR])
+    options = goddard.infinite_area_combustor()
     with pytest.raises(ValueError):
         combustor.solve(0.0, 300.0, np.array([10 * BAR]), np.array([6.0]), options)
     with pytest.raises(ValueError):
@@ -364,77 +364,73 @@ def test_combustor_rejects_nonpositive_temperature_and_pressure(h2o2_yaml):
 
 
 # ---------------------------------------------------------------------------
-# RocketProblem
+# RocketSolver
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def partial_failure_results():
     """At an area ratio of 1e5 the equilibrium exit cannot be solved; the exit at 10 can."""
-    return build_h2o2_problem("sweep", [70 * BAR], [10.0, 1e5], of_ratios=(4.0, 6.0)).solve()
+    points = [h2o2_point(70 * BAR, [10.0, 1e5], mixture_ratio=mixture_ratio, label="sweep")
+              for mixture_ratio in (4.0, 6.0)]
+    return h2o2_solver().solve(points)
 
 
 def test_failed_exit_does_not_abort_the_sweep(partial_failure_results):
     results = partial_failure_results
-    failed = results.failed_stations("sweep")
-    assert len(failed) == 2
-    assert {station.expansion_index for station in failed} == {1}
-    assert {station.of_index for station in failed} == {0, 1}
-    for station in failed:
-        assert station.type == goddard.StationType.EXIT
-        assert station.status.reason == FailureReason.THERMO_FAILURE
-        assert math.isnan(station.thermo.temperature)
-    assert len(results.failed_stations()) == 2
-    assert len(results.stations) == 8
+    assert results.failed() == [0, 1]
+    assert len(results) == 2
 
     assert results.status.reason == FailureReason.THERMO_FAILURE
     assert not results.status.ok
-    for of_index in range(2):
-        assert results.chamber(of_index, case_name="sweep").status.ok
-        assert results.throat(of_index, case_name="sweep").status.ok
-        exits = results.exits(of_index, case_name="sweep")
-        assert exits[0].status.ok and not exits[1].status.ok
+    for result in results:
+        assert not result.status.ok
+        assert result.chamber.status.ok
+        assert result.throat.status.ok
+        assert len(result.exits) == 2
+        assert result.exits[0].status.ok and not result.exits[1].status.ok
+        assert result.exits[1].status.reason == FailureReason.THERMO_FAILURE
+        assert math.isnan(result.exits[1].thermo.temperature)
+        assert math.isnan(result.exits[1].area_ratio)
 
 
 def test_performance_of_failed_exit_is_nan(partial_failure_results):
-    results = partial_failure_results
-    for of_index in range(2):
-        good = results.performance(of_index, exit_index=0, case_name="sweep")
+    for result in partial_failure_results:
+        good = result.performance[0]
         assert good.status.ok and good.isp > 2000.0
-        bad = results.performance(of_index, exit_index=1, case_name="sweep")
+        bad = result.performance[1]
         assert bad.status.reason == FailureReason.THERMO_FAILURE
         for name in ("isp", "ivac", "CF", "cstar", "mach_number", "pressure_ratio", "area_ratio"):
             assert math.isnan(getattr(bad, name)), name
 
+    ivac = partial_failure_results.performance("ivac")
+    assert np.isfinite(ivac[:, 0]).all() and np.isnan(ivac[:, 1]).all()
+
 
 def test_report_marks_failed_stations(partial_failure_results):
-    report = partial_failure_results.report("sweep")
+    report = partial_failure_results[0].report()
     assert "STATIONS NOT SOLVED (NaN ABOVE)" in report
     assert "OPERATING POINT NOT SOLVED" not in report
 
 
-def test_rocket_problem_argument_errors(h2o2_yaml):
-    chem = goddard.ChemicalParameters()
-    chem.thermo_file = h2o2_yaml
-    chem.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
-    chem.fuel_state = goddard.PhaseSpecification(300.0, 70 * BAR, "H2:1")
-    chem.oxidizer_state = goddard.PhaseSpecification(300.0, 70 * BAR, "O2:1")
-    chem.OF_ratios = [6.0]
+def test_rocket_solver_argument_errors():
+    solver = h2o2_solver()
+    good = h2o2_point(70 * BAR, [10.0])
 
-    def case(name):
-        params = goddard.RocketCaseParameters()
-        params.name = name
-        params.combustor_options = goddard.infinite_area_combustor([70 * BAR])
-        params.nozzle_options = goddard.equilibrium_nozzle(10.0)
-        return params
-
+    unset = goddard.RocketPoint(mixture_ratio=6.0, chamber_pressure=70 * BAR,
+                                expansion_ratios=[10.0])
     with pytest.raises(ValueError):
-        goddard.RocketProblem(chem, [case("same"), case("same")], "ohmech").solve()
-
-    unset = goddard.ChemicalParameters()
-    unset.thermo_file, unset.species, unset.OF_ratios = h2o2_yaml, chem.species, [6.0]
+        solver.solve(unset)
     with pytest.raises(ValueError):
-        goddard.RocketProblem(unset, [case("a")], "ohmech").solve()
+        solver.validate(unset)
 
-    chem.species = {"H2", "H", "O", "O2", "OH", "H2O"}
+    # Nothing is solved when a later point of a list is invalid; the message names it.
+    with pytest.raises(ValueError, match="point 1: "):
+        solver.solve([good, unset])
+
+    # A reactant species that is not a product species, with no reactant file.
+    missing_species = h2o2_point(70 * BAR, [10.0])
+    missing_species.oxidizer = goddard.PhaseSpecification(300.0, 70 * BAR, "NOT_A_SPECIES:1")
     with pytest.raises(ValueError):
-        goddard.RocketProblem(chem, [case("a")], "ohmech").solve()
+        solver.solve(missing_species)
+
+    solver.validate(good)  # does nothing

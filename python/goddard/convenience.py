@@ -17,7 +17,6 @@ from goddard._core import (
     Gas,
     GasChemistry,
     NozzleOptions,
-    ExpansionType,
     MocFlowKind,
     MocLogLevel,
     MocMode,
@@ -30,62 +29,17 @@ from goddard._core import (
 )
 
 
-def _nozzle_options(chemistry: GasChemistry, expansion_type: ExpansionType,
-                    ratios: Iterable[float], frozen_NFZ: int = 0) -> NozzleOptions:
-    return NozzleOptions(chemistry=chemistry, expansion_type=expansion_type,
-                         expansion_ratios=list(ratios), frozen_NFZ=frozen_NFZ)
-
-
-def supersonic_ratio(*ratios: float) -> NozzleOptions:
-    """Create NozzleOptions for an equilibrium supersonic area ratio expansion.
-
-    Args:
-        *ratios: Area ratios A/A_t [-].
-
-    Example:
-        supersonic_ratio(3.0, 5.0, 10.0, 15.0)
-    """
-    return _nozzle_options(GasChemistry.EQUILIBRIUM, ExpansionType.SUPERSONIC_AREA_RATIO, ratios)
-
-
-def subsonic_ratio(*ratios: float) -> NozzleOptions:
-    """Create NozzleOptions for an equilibrium subsonic area ratio expansion.
-
-    Args:
-        *ratios: Area ratios A/A_t [-].
-    """
-    return _nozzle_options(GasChemistry.EQUILIBRIUM, ExpansionType.SUBSONIC_AREA_RATIO, ratios)
-
-
-def pressure_ratio(*ratios: float) -> NozzleOptions:
-    """Create NozzleOptions for an equilibrium pressure ratio expansion.
-
-    Args:
-        *ratios: Pressure ratios P_inlet/P [-], chamber over station pressure.
-    """
-    return _nozzle_options(GasChemistry.EQUILIBRIUM, ExpansionType.PRESSURE_RATIO, ratios)
-
-
-def infinite_area_combustor(pressures: Iterable[float] | None = None,
-                            process: CombustionProcess = CombustionProcess.ISOBARIC
+def infinite_area_combustor(*, process: CombustionProcess = CombustionProcess.ISOBARIC
                             ) -> CombustorOptions:
-    """Create CombustorOptions for infinite area combustor.
+    """Create CombustorOptions for an infinite-area combustor.
 
     Args:
-        pressures: Pressures [Pa], as a list or a 1-D numpy array. Chamber pressures for
-            isobaric combustion, initial reactant pressures for isochoric combustion.
-            Defaults to an empty list.
         process: CombustionProcess, isobaric (HP) or isochoric (UV). Defaults to ISOBARIC.
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.INFINITE_AREA
-    opts.pressures = list(pressures) if pressures is not None else []
-    opts.process = process
-    return opts
+    return CombustorOptions(type=CombustorType.INFINITE_AREA, process=process)
 
 
-def finite_mass_flux_combustor(mass_flux: float,
-                               pressures: Iterable[float] | None = None) -> CombustorOptions:
+def finite_mass_flux_combustor(mass_flux: float) -> CombustorOptions:
     """Create CombustorOptions for a finite-area combustor driven by mass flux.
 
     The chamber area follows from the requested mass flux through the momentum balance
@@ -93,57 +47,36 @@ def finite_mass_flux_combustor(mass_flux: float,
 
     Args:
         mass_flux: Mass flux through the chamber, mdot/A_c [kg/(m^2 s)].
-        pressures: Injector-face pressures [Pa], as a list or a 1-D numpy array.
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.FINITE_MASS_FLUX
-    opts.mass_flux = mass_flux
-    opts.pressures = list(pressures) if pressures is not None else []
-    return opts
+    return CombustorOptions(type=CombustorType.FINITE_MASS_FLUX, mass_flux=mass_flux)
 
 
-def finite_contraction_ratio_combustor(contraction_ratio: float,
-                                       pressures: Iterable[float] | None = None
-                                       ) -> CombustorOptions:
+def finite_contraction_ratio_combustor(contraction_ratio: float) -> CombustorOptions:
     """Create CombustorOptions for a finite-area combustor driven by contraction ratio.
 
     Isobaric combustion only (`CombustionProcess.ISOBARIC`).
 
     Args:
         contraction_ratio: Chamber contraction ratio, A_c/A_t [-], greater than 1.
-        pressures: Injector-face pressures [Pa], as a list or a 1-D numpy array.
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.FINITE_CONTRACTION_RATIO
-    opts.contraction_ratio = contraction_ratio
-    opts.pressures = list(pressures) if pressures is not None else []
-    return opts
+    return CombustorOptions(type=CombustorType.FINITE_CONTRACTION_RATIO,
+                            contraction_ratio=contraction_ratio)
 
 
-def equilibrium_nozzle(*ratios: float) -> NozzleOptions:
-    """Create NozzleOptions for an equilibrium nozzle with supersonic area ratio stations.
+def equilibrium_nozzle() -> NozzleOptions:
+    """Create NozzleOptions for an equilibrium expansion."""
+    return NozzleOptions(chemistry=GasChemistry.EQUILIBRIUM)
 
-    The same as `supersonic_ratio`, named for symmetry with `frozen_nozzle`.
+
+def frozen_nozzle(*, frozen_NFZ: int = 0) -> NozzleOptions:
+    """Create NozzleOptions for an expansion frozen at a station.
 
     Args:
-        *ratios: Area ratios A/A_t [-]; may be empty.
-    """
-    return supersonic_ratio(*ratios)
-
-
-def frozen_nozzle(*ratios: float, frozen_NFZ: int = 0) -> NozzleOptions:
-    """Create NozzleOptions for a frozen nozzle with supersonic area ratio stations.
-
-    Args:
-        *ratios: Area ratios A/A_t [-]; may be empty.
         frozen_NFZ: Freezing station, 0-based: 0 is the chamber (the default,
             and CEA's default freezing point), 1 the throat, 2 onward the exit
-            stations in order. For an infinite-area combustor CEA's ``nfz`` is
-            ``frozen_NFZ + 1``.
+            stations. CEA's nfz is frozen_NFZ + 1 for an infinite-area combustor.
     """
-    return _nozzle_options(GasChemistry.FROZEN, ExpansionType.SUPERSONIC_AREA_RATIO, ratios,
-                           frozen_NFZ)
-
+    return NozzleOptions(chemistry=GasChemistry.FROZEN, frozen_NFZ=frozen_NFZ)
 
 def conical_nozzle(area_ratio: float, *, r_expansion_curve: float = 0.382,
                    r_throat: float = 1.0, angle_deg: float = 15.0,

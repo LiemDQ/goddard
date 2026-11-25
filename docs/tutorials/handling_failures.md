@@ -57,14 +57,16 @@ results.status.ok                              # False if any station failed
 [s.mach for s in results.expansions]           # nan where a station failed
 ```
 
-A `RocketProblem` solves every operating point it can:
+A `RocketSolver` solves every point it can:
 
 ```python
-results = problem.solve()
+results = solver.solve(points)
 
-results.status.ok               # True when every station was solved
-results.failed_stations()       # the stations that were not, each with its status
-results.performance(0, exit_index=1).isp   # nan if that exit, its throat or its chamber failed
+results.failed()                     # indices of the points with a failed station
+results[0].status.ok                 # True when every station of the point was solved
+results[0].exits[1].status           # each station has its own status
+results[0].performance[1].isp        # nan if that exit, its throat or its chamber failed
+results.performance("isp")           # nan at every failed exit
 ```
 
 The grid a `Combustor` returns has a status per operating point:
@@ -84,8 +86,8 @@ A failed entry has no state: `states.get_state(loc)` raises `SolveError` with th
 A script that should not continue past a failed solve calls `raise_if_failed()`:
 
 ```python
-results = problem.solve()
-results.status.raise_if_failed()   # raises goddard.SolveError if anything failed
+results = solver.solve(points)
+results.status.raise_if_failed()   # raises goddard.SolveError if any point failed
 ```
 
 It raises [`ConvergenceError`][goddard.ConvergenceError] for `NOT_CONVERGED` and [`SolveError`][goddard.SolveError] for every other reason. `ConvergenceError` is a `SolveError`, and both carry the failure as `error.status`.
