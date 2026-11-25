@@ -863,6 +863,7 @@ NozzleStation Nozzle::station_at_current_state(const ExpansionProperties& props,
     thermo.dlV_dlP_T = props.dlV_dlP_T;
     thermo.dlV_dlT_P = props.dlV_dlT_P;
     thermo.pinned_transition = props.pinned_transition;
+    thermo.cp = props.pinned_transition ? 0.0 : props.spec_heat_p; // 0 following CEA convention
     thermo.stagnation_enthalpy = H_stagnation;
     thermo.speed_of_sound = gas_sonic_velocity(thermo.temperature, thermo.molecular_weight,
         props.gamma_s);

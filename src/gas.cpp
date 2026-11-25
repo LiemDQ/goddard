@@ -281,12 +281,7 @@ ThermodynamicState Gas::snapshot(CompositionModel model) const {
     // A frozen composition cannot shift across a transition, so the flag follows the composition
     // model rather than the bare state.
     info.pinned_transition = props.pinned_transition;
-    if (props.pinned_transition) {
-        info.cp = 0.0; // following CEA convention
-    }
-    else {
-        info.cp = cp_mass();
-    }
+    info.cp = props.pinned_transition ? 0.0 : props.spec_heat_p; // 0 following CEA convention
 
     // Composition: mass fractions of the whole mixture, gas species first.
     const std::vector<double> fractions = mixture_mass_fractions();

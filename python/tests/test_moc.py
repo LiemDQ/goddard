@@ -424,3 +424,28 @@ def test_mesh_node_mask_excludes_bootstrap_points(planar_result):
     # zeros; masking it is what keeps the Mach contour from starting at 0.
     assert not mask.all()
     assert np.asarray(net.mach)[mask].min() >= 1.0
+
+
+def test_convenience_moc_with_gas_defaults_to_frozen_chemistry():
+    """A gas given without a chemistry is used, at frozen composition, not dropped for a
+    perfect gas with gamma = 1.4; PERFECT_GAS with a gas is an error instead of ignoring it."""
+    import os
+    import goddard
+    from conftest import find_data_dir
+
+    gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
+    gas.set_state_TPX(3000.0, 3e6, {"H2O": 0.8, "OH": 0.1, "H2": 0.05, "O2": 0.05})
+
+    default = goddard.moc_design(15.0, num_characteristics=7, gas=gas)
+    frozen = goddard.moc_design(15.0, num_characteristics=7, gas=gas,
+                                chemistry=goddard.GasChemistry.FROZEN)
+    perfect = goddard.moc_design(15.0, num_characteristics=7)
+    assert default.status.ok
+    assert default.exit_mach == frozen.exit_mach
+    # The combustion products have frozen gamma near 1.2: for the same wall angle the
+    # minimum-length nozzle reaches a lower Mach number than for gamma = 1.4.
+    assert default.exit_mach < 0.95 * perfect.exit_mach
+
+    with pytest.raises(ValueError):
+        goddard.moc_design(15.0, num_characteristics=7, gas=gas,
+                           chemistry=goddard.GasChemistry.PERFECT_GAS)

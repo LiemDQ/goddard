@@ -150,8 +150,8 @@ public:
      *
      * All properties are mixture properties (per kg of gas plus condensed phases) and the
      * composition is the mixture mass fractions of `mixture_mass_fractions()`, with the condensed
-     * species appended after the gas species. `gamma_s`, the volume derivatives and the speed of
-     * sound are in `model`, which the result records.
+     * species appended after the gas species. `cp`, `gamma_s`, the volume derivatives and the speed
+     * of sound are in `model`, which the result records.
      *
      * @param model Composition model of the derived properties.
      */

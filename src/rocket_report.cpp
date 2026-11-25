@@ -151,7 +151,7 @@ std::string build_report_page(
 
     // The equilibrium specific heat is infinite at a pinned phase transition; CEA prints zero.
     table.add_row("Cp, KJ/(KG)(K)", row_vals([](const ThermodynamicState& s){
-        return format_fixed(s.pinned_transition ? 0.0 : s.cp * J_TO_KJ, 10, 4); }));
+        return format_fixed(s.cp * J_TO_KJ, 10, 4); }));
     table.add_row("GAMMAs",          row_vals([](const ThermodynamicState& s){ return format_fixed(s.gamma_s, 10, 4); }));
     table.add_row("SON VEL,M/SEC",   row_vals([](const ThermodynamicState& s){ return format_fixed(s.speed_of_sound, 10, 1); }));
 

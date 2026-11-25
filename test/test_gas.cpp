@@ -231,6 +231,11 @@ TEST_F(GasTests, EquilibriumSnapshotUsesShiftingEquilibriumDerivatives) {
     // equilibrium than at frozen composition.
     EXPECT_LT(equilibrium.gamma_s, frozen.gamma_s);
     EXPECT_LT(equilibrium.speed_of_sound, frozen.speed_of_sound);
+    // cp follows the composition model: the equilibrium value adds the heat of the shifting
+    // reactions to the frozen cp_mass.
+    EXPECT_DOUBLE_EQ(frozen.cp, gas.cp_mass());
+    EXPECT_DOUBLE_EQ(equilibrium.cp, expected.spec_heat_p);
+    EXPECT_GT(equilibrium.cp, frozen.cp);
     // The state itself does not depend on the composition model.
     EXPECT_DOUBLE_EQ(equilibrium.temperature, frozen.temperature);
     EXPECT_DOUBLE_EQ(equilibrium.enthalpy, frozen.enthalpy);

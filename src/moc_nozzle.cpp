@@ -241,10 +241,24 @@ void record_initialization_failure(MocResult& result, std::optional<SolveStatus>
 } // namespace
 
 // -- MocNozzle --
+void MocNozzle::validate() const {
+    validate_moc_options(options);
+    const bool perfect_gas = options.chemistry == GasChemistry::PERFECT_GAS;
+    if (perfect_gas && m_gas) {
+        throw std::invalid_argument(
+            "MocNozzle: PERFECT_GAS chemistry uses options.gamma and would ignore the Gas; set "
+            "options.chemistry to FROZEN or EQUILIBRIUM, or construct with MocNozzle(options).");
+    }
+    if (!perfect_gas && !m_gas) {
+        throw std::invalid_argument(
+            "MocNozzle: FROZEN and EQUILIBRIUM chemistry need a Gas; construct with MocNozzle(gas, options).");
+    }
+}
+
 MocResult MocNozzle::solve() {
     // Re-checked here, not just in the constructor: options is public and callers do
     // adjust it between construction and solve().
-    validate_moc_options(options);
+    validate();
 
     MocLog log(options.log_level);
     m_is_solved = false;
@@ -276,11 +290,7 @@ MocResult MocNozzle::solve() {
         thermo = MocThermo::perfect_gas(options.gamma);
     }
     else {
-        // Cantera-backed path for frozen/equilibrium chemistry
-        if (!m_gas) {
-            throw std::invalid_argument(
-                "MocNozzle: FROZEN and EQUILIBRIUM chemistry need a Gas; construct with MocNozzle(gas, options).");
-        }
+        // Cantera-backed path for frozen/equilibrium chemistry; validate() checked m_gas.
         NozzleOptions nozzle_opts;
         nozzle_opts.chemistry = options.chemistry;
         Nozzle nozzle(*m_gas, nozzle_opts);

@@ -37,7 +37,7 @@ inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
 /**
  * Snapshot of the thermodynamic state of a mixture (see `Gas::snapshot`).
  *
- * Specific quantities are per kg of mixture (gas plus condensed phases). `gamma_s`,
+ * Specific quantities are per kg of mixture (gas plus condensed phases). `cp`, `gamma_s`,
  * `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in `composition_model`: equilibrium or
  * frozen.
  */
@@ -60,8 +60,9 @@ public:
     /// Molecular weight [kg/kmol], CEA's "M" = 1/n with n the moles of gas per kg of mixture.
     double molecular_weight;
     /**
-     * Constant-pressure specific heat at frozen composition [J/(kg.K)], as `Gas::cp_mass`.
-     * `Gas::snapshot` sets it to 0 at a pinned phase transition, as CEA prints.
+     * Constant-pressure specific heat [J/(kg.K)] in `composition_model`: `Gas::cp_mass` when
+     * frozen, the equilibrium specific heat (including the heat of reaction) when equilibrium.
+     * 0 at a pinned phase transition, where the equilibrium value is infinite, as CEA prints.
      */
     double cp;
     /// Isentropic exponent -(d log P / d log V)_s [-].
@@ -72,7 +73,7 @@ public:
     double dlV_dlT_P;
     /// Speed of sound [m/s].
     double speed_of_sound;
-    /** Composition model of `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound`. */
+    /** Composition model of `cp`, `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound`. */
     CompositionModel composition_model = CompositionModel::FROZEN;
     /// Stagnation enthalpy [J/kg] the flow velocity is measured from.
     double stagnation_enthalpy;

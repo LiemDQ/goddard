@@ -183,7 +183,7 @@ One convention for every solver (`status.hpp`, `error.hpp`; user guide in `docs/
 - `goddard.RocketSolver` is a Python subclass (`python/goddard/rocket.py`) whose `solve` takes one point or any iterable of points and returns a `RocketResults` sequence with array accessors (`performance(field)`, `station(name, field)`, `point(field)`, `to_dataframe()`)
 - `Gas.from_elements(file, phase, elements, ...)` binds element-based product selection (`Gas::create_from_elements`)
 - Bound types used as default arguments are passed as `nb::none()` with `std::optional` parameters: nanobind reports a bound default object as leaked at interpreter exit
-- `moc_design()` / `moc_analysis()` convenience functions for common MoC workflows
+- `moc_design()` / `moc_analysis()` convenience functions for common MoC workflows. Their chemistry defaults to FROZEN when a `gas` is given and PERFECT_GAS otherwise; `MocNozzle` rejects a `Gas` with PERFECT_GAS chemistry, which would ignore it
 - MoC solver diagnostics (pass and start-line diagnostics, chain bookkeeping) live in `goddard.moc_diagnostics`, not the top-level namespace
 - Result structs are read-only and have no Python constructor; option structs have one keyword constructor with all-default arguments
 - Options for planned but unimplemented features (`MocOptions::exit_mach`, `MocMode::DESIGN_CENTERLINE`, `RocketSolver` transport/ionized species/trace) raise `NotImplementedError` when set rather than being ignored

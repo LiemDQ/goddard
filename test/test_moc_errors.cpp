@@ -228,6 +228,24 @@ TEST_F(MocErrorsFrozenTest, BasicEquilibriumCaseConverges) {
     expect_all_points_valid(result, opts.solver_options.abstol);
 }
 
+TEST_F(MocErrorsFrozenTest, GasWithPerfectGasChemistryThrows) {
+    MocOptions opts;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 15.0 * DEG;
+    opts.num_characteristics = 7;
+
+    // PERFECT_GAS uses options.gamma: a Gas given with it would be ignored.
+    opts.chemistry = GasChemistry::PERFECT_GAS;
+    EXPECT_THROW(MocNozzle(Gas(gas), opts), std::invalid_argument);
+    EXPECT_NO_THROW(MocNozzle{opts});
+
+    // options is public, so solve() checks again.
+    opts.chemistry = GasChemistry::FROZEN;
+    MocNozzle nozzle(Gas(gas), opts);
+    nozzle.options.chemistry = GasChemistry::PERFECT_GAS;
+    EXPECT_THROW(nozzle.solve(), std::invalid_argument);
+}
+
 TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
     // Mirrors MocDesignRao.BasicSolveReachesRecordedCoverage (test_moc_rao.cpp), which
     // explains why this configuration is asserted rather than skipped. The load-bearing
@@ -383,6 +401,11 @@ TEST(MocOptionsValidation, RealGasChemistryWithoutGasThrows) {
     options.chemistry = GasChemistry::FROZEN;
     options.mode = MocMode::DESIGN_MIN_LENGTH;
     options.theta_max = 15.0 * DEG;
+    EXPECT_THROW(MocNozzle{options}, std::invalid_argument);
+
+    // options is public, so solve() checks again.
+    options.chemistry = GasChemistry::PERFECT_GAS;
     MocNozzle nozzle(options);
+    nozzle.options.chemistry = GasChemistry::FROZEN;
     EXPECT_THROW(nozzle.solve(), std::invalid_argument);
 }

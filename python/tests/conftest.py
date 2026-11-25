@@ -75,6 +75,9 @@ class ComparisonTolerances:
     entropy_rel: float = 1e-2           # 1%
     molecular_weight_rel: float = 1e-3  # 0.1%
     gamma_rel: float = 1e-2             # 1%
+    # Equilibrium cp includes the heat of the shifting reactions, which doubles it in a
+    # dissociated chamber; observed error against CEA on the H2/O2 cases is below 0.25%.
+    cp_rel: float = 1e-2                # 1%
     sound_speed_rel: float = 1e-2       # 1%
     thermo_deriv_rel: float = 5e-2      # 5%
     mass_fraction_abs: float = 5e-3     # absolute (relaxed: different thermo databases)
@@ -203,7 +206,8 @@ def compare_thermo_states(goddard_state, cea_solution, cea_station_idx: int,
                           tol: ComparisonTolerances = None, label: str = ""):
     """Compare a Goddard ThermoStateInfo against a CEA solution at a station.
 
-    Checks temperature, pressure, molecular weight, gamma_s, and speed of sound.
+    Checks temperature, pressure, molecular weight, cp, gamma_s, and speed of sound. cp is
+    compared with CEA's cp of the station, which is equilibrium or frozen as the station is.
     """
     if tol is None:
         tol = ComparisonTolerances()
@@ -223,6 +227,11 @@ def compare_thermo_states(goddard_state, cea_solution, cea_station_idx: int,
     assert_close_rel(goddard_state.molecular_weight,
                      cea_solution.M[cea_station_idx],
                      tol.molecular_weight_rel, f"{prefix}molecular_weight")
+
+    # Specific heat in the station's composition model (Goddard J/(kg.K), CEA kJ/(kg.K))
+    assert_close_rel(goddard_state.cp / 1e3,
+                     cea_solution.cp[cea_station_idx],
+                     tol.cp_rel, f"{prefix}cp")
 
     # Isentropic exponent
     assert_close_rel(goddard_state.gamma_s,

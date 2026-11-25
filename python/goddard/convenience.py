@@ -143,6 +143,13 @@ def bezier_nozzle(area_ratio: float, theta_n_deg: float, theta_e_deg: float, *,
         length_frac=length_frac, n_points=n_points)
 
 
+def _default_moc_chemistry(chemistry: GasChemistry | None, gas: Gas | None) -> GasChemistry:
+    """The chemistry given, else FROZEN with a ``gas`` and PERFECT_GAS without one."""
+    if chemistry is not None:
+        return chemistry
+    return GasChemistry.PERFECT_GAS if gas is None else GasChemistry.FROZEN
+
+
 def _build_nozzle(opts: MocOptions, gas: Gas | None) -> MocNozzle:
     """Build a MocNozzle from ``gas``, or a perfect-gas one when ``gas`` is None."""
     if gas is not None:
@@ -161,21 +168,21 @@ def moc_design(theta_max_deg: float, *, num_characteristics: int = 10, gamma: fl
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
         throat_radius: Throat radius, used when ``geometry`` is not given. Sets the
             length unit of the result: the designed contour and every other length
             are returned in it.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
-        gas: A Gas for chemistry-based calculations.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     opts = MocOptions()
     opts.flow_type = flow_type
@@ -211,7 +218,8 @@ def moc_rao_design(expansion_ratio: float, *, length_frac: float = 0.8,
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to AXISYMMETRIC, the mode Rao contours are for).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
         throat_radius: Throat radius, used when ``geometry`` is not given. The Rao
             contour is generated for this throat, and every length in the result is in
             its unit.
@@ -221,15 +229,14 @@ def moc_rao_design(expansion_ratio: float, *, length_frac: float = 0.8,
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``).
-        gas: A Gas for chemistry-based calculations.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.AXISYMMETRIC
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     opts = MocOptions()
     opts.flow_type = flow_type
@@ -265,7 +272,8 @@ def moc_analysis(profile: NozzleProfile | str | os.PathLike[str], *,
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
         throat_radius: Throat radius, used when ``geometry`` is not given. Must equal
             the contour's smallest radius (within 1e-3 relative); every length in the
             result is in its unit.
@@ -275,15 +283,14 @@ def moc_analysis(profile: NozzleProfile | str | os.PathLike[str], *,
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``, or the contour's downstream curvature
             radius requests a centered fan).
-        gas: A Gas for chemistry-based calculations.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     if isinstance(profile, (str, os.PathLike)):
         profile = NozzleProfile.load_csv(os.fspath(profile))

@@ -29,20 +29,27 @@ public:
      * Solver for PERFECT_GAS chemistry, with no `Gas`. FROZEN and EQUILIBRIUM chemistry need
      * the `Gas` constructor.
      *
-     * @throws std::invalid_argument if `opts` is self-inconsistent.
+     * @throws std::invalid_argument if `opts` is self-inconsistent or its chemistry is not
+     * PERFECT_GAS.
      */
-    MocNozzle(MocOptions opts): options(std::move(opts)) { validate_moc_options(options); }
+    MocNozzle(MocOptions opts): options(std::move(opts)) { validate(); }
 
-    /** Solver for real-gas chemistry. The solver works on its own copy of `gas`. */
-    MocNozzle(const Gas& gas, MocOptions opts): options(std::move(opts)), m_gas(gas.clone()) { validate_moc_options(options); }
+    /**
+     * Solver for real-gas chemistry. The solver works on its own copy of `gas`.
+     *
+     * @throws std::invalid_argument if `opts` is self-inconsistent or its chemistry is
+     * PERFECT_GAS, which would ignore `gas`.
+     */
+    MocNozzle(const Gas& gas, MocOptions opts): options(std::move(opts)), m_gas(gas.clone()) { validate(); }
 
     /**
      * March the characteristic net and return the solved flow field.
      *
      * Never throws for numerical failures: a solve that breaks down returns a MocResult with
      * a failed `status` and `failure` identifying what went wrong and where. It does throw
-     * std::invalid_argument if `options` is self-inconsistent (checked here as well as in
-     * the constructor, since `options` is public and callers do adjust it in between), and
+     * std::invalid_argument if `options` is self-inconsistent or its chemistry does not match
+     * the constructor used (checked here as well as in the constructor, since `options` is
+     * public and callers do adjust it in between), and
      * NotImplementedError for MocMode::DESIGN_CENTERLINE.
      */
     MocResult solve();
@@ -67,6 +74,9 @@ protected:
     std::optional<std::vector<CharacteristicPoint>> m_inverse_front_override;
 
 private:
+    /** Check `options`, and that a `Gas` is given exactly when the chemistry needs one. */
+    void validate() const;
+
     std::optional<Gas> m_gas;
     bool m_is_solved = false;
 };

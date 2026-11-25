@@ -1790,8 +1790,8 @@ R"doc(Return a ThermodynamicState struct containing all current properties.
 All properties are mixture properties (per kg of gas plus condensed
 phases) and the composition is the mixture mass fractions of
 `mixture_mass_fractions()`, with the condensed species appended after
-the gas species. `gamma_s`, the volume derivatives and the speed of
-sound are in `model`, which the result records.
+the gas species. `cp`, `gamma_s`, the volume derivatives and the speed
+of sound are in `model`, which the result records.
 
 Parameter ``model``:
     Composition model of the derived properties.)doc";
@@ -2323,11 +2323,16 @@ R"doc(Solver for PERFECT_GAS chemistry, with no `Gas`. FROZEN and
 EQUILIBRIUM chemistry need the `Gas` constructor.
 
 Throws:
-    std::invalid_argument if `opts` is self-inconsistent.)doc";
+    std::invalid_argument if `opts` is self-inconsistent or its
+    chemistry is not PERFECT_GAS.)doc";
 
 static const char *__doc_Goddard_MocNozzle_MocNozzle_2 =
 R"doc(Solver for real-gas chemistry. The solver works on its own copy of
-`gas`.)doc";
+`gas`.
+
+Throws:
+    std::invalid_argument if `opts` is self-inconsistent or its
+    chemistry is PERFECT_GAS, which would ignore `gas`.)doc";
 
 static const char *__doc_Goddard_MocNozzle_is_solved = R"doc(True once solve() has run to completion on this instance.)doc";
 
@@ -2358,9 +2363,14 @@ R"doc(March the characteristic net and return the solved flow field.
 Never throws for numerical failures: a solve that breaks down returns
 a MocResult with a failed `status` and `failure` identifying what went
 wrong and where. It does throw std::invalid_argument if `options` is
-self-inconsistent (checked here as well as in the constructor, since
-`options` is public and callers do adjust it in between), and
-NotImplementedError for MocMode::DESIGN_CENTERLINE.)doc";
+self-inconsistent or its chemistry does not match the constructor used
+(checked here as well as in the constructor, since `options` is public
+and callers do adjust it in between), and NotImplementedError for
+MocMode::DESIGN_CENTERLINE.)doc";
+
+static const char *__doc_Goddard_MocNozzle_validate =
+R"doc(Check `options`, and that a `Gas` is given exactly when the chemistry
+needs one.)doc";
 
 static const char *__doc_Goddard_MocOptions = R"doc(Options for method of characteristics simulations.)doc";
 
@@ -4435,7 +4445,7 @@ R"doc(Snapshot of the thermodynamic state of a mixture (see
 `Gas::snapshot`).
 
 Specific quantities are per kg of mixture (gas plus condensed phases).
-`gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in
+`cp`, `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in
 `composition_model`: equilibrium or frozen.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_composition =
@@ -4443,13 +4453,14 @@ R"doc(Mass fractions of the mixture [-] by species name, condensed species
 included. Species with a zero fraction are omitted.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_composition_model =
-R"doc(Composition model of `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and
+R"doc(Composition model of `cp`, `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and
 `speed_of_sound`.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_cp =
-R"doc(Constant-pressure specific heat at frozen composition [J/(kg.K)], as
-`Gas::cp_mass`. `Gas::snapshot` sets it to 0 at a pinned phase
-transition, as CEA prints.)doc";
+R"doc(Constant-pressure specific heat [J/(kg.K)] in `composition_model`:
+`Gas::cp_mass` when frozen, the equilibrium specific heat (including
+the heat of reaction) when equilibrium. 0 at a pinned phase
+transition, where the equilibrium value is infinite, as CEA prints.)doc";
 
 static const char *__doc_Goddard_ThermodynamicState_density = R"doc(Mixture density [kg/m^3].)doc";
 

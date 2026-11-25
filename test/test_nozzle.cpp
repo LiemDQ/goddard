@@ -130,11 +130,18 @@ TEST_F(NozzleTests, StationDerivativesFollowTheFreezingStation) {
         EXPECT_NEAR(station.thermo.gamma_s, station_gas.gamma_s(model), 1e-12 * station.thermo.gamma_s);
         EXPECT_NEAR(station.thermo.speed_of_sound, station_gas.speed_of_sound(model),
                     1e-12 * station.thermo.speed_of_sound);
+        const double spec_heat_p = station_gas.expansion_properties(model).spec_heat_p;
+        EXPECT_NEAR(station.thermo.cp, spec_heat_p, 1e-12 * spec_heat_p);
     }
-    // The frozen station holds its composition: gamma_s is cp/cv.
+    // The frozen station holds its composition: gamma_s is cp/cv and cp is cp_mass.
     station_gas.restore_state(results.expansions[1].state);
     EXPECT_NEAR(results.expansions[1].thermo.gamma_s, station_gas.cp_mass() / station_gas.cv_mass(),
                 1e-12 * results.expansions[1].thermo.gamma_s);
+    EXPECT_NEAR(results.expansions[1].thermo.cp, station_gas.cp_mass(),
+                1e-12 * results.expansions[1].thermo.cp);
+    // Station 2 still shifts: its cp includes the heat of the shifting reactions.
+    station_gas.restore_state(results.expansions[0].state);
+    EXPECT_GT(results.expansions[0].thermo.cp, station_gas.cp_mass());
 }
 
 TEST_F(NozzleTests, NozzleStateManagement) {
