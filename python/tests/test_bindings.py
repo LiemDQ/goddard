@@ -103,3 +103,19 @@ def test_thermo_array_shape_properties(h2o2_yaml):
     assert states.size == 2
     assert states.ndim == 2
     assert list(states.shape) == [1, 2]
+
+
+def test_option_structs_compare_by_value():
+    assert goddard.NozzleOptions() == goddard.NozzleOptions()
+    frozen = goddard.NozzleOptions(chemistry=GasChemistry.FROZEN, frozen_NFZ=1)
+    assert frozen != goddard.NozzleOptions()
+    assert frozen == goddard.NozzleOptions(chemistry=GasChemistry.FROZEN, frozen_NFZ=1)
+
+    stream = goddard.PhaseSpecification(300.0, 1e5, "H2:1")
+    assert stream == goddard.PhaseSpecification(300.0, 1e5, {"H2": 1.0})
+    assert stream != goddard.PhaseSpecification(300.0, 1e5, "O2:1")
+
+    # Nested structs and vectors compare by value too.
+    moc = goddard.MocOptions(theta_schedule=[0.1, 0.2])
+    assert moc == goddard.MocOptions(theta_schedule=[0.1, 0.2])
+    assert moc != goddard.MocOptions(theta_schedule=[0.1, 0.3])

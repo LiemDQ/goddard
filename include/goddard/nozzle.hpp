@@ -46,6 +46,9 @@ struct NozzleOptions {
      * never freeze. Both are rejected with `std::invalid_argument`.
      */
     int frozen_NFZ = 0;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const NozzleOptions&) const = default;
 };
 
 

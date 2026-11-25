@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include <format>
 #include <nanobind/stl/map.h>
 #include <nanobind/stl/optional.h>
@@ -46,6 +47,7 @@ void bind_rocket(nb::module_& m) {
 
     // RocketPoint
     nb::class_<Goddard::RocketPoint>(m, "RocketPoint", DOC(Goddard, RocketPoint))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::RocketPoint* self,
                             const std::optional<Goddard::PhaseSpecification>& fuel,
                             const std::optional<Goddard::PhaseSpecification>& oxidizer,

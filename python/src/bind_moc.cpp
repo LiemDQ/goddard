@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
@@ -145,6 +146,7 @@ void bind_moc(nb::module_& m) {
     // No nb::init<>() overload on purpose: routing every construction through the keyword
     // constructor below keeps the documented defaults visible in the generated signature.
     nb::class_<Goddard::NozzleGeometry>(m, "NozzleGeometry", DOC(Goddard, NozzleGeometry))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::NozzleGeometry* self,
                             double throat_radius,
                             double upstream_wall_curvature_radius,
@@ -185,6 +187,7 @@ void bind_moc(nb::module_& m) {
     // ---- NozzleProfile ----
 
     nb::class_<Goddard::NozzleProfile>(m, "NozzleProfile", DOC(Goddard, NozzleProfile))
+        .def(nb::self == nb::self)
         .def(nb::init<>(), "Create an empty profile.")
         .def("__init__", [](Goddard::NozzleProfile* self,
                             std::vector<double> x,
@@ -322,6 +325,7 @@ void bind_moc(nb::module_& m) {
     // parameters into the signature that _core.pyi and the docs site show, which a **kwargs
     // constructor would erase. Adding a field to MocOptions means editing all three places.
     nb::class_<Goddard::MocOptions>(m, "MocOptions", DOC(Goddard, MocOptions))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::MocOptions* self,
                             Goddard::MocFlowKind flow_type,
                             Goddard::GasChemistry chemistry,

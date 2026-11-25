@@ -63,6 +63,9 @@ struct SolverOptions {
     double abstol = 1e-6;
     /// Maximum number of iterations [-].
     int max_iterations = 100;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const SolverOptions&) const = default;
 };
 
 /**
@@ -91,6 +94,9 @@ struct EquilibriumOptions {
     double T_min = 200.0;
     /** Highest temperature [K] the HP/SP root find will consider. */
     double T_max = 6000.0;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const EquilibriumOptions&) const = default;
 };
 
 } // namespace Goddard

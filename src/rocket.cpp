@@ -72,11 +72,6 @@ void validate_mixture_ratio(double value, MixtureRatioType type) {
     }
 }
 
-/** True when two reactant streams have the same state and composition. */
-bool same_stream(const PhaseSpecification& a, const PhaseSpecification& b) {
-    return a.T == b.T && a.P == b.P && a.composition == b.composition;
-}
-
 /** Status of the first failed station of a result, or ok when every station was solved. */
 SolveStatus first_failure(const RocketResult& result) {
     for (const NozzleStation* station : {&result.chamber, &result.stagnation, &result.combustion_end}) {
@@ -188,8 +183,7 @@ ThermoArray RocketSolver::combust(const RocketPoint& point) {
     const Eigen::ArrayXd ratios = Eigen::ArrayXd::Constant(1, point.mixture_ratio);
 
     // Consecutive points usually share their reactants, so the last combustor is kept.
-    if (!m_combustor || !same_stream(point.fuel, m_combustor_fuel)
-        || !same_stream(point.oxidizer, m_combustor_oxidizer)) {
+    if (!m_combustor || point.fuel != m_combustor_fuel || point.oxidizer != m_combustor_oxidizer) {
         m_combustor.reset();
         if (m_reactant_file.empty()) {
             m_combustor.emplace(m_products, point.fuel.composition, point.oxidizer.composition);
@@ -206,8 +200,7 @@ ThermoArray RocketSolver::combust(const RocketPoint& point) {
 }
 
 Nozzle& RocketSolver::nozzle_for(const NozzleOptions& options) {
-    if (!m_nozzle || m_nozzle_options.chemistry != options.chemistry
-        || m_nozzle_options.frozen_NFZ != options.frozen_NFZ) {
+    if (!m_nozzle || m_nozzle_options != options) {
         m_nozzle.reset();
         m_nozzle.emplace(m_products, options);
         m_nozzle_options = options;

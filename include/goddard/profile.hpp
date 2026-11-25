@@ -21,6 +21,9 @@ namespace Goddard {
  * */
 class NozzleProfile {
 public:
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const NozzleProfile&) const = default;
+
     /** Axial coordinates of the wall points, ascending (length units). */
     std::vector<double> x;
     /** Wall radius (axisymmetric) or half-height (planar) at each point in `x` (length units). */

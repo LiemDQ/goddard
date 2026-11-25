@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include "goddard/combustor.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/chemistry.hpp"
@@ -70,6 +71,7 @@ void bind_enums(nb::module_& m) {
 
     nb::class_<Goddard::EquilibriumOptions>(m, "EquilibriumOptions",
             DOC(Goddard, EquilibriumOptions))
+        .def(nb::self == nb::self)
         .def(nb::init<>(), "Create with default values.")
         .def("__init__", [](Goddard::EquilibriumOptions* self,
                             double rtol,
@@ -111,6 +113,7 @@ void bind_enums(nb::module_& m) {
              DOC(Goddard, EquilibriumOptions, T_max));
 
     nb::class_<Goddard::SolverOptions>(m, "SolverOptions", DOC(Goddard, SolverOptions))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::SolverOptions* self,
                             double abstol,
                             int max_iterations) {

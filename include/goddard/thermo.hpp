@@ -135,6 +135,9 @@ public:
      * In Python, assign a whole dict: item assignment acts on a copy.
      */
     Composition composition = {};
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const PhaseSpecification&) const = default;
 };
 
 

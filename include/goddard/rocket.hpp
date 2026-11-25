@@ -100,6 +100,9 @@ struct RocketPoint {
     std::vector<double> expansion_ratios;
     /** Optional name of the point, copied to the result and printed in the report. */
     std::string label;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const RocketPoint&) const = default;
 };
 
 /**

@@ -89,6 +89,9 @@ struct NozzleGeometry {
     double length_fraction = 0.8;
     /// Rao design only: exit-to-throat area ratio of the contour to generate.
     double expansion_ratio = 5.0;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const NozzleGeometry&) const = default;
 };
 
 /** Which initial data line to build. AUTO keeps today's rule (negative
@@ -218,6 +221,9 @@ struct MocOptions {
      * that cap, not this factor, is what limits the relaxation.
      */
     double front_tilt_decay = 0.9;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const MocOptions&) const = default;
 };
 
 /**

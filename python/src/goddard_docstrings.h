@@ -374,6 +374,10 @@ R"doc(Mass flux through a `FINITE_MASS_FLUX` chamber, mdot/A_c [kg/(m^2 s)].)doc
 
 static const char *__doc_Goddard_CombustorOptions_mixture_type = R"doc(How the mixture ratios passed to the solver are interpreted.)doc";
 
+static const char *__doc_Goddard_CombustorOptions_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
+
 static const char *__doc_Goddard_CombustorOptions_process =
 R"doc(Combustion constraint. With `ISOCHORIC` in a `RocketSolver`, the
 constant-volume equilibrium state is used as the stagnation state of a
@@ -1017,6 +1021,10 @@ static const char *__doc_Goddard_EquilibriumOptions_max_steps =
 R"doc(Maximum number of steps of the inner Gibbs solve. The Cantera default
 (1000) is not enough near a dew point, where a barely-present
 condensed phase converges slowly.)doc";
+
+static const char *__doc_Goddard_EquilibriumOptions_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
 
 static const char *__doc_Goddard_EquilibriumOptions_rtol =
 R"doc(Relative tolerance of the inner constant-T, constant-P Gibbs solve
@@ -2456,6 +2464,10 @@ contour and report it in MocResult::profile instead.)doc";
 
 static const char *__doc_Goddard_MocOptions_num_characteristics = R"doc(Number of C+ lines seeded from the initial expansion fan.)doc";
 
+static const char *__doc_Goddard_MocOptions_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
+
 static const char *__doc_Goddard_MocOptions_solver_options = R"doc(Tolerances for the iterative unit processes.)doc";
 
 static const char *__doc_Goddard_MocOptions_start_line = R"doc(Which initial data line to build; see MocStartLine.)doc";
@@ -2677,6 +2689,10 @@ static const char *__doc_Goddard_NozzleGeometry_length_fraction =
 R"doc(Rao design only: length as a fraction of a comparable 15-degree
 conical nozzle.)doc";
 
+static const char *__doc_Goddard_NozzleGeometry_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
+
 static const char *__doc_Goddard_NozzleGeometry_throat_radius =
 R"doc(Throat radius (axisymmetric) or throat half-height (planar), in any
 length unit; must be positive. The solver works in throat radii
@@ -2711,6 +2727,10 @@ is `frozen_NFZ + 3`; 1 is the throat in both cases.
 Must not be negative, and must not lie beyond the last station solved:
 the flow would then never freeze. Both are rejected with
 `std::invalid_argument`.)doc";
+
+static const char *__doc_Goddard_NozzleOptions_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
 
 static const char *__doc_Goddard_NozzleProfile =
 R"doc(Geometric representation of a nozzle wall profile. Used as both input
@@ -2870,6 +2890,10 @@ Parameter ``filename``:
     Path to the CSV file.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_max_theta = R"doc(Find the maximum wall angle across all segments, in radians.)doc";
+
+static const char *__doc_Goddard_NozzleProfile_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
 
 static const char *__doc_Goddard_NozzleProfile_populate_throat_expansion_curve =
 R"doc(Populate profile with expansion curve from the throat, taking into
@@ -3435,6 +3459,10 @@ R"doc(Mole fractions [-] by species name; normalized when the state is set.
 
 In Python, assign a whole dict: item assignment acts on a copy.)doc";
 
+static const char *__doc_Goddard_PhaseSpecification_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
+
 static const char *__doc_Goddard_PointMembership =
 R"doc(The chains one point belongs to.
 
@@ -3668,6 +3696,10 @@ R"doc(Mixture ratio [-], interpreted by `combustor.mixture_type` (O/F by
 default).)doc";
 
 static const char *__doc_Goddard_RocketPoint_nozzle = R"doc(Nozzle chemistry and freezing station.)doc";
+
+static const char *__doc_Goddard_RocketPoint_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
 
 static const char *__doc_Goddard_RocketPoint_oxidizer = R"doc(Oxidizer stream; see `fuel`.)doc";
 
@@ -4136,6 +4168,10 @@ for oblique shock searches, and the corrector residuals and point
 validity checks of the MoC unit processes.)doc";
 
 static const char *__doc_Goddard_SolverOptions_max_iterations = R"doc(Maximum number of iterations [-].)doc";
+
+static const char *__doc_Goddard_SolverOptions_operator_eq =
+R"doc(Field-by-field equality. Doubles compare exactly, so a NaN field
+compares unequal.)doc";
 
 static const char *__doc_Goddard_ThermoArray =
 R"doc(Array of thermodynamic states of one `Gas`, with one to three

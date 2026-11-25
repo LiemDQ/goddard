@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/map.h>
 #include "goddard/thermo.hpp"
@@ -10,6 +11,7 @@ using namespace nb::literals;
 void bind_thermo(nb::module_& m) {
     nb::class_<Goddard::PhaseSpecification>(m, "PhaseSpecification",
             DOC(Goddard, PhaseSpecification))
+        .def(nb::self == nb::self)
         .def(nb::init<>(), "Create with default values.")
         .def(nb::init<double,
                         double,

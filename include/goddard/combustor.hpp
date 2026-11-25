@@ -59,6 +59,9 @@ struct CombustorOptions {
      * Chapman-Jouguet detonation model.
      */
     CombustionProcess process = CombustionProcess::ISOBARIC;
+
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const CombustorOptions&) const = default;
 };
 
 /**

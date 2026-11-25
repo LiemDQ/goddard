@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include <format>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -18,6 +19,7 @@ using namespace nb::literals;
 void bind_structs(nb::module_& m) {
     // CombustorOptions
     nb::class_<Goddard::CombustorOptions>(m, "CombustorOptions", DOC(Goddard, CombustorOptions))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::CombustorOptions* self,
                             Goddard::CombustorType type,
                             Goddard::MixtureRatioType mixture_type,
@@ -49,6 +51,7 @@ void bind_structs(nb::module_& m) {
 
     // NozzleOptions
     nb::class_<Goddard::NozzleOptions>(m, "NozzleOptions", DOC(Goddard, NozzleOptions))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::NozzleOptions* self,
                             Goddard::GasChemistry chemistry,
                             int frozen_NFZ) {
