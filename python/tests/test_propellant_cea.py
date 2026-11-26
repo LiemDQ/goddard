@@ -10,6 +10,7 @@ over a grid of mixture ratios (lean to rich) and chamber pressures:
 * N2H4 monopropellant
 * AP/Al/HTPB composite solid propellant
 * N2O4/UDMH and N2O4/Aerozine-50
+* IRFNA/UDMH and N2O/ethanol
 * LF2/LH2
 
 Both codes run on the same NASA9 data and are given CEA's own product list for the reactants,
@@ -69,6 +70,7 @@ CUSTOM_REACTANTS = {
 }
 
 H2O2_90 = {"H2O2(L)": 0.9, "H2O(L)": 0.1}
+IRFNA = {"HNO3(L)": 0.84, "N2O4(L)": 0.14, "H2O(L)": 0.02}
 A50 = {"C2H8N2(L),UDMH": 0.5, "N2H4(L)": 0.5}
 AP_AL_HTPB = {"NH4CLO4(I)": 0.68, "AL(cr)": 0.18, "HTPB": 0.14}
 H2O2_98 = {"H2O2(L)": 0.98, "H2O(L)": 0.02}
@@ -108,6 +110,13 @@ NOMINAL_CASES = [
     PropellantCase("nto_udmh", {"C2H8N2(L),UDMH": 1.0}, 298.15, {"N2O4(L)": 1.0}, 298.15, 2.6, 20.0,
                    (40.0, 100.0)),
     PropellantCase("nto_a50", A50, 298.15, {"N2O4(L)": 1.0}, 298.15, 2.0, 20.0, (40.0, 100.0)),
+    # Nitric acid: a three-species oxidizer stream (IRFNA without its 0.6 % HF, which has no
+    # liquid data in either database)
+    PropellantCase("irfna_udmh", {"C2H8N2(L),UDMH": 1.0}, 298.15, IRFNA, 298.15, 3.0, 20.0,
+                   (40.0, 100.0)),
+    # Nitrous oxide, gaseous (neither database has liquid N2O), with ethanol. Stoichiometric is 5.74
+    PropellantCase("n2o_ethanol", {"C2H5OH(L)": 1.0}, 298.15, {"N2O": 1.0}, 298.15, 5.0, 20.0,
+                   (10.0, 40.0)),
     # Fluorine: HF products and a chamber near 4500 K
     PropellantCase("lf2_lh2", {"H2(L)": 1.0}, 20.27, {"F2(L)": 1.0}, 85.02, 12.0, 70.0,
                    (40.0, 100.0)),
@@ -125,6 +134,8 @@ SWEEP_OF_RATIOS = {
     "ap_al_htpb": (1.0,),
     "nto_udmh": (1.2, 1.6, 2.0, 2.6, 3.2),
     "nto_a50": (1.2, 1.6, 2.0, 2.6, 3.2),
+    "irfna_udmh": (2.0, 2.6, 3.0, 3.5, 4.2),
+    "n2o_ethanol": (3.0, 4.0, 5.0, 5.74, 7.0),
     "ap_al_htpb_near": (1.0,),
     # Stoichiometric is 19
     "lf2_lh2": (6.0, 9.0, 12.0, 15.0, 19.0),
@@ -144,7 +155,8 @@ CHEMISTRIES = ["equilibrium", "frozen"]
 # species underflows a double: here heavy hydrocarbons in cool (900-1150 K), oxygen-rich exits. Its
 # trace-species test is never applied (fixed on Cantera main, to be released as 4.0, where these
 # cases pass).
-GIBBS_TRACE_SPECIES_CASES = ("nto_mmh-of3-", "nto_a50-of2.6-", "nto_a50-of3.2-")
+GIBBS_TRACE_SPECIES_CASES = ("nto_mmh-of3-", "nto_a50-of2.6-", "nto_a50-of3.2-",
+                             "irfna_udmh-of3.5-", "irfna_udmh-of4.2-", "n2o_ethanol-of7-")
 GIBBS_TRACE_SPECIES_BUG = pytest.mark.xfail(
     int(version("cantera").split(".")[0]) < 4, strict=True,
     reason="Cantera < 4 MultiPhaseEquil fails when a trace species underflows")
