@@ -11,6 +11,7 @@ over a grid of mixture ratios (lean to rich) and chamber pressures:
 * AP/Al/HTPB composite solid propellant
 * N2O4/UDMH and N2O4/Aerozine-50
 * IRFNA/UDMH and N2O/ethanol
+* LH2/LOX at upper-stage pressure and area ratios
 * LF2/LH2
 
 Both codes run on the same NASA9 data and are given CEA's own product list for the reactants,
@@ -117,6 +118,9 @@ NOMINAL_CASES = [
     # Nitrous oxide, gaseous (neither database has liquid N2O), with ethanol. Stoichiometric is 5.74
     PropellantCase("n2o_ethanol", {"C2H5OH(L)": 1.0}, 298.15, {"N2O": 1.0}, 298.15, 5.0, 20.0,
                    (10.0, 40.0)),
+    # Upper-stage LH2/LOX: low pressure and very large area ratios, the coldest exits
+    PropellantCase("lh2_lox_high_ar", {"H2(L)": 1.0}, 20.27, {"O2(L)": 1.0}, 90.17, 6.0, 7.0,
+                   (200.0, 300.0)),
     # Fluorine: HF products and a chamber near 4500 K
     PropellantCase("lf2_lh2", {"H2(L)": 1.0}, 20.27, {"F2(L)": 1.0}, 85.02, 12.0, 70.0,
                    (40.0, 100.0)),
@@ -136,6 +140,7 @@ SWEEP_OF_RATIOS = {
     "nto_a50": (1.2, 1.6, 2.0, 2.6, 3.2),
     "irfna_udmh": (2.0, 2.6, 3.0, 3.5, 4.2),
     "n2o_ethanol": (3.0, 4.0, 5.0, 5.74, 7.0),
+    "lh2_lox_high_ar": (4.0, 5.0, 6.0, 7.0, 8.0),
     "ap_al_htpb_near": (1.0,),
     # Stoichiometric is 19
     "lf2_lh2": (6.0, 9.0, 12.0, 15.0, 19.0),
