@@ -8,6 +8,7 @@ over a grid of mixture ratios (lean to rich) and chamber pressures:
 * RP-1/LOX, at engine and gas-generator mixture ratios
 * H2O2 monopropellant, 90 % and 98 %
 * N2H4 monopropellant
+* AP/Al/HTPB composite solid propellant
 * LF2/LH2
 
 Both codes run on the same NASA9 data and are given CEA's own product list for the reactants,
@@ -32,7 +33,6 @@ cea = pytest.importorskip("cea")
 import goddard
 from conftest import assert_close_rel
 from test_condensed_cea import (BAR, NASA9_CONDENSED, NASA9_GAS, NASA9_REACTANTS,
-                                _cea_product_names, _cea_weights_and_enthalpy,
                                 run_isolated, split_product_names)
 
 pytestmark = pytest.mark.slow
@@ -50,6 +50,7 @@ class PropellantCase:
     of_ratio: float
     chamber_pressure_bar: float
     area_ratios: tuple
+    frozen: bool = True              # also solve with a frozen nozzle
 
     def at(self, of_ratio, chamber_pressure_bar):
         """The same propellant at another operating point, named after it."""
@@ -57,7 +58,17 @@ class PropellantCase:
                        of_ratio=of_ratio, chamber_pressure_bar=chamber_pressure_bar)
 
 
+# Reactants in neither database, defined by formula and heat of formation as in CEA's input.
+# Goddard has no API for them (see the coverage report), so the test appends them to a copy of
+# the reactant file as assigned-enthalpy species, the form the converter gives CEA's own.
+CUSTOM_REACTANTS = {
+    # A representative HTPB-like binder, not a particular product: both codes get the same input
+    "HTPB": {"formula": {"C": 7.075, "H": 10.65, "O": 0.223, "N": 0.063},
+             "enthalpy_kj_per_mol": -5.81, "temperature": 298.15},
+}
+
 H2O2_90 = {"H2O2(L)": 0.9, "H2O(L)": 0.1}
+AP_AL_HTPB = {"NH4CLO4(I)": 0.68, "AL(cr)": 0.18, "HTPB": 0.14}
 H2O2_98 = {"H2O2(L)": 0.98, "H2O(L)": 0.02}
 
 # Each propellant on a grid of mixture ratios (lean to rich, the nominal one among them) times
@@ -83,6 +94,14 @@ NOMINAL_CASES = [
     # a frozen expansion beyond AR 10 falls below the 200 K end of the H2 data.
     PropellantCase("n2h4", {"N2H4(L)": 1.0}, 298.15, {"N2H4(L)": 1.0}, 298.15, 1.0, 10.0,
                    (4.0, 8.0)),
+    # Aluminized composite solid propellant: one stream, alumina liquid in the chamber that
+    # solidifies in the nozzle. Frozen at the throat, the liquid alumina leaves its data range
+    # (2327 K) between AR 2 and AR 10, and both codes stop there; frozen expansions are compared
+    # in the near-throat case only.
+    PropellantCase("ap_al_htpb", AP_AL_HTPB, 298.15, AP_AL_HTPB, 298.15, 1.0, 70.0, (10.0, 40.0),
+                   frozen=False),
+    PropellantCase("ap_al_htpb_near", AP_AL_HTPB, 298.15, AP_AL_HTPB, 298.15, 1.0, 70.0,
+                   (1.5, 2.0)),
     # Fluorine: HF products and a chamber near 4500 K
     PropellantCase("lf2_lh2", {"H2(L)": 1.0}, 20.27, {"F2(L)": 1.0}, 85.02, 12.0, 70.0,
                    (40.0, 100.0)),
@@ -97,6 +116,8 @@ SWEEP_OF_RATIOS = {
     "h2o2_90": (1.0,),
     "h2o2_98": (1.0,),
     "n2h4": (1.0,),
+    "ap_al_htpb": (1.0,),
+    "ap_al_htpb_near": (1.0,),
     # Stoichiometric is 19
     "lf2_lh2": (6.0, 9.0, 12.0, 15.0, 19.0),
 }
@@ -119,9 +140,19 @@ GIBBS_TRACE_SPECIES_BUG = pytest.mark.xfail(
     reason="Cantera < 4 MultiPhaseEquil fails when a trace species underflows")
 
 
+# Cantera 3.x's "gibbs" loses element mass in the AP/Al/HTPB chamber at 5 bar: carbon changes by
+# 1.3e-7 relative, past Goddard's 1e-7 check, from every starting guess. On Cantera main
+# ("Fix element conservation for trace minor species in MultiPhaseEquil::step") the case passes.
+GIBBS_ELEMENT_CONSERVATION_BUG = pytest.mark.xfail(
+    int(version("cantera").split(".")[0]) < 4, strict=True,
+    reason="Cantera < 4 MultiPhaseEquil does not conserve carbon to 1e-7 here")
+
+
 def _marks(case, chemistry):
     if case.name.startswith("nto_mmh-of3-") and chemistry == "equilibrium":
         return [GIBBS_TRACE_SPECIES_BUG]
+    if case.name.startswith("ap_al_htpb") and case.name.endswith("-pc5"):  # in the chamber
+        return [GIBBS_ELEMENT_CONSERVATION_BUG]
     return []
 
 
@@ -141,16 +172,48 @@ KNOWN_CEA_ROCKET_FAILURES = {
 }
 
 
+def _cea_species(reactant_names):
+    """Reactant names for CEA, custom ones (`CUSTOM_REACTANTS`) as `cea.Reactant` definitions."""
+    species = []
+    for name in reactant_names:
+        custom = CUSTOM_REACTANTS.get(name)
+        species.append(name if custom is None else cea.Reactant(
+            name=name, formula=custom["formula"], enthalpy=custom["enthalpy_kj_per_mol"],
+            enthalpy_units="kJ/mol", temperature=custom["temperature"]))
+    return species
+
+
+def _cea_reactants(reactant_names):
+    """CEA mixture of the reactants, custom ones included."""
+    return cea.Mixture(_cea_species(reactant_names))
+
+
+def _cea_product_names(reactant_names):
+    """Species CEA itself would use for these reactants."""
+    return list(cea.Mixture(_cea_species(reactant_names), products_from_reactants=True).species_names)
+
+
+def _cea_weights_and_enthalpy(reactant_names, oxidizer_weights, fuel_weights, of_ratio,
+                              temperatures):
+    """Normalized reactant mass fractions and the mixture enthalpy [J/kg] at `temperatures`."""
+    reactants = _cea_reactants(reactant_names)
+    weights = reactants.of_ratio_to_weights(np.asarray(oxidizer_weights),
+                                            np.asarray(fuel_weights), of_ratio)
+    weights = weights / weights.sum()
+    enthalpy = reactants.calc_property(cea.ENTHALPY, weights, np.asarray(temperatures))
+    return list(weights), float(enthalpy)
+
+
 def _cea_moles(reactant_names, weights):
     """Mole fractions of a stream from its reactant mass fractions."""
-    moles = cea.Mixture(reactant_names).weights_to_moles(np.asarray(weights, dtype=float))
+    moles = _cea_reactants(reactant_names).weights_to_moles(np.asarray(weights, dtype=float))
     return [float(value) for value in moles / moles.sum()]
 
 
 def _cea_rocket(reactant_names, product_names, weights, chamber_pressure_bar, hc, pi_p, supar,
                 n_frz=None):
     """Solve an infinite-area-combustor rocket problem with `cea.RocketSolver`."""
-    reactants = cea.Mixture(reactant_names)
+    reactants = _cea_reactants(reactant_names)
     products = cea.Mixture(product_names)
     solver = cea.RocketSolver(products, reactants=reactants)
     solution = cea.RocketSolution(solver)
@@ -179,7 +242,7 @@ def _cea_rocket(reactant_names, product_names, weights, chamber_pressure_bar, hc
 
 def _cea_tp_entropy(reactant_names, product_names, weights, states):
     """Entropy [kJ/(kg K)] of CEA's TP equilibrium at each (T [K], P [bar]) of `states`."""
-    reactants = cea.Mixture(reactant_names)
+    reactants = _cea_reactants(reactant_names)
     products = cea.Mixture(product_names)
     solver = cea.EqSolver(products, reactants=reactants)
     solution = cea.EqSolution(solver)
@@ -239,11 +302,36 @@ def require_cea_station(case, chemistry, rocket, exit_index):
     assert not problem, f"CEA's rocket solve cannot serve as the reference: {problem}"
 
 
+@pytest.fixture(scope="module")
+def reactant_file(tmp_path_factory):
+    """The NASA9 reactant file with `CUSTOM_REACTANTS` appended as assigned-enthalpy species.
+
+    The converter writes the `species` section last, so a list item appended to the file is a
+    species. Each one is a constant-cp species with cp0 = 0: h(T) = h_formation, as CEA takes it.
+    """
+    lines = []
+    for name, custom in CUSTOM_REACTANTS.items():
+        composition = ", ".join(f"{element}: {atoms!r}" for element, atoms in custom["formula"].items())
+        lines += [f"- name: {name}",
+                  f"  composition: {{{composition}}}",
+                  f"  thermo: {{model: constant-cp, reference-pressure: 100000.0, "
+                  f"T0: {custom['temperature']!r}, h0: {custom['enthalpy_kj_per_mol'] * 1e3!r} J/mol, "
+                  f"s0: 0.0, cp0: 0.0}}"]
+    path = tmp_path_factory.mktemp("reactants") / "nasa9_reactants_custom.yaml"
+    with open(NASA9_REACTANTS) as source:
+        text = source.read()
+    path.write_text(text.rstrip("\n") + "\n" + "\n".join(lines) + "\n")
+    for name in CUSTOM_REACTANTS:
+        goddard.Gas(str(path), phase_name="reactants", species={name})   # loads as a species
+    return str(path)
+
+
 @pytest.fixture(scope="module",
                 params=[pytest.param((case, chemistry), id=f"{case.name}-{chemistry}",
                                      marks=_marks(case, chemistry))
-                        for case in PROPELLANT_CASES for chemistry in CHEMISTRIES])
-def propellant_rocket(request):
+                        for case in PROPELLANT_CASES for chemistry in CHEMISTRIES
+                        if case.frozen or chemistry == "equilibrium"])
+def propellant_rocket(request, reactant_file):
     """One case solved by both codes: a RocketSolver with reactant streams, and cea.RocketSolver."""
     case, chemistry = request.param
     reactant_names = list(dict.fromkeys([*case.fuel, *case.oxidizer]))
@@ -286,7 +374,7 @@ def propellant_rocket(request):
         expansion_ratios=list(case.area_ratios),
         label=case.name)
 
-    result = goddard.RocketSolver(products, NASA9_REACTANTS).solve(point)
+    result = goddard.RocketSolver(products, reactant_file).solve(point)
     return case, chemistry, result, rocket
 
 
