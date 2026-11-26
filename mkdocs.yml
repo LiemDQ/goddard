@@ -113,3 +113,4 @@ nav:
       - Convenience Functions: api/convenience.md
   - Contributing:
       - Docstring Style Guide: contributing/docstring_style.md
+      - CEA as a Test Oracle: contributing/cea_oracle.md

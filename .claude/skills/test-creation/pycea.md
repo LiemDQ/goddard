@@ -30,6 +30,24 @@ printed before a crash is not lost.
 - Long explicit product lists can end in "Too many singular matrices". Use
   `Mixture(reactants, products_from_reactants=True, omit=[...])` instead.
 
+## Known solver defects
+
+CEA's rocket solver fails silently in places: `converged` can be True with NaN or non-physical stations.
+Check the stations before comparing (`cea_problem` in `python/tests/test_propellant_cea.py`). The defects
+found so far are listed in `docs/contributing/cea_oracle.md`:
+
+- frozen expansions with graphite stop early (at about 550 K when frozen above 600 K);
+- equilibrium expansions with graphite at low pressure end in "Too many singular matrices";
+- a fresh TP solve can fail where the rocket solver, continuing from the previous station, does not.
+
+`RocketSolver.solve` rejects an empty `supar` list: omit the argument.
+
+A frozen expansion stops below 0.8 T_min of a gas species (50 K below the range of a condensed one) and
+drops every later station. `pi_p` stations are solved before `supar` ones, so a placeholder `pi_p` (needed
+because one is required) must stay warm: Pc/P = 1000 silently removed every area-ratio station of frozen
+N2H4 and fuel-rich RP-1/LOX. Use Pc/P = 3. Find area-ratio stations by matching `ae_at` (within 1e-3), not
+by nearest value, or a missing station is replaced by a neighbour.
+
 ## Station order
 
 Solution arrays are 0-based, in this order:
