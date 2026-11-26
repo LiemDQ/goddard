@@ -584,3 +584,33 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     EXPECT_GE(S_kinetic, S_eq - margin)
         << "Exit entropy >= equiilibrium exit entropy";
 }
+
+TEST(KineticNozzleDataRangeTests, StationFarOutsideTheDataStopsTheIntegration) {
+    // From a cool H2O-rich inlet (700 K, 30 bar) an expansion to an area ratio of 100 cools the
+    // flow far below the 200 K lower end of the H2 and O2 data in h2o2.yaml. The phase has the
+    // species of h2o2.yaml without its reactions, which this test does not need.
+    const Cantera::AnyMap root = Cantera::AnyMap::fromYamlString(R"(
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [O, H, Ar, N]
+  species: [{h2o2.yaml/species: all}]
+  kinetics: gas
+  reactions: none
+  state: {T: 300.0, P: 1 atm}
+)");
+    Gas gas(Cantera::newSolution(root["phases"].getMapWhere("name", "gas"), root));
+    gas.set_state_TPX(700.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas.equilibrate_TP(700.0, 3e6);
+    const double throat_radius = 0.01;
+    NozzleProfile profile = make_conical_profile(throat_radius, 10.0 * throat_radius, 2.0, 100)
+                                .scaled(1.0 / throat_radius);
+    KineticNozzle nozzle(gas, profile, throat_radius, 1.0);
+    const KineticNozzleResults results = nozzle.solve(1e-6, 0.01, 100000);
+
+    EXPECT_TRUE(failed_with(results.status, FailureReason::OUT_OF_DATA_RANGE, "by more than 20%"));
+    // The stations before the stop are kept, and none of them is far outside the data
+    ASSERT_FALSE(results.stations.empty());
+    EXPECT_GT(results.stations.back().thermo.temperature, 0.8 * 200.0);
+    EXPECT_LT(results.stations.back().x, profile.x_max());
+}

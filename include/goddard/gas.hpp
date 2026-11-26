@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 #include <string>
@@ -407,6 +408,27 @@ public:
      * recent `equilibrate_TP/HP/SP` call [-]. Zero before the first call; a diagnostic only.
      */
     int last_equilibrium_solve_count() const;
+
+    /**
+     * Check the temperature against the thermodynamic data ranges of the gas species present.
+     *
+     * A species counts as present when its mole fraction in the gas phase is at least
+     * `trace_mole_fraction` (5e-6, CEA's threshold for listing a species). Outside a species'
+     * range its properties are extrapolated from the polynomial fit: a little outside, the
+     * result is usable, and this returns a warning; far outside, it is not. Condensed species
+     * have their own range rule (see `equilibrate_TP()`).
+     *
+     * @return A warning naming the species and its range when the temperature is outside the
+     * range of a present species but within the margin; empty when it is inside every range.
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if the temperature is more than
+     * `range_margin` (20%) below the lowest temperature, or above the highest temperature, of
+     * the range of a present species.
+     */
+    std::optional<std::string> check_temperature_range() const;
+    /// Mole fraction [-] below which a gas species is ignored by `check_temperature_range()`.
+    static constexpr double trace_mole_fraction = 5e-6;
+    /// Relative distance [-] outside a data range beyond which `check_temperature_range()` fails.
+    static constexpr double range_margin = 0.2;
 
     /**
      * Set the composition from elemental amounts, without equilibrating.

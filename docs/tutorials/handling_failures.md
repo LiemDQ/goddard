@@ -44,6 +44,27 @@ shock.mach_out           # nan
 | `INCOMPLETE` | The solve stopped early; what was computed is valid | Raise the step limit named in the message |
 | `NOT_COMPUTED` | The solve was skipped because a stage it depends on failed | Look at the stage named in the message |
 
+## Temperatures outside the data range
+
+The thermodynamic data of each species is a fit valid over a temperature range, typically 200 K to 6000 K for NASA-9 gases. Every solver checks the states it reports against the ranges of the gas species present (mole fraction at least 5e-6):
+
+- A little outside a range, the properties are extrapolated from the fit. The result is returned with a warning in `status.warnings` that names the species and its range.
+- More than 20% outside, the extrapolation is not trusted and the result fails with `OUT_OF_DATA_RANGE`. A frozen expansion to a very large area ratio, which can cool the gas below 100 K, stops this way, and so does a shock or detonation hotter than the data.
+
+| Solver | States checked |
+|---|---|
+| `Combustor`, `ThermoArray.equilibrate` | Each entry |
+| `Nozzle`, `RocketSolver` | Each station, the throat included |
+| `ShockSolver`, `DetonationSolver` | Each post-shock and product state, and the von Neumann state |
+| `KineticNozzle` | Each station; the warning is that of the exit, the coldest |
+| `MocNozzle` (frozen or equilibrium) | The point of highest Mach number, the coldest. The expansion table stops before a state far outside the data, so a point beyond it fails with `TABLE_RANGE_EXCEEDED` |
+
+A result made of parts repeats the warnings of its parts in its own `status.warnings`, prefixed with the part: `"chamber: ..."` for a `RocketResult`, `"incident shock: ..."` for a reflected shock. `rocket_report` lists them under `WARNINGS`. `Gas.check_temperature_range()` applies the same test to any state. Condensed species have their own rule: a station fails when a condensed species that is present leaves its range.
+
+## Known limitation: cool exhausts with many species
+
+With Cantera 3.2, the equilibrium solver fails when the equilibrium amount of some species is too small to represent in double precision (a mole fraction below about 1e-308). This happens in cool exhausts far from stoichiometric when the product list holds many species, for example heavy hydrocarbons in the oxygen-rich exhaust of a storable propellant below about 1200 K. The station fails with `NOT_CONVERGED` and a message ending in `no convergence in 50000 iterations`, after several seconds. Removing species that cannot form at the conditions of interest from the product list avoids it. The Cantera defect is fixed in its development version, to be released as Cantera 4.0.
+
 ## Sweeps
 
 A result made of several parts has a status for the whole and one for each part. One failed part does not affect the others.

@@ -604,6 +604,7 @@ ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
     condition.velocity = throat.velocity;
     condition.mach = throat.mach;
     condition.area_ratio = 1.0;
+    condition.status = std::move(throat.status);
     return condition;
 }
 
@@ -886,6 +887,7 @@ NozzleStation Nozzle::station_at_current_state(const ExpansionProperties& props,
         props.gamma_s);
 
     NozzleStation result;
+    check_reported_state(m_gas, result.status);
     result.velocity = std::sqrt(std::max(0.0, 2.0 * (H_stagnation - thermo.enthalpy)));
     result.mach = result.velocity / thermo.speed_of_sound;
     if (area_per_mdot_throat > 0.0 && result.velocity > 0.0) {

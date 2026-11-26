@@ -173,9 +173,12 @@ KineticNozzleResults KineticNozzle::solve(double dt_max, double dx_max, int max_
     }
     // The stations are appended to the result as they are completed, so a failure partway
     // leaves the ones before it.
-    results.status = capture_failure("kinetic expansion", [&] {
+    // The expansion cools the flow, so the exit station, the state the reactor holds at the end,
+    // is the one farthest outside the data range; a station far outside stops the integration.
+    results.status = capture_failure("kinetic expansion", m_gas, [&] {
         integrate(results, dt_max, dx_max, max_steps);
     });
+    add_part_warnings(results.status, "throat", results.throat.status);
     return results;
 }
 
@@ -300,6 +303,9 @@ void KineticNozzle::integrate(KineticNozzleResults& results, double dt_max, doub
                 freeze_idx = static_cast<int>(k);
             }
         }
+        // Stops at a station far outside the data range; the warning of one a little outside is
+        // that of the exit station (see `solve`).
+        (void)m_gas.check_temperature_range();
         ThermodynamicState station_thermo = m_gas.snapshot(CompositionModel::FROZEN);
         station_thermo.stagnation_enthalpy = H0;
         const std::string freezing_species = (Da_min < std::numeric_limits<double>::max())

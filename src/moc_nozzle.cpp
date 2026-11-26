@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <numbers>
 #include <cmath>
 #include <optional>
 #include <format>
 #include <stdexcept>
+#include <string>
 #include "goddard/equilibrium.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
@@ -427,6 +429,26 @@ MocResult MocNozzle::solve() {
                 "compression is converging on the axis (a forming shock); the isentropic "
                 "solution downstream of it is approximate.", result.min_theta * 180.0 / std::numbers::pi,
                 result.min_theta_x, result.min_theta_y);
+        }
+    }
+
+    if (thermo->chemistry() != GasChemistry::PERFECT_GAS) {
+        if (kernel_failure.has_value() && kernel_failure->code == MocErrorCode::TABLE_RANGE_EXCEEDED
+            && !thermo->table_end().empty()) {
+            kernel_failure->message += "; " + thermo->table_end();
+        } else if (!kernel_failure.has_value() && !net.points.empty() && m_gas.has_value()) {
+            // The coldest point of the flow, at its highest Mach number, against the data range
+            // of the gas species. The table stops before a state far outside it, so the point
+            // can be at most a little outside, which is a warning.
+            double max_mach = 0.0;
+            for (const CharacteristicPoint& pt : net.points) {
+                max_mach = std::max(max_mach, pt.mach);
+            }
+            Gas coldest = m_gas->clone();
+            coldest.restore_state(thermo->table().interpolate_state_from_mach(max_mach));
+            if (std::optional<std::string> warning = coldest.check_temperature_range()) {
+                log.warning("At the highest Mach number of the flow, {:.4g}: {}", max_mach, *warning);
+            }
         }
     }
 

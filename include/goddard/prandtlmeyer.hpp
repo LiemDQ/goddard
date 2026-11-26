@@ -57,6 +57,9 @@ public:
     
     bool is_built() const { return built; }
 
+    /** Keep the first `num_points` points of the table and drop the rest. */
+    void truncate(size_t num_points);
+
     bool is_equilibrium() const { return equil; }
 
     // Get velocity from nu.

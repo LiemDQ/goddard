@@ -1,4 +1,5 @@
 #pragma once
+#include <format>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -44,6 +45,42 @@ SolveStatus capture_failure(std::string_view stage, Body&& body) {
         return status_from_current_exception(stage);
     }
     return {};
+}
+
+class Gas;
+
+/**
+ * Range check of a state a solver reports: `Gas::check_temperature_range()` of `gas`, with its
+ * warning added to `status`. Call it at every state a result reports, inside the body of the
+ * solve's `capture_failure`: a state far outside the data throws `SolveError`
+ * (`OUT_OF_DATA_RANGE`), which then becomes the status of the result like any other failure.
+ */
+void check_reported_state(const Gas& gas, SolveStatus& status);
+
+/**
+ * Add the warnings of `part`, a part of a composite result, to the status of the whole, each
+ * prefixed with `label` (e.g. "incident shock: ...").
+ */
+inline void add_part_warnings(SolveStatus& status, std::string_view label, const SolveStatus& part) {
+    for (const std::string& warning : part.warnings) {
+        status.warnings.push_back(std::format("{}: {}", label, warning));
+    }
+}
+
+/**
+ * `capture_failure` for a solve whose result is the state `gas` holds when `body` returns: the
+ * status carries the range check of that state (`check_reported_state`).
+ */
+template <typename Body>
+SolveStatus capture_failure(std::string_view stage, const Gas& gas, Body&& body) {
+    SolveStatus status;
+    try {
+        std::forward<Body>(body)();
+        check_reported_state(gas, status);
+    } catch (...) {
+        return status_from_current_exception(stage);
+    }
+    return status;
 }
 
 /**

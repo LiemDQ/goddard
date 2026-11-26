@@ -1289,6 +1289,27 @@ pinned state).)doc";
 
 static const char *__doc_Goddard_Gas_check_for_valid_cantera = R"doc()doc";
 
+static const char *__doc_Goddard_Gas_check_temperature_range =
+R"doc(Check the temperature against the thermodynamic data ranges of the gas
+species present.
+
+A species counts as present when its mole fraction in the gas phase is
+at least `trace_mole_fraction` (5e-6, CEA's threshold for listing a
+species). Outside a species' range its properties are extrapolated
+from the polynomial fit: a little outside, the result is usable, and
+this returns a warning; far outside, it is not. Condensed species have
+their own range rule (see `equilibrate_TP()`).
+
+Returns:
+    A warning naming the species and its range when the temperature is
+    outside the range of a present species but within the margin;
+    empty when it is inside every range.
+
+Throws:
+    SolveError (`OUT_OF_DATA_RANGE`) if the temperature is more than
+    `range_margin` (20%) below the lowest temperature, or above the
+    highest temperature, of the range of a present species.)doc";
+
 static const char *__doc_Goddard_Gas_clear_phase_transition = R"doc(Clear the pinned phase transition, if any.)doc";
 
 static const char *__doc_Goddard_Gas_clone =
@@ -1876,7 +1897,12 @@ upstream of the exit. - `NOT_CONVERGED`: the reactor integration
 failed at some step, typically because the coupled chemistry and
 expansion are too stiff for the step limit. - The failure of the
 throat solve, in which case `stations` is empty. - `NO_SOLUTION`:
-condensed species are present at the throat.)doc";
+condensed species are present at the throat. - `OUT_OF_DATA_RANGE`: a
+station is far outside the temperature range of the species data
+(`Gas::check_temperature_range()`).
+
+Its warnings are those of the throat and of the exit station, the
+coldest.)doc";
 
 static const char *__doc_Goddard_KineticNozzleResults_throat =
 R"doc(Throat the integration starts from, solved with the chemistry of
@@ -2641,7 +2667,14 @@ own. A numerical failure (an iteration that does not converge, a
 failed equilibrium solve, a frozen expansion leaving the data range of
 a condensed species) is reported there and the failed station is NaN;
 the solver throws only for invalid arguments and unimplemented
-options.)doc";
+options.
+
+When the throat is an equilibrium station (EQUILIBRIUM chemistry, or
+FROZEN with `frozen_NFZ` >= 1), the inlet must be at chemical
+equilibrium: every solve that computes the throat throws
+`std::invalid_argument` if re-equilibrating the inlet at its enthalpy
+and pressure moves its temperature by more than 1e-5 relative. A
+FROZEN nozzle with `frozen_NFZ` = 0 expands any inlet composition.)doc";
 
 static const char *__doc_Goddard_NozzleGeometry =
 R"doc(Throat and contour geometry the solver is anchored to.
@@ -3153,6 +3186,11 @@ static const char *__doc_Goddard_Nozzle_m_station_model =
 R"doc(Composition model of the station being solved; set by
 `set_station_chemistry`.)doc";
 
+static const char *__doc_Goddard_Nozzle_require_equilibrium_inlet =
+R"doc(Throw `std::invalid_argument` unless the inlet is at chemical
+equilibrium, judged by the temperature change of an HP re-
+equilibration. Leaves the gas at the inlet state.)doc";
+
 static const char *__doc_Goddard_Nozzle_reset_state = R"doc(Restore the solver's gas to the inlet state.)doc";
 
 static const char *__doc_Goddard_Nozzle_set_inlet_state = R"doc(Set the inlet (chamber) state the next solve expands from.)doc";
@@ -3311,11 +3349,15 @@ static const char *__doc_Goddard_Nozzle_solve_throat_conditions =
 R"doc(Solve the sonic throat by isentropic expansion from the inlet state.
 
 Parameter ``abstol``:
-    Tolerance on |1 - 1/M^2| at the throat [-].
+    Tolerance on |1 - 1/M^2| at the throat [-]. The default is CEA's.
 
 Returns:
     the throat; `NOT_CONVERGED` if the iteration does not converge in
-    5 iterations.)doc";
+    10 iterations.
+
+Throws:
+    std::invalid_argument if the throat is an equilibrium station and
+    the inlet is not at chemical equilibrium.)doc";
 
 static const char *__doc_Goddard_Nozzle_station_at_current_state =
 R"doc(Station at the current gas state, with derivatives `props` already
@@ -3555,6 +3597,8 @@ static const char *__doc_Goddard_PrandtlMeyerTable_states = R"doc()doc";
 
 static const char *__doc_Goddard_PrandtlMeyerTable_temperatures = R"doc()doc";
 
+static const char *__doc_Goddard_PrandtlMeyerTable_truncate = R"doc(Keep the first `num_points` points of the table and drop the rest.)doc";
+
 static const char *__doc_Goddard_PrandtlMeyerTable_velocities = R"doc()doc";
 
 static const char *__doc_Goddard_ReflectedDetonationResult =
@@ -3714,8 +3758,9 @@ static const char *__doc_Goddard_RocketResult_point = R"doc(The point that was s
 static const char *__doc_Goddard_RocketResult_stagnation = R"doc(Stagnation state the nozzle expands from.)doc";
 
 static const char *__doc_Goddard_RocketResult_status =
-R"doc(Ok when every station was solved; otherwise the status of the first
-that was not.)doc";
+R"doc(Ok when every station was solved, with the warnings of the stations
+prefixed by the station (e.g. "exit 2: ..."); otherwise the status of
+the first station that was not.)doc";
 
 static const char *__doc_Goddard_RocketResult_throat = R"doc(Sonic throat.)doc";
 
@@ -4087,8 +4132,9 @@ depend on the failed solve are NaN (or empty). Invalid arguments and
 unimplemented options are not solve failures: they throw.)doc";
 
 static const char *__doc_Goddard_SolveStatus_describe =
-R"doc(One-line description: stage, message, reason and iteration data. "ok"
-when the solve succeeded.)doc";
+R"doc(One-line description: stage, message, reason and iteration data, or
+"ok" when the solve succeeded, followed by the warnings ("; warning:
+...").)doc";
 
 static const char *__doc_Goddard_SolveStatus_failure = R"doc(Failed status with the given reason and message.)doc";
 
@@ -5020,9 +5066,9 @@ Throws:
 static const char *__doc_Goddard_rocket_performance =
 R"doc(Rocket performance from the stagnation, throat and exit states.
 
-c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit
-velocity follows from the enthalpy drop h_0 - h_e, the area ratio from
-mass conservation, and CF = u_e / c*.
+c* = P_0 / (rho_t u_t); the throat and exit velocities follow from the
+enthalpy drops h_0 - h_t and h_0 - h_e, the area ratio from mass
+conservation, and CF = u_e / c*.
 
 Parameter ``stagnation``:
     Stagnation state the nozzle expands from (the chamber of an

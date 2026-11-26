@@ -325,7 +325,8 @@ TEST_F(HydrogenOxygenDetonationTests, ChapmanJouguetIsEntropyMinimumOnHugoniot) 
 
 TEST_F(HydrogenOxygenDetonationTests, BranchesBracketChapmanJouguet) {
     const DetonationResult cj = solver.chapman_jouguet();
-    for (double f : {1.01, 1.5}) {
+    // h2o2.yaml has data to 3500 K: a stronger overdriven wave than f = 1.2 is too hot for it
+    for (double f : {1.01, 1.2}) {
         const DetonationResult strong = solver.detonation(f, DetonationBranch::OVERDRIVEN);
         const DetonationResult weak = solver.detonation(f, DetonationBranch::UNDERDRIVEN);
         ASSERT_TRUE(strong.status.ok());
@@ -489,13 +490,28 @@ TEST(DetonationSolverFailures, ConstructorSolvesNothingAndFirstUseSolvesTheChapm
 
     // A driven detonation solves the CJ detonation it is fitted to, so the CJ result afterwards is
     // the cached one and is identical when asked twice
-    ASSERT_TRUE(is_ok(solver.detonation(1.5).status));
+    ASSERT_TRUE(is_ok(solver.detonation(1.2).status));
     const DetonationResult first = solver.chapman_jouguet();
     const DetonationResult second = solver.chapman_jouguet();
     ASSERT_TRUE(is_ok(first.status));
     EXPECT_EQ(first.velocity, second.velocity);
     EXPECT_EQ(first.static_pressure_ratio, second.static_pressure_ratio);
     EXPECT_NO_THROW(solver.post_detonation_state());
+}
+
+TEST(DetonationSolverFailures, ProductsOutsideTheDataWarnOrFail) {
+    // h2o2.yaml has data to 3500 K. The stoichiometric H2/O2 CJ products are a little hotter;
+    // a wave overdriven by 1.5 takes them to about 4300 K, far beyond.
+    DetonationSolver solver(make_gas("H2:2, O2:1"));
+    const DetonationResult cj = solver.chapman_jouguet();
+    ASSERT_TRUE(is_ok(cj.status));
+    ASSERT_GT(solver.post_detonation_state().temperature(), 3500.0);
+    ASSERT_EQ(cj.status.warnings.size(), 1u);
+    EXPECT_NE(cj.status.warnings[0].find("extrapolated"), std::string::npos) << cj.status.warnings[0];
+
+    const DetonationResult strong = solver.detonation(1.5);
+    EXPECT_TRUE(failed_with(strong.status, FailureReason::OUT_OF_DATA_RANGE));
+    EXPECT_TRUE(std::isnan(strong.static_temperature_ratio));
 }
 
 TEST(DetonationSolverFailures, FailedChapmanJouguetSolveIsCached) {
@@ -521,7 +537,7 @@ TEST(DetonationSolverState, AccessorsRestoreStates) {
     const double P_initial = gas.pressure();
     DetonationSolver solver(gas);
     const DetonationResult cj = solver.chapman_jouguet();
-    const DetonationResult overdriven = solver.detonation(1.5);
+    const DetonationResult overdriven = solver.detonation(1.2);
     ASSERT_TRUE(overdriven.status.ok());
 
     const Gas& pre = solver.pre_detonation_state();

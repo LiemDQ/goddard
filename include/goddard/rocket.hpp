@@ -143,7 +143,10 @@ struct RocketResult {
      * not solved.
      */
     double mass_flux = NaN;
-    /** Ok when every station was solved; otherwise the status of the first that was not. */
+    /**
+     * Ok when every station was solved, with the warnings of the stations prefixed by the
+     * station (e.g. "exit 2: ..."); otherwise the status of the first station that was not.
+     */
     SolveStatus status;
 };
 

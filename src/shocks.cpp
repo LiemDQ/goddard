@@ -256,6 +256,7 @@ ObliqueShockResult oblique_shock_real(Gas& gas, double u1, double beta,
     result.theta = beta - std::atan2(u_normal2, u_tangential);
     result.mach_in = u1/a1;
     result.mach_out = std::hypot(u_normal2, u_tangential)/gas.speed_of_sound(composition_model(chemistry));
+    result.status = result.shock.status;
     return result;
 }
 
@@ -590,6 +591,7 @@ ReflectedShockResult ShockSolver::reflected_shock_from_velocity(
     }
     set_stage_if_unset(result.reflected.status, "reflected shock");
     result.status = result.reflected.status;
+    add_part_warnings(result.status, "incident shock", result.incident.status);
     store_post_shock_state(result.status);
     return result;
 }

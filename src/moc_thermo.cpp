@@ -1,5 +1,9 @@
+#include <algorithm>
 #include <cmath>
+#include <format>
 #include <stdexcept>
+#include <string>
+#include <vector>
 #include "goddard/error.hpp"
 #include "goddard/moc_thermo.hpp"
 #include "goddard/gas_dynamics.hpp"
@@ -22,6 +26,7 @@ MocThermo MocThermo::tabulated(Gas& gas, GasChemistry chemistry, const ThroatCon
     thermo.m_T_ref = gas.temperature();
     thermo.m_P_ref = throat.P_inlet;
     thermo.m_V_ref = gas.speed_of_sound(composition_model(chemistry));
+    const std::vector<double> stagnation_state = gas.save_state();
     gas.restore_state(throat.state);
     if (gas.has_condensed_phases()) {
         // `PrandtlMeyerTable` tabulates the gas phase alone, so a condensate would be dropped.
@@ -35,12 +40,28 @@ MocThermo MocThermo::tabulated(Gas& gas, GasChemistry chemistry, const ThroatCon
         throat.S_inlet,
         throat.H_stagnation,
         a_throat);
+    // Points farther along the expansion than a state far outside the species data are dropped.
+    // The throat itself has passed the check, as a nozzle station.
+    PrandtlMeyerTable& table = thermo.m_table;
+    for (size_t i = 1; i < table.states.size(); i++) {
+        gas.restore_state(table.states[i]);
+        try {
+            (void)gas.check_temperature_range();
+        } catch (const SolveError& error) {
+            thermo.m_table_end = std::format("the expansion table ends at T = {:.6g} K, because {}",
+                table.temperatures[i - 1], error.status().message);
+            table.truncate(std::max<size_t>(i, 2));
+            break;
+        }
+    }
+    gas.restore_state(stagnation_state);
     return thermo;
 }
 
 GasChemistry MocThermo::chemistry() const { return m_chemistry; }
 double MocThermo::gamma() const { return m_gamma; }
 const PrandtlMeyerTable& MocThermo::table() const { return m_table; }
+const std::string& MocThermo::table_end() const { return m_table_end; }
 double MocThermo::T_ref() const { return m_T_ref; }
 double MocThermo::P_ref() const { return m_P_ref; }
 double MocThermo::V_ref() const { return m_V_ref; }

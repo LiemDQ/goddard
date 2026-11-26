@@ -40,6 +40,16 @@ TEST(SolveStatus, WarningsDoNotMakeAStatusFail) {
     EXPECT_NO_THROW(status.raise_if_failed());
 }
 
+TEST(SolveStatus, DescribeListsTheWarnings) {
+    SolveStatus status;
+    status.warnings = {"extrapolated", "resolution"};
+    EXPECT_EQ(status.describe(), "ok; warning: extrapolated; warning: resolution");
+
+    SolveStatus failed = SolveStatus::failure(FailureReason::NO_SOLUTION, "detached");
+    failed.warnings = {"extrapolated"};
+    EXPECT_EQ(failed.describe(), "detached (NO_SOLUTION); warning: extrapolated");
+}
+
 TEST(SolveStatus, FailureCarriesReasonAndMessage) {
     const SolveStatus status = SolveStatus::failure(FailureReason::NO_SOLUTION, "detached");
     EXPECT_TRUE(failed_with(status, FailureReason::NO_SOLUTION, "detached"));

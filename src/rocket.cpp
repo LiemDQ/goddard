@@ -8,6 +8,7 @@
 
 #include "goddard/error.hpp"
 #include "goddard/rocket.hpp"
+#include "goddard/solve_guard.hpp"
 
 namespace Goddard {
 
@@ -92,6 +93,28 @@ SolveStatus first_failure(const RocketResult& result) {
         }
     }
     return {};
+}
+
+/**
+ * Warnings of every station of a result, each prefixed with the station, e.g. "exit 2: ...".
+ * The chamber, stagnation and combustion-end stations of an infinite-area combustor are one
+ * state and are listed once, as the chamber.
+ */
+std::vector<std::string> station_warnings(const RocketResult& result) {
+    std::vector<std::pair<std::string, const SolveStatus*>> stations{{"chamber", &result.chamber.status}};
+    if (result.point.combustor.type != CombustorType::INFINITE_AREA) {
+        stations.emplace_back("stagnation", &result.stagnation.status);
+        stations.emplace_back("combustion end", &result.combustion_end.status);
+    }
+    stations.emplace_back("throat", &result.throat.status);
+    for (std::size_t i = 0; i < result.exits.size(); i++) {
+        stations.emplace_back(std::format("exit {}", i + 1), &result.exits[i].status);
+    }
+    SolveStatus all;
+    for (const auto& [label, status] : stations) {
+        add_part_warnings(all, label, *status);
+    }
+    return all.warnings;
 }
 
 } // namespace
@@ -293,6 +316,9 @@ RocketResult RocketSolver::solve_validated(const RocketPoint& point) {
     }
 
     result.status = first_failure(result);
+    if (result.status.ok()) {
+        result.status.warnings = station_warnings(result);
+    }
     return result;
 }
 

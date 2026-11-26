@@ -389,7 +389,7 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
             const int loc = combustion_states.flat_index(i, j);
             // An element missing from the product species is a bad argument and is not caught.
             m_gas.set_element_moles(element_moles, temperature_guess, pressures(j));
-            SolveStatus status = capture_failure("combustion", [&] {
+            SolveStatus status = capture_failure("combustion", m_gas, [&] {
                 switch (options.process) {
                     case CombustionProcess::ISOBARIC:
                         m_gas.equilibrate_HP(enthalpy, pressures(j));
@@ -415,6 +415,7 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
             // Warm start of the next pressure at the same mixture ratio.
             temperature_guess = m_gas.temperature();
             combustion_states.set_state(loc, m_gas.save_state());
+            combustion_states.set_status(loc, std::move(status));
         }
     }
 

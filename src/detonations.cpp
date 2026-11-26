@@ -207,6 +207,8 @@ DetonationResult real_gas_detonation(Gas& gas, const std::vector<double>& unburn
     result.molecular_weight_ratio = products_molecular_weight/unburned_molecular_weight;
     result.total_pressure_ratio = P02/P01;
     result.von_neumann = von_neumann;
+    check_reported_state(gas, result.status);
+    add_part_warnings(result.status, "von Neumann state", von_neumann.status);
     return result;
 }
 
@@ -472,6 +474,7 @@ ReflectedDetonationResult DetonationSolver::reflected_detonation(double drive_fa
     }
     set_stage_if_unset(result.reflected.status, "reflected shock");
     result.status = result.reflected.status;
+    add_part_warnings(result.status, "incident detonation", result.incident.status);
     // The von Neumann state stays that of the incident detonation.
     m_post_detonation_status = result.status;
     return result;

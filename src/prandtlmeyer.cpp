@@ -123,6 +123,14 @@ void PrandtlMeyerTable::build_table(
     built = true;
 }
 
+void PrandtlMeyerTable::truncate(size_t num_points) {
+    for (std::vector<double>* column : {&velocities, &nus, &machs, &enthalpies, &dnu_dV, &gamma_s,
+                                        &temperatures, &pressures}) {
+        column->resize(std::min(column->size(), num_points));
+    }
+    states.resize(std::min(states.size(), num_points));
+}
+
 double PrandtlMeyerTable::interpolate_V(double nu) const {
     return interp(nu, nus, velocities);
 }

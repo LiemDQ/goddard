@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+
 #include "goddard/chemistry.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/moc.hpp"   // MocErrorCode
@@ -26,8 +28,12 @@ public:
     static MocThermo perfect_gas(double gamma);
     /**
      * Frozen or equilibrium real gas: builds the Prandtl-Meyer table from the throat state.
-     * `gas` must be at the stagnation state on entry, which sets `T_ref`, `P_ref` and `V_ref`;
-     * it is left at the throat state on return.
+     * `gas` must be at the stagnation state on entry, which sets `T_ref`, `P_ref` and `V_ref`,
+     * and is left at it on return.
+     *
+     * The table ends before the first state far outside the temperature range of the species
+     * data (`Gas::check_temperature_range()` fails there; see `table_end()`), so that a point
+     * beyond it fails as a lookup outside the table.
      */
     static MocThermo tabulated(Gas& gas, GasChemistry chemistry, const ThroatCondition& throat);
 
@@ -35,6 +41,11 @@ public:
     GasChemistry chemistry() const;
     double gamma() const;                     ///< Perfect gas only: the constant gamma.
     const PrandtlMeyerTable& table() const;    ///< Real gas only.
+    /**
+     * Why the table ends before the pressure ratio it was built to: the failure of the range
+     * check at the first state dropped. Empty when the table is complete.
+     */
+    const std::string& table_end() const;
     /** Stagnation temperature T0 [K] that point temperatures are divided by; 1 for a perfect gas. */
     double T_ref() const;
     /** Stagnation pressure P0 [Pa] that point pressures are divided by; 1 for a perfect gas. */
@@ -68,6 +79,7 @@ private:
     GasChemistry m_chemistry = GasChemistry::PERFECT_GAS;
     double m_gamma = 1.4;
     PrandtlMeyerTable m_table;
+    std::string m_table_end;
     double m_T_ref = 1.0;
     double m_P_ref = 1.0;
     double m_V_ref = 1.0;

@@ -84,14 +84,18 @@ def test_gas_mixture_ratios(h2o2_yaml):
     assert "temperature" in gas.report()
 
 
-def test_reprs(burnt):
+def test_reprs(burnt, h2o2_yaml):
     assert repr(burnt).startswith("<Gas ")
     results = goddard.Nozzle(burnt).solve(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, 5.0)
     assert repr(results).startswith("<NozzleResults ")
     assert repr(results.throat).startswith("<ThroatCondition ")
     assert repr(results.expansions[0]).startswith("<NozzleStation ok A/At=")
     assert repr(results.expansions[0].thermo).startswith("<ThermodynamicState T=")
-    shock = goddard.ShockSolver(burnt.clone(), GasChemistry.EQUILIBRIUM).normal_shock(2.0)
+    # The burnt gas is already above the 3500 K end of the h2o2.yaml data; a shock would take it
+    # far beyond
+    air = Gas(h2o2_yaml, phase_name="ohmech")
+    air.set_state_TPX(300.0, 1e5, "O2:1, N2:3.76")
+    shock = goddard.ShockSolver(air, GasChemistry.EQUILIBRIUM).normal_shock(2.0)
     assert repr(shock).startswith("<ShockResult ok ")
 
 

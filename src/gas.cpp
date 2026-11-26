@@ -610,6 +610,46 @@ void Gas::equilibrate(const std::string& XY, const std::string& solver) {
 
 int Gas::last_equilibrium_solve_count() const { return m_equilibrium_solve_count; }
 
+std::optional<std::string> Gas::check_temperature_range() const {
+    const double T = temperature();
+    // The present species farthest outside its range, by relative distance from the range.
+    size_t worst = Cantera::npos;
+    double worst_distance = 0.0;
+    for (size_t k = 0; k < thermo()->nSpecies(); k++) {
+        if (thermo()->moleFraction(k) < trace_mole_fraction) {
+            continue;
+        }
+        const double T_min = thermo()->minTemp(k);
+        const double T_max = thermo()->maxTemp(k);
+        const double distance = T < T_min ? (T_min - T) / T_min
+                              : T > T_max ? (T - T_max) / T_max
+                                          : 0.0;
+        if (distance > worst_distance) {
+            worst = k;
+            worst_distance = distance;
+        }
+    }
+    if (worst == Cantera::npos) {
+        return std::nullopt;
+    }
+    const std::string description = std::format(
+        "T = {:.6g} K is outside the thermodynamic data range of gas species '{}' ({:.6g} - "
+        "{:.6g} K, mole fraction {:.3g})", T, thermo()->speciesName(worst),
+        thermo()->minTemp(worst), thermo()->maxTemp(worst), thermo()->moleFraction(worst));
+    if (worst_distance > range_margin) {
+        throw SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
+            "{}, by more than {:g}%: its properties cannot be extrapolated that far.",
+            description, 100.0 * range_margin));
+    }
+    return description + "; its properties are extrapolated.";
+}
+
+void check_reported_state(const Gas& gas, SolveStatus& status) {
+    if (std::optional<std::string> warning = gas.check_temperature_range()) {
+        status.warnings.push_back(std::move(*warning));
+    }
+}
+
 namespace {
 
 /**

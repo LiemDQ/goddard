@@ -77,8 +77,8 @@ struct SolveStatus {
     bool ok() const { return reason == FailureReason::NONE; }
 
     /**
-     * One-line description: stage, message, reason and iteration data. "ok" when the solve
-     * succeeded.
+     * One-line description: stage, message, reason and iteration data, or "ok" when the solve
+     * succeeded, followed by the warnings ("; warning: ...").
      */
     std::string describe() const;
 

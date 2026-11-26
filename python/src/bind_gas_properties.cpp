@@ -3,6 +3,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/map.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/unordered_set.h>
@@ -269,6 +270,8 @@ void bind_gas_properties(nb::module_& m) {
              "S"_a, "P"_a, DOC(Goddard, Gas, equilibrate_SP))
         .def("last_equilibrium_solve_count", &Goddard::Gas::last_equilibrium_solve_count,
              DOC(Goddard, Gas, last_equilibrium_solve_count))
+        .def("check_temperature_range", &Goddard::Gas::check_temperature_range,
+             DOC(Goddard, Gas, check_temperature_range))
         .def_rw("equilibrium_options", &Goddard::Gas::equilibrium_options,
              DOC(Goddard, Gas, equilibrium_options))
 

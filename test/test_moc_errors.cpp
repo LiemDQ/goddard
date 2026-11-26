@@ -411,3 +411,53 @@ TEST(MocOptionsValidation, RealGasChemistryWithoutGasThrows) {
     nozzle.options.chemistry = GasChemistry::FROZEN;
     EXPECT_THROW(nozzle.solve(), std::invalid_argument);
 }
+
+// A cool H2O-rich stagnation state, 700 K and 30 bar. A frozen planar minimum-length design to
+// theta_max = 40 deg ends at about 165 K, a little below the 200 K lower end of the H2 and O2
+// data in h2o2.yaml; to 50 deg it would reach far below it.
+class MocDataRangeTest : public ::testing::Test {
+protected:
+    static Gas cool_gas() {
+        Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+        gas.set_state_TPX(700.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas.equilibrate_TP(700.0, 3e6);
+        return gas;
+    }
+    static MocOptions design(double theta_max) {
+        MocOptions opts;
+        opts.flow_type = MocFlowKind::PLANAR;
+        opts.chemistry = GasChemistry::FROZEN;
+        opts.mode = MocMode::DESIGN_MIN_LENGTH;
+        opts.theta_max = theta_max;
+        opts.num_characteristics = 7;
+        return opts;
+    }
+};
+
+TEST_F(MocDataRangeTest, FlowALittleOutsideTheDataWarns) {
+    MocNozzle nozzle(cool_gas(), design(40.0 * DEG));
+    const MocResult result = nozzle.solve();
+    ASSERT_TRUE(is_ok(result.status));
+    ASSERT_EQ(result.status.warnings.size(), 1u);
+    EXPECT_NE(result.status.warnings[0].find("highest Mach number"), std::string::npos)
+        << result.status.warnings[0];
+}
+
+TEST_F(MocDataRangeTest, FlowFarOutsideTheDataFails) {
+    MocNozzle nozzle(cool_gas(), design(50.0 * DEG));
+    const MocResult result = nozzle.solve();
+    EXPECT_TRUE(failed_with(result.status, FailureReason::OUT_OF_DATA_RANGE, "expansion table ends"));
+    EXPECT_EQ(result.failure.code, MocErrorCode::TABLE_RANGE_EXCEEDED);
+    EXPECT_TRUE(std::isnan(result.exit_mach));
+}
+
+TEST_F(MocDataRangeTest, SecondSolveStartsFromTheStagnationState) {
+    // Building the expansion table moves the solver's gas; the next solve must not start there
+    MocNozzle nozzle(cool_gas(), design(30.0 * DEG));
+    const MocResult first = nozzle.solve();
+    const MocResult second = nozzle.solve();
+    ASSERT_TRUE(is_ok(first.status));
+    ASSERT_TRUE(is_ok(second.status));
+    EXPECT_EQ(second.stagnation_temperature, first.stagnation_temperature);
+    EXPECT_EQ(second.exit_mach, first.exit_mach);
+}

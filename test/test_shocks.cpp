@@ -521,7 +521,9 @@ TEST_P(ShockSolverArgonTests, ReflectedShockMatchesPerfectGas) {
     // Regression test: the reflected shock must start from state 2 and the particle velocity
     // u_p, not from state 1 and u1.
     ShockSolver solver(make_gas("AR:1"), GetParam());
-    for (double M : {1.5, 3.0, 6.0}) {
+    // At M = 6 the reflected shock would take argon to about 10^4 K, far beyond the 5000 K end
+    // of its data in h2o2.yaml
+    for (double M : {1.5, 3.0, 4.0}) {
         const std::string label = std::string(chemistry_name(GetParam())) + " M=" + std::to_string(M);
         ReflectedShockResult actual = solver.reflected_shock(M);
         ReflectedShockResult expected = reflected_shock(M, 5.0/3.0);
@@ -556,6 +558,36 @@ TEST_P(ShockSolverArgonTests, ObliqueShockMatchesPerfectGas) {
         EXPECT_NEAR(actual.beta, expected.beta, 1e-5) << "weak=" << weak;
         EXPECT_NEAR(actual.theta, 15.0*DEG, 1e-6) << "weak=" << weak;
     }
+}
+
+TEST_P(ShockSolverArgonTests, PostShockStateOutsideTheDataWarnsOrFails) {
+    // Argon's data in h2o2.yaml ends at 5000 K. A Mach 7.5 shock takes it from 300 K to about
+    // 5500 K, a little beyond; Mach 9 to about 7900 K, far beyond.
+    ShockSolver solver(make_gas("AR:1"), GetParam());
+    const ShockResult warm = solver.normal_shock(7.5);
+    ASSERT_TRUE(is_ok(warm.status));
+    ASSERT_EQ(warm.status.warnings.size(), 1u);
+    EXPECT_NE(warm.status.warnings[0].find("'AR'"), std::string::npos) << warm.status.warnings[0];
+
+    const ShockResult hot = solver.normal_shock(9.0);
+    EXPECT_TRUE(failed_with(hot.status, FailureReason::OUT_OF_DATA_RANGE, "'AR'"));
+    EXPECT_TRUE(std::isnan(hot.static_temperature_ratio));
+
+    // An oblique shock with the same normal Mach number carries the warning of its shock
+    const ObliqueShockResult oblique = solver.oblique_shock_from_wave_angle(10.0, std::asin(0.75));
+    ASSERT_TRUE(is_ok(oblique.status));
+    EXPECT_EQ(oblique.status.warnings, oblique.shock.status.warnings);
+    EXPECT_EQ(oblique.status.warnings.size(), 1u);
+
+    // The reflected shock of a Mach 7.5 incident shock is far beyond the data; the incident
+    // shock is solved, and its warning is kept in the status of the whole
+    const ReflectedShockResult reflected = solver.reflected_shock(7.5);
+    EXPECT_TRUE(failed_with(reflected.status, FailureReason::OUT_OF_DATA_RANGE));
+    EXPECT_EQ(reflected.status.stage, "reflected shock");
+    ASSERT_TRUE(is_ok(reflected.incident.status));
+    ASSERT_EQ(reflected.incident.status.warnings.size(), 1u);
+    ASSERT_EQ(reflected.status.warnings.size(), 1u);
+    EXPECT_EQ(reflected.status.warnings[0], "incident shock: " + reflected.incident.status.warnings[0]);
 }
 
 INSTANTIATE_TEST_SUITE_P(Chemistry, ShockSolverArgonTests,

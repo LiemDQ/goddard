@@ -295,7 +295,7 @@ Eigen::Array<bool, Eigen::Dynamic, 1> ThermoArray::ok() const {
 
 void ThermoArray::equilibrate_location(int loc, const std::string& XY, const std::string& solver) {
 	load(loc);
-	SolveStatus status = capture_failure(entry_label(loc), [&] { m_gas.equilibrate(XY, solver); });
+	SolveStatus status = capture_failure(entry_label(loc), m_gas, [&] { m_gas.equilibrate(XY, solver); });
 	if (status.ok()) {
 		m_states[static_cast<size_t>(loc)] = m_gas.save_state();
 	}

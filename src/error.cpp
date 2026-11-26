@@ -28,26 +28,36 @@ std::string_view to_string(FailureReason reason) {
     return "UNKNOWN";
 }
 
-std::string SolveStatus::describe() const {
-    if (ok()) {
-        return "ok";
-    }
+namespace {
+
+/// `SolveStatus::describe()` of a failed status, without the warnings.
+std::string describe_failure(const SolveStatus& status) {
     std::string text;
-    if (!stage.empty()) {
-        text += stage + ": ";
+    if (!status.stage.empty()) {
+        text += status.stage + ": ";
     }
-    text += message;
-    text += std::format(" ({}", to_string(reason));
-    if (iterations >= 0) {
-        text += std::format(", {} iterations", iterations);
+    text += status.message;
+    text += std::format(" ({}", to_string(status.reason));
+    if (status.iterations >= 0) {
+        text += std::format(", {} iterations", status.iterations);
     }
-    if (!std::isnan(residual)) {
-        text += std::format(", residual {:.3g}", residual);
+    if (!std::isnan(status.residual)) {
+        text += std::format(", residual {:.3g}", status.residual);
     }
-    if (!std::isnan(tolerance)) {
-        text += std::format(", tolerance {:.3g}", tolerance);
+    if (!std::isnan(status.tolerance)) {
+        text += std::format(", tolerance {:.3g}", status.tolerance);
     }
     text += ")";
+    return text;
+}
+
+} // namespace
+
+std::string SolveStatus::describe() const {
+    std::string text = ok() ? "ok" : describe_failure(*this);
+    for (const std::string& warning : warnings) {
+        text += "; warning: " + warning;
+    }
     return text;
 }
 

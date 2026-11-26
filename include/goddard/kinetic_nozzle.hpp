@@ -47,6 +47,10 @@ struct KineticNozzleResults {
      *   coupled chemistry and expansion are too stiff for the step limit.
      * - The failure of the throat solve, in which case `stations` is empty.
      * - `NO_SOLUTION`: condensed species are present at the throat.
+     * - `OUT_OF_DATA_RANGE`: a station is far outside the temperature range of the species data
+     *   (`Gas::check_temperature_range()`).
+     *
+     * Its warnings are those of the throat and of the exit station, the coldest.
      */
     SolveStatus status;
 };

@@ -291,13 +291,18 @@ TEST(RocketSolverReport, FrozenReportPrintsTheCompositionOfTheFrozenFlow) {
 
 class RocketSolverPartialFailureTests : public ::testing::Test {
 protected:
-    // At an area ratio of 1e5 the equilibrium exit falls outside what the backend can solve; the
-    // exit at an area ratio of 10 solves. Both mixture ratios behave alike. The sweep takes a
-    // few seconds, so the tests share one solve.
+    // Frozen at the throat, the exit at an area ratio of 1e5 is at 44 K (O/F 4) or 78 K (O/F 6),
+    // far below the 200 K lower end of the H2 data, so it fails; the exit at an area ratio of
+    // 10 solves. The sweep takes a few seconds, so the tests share one solve.
     static void SetUpTestSuite() {
         RocketSolver solver(h2o2_products());
-        shared_results = std::make_unique<std::vector<RocketResult>>(solver.solve(
-            {h2o2_point(4.0, 70.0e5, {10.0, 1.0e5}), h2o2_point(6.0, 70.0e5, {10.0, 1.0e5})}));
+        std::vector<RocketPoint> points{h2o2_point(4.0, 70.0e5, {10.0, 1.0e5}),
+                                        h2o2_point(6.0, 70.0e5, {10.0, 1.0e5})};
+        for (RocketPoint& point : points) {
+            point.nozzle.chemistry = GasChemistry::FROZEN;
+            point.nozzle.frozen_NFZ = 1;
+        }
+        shared_results = std::make_unique<std::vector<RocketResult>>(solver.solve(points));
     }
     static void TearDownTestSuite() { shared_results.reset(); }
 
@@ -318,12 +323,12 @@ TEST_F(RocketSolverPartialFailureTests, onlyTheUnsolvableExitFailsAndTheStatusNa
         EXPECT_GT(result.exits[0].thermo.temperature, 500.0);
 
         const NozzleStation& failed = result.exits[1];
-        EXPECT_EQ(failed.status.reason, FailureReason::THERMO_FAILURE) << failed.status.describe();
+        EXPECT_EQ(failed.status.reason, FailureReason::OUT_OF_DATA_RANGE) << failed.status.describe();
         EXPECT_TRUE(std::isnan(failed.thermo.temperature));
         // A failed exit does not report the requested area ratio as if it had been solved
         EXPECT_TRUE(std::isnan(failed.area_ratio));
 
-        EXPECT_TRUE(failed_with(result.status, FailureReason::THERMO_FAILURE));
+        EXPECT_TRUE(failed_with(result.status, FailureReason::OUT_OF_DATA_RANGE, "'H2'"));
         EXPECT_EQ(result.status.message, failed.status.message);
     }
 }
@@ -336,7 +341,7 @@ TEST_F(RocketSolverPartialFailureTests, performanceOfTheFailedExitIsNaNAndTheGoo
         EXPECT_GT(good.cstar, 1500.0);
 
         const RocketPerformance& bad = result.performance[1];
-        EXPECT_EQ(bad.status.reason, FailureReason::THERMO_FAILURE) << bad.status.describe();
+        EXPECT_EQ(bad.status.reason, FailureReason::OUT_OF_DATA_RANGE) << bad.status.describe();
         for (double value : {bad.isp, bad.ivac, bad.CF, bad.cstar, bad.mach_number, bad.area_ratio}) {
             EXPECT_TRUE(std::isnan(value));
         }
@@ -347,6 +352,16 @@ TEST_F(RocketSolverPartialFailureTests, reportMarksTheFailedStationsAndStillPrin
     const std::string report = rocket_report(results());
     EXPECT_NE(report.find("STATIONS NOT SOLVED (NaN ABOVE)"), std::string::npos) << report;
     EXPECT_EQ(report.find("OPERATING POINT NOT SOLVED"), std::string::npos) << report;
+}
+
+TEST(RocketReportTests, failedEquilibriumExitIsNaNInEveryRow) {
+    // The equilibrium exit at an area ratio of 1e5 is not solved: the backend fails, or the
+    // solution lies far below the data range of H2.
+    RocketSolver solver(h2o2_products());
+    const RocketResult result = solver.solve(h2o2_point(4.0, 70.0e5, {10.0, 1.0e5}));
+    ASSERT_TRUE(result.exits[0].status.ok()) << result.exits[0].status.describe();
+    ASSERT_FALSE(result.exits[1].status.ok());
+    const std::string report = rocket_report(result);
 
     // The failed exit is the last column of every row: NaN, never a formatted garbage value or 0
     for (const std::string label : {"RHO, KG/CU M", "T, K", "H2O "}) {
@@ -355,6 +370,37 @@ TEST_F(RocketSolverPartialFailureTests, reportMarksTheFailedStationsAndStillPrin
         const std::string row = report.substr(start + 1, report.find('\n', start + 1) - start - 1);
         EXPECT_EQ(row.substr(row.size() - 4), " nan") << row;
     }
+}
+
+TEST(RocketReportTests, stationWarningsAreInTheStatusAndTheReport) {
+    // At O/F 6 and 70 bar the chamber is at 3596 K, above the 3500 K upper end of the H2 data
+    RocketSolver solver(h2o2_products());
+    const RocketResult result = solver.solve(h2o2_point(6.0, 70.0e5, {10.0}));
+    ASSERT_TRUE(result.status.ok()) << result.status.describe();
+    ASSERT_GT(result.chamber.thermo.temperature, 3500.0);
+
+    ASSERT_EQ(result.chamber.status.warnings.size(), 1u);
+    EXPECT_NE(result.chamber.status.warnings[0].find("'H2'"), std::string::npos)
+        << result.chamber.status.warnings[0];
+    // Listed once, as the chamber, though the stagnation and combustion-end stations are the same
+    ASSERT_EQ(result.status.warnings.size(), 1u);
+    EXPECT_EQ(result.status.warnings[0], "chamber: " + result.chamber.status.warnings[0]);
+
+    const std::string report = rocket_report(result);
+    EXPECT_NE(report.find(" WARNINGS\n   CHAMBER: " + result.chamber.status.warnings[0]),
+              std::string::npos) << report;
+}
+
+TEST(RocketSolverFailures, combustionEntryOutsideTheDataCarriesAWarning) {
+    // At O/F 6 and 70 bar the flame is at 3596 K, above the 3500 K upper end of the H2 data
+    const RocketPoint point = h2o2_point(6.0, 70.0e5, {10.0});
+    Combustor combustor(h2o2_products(), point.fuel.composition, point.oxidizer.composition);
+    const ThermoArray states = combustor.solve(point.fuel.T, point.oxidizer.T,
+        Eigen::ArrayXd::Constant(1, point.chamber_pressure),
+        Eigen::ArrayXd::Constant(1, point.mixture_ratio), point.combustor);
+    ASSERT_TRUE(states.status_at(0).ok()) << states.status_at(0).describe();
+    ASSERT_EQ(states.status_at(0).warnings.size(), 1u);
+    EXPECT_NE(states.status_at(0).warnings[0].find("'H2'"), std::string::npos);
 }
 
 TEST(RocketSolverFailures, failedCombustionFailsThePointAndTheSweepGoesOn) {

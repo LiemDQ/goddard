@@ -396,8 +396,10 @@ def test_combustor_rejects_nonpositive_temperature_and_pressure(h2o2_yaml):
 
 @pytest.fixture(scope="module")
 def partial_failure_results():
-    """At an area ratio of 1e5 the equilibrium exit cannot be solved; the exit at 10 can."""
-    points = [h2o2_point(70 * BAR, [10.0, 1e5], mixture_ratio=mixture_ratio, label="sweep")
+    """Frozen at the throat, the exit at an area ratio of 1e5 is at 44 K (O/F 4) or 78 K (O/F 6),
+    far below the 200 K lower end of the H2 data, so it fails; the exit at 10 is solved."""
+    points = [h2o2_point(70 * BAR, [10.0, 1e5], mixture_ratio=mixture_ratio, label="sweep",
+                         nozzle=goddard.frozen_nozzle(frozen_NFZ=1))
               for mixture_ratio in (4.0, 6.0)]
     return h2o2_solver().solve(points)
 
@@ -407,7 +409,7 @@ def test_failed_exit_does_not_abort_the_sweep(partial_failure_results):
     assert results.failed() == [0, 1]
     assert len(results) == 2
 
-    assert results.status.reason == FailureReason.THERMO_FAILURE
+    assert results.status.reason == FailureReason.OUT_OF_DATA_RANGE
     assert not results.status.ok
     for result in results:
         assert not result.status.ok
@@ -415,7 +417,7 @@ def test_failed_exit_does_not_abort_the_sweep(partial_failure_results):
         assert result.throat.status.ok
         assert len(result.exits) == 2
         assert result.exits[0].status.ok and not result.exits[1].status.ok
-        assert result.exits[1].status.reason == FailureReason.THERMO_FAILURE
+        assert result.exits[1].status.reason == FailureReason.OUT_OF_DATA_RANGE
         assert math.isnan(result.exits[1].thermo.temperature)
         assert math.isnan(result.exits[1].area_ratio)
 
@@ -425,7 +427,7 @@ def test_performance_of_failed_exit_is_nan(partial_failure_results):
         good = result.performance[0]
         assert good.status.ok and good.isp > 2000.0
         bad = result.performance[1]
-        assert bad.status.reason == FailureReason.THERMO_FAILURE
+        assert bad.status.reason == FailureReason.OUT_OF_DATA_RANGE
         for name in ("isp", "ivac", "CF", "cstar", "mach_number", "pressure_ratio", "area_ratio"):
             assert math.isnan(getattr(bad, name)), name
 
@@ -437,6 +439,30 @@ def test_report_marks_failed_stations(partial_failure_results):
     report = partial_failure_results[0].report()
     assert "STATIONS NOT SOLVED (NaN ABOVE)" in report
     assert "OPERATING POINT NOT SOLVED" not in report
+
+
+def test_station_warnings_reach_the_result_status_and_the_report():
+    # At O/F 6 and 70 bar the chamber is at 3596 K, above the 3500 K upper end of the H2 data
+    result = h2o2_solver().solve(h2o2_point(70 * BAR, [10.0], mixture_ratio=6.0))
+    assert result.status.ok
+    assert result.chamber.thermo.temperature > 3500.0
+    [warning] = result.chamber.status.warnings
+    assert "'H2'" in warning and "extrapolated" in warning
+    assert result.status.warnings == ["chamber: " + warning]
+    assert "warning: " + warning in result.chamber.status.describe()
+    assert " WARNINGS\n   CHAMBER: " + warning in result.report()
+
+
+def test_gas_check_temperature_range():
+    gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
+    gas.set_state_TPX(1500.0, 1e5, "H2O:1")
+    assert gas.check_temperature_range() is None
+    gas.set_state_TPX(3700.0, 1e5, "H2O:1")
+    assert "'H2O'" in gas.check_temperature_range()
+    gas.set_state_TPX(100.0, 1e5, "H2O:1")
+    with pytest.raises(goddard.SolveError) as error:
+        gas.check_temperature_range()
+    assert error.value.status.reason == FailureReason.OUT_OF_DATA_RANGE
 
 
 def test_rocket_solver_argument_errors():

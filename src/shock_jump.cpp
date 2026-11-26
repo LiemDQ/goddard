@@ -9,6 +9,7 @@
 #include "goddard/error.hpp"
 #include "goddard/newton.hpp"
 #include "goddard/shock_jump.hpp"
+#include "goddard/solve_guard.hpp"
 
 namespace Goddard {
 
@@ -222,6 +223,7 @@ ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
     result.static_temperature_ratio = jump.temperature_ratio;
     result.density_ratio = jump.density_ratio;
     result.total_pressure_ratio = gas.stagnation_pressure(std::hypot(u_normal2, u_tangential), model)/P01;
+    check_reported_state(gas, result.status);
     return result;
 }
 
@@ -253,6 +255,7 @@ ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity,
     const double P02 = gas.stagnation_pressure(u_in, incident_model);
     gas.restore_state(state5);
     result.total_pressure_ratio = P05/P02;
+    check_reported_state(gas, result.status);
     return result;
 }
 

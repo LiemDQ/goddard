@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <format>
 #include <set>
 #include <string>
 #include <utility>
@@ -270,10 +271,14 @@ std::string rocket_report(const RocketResult& result) {
     }
 
     // Stations that were not solved, and whether one up to the throat is among them: the table
-    // then has nothing to show.
+    // then has nothing to show. Also the warnings of the stations that were.
     std::string failures;
+    std::string warnings;
     bool upstream_failed = false;
     auto note_failure = [&](const SolveStatus& status, const std::string& label, bool upstream) {
+        for (const std::string& warning : status.warnings) {
+            warnings += std::format("   {}: {}\n", label, warning);
+        }
         if (status.ok()) {
             return;
         }
@@ -335,6 +340,9 @@ std::string rocket_report(const RocketResult& result) {
         fac);
     if (!failures.empty()) {
         page += " STATIONS NOT SOLVED (NaN ABOVE)\n" + failures + "\n\n";
+    }
+    if (!warnings.empty()) {
+        page += " WARNINGS\n" + warnings + "\n\n";
     }
     return page;
 }
