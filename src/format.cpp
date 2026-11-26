@@ -26,6 +26,9 @@ std::string format_cea_engineering(double value, int width) {
     if (value == 0.0) {
         return right_align("0.0000 0", width);
     }
+    if (!std::isfinite(value)) {
+        return format_fixed(value, width, 4);
+    }
 
     bool negative = value < 0.0;
     double abs_val = std::abs(value);

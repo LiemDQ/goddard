@@ -347,6 +347,14 @@ TEST_F(RocketSolverPartialFailureTests, reportMarksTheFailedStationsAndStillPrin
     const std::string report = rocket_report(results());
     EXPECT_NE(report.find("STATIONS NOT SOLVED (NaN ABOVE)"), std::string::npos) << report;
     EXPECT_EQ(report.find("OPERATING POINT NOT SOLVED"), std::string::npos) << report;
+
+    // The failed exit is the last column of every row: NaN, never a formatted garbage value or 0
+    for (const std::string label : {"RHO, KG/CU M", "T, K", "H2O "}) {
+        const std::size_t start = report.find("\n" + label);
+        ASSERT_NE(start, std::string::npos) << label << "\n" << report;
+        const std::string row = report.substr(start + 1, report.find('\n', start + 1) - start - 1);
+        EXPECT_EQ(row.substr(row.size() - 4), " nan") << row;
+    }
 }
 
 TEST(RocketSolverFailures, failedCombustionFailsThePointAndTheSweepGoesOn) {

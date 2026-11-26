@@ -216,8 +216,11 @@ std::string build_report_page(
         for (const auto& species : all_species) {
             std::vector<std::string> vals;
             for (const auto& s : states) {
+                // A station that was not solved has no composition: NaN, not zero
                 auto it = s.composition.find(species);
-                double val = (it != s.composition.end()) ? it->second : 0.0;
+                double val = (it != s.composition.end()) ? it->second
+                             : s.composition.empty()     ? NaN
+                                                         : 0.0;
                 vals.push_back(format_mass_fraction(val, 10));
             }
             table.add_row(species, vals);
