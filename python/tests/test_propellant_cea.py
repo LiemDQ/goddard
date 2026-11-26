@@ -9,6 +9,7 @@ over a grid of mixture ratios (lean to rich) and chamber pressures:
 * H2O2 monopropellant, 90 % and 98 %
 * N2H4 monopropellant
 * AP/Al/HTPB composite solid propellant
+* N2O4/UDMH and N2O4/Aerozine-50
 * LF2/LH2
 
 Both codes run on the same NASA9 data and are given CEA's own product list for the reactants,
@@ -68,6 +69,7 @@ CUSTOM_REACTANTS = {
 }
 
 H2O2_90 = {"H2O2(L)": 0.9, "H2O(L)": 0.1}
+A50 = {"C2H8N2(L),UDMH": 0.5, "N2H4(L)": 0.5}
 AP_AL_HTPB = {"NH4CLO4(I)": 0.68, "AL(cr)": 0.18, "HTPB": 0.14}
 H2O2_98 = {"H2O2(L)": 0.98, "H2O(L)": 0.02}
 
@@ -102,6 +104,10 @@ NOMINAL_CASES = [
                    frozen=False),
     PropellantCase("ap_al_htpb_near", AP_AL_HTPB, 298.15, AP_AL_HTPB, 298.15, 1.0, 70.0,
                    (1.5, 2.0)),
+    # Storables: NTO with UDMH, and with Aerozine-50 (a two-species fuel stream)
+    PropellantCase("nto_udmh", {"C2H8N2(L),UDMH": 1.0}, 298.15, {"N2O4(L)": 1.0}, 298.15, 2.6, 20.0,
+                   (40.0, 100.0)),
+    PropellantCase("nto_a50", A50, 298.15, {"N2O4(L)": 1.0}, 298.15, 2.0, 20.0, (40.0, 100.0)),
     # Fluorine: HF products and a chamber near 4500 K
     PropellantCase("lf2_lh2", {"H2(L)": 1.0}, 20.27, {"F2(L)": 1.0}, 85.02, 12.0, 70.0,
                    (40.0, 100.0)),
@@ -117,6 +123,8 @@ SWEEP_OF_RATIOS = {
     "h2o2_98": (1.0,),
     "n2h4": (1.0,),
     "ap_al_htpb": (1.0,),
+    "nto_udmh": (1.2, 1.6, 2.0, 2.6, 3.2),
+    "nto_a50": (1.2, 1.6, 2.0, 2.6, 3.2),
     "ap_al_htpb_near": (1.0,),
     # Stoichiometric is 19
     "lf2_lh2": (6.0, 9.0, 12.0, 15.0, 19.0),
@@ -133,8 +141,10 @@ PROPELLANT_CASES = [
 CHEMISTRIES = ["equilibrium", "frozen"]
 
 # Cantera 3.x's "gibbs" solver (MultiPhaseEquil) cannot converge when the equilibrium amount of a
-# species underflows a double: here heavy hydrocarbons in the cool, oxygen-rich AR 100 exit. Its
-# trace-species test is never applied (fixed on Cantera main, to be released as 4.0).
+# species underflows a double: here heavy hydrocarbons in cool (900-1150 K), oxygen-rich exits. Its
+# trace-species test is never applied (fixed on Cantera main, to be released as 4.0, where these
+# cases pass).
+GIBBS_TRACE_SPECIES_CASES = ("nto_mmh-of3-", "nto_a50-of2.6-", "nto_a50-of3.2-")
 GIBBS_TRACE_SPECIES_BUG = pytest.mark.xfail(
     int(version("cantera").split(".")[0]) < 4, strict=True,
     reason="Cantera < 4 MultiPhaseEquil fails when a trace species underflows")
@@ -149,7 +159,7 @@ GIBBS_ELEMENT_CONSERVATION_BUG = pytest.mark.xfail(
 
 
 def _marks(case, chemistry):
-    if case.name.startswith("nto_mmh-of3-") and chemistry == "equilibrium":
+    if chemistry == "equilibrium" and case.name.startswith(GIBBS_TRACE_SPECIES_CASES):
         return [GIBBS_TRACE_SPECIES_BUG]
     if case.name.startswith("ap_al_htpb") and case.name.endswith("-pc5"):  # in the chamber
         return [GIBBS_ELEMENT_CONSERVATION_BUG]
