@@ -13,11 +13,72 @@
 # pressure of CEA's data; Cantera would otherwise assume 1 atm (regenerated with
 # this setting on 2026-10-05).
 #
+# The elements section holds CEA's atomic weights (H 1.00794, not Cantera's
+# 1.008), so that molecular weights are CEA's; Th, which CEA lacks, keeps
+# Cantera's. A phase uses them only for the elements it lists (regenerated with
+# them on 2026-11-26).
+#
 # Gaseous product species (CEA phase flag 0).
 
+elements:
+- {symbol: E, atomic-weight: 0.000548579903}
+- {symbol: Ag, atomic-weight: 107.8682}
+- {symbol: Al, atomic-weight: 26.981538}
+- {symbol: Br, atomic-weight: 79.904}
+- {symbol: C, atomic-weight: 12.0107}
+- {symbol: Cl, atomic-weight: 35.453}
+- {symbol: F, atomic-weight: 18.9984032}
+- {symbol: H, atomic-weight: 1.00794}
+- {symbol: I, atomic-weight: 126.90447}
+- {symbol: N, atomic-weight: 14.0067}
+- {symbol: O, atomic-weight: 15.9994}
+- {symbol: S, atomic-weight: 32.065}
+- {symbol: Ar, atomic-weight: 39.948}
+- {symbol: B, atomic-weight: 10.811}
+- {symbol: Ba, atomic-weight: 137.327}
+- {symbol: Be, atomic-weight: 9.012182}
+- {symbol: P, atomic-weight: 30.973761}
+- {symbol: D, atomic-weight: 2.014102}
+- {symbol: Ca, atomic-weight: 40.078}
+- {symbol: Cd, atomic-weight: 112.411}
+- {symbol: Co, atomic-weight: 58.9332}
+- {symbol: Cr, atomic-weight: 51.9961}
+- {symbol: Cs, atomic-weight: 132.90545}
+- {symbol: Li, atomic-weight: 6.941}
+- {symbol: Na, atomic-weight: 22.98977}
+- {symbol: Rb, atomic-weight: 85.4678}
+- {symbol: Cu, atomic-weight: 63.546}
+- {symbol: Fe, atomic-weight: 55.845}
+- {symbol: Ga, atomic-weight: 69.723}
+- {symbol: Ge, atomic-weight: 72.64}
+- {symbol: He, atomic-weight: 4.002602}
+- {symbol: Hg, atomic-weight: 200.59}
+- {symbol: In, atomic-weight: 114.818}
+- {symbol: K, atomic-weight: 39.0983}
+- {symbol: Kr, atomic-weight: 83.8}
+- {symbol: Mg, atomic-weight: 24.305}
+- {symbol: Mn, atomic-weight: 54.938049}
+- {symbol: Mo, atomic-weight: 95.94}
+- {symbol: Nb, atomic-weight: 92.90638}
+- {symbol: Ne, atomic-weight: 20.1797}
+- {symbol: Ni, atomic-weight: 58.6934}
+- {symbol: Pb, atomic-weight: 207.2}
+- {symbol: Sc, atomic-weight: 44.95591}
+- {symbol: Si, atomic-weight: 28.0855}
+- {symbol: Sn, atomic-weight: 118.71}
+- {symbol: Sr, atomic-weight: 87.62}
+- {symbol: Ta, atomic-weight: 180.9479}
+- {symbol: Ti, atomic-weight: 47.867}
+- {symbol: U, atomic-weight: 238.02891}
+- {symbol: V, atomic-weight: 50.9415}
+- {symbol: W, atomic-weight: 183.84}
+- {symbol: Xe, atomic-weight: 131.293}
+- {symbol: Zn, atomic-weight: 65.39}
+- {symbol: Zr, atomic-weight: 91.224}
 phases:
 - name: gas
   thermo: ideal-gas
+  elements: [E, Ag, Al, Br, C, Cl, F, H, I, N, O, S, Ar, B, Ba, Be, P, D, Ca, Cd, Co, Cr, Cs, Li, Na, Rb, Cu, Fe, Ga, Ge, He, Hg, In, K, Kr, Mg, Mn, Mo, Nb, Ne, Ni, Pb, Sc, Si, Sn, Sr, Ta, Ti, U, V, W, Xe, Zn, Zr]
   species: all
   skip-undeclared-elements: true
   state: {T: 300.0, P: 101325.0}

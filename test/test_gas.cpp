@@ -1,4 +1,5 @@
 #include "goddard/gas.hpp"
+#include "goddard/speciate.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/numerics.hpp"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -262,6 +264,120 @@ TEST_F(GasTests, CloneIsIndependentDeepCopy) {
     double T_original = gas.temperature();
     cloned.set_state_TP(1000.0, 1e5);
     EXPECT_DOUBLE_EQ(gas.temperature(), T_original);
+}
+
+// Temperature range of the gas species data
+
+namespace {
+
+/**
+ * Two constant-cp species with different temperature ranges: WIDE (200 - 6000 K) and NARROW
+ * (1000 - 6000 K).
+ */
+Gas two_range_gas() {
+    const Cantera::AnyMap root = Cantera::AnyMap::fromYamlString(R"(
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [H, O]
+  species: [WIDE, NARROW]
+  state: {T: 1500.0, P: 1 atm}
+species:
+- name: WIDE
+  composition: {H: 2}
+  thermo: {model: constant-cp, T0: 298.15, h0: 0.0, s0: 130.7 J/mol/K, cp0: 29.0 J/mol/K,
+           T-min: 200.0, T-max: 6000.0}
+- name: NARROW
+  composition: {H: 2, O: 1}
+  thermo: {model: constant-cp, T0: 298.15, h0: -241.8 kJ/mol, s0: 188.8 J/mol/K,
+           cp0: 33.6 J/mol/K, T-min: 1000.0, T-max: 6000.0}
+)");
+    return Gas(Cantera::newSolution(root["phases"].getMapWhere("name", "gas"), root));
+}
+
+} // namespace
+
+TEST(GasTemperatureRangeTests, InsideEveryRangeHasNoWarning) {
+    Gas gas = two_range_gas();
+    gas.set_state_TPX(1500.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_FALSE(gas.check_temperature_range().has_value());
+}
+
+TEST(GasTemperatureRangeTests, WithinTheMarginOutsideARangeWarnsAndNamesTheSpecies) {
+    Gas gas = two_range_gas();
+    // 10% below the lower end of NARROW
+    gas.set_state_TPX(900.0, 1.0e5, "WIDE:1, NARROW:1");
+    const std::optional<std::string> warning = gas.check_temperature_range();
+    ASSERT_TRUE(warning.has_value());
+    const std::string text = warning.value_or("");
+    EXPECT_NE(text.find("'NARROW'"), std::string::npos) << text;
+    EXPECT_NE(text.find("extrapolated"), std::string::npos) << text;
+
+    // 10% above the upper end of both
+    gas.set_state_TPX(6600.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(gas.check_temperature_range().has_value());
+}
+
+TEST(GasTemperatureRangeTests, BeyondTheMarginFails) {
+    Gas gas = two_range_gas();
+    // 30% below the lower end of NARROW, inside the range of WIDE
+    gas.set_state_TPX(700.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.check_temperature_range(); },
+                                   FailureReason::OUT_OF_DATA_RANGE, "'NARROW'"));
+    // 25% above the upper end of both
+    gas.set_state_TPX(7500.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.check_temperature_range(); },
+                                   FailureReason::OUT_OF_DATA_RANGE));
+}
+
+TEST(GasTemperatureRangeTests, TraceSpeciesAreIgnored) {
+    Gas gas = two_range_gas();
+    // NARROW is far outside its range but below the trace mole fraction
+    gas.set_state_TPX(700.0, 1.0e5, "WIDE:1, NARROW:1e-6");
+    ASSERT_LT(gas.mole_fractions()[1], Gas::trace_mole_fraction);
+    EXPECT_FALSE(gas.check_temperature_range().has_value());
+}
+
+// Atomic weights of the NASA9 data: CEA's, from the elements section of the files
+
+TEST(GasAtomicWeightTests, NasaPhasesUseTheAtomicWeightsOfCea) {
+    const std::string gas_file = std::string(DATA_DIR) + "/nasa9_gas.yaml";
+    // Cantera's default table has H = 1.008 and O = 15.999
+    const auto expect_cea_weights = [](const Gas& gas, const std::string& how) {
+        EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("H")), 1.00794) << how;
+        EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("O")), 15.9994) << how;
+    };
+    const Gas water = Gas::create_from_species(gas_file, "gas", {"H2", "O2", "H2O"});
+    expect_cea_weights(water, "species");
+    // Cantera's own Solution::clone drops the weights of the file
+    expect_cea_weights(water.clone(), "clone");
+    expect_cea_weights(Gas::create_from_elements(gas_file, "gas", {"H", "O"}), "elements");
+    expect_cea_weights(Gas::create_from_species(std::string(DATA_DIR) + "/nasa9_reactants.yaml",
+                                                "reactants", {"H2(L)", "O2(L)"}), "reactants");
+
+    // The element order is the one Cantera gives the same species when the phase lists none
+    const std::vector<std::string> species{"O2", "H2O", "CO2", "N2", "CH4"};
+    Cantera::AnyMap root = load_root_node(gas_file);
+    Cantera::AnyMap node = create_phase_node("gas", species_in_file_order(root, species));
+    for (const char* key : {"kinetics", "reactions", "transport"}) {
+        node.erase(key);
+    }
+    const auto reference = Cantera::newSolution(node, root);
+    EXPECT_EQ(Gas::create_from_species(gas_file, "gas", species).element_names(),
+              reference->thermo()->elementNames());
+    EXPECT_EQ(reference->thermo()->atomicWeight(reference->thermo()->elementIndex("H")), 1.008);
+
+    Gas carbon = Gas::create_from_species(gas_file, "gas", {"CO", "CO2", "O2"});
+    carbon.add_condensed_species(std::string(DATA_DIR) + "/nasa9_condensed.yaml", {"C(gr)"});
+    carbon.set_condensed_moles({1e-3});  // the molar masses are those of present species
+    ASSERT_EQ(carbon.condensed_molar_masses().size(), 1);
+    EXPECT_EQ(carbon.condensed_molar_masses()(0), 12.0107);
+    EXPECT_EQ(carbon.clone().condensed_molar_masses()(0), 12.0107);
+}
+
+TEST(GasAtomicWeightTests, FileWithoutElementsKeepsCanteraWeights) {
+    const Gas gas = Gas::create_from_species("h2o2.yaml", "gas", {"H2", "O2", "H2O"});
+    EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("H")), 1.008);
 }
 
 // Element bookkeeping and reactant streams

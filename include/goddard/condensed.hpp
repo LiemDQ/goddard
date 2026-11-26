@@ -152,25 +152,39 @@ private:
     /** Rebuild `groups` and the `group` index of every species from the current species list. */
     void build_groups();
 
-    /** Species nodes as read from the data file, aligned with `species`; used by `clone()`. */
-    std::vector<Cantera::AnyMap> m_species_nodes;
+    /**
+     * Root node of each species' phase (`condensed_phase_root`), aligned with `species`; used by
+     * `clone()`.
+     */
+    std::vector<Cantera::AnyMap> m_phase_roots;
     /** Element names of the gas phase the set was built against, in gas element order. */
     std::vector<std::string> m_element_names;
 };
 
 /**
+ * Root node for the phase of one condensed species: its species node and, if the data file
+ * defines its own elements (atomic weights), the file's `elements` section.
+ *
+ * @param species_node Species node from a Cantera YAML data file.
+ * @param root_node    Root node of that file.
+ */
+Cantera::AnyMap condensed_phase_root(const Cantera::AnyMap& species_node,
+                                     const Cantera::AnyMap& root_node);
+
+/**
  * @brief Build a single-species `fixed-stoichiometry` (Cantera `StoichSubstance`) phase.
  *
- * Condensed species in the NASA databases have no equation of state. When `species_node` has
+ * Condensed species in the NASA databases have no equation of state. When the species node has
  * no `equation-of-state` entry, a `constant-volume` one with the given density is injected.
  * The density only enters through the neglected `(P - P_ref) V / (R T)` term (~1e-8 at rocket
- * pressures with the default), so its exact value is immaterial.
+ * pressures with the default), so its exact value is immaterial. The phase takes the atomic
+ * weights of the root's `elements` section when it has one (`list_file_elements`).
  *
- * @param species_node Species node from a Cantera YAML data file. Taken by value; the copy is
- *                     modified before use.
- * @param density      Density [kg/m^3] used when the species node has no equation of state.
+ * @param root    Root node holding the one species (`condensed_phase_root`). Taken by value;
+ *                the copy is modified before use.
+ * @param density Density [kg/m^3] used when the species node has no equation of state.
  */
-std::shared_ptr<Cantera::ThermoPhase> build_condensed_phase(Cantera::AnyMap species_node,
+std::shared_ptr<Cantera::ThermoPhase> build_condensed_phase(Cantera::AnyMap root,
                                                             double density = 1.0e6);
 
 /** Phase node for a single-species `fixed-stoichiometry` phase containing `species_name`. */

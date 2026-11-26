@@ -145,6 +145,33 @@ AnyMap select_species_from_yaml_string(const string& yaml_str, const std::unorde
     return select_species(root_node, species);
 }
 
+void list_file_elements(AnyMap& phase_node, const AnyMap& root_node,
+                        const std::vector<string>& species)
+{
+    if (!root_node.hasKey("elements") || phase_node.hasKey("elements")
+        || !root_node.hasKey("species")) {
+        return;
+    }
+    std::map<string, const AnyMap*> nodes;
+    for (const AnyMap& species_node : root_node.at("species").asVector<AnyMap>()) {
+        nodes.emplace(species_node.at("name").asString(), &species_node);
+    }
+    std::vector<string> elements;
+    for (const string& name : species) {
+        auto found = nodes.find(name);
+        if (found == nodes.end()) {
+            continue;
+        }
+        // asMap gives a std::map, ordered by symbol, as Cantera's species composition is
+        for (const auto& [symbol, atoms] : found->second->at("composition").asMap<double>()) {
+            if (std::find(elements.begin(), elements.end(), symbol) == elements.end()) {
+                elements.push_back(symbol);
+            }
+        }
+    }
+    phase_node["elements"] = elements;
+}
+
 Cantera::AnyMap create_phase_node(
     const std::string& name, 
     const std::vector<std::string>& species, 

@@ -60,6 +60,19 @@ Cantera::AnyMap select_species_from_yaml_string(const std::string& yaml_str, con
 
 
 /**
+ * List in `phase_node` the elements of its species when `root_node` defines its own elements.
+ *
+ * A data file can give atomic weights in an `elements` section; the NASA9 files carry CEA's.
+ * Cantera uses them only for the elements a phase node lists, and takes every element from its
+ * default table when the node lists none. This lists the elements of `species` (names in the
+ * `species` section of `root_node`) in the order Cantera adds undeclared elements itself: by
+ * species, then alphabetically within a species. It does nothing when `root_node` has no
+ * `elements` section or `phase_node` already lists elements.
+ */
+void list_file_elements(Cantera::AnyMap& phase_node, const Cantera::AnyMap& root_node,
+                        const std::vector<std::string>& species);
+
+/**
  * Generate a Phase node for use with `newSolution` with 
  * the provided species.
  * 

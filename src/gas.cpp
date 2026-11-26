@@ -1,4 +1,5 @@
 #include <format>
+#include "cantera/thermo/ThermoFactory.h"
 #include "goddard/utils.hpp"
 #include "goddard/speciate.hpp"
 #include "goddard/condensed.hpp"
@@ -39,13 +40,62 @@ Gas::Gas(const std::string& infile,
         [&] { return Cantera::newSolution(infile, phase_name); }))
 {}
 
+namespace {
+
+/**
+ * Independent copy of a gas-phase `Solution` that keeps the atomic weights of its phase.
+ *
+ * `Solution::clone` rebuilds the phase from its parameters, which name the elements but carry no
+ * weights: a phase that took its weights from the `elements` section of a data file (the NASA9
+ * files carry CEA's) would come back with Cantera's default ones. Here the phase is rebuilt with
+ * its own weights, and the kinetics and transport are cloned onto it as `Solution::clone` does.
+ */
+std::shared_ptr<Cantera::Solution> clone_solution(Cantera::Solution& solution) {
+    const Cantera::ThermoPhase& thermo = *solution.thermo();
+    if (solution.kinetics() && solution.kinetics()->nPhases() > 1) {
+        // A phase with adjacent phases (an interface) is not a Goddard gas; keep Cantera's clone.
+        return solution.clone();
+    }
+    std::vector<Cantera::AnyMap> elements;
+    for (size_t m = 0; m < thermo.nElements(); m++) {
+        Cantera::AnyMap element;
+        element["symbol"] = thermo.elementName(m);
+        element["atomic-weight"] = thermo.atomicWeight(m);
+        element["atomic-number"] = thermo.atomicNumber(m);
+        element["entropy298"] = thermo.entropyElement298(m);
+        elements.push_back(std::move(element));
+    }
+    std::vector<Cantera::AnyMap> species;
+    for (const std::string& name : thermo.speciesNames()) {
+        species.push_back(thermo.species(name)->parameters(&thermo));
+    }
+    Cantera::AnyMap root;
+    root["elements"] = elements;
+    root["species"] = species;
+    Cantera::AnyMap phase = thermo.parameters();
+    phase.applyUnits();
+    root.applyUnits();
+
+    std::shared_ptr<Cantera::Solution> copy = Cantera::Solution::create();
+    copy->setThermo(Cantera::newThermo(phase, root));
+    if (solution.kinetics()) {
+        copy->setKinetics(solution.kinetics()->clone({copy->thermo()}));
+    }
+    if (solution.transport()) {
+        copy->setTransport(solution.transport()->clone(copy->thermo()));
+    }
+    return copy;
+}
+
+} // namespace
+
 Gas Gas::clone() const {
     Gas copy = *this;
     if (m_condensed) {
         copy.m_condensed = m_condensed->clone();
     }
     if (m_sol) {
-        copy.m_sol = m_sol->clone();
+        copy.m_sol = clone_solution(*m_sol);
         copy.restore_state(save_state());
     }
     return copy;
@@ -104,8 +154,9 @@ Gas Gas::create_from_species(
         [&] {
             Cantera::AnyMap root_node = load_root_node(infile);
             // File order, so that the species indices do not depend on the order of `species`.
-            Cantera::AnyMap phase_node =
-                create_phase_node(name, species_in_file_order(root_node, species));
+            const std::vector<std::string> ordered = species_in_file_order(root_node, species);
+            Cantera::AnyMap phase_node = create_phase_node(name, ordered);
+            list_file_elements(phase_node, root_node, ordered);
             adapt_phase_node_to_data(phase_node, root_node);
             return Gas(Cantera::newSolution(phase_node, root_node));
         });

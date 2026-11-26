@@ -3,6 +3,7 @@
 #include "goddard/equilibrium.hpp"
 #include "goddard/error.hpp"
 #include "goddard/solve_guard.hpp"
+#include "goddard/speciate.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/newton.hpp"
 
@@ -68,7 +69,17 @@ AnyMap make_condensed_phase_node(const std::string& species_name) {
     return phase;
 }
 
-std::shared_ptr<ThermoPhase> build_condensed_phase(AnyMap species_node, double density) {
+AnyMap condensed_phase_root(const AnyMap& species_node, const AnyMap& root_node) {
+    AnyMap root;
+    root["species"] = std::vector<AnyMap>{species_node};
+    if (root_node.hasKey("elements")) {
+        root["elements"] = root_node.at("elements");
+    }
+    return root;
+}
+
+std::shared_ptr<ThermoPhase> build_condensed_phase(AnyMap root, double density) {
+    AnyMap species_node = root["species"].asVector<AnyMap>().at(0);
     const std::string name = species_node["name"].asString();
 
     // NASA-database condensed species carry no equation of state; StoichSubstance needs one.
@@ -77,12 +88,11 @@ std::shared_ptr<ThermoPhase> build_condensed_phase(AnyMap species_node, double d
         eos["model"] = "constant-volume";
         eos["density"] = density;
         species_node["equation-of-state"] = eos;
+        root["species"] = std::vector<AnyMap>{species_node};
     }
 
-    AnyMap root;
-    root["species"] = std::vector<AnyMap>{species_node};
-
     AnyMap phase_node = make_condensed_phase_node(name);
+    list_file_elements(phase_node, root, {name});
     return Cantera::newThermo(phase_node, root);
 }
 
@@ -149,7 +159,8 @@ void CondensedPhaseSet::add_species(const AnyMap& root_node,
 
         CondensedSpecies entry;
         entry.name = name;
-        entry.phase = build_condensed_phase(found->second);
+        AnyMap phase_root = condensed_phase_root(found->second, root_node);
+        entry.phase = build_condensed_phase(phase_root);
         entry.molar_mass = entry.phase->molecularWeight(0);
         entry.T_min = entry.phase->minTemp();
         entry.T_max = entry.phase->maxTemp();
@@ -168,7 +179,7 @@ void CondensedPhaseSet::add_species(const AnyMap& root_node,
         }
 
         species.push_back(std::move(entry));
-        m_species_nodes.push_back(found->second);
+        m_phase_roots.push_back(std::move(phase_root));
         moles.push_back(0.0);
     }
 
@@ -218,7 +229,7 @@ std::shared_ptr<CondensedPhaseSet> CondensedPhaseSet::clone() const {
     // reference-state data is read, so the phases are rebuilt from the stored species nodes.
     std::shared_ptr<CondensedPhaseSet> copy(new CondensedPhaseSet(*this));
     for (size_t k = 0; k < copy->species.size(); k++) {
-        copy->species[k].phase = build_condensed_phase(copy->m_species_nodes[k]);
+        copy->species[k].phase = build_condensed_phase(copy->m_phase_roots[k]);
     }
     return copy;
 }
