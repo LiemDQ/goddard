@@ -69,7 +69,7 @@ def test_results_follow_the_order_of_the_points(two_pressure_results):
 def test_performance_area_ratio_matches_requested_at_every_pressure(two_pressure_results):
     """performance[e] combines the throat and exit e of one point.
 
-    The area ratio comes from mass flux continuity, rho_t a_t / (rho_e v_e). Taking the throat
+    The area ratio comes from mass flux continuity, rho_t u_t / (rho_e u_e). Taking the throat
     of one pressure and the exit of another would give about AR * P0/P1 instead of AR.
     Tolerance: ComparisonTolerances.area_ratio_rel (0.1%).
     """

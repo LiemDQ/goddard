@@ -182,18 +182,19 @@ TEST_F(PropellantNozzleTests, EquilibriumExpansionCarriesTheAlumina) {
     options.chemistry = GasChemistry::EQUILIBRIUM;
 
     Nozzle nozzle(nozzle_gas, chamber_state, options);
-    // A throat that needed more than five iterations would have thrown a ConvergenceError.
     NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO,
                                          std::vector<double>{5.0, 20.0});
+    ASSERT_TRUE(is_ok(results.status)) << results.first_failure().message;
 
     EXPECT_NEAR(results.throat.H_stagnation, chamber_enthalpy, 1e-10 * std::abs(chamber_enthalpy));
     EXPECT_NEAR(results.throat.S_inlet, chamber_entropy, 1e-10 * std::abs(chamber_entropy));
 
-    // The throat is sonic by definition; the solver drives |1 - 1/M^2| below its tolerance.
+    // The throat is sonic: the reported Mach number is the one recomputed from its state.
     Gas throat = at_state(results.throat.state);
     const double throat_mach = throat.isenthalpic_velocity(results.throat.H_stagnation)
         / throat.speed_of_sound(CompositionModel::EQUILIBRIUM);
-    EXPECT_NEAR(std::abs(1.0 - 1.0 / (throat_mach * throat_mach)), 0.0, 4e-4);
+    EXPECT_NEAR(throat_mach, 1.0, 1e-4);
+    EXPECT_NEAR(throat_mach, results.throat.mach, 1e-12);
 
     ASSERT_EQ(results.expansions.size(), 2u);
 
@@ -257,6 +258,47 @@ TEST_F(PropellantNozzleTests, FrozenExpansionStopsWhereTheAluminaWouldFreeze) {
     EXPECT_FALSE(results.status.ok());
 }
 
+
+TEST_F(PropellantNozzleTests, FailedThroatMakesEveryStationNotComputed) {
+    // Liquid alumina just above its 2327 K melting point, frozen from the chamber on: the frozen
+    // throat is colder than the lower bound of the AL2O3(L) data, which a frozen expansion
+    // cannot represent.
+    std::vector<double> cool_chamber_state;
+    {
+        Gas chamber = at_state(chamber_state);
+        chamber.equilibrate_TP(2350.0, chamber.pressure());
+        ASSERT_GT(condensed_moles_of(chamber, "AL2O3(L)"), 0.0);
+        cool_chamber_state = chamber.save_state();
+    }
+
+    NozzleOptions options;
+    options.chemistry = GasChemistry::FROZEN;
+    options.frozen_NFZ = 0;
+    Nozzle nozzle(products, cool_chamber_state, options);
+    const NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
+
+    EXPECT_TRUE(failed_with(results.throat.status, FailureReason::OUT_OF_DATA_RANGE, "AL2O3(L)"));
+    EXPECT_TRUE(std::isnan(results.throat.velocity));
+    ASSERT_EQ(results.expansions.size(), 1u);
+    const NozzleStation& exit = results.expansions.front();
+    EXPECT_EQ(exit.status.reason, FailureReason::NOT_COMPUTED);
+    EXPECT_NE(exit.status.message.find(results.throat.status.message), std::string::npos)
+        << "NOT_COMPUTED must repeat the upstream message: " << exit.status.message;
+    EXPECT_TRUE(std::isnan(exit.mach));
+    EXPECT_TRUE(std::isnan(exit.area_ratio));
+    EXPECT_TRUE(exit.state.empty());
+
+    EXPECT_FALSE(results.status.ok());
+    EXPECT_EQ(results.first_failure().reason, FailureReason::OUT_OF_DATA_RANGE);
+
+    // Stations solved from the failed throat are not computed either
+    const std::vector<NozzleStation> downstream = nozzle.solve_stations(
+        results.throat, ExpansionType::SUPERSONIC_AREA_RATIO, {3.0, 6.0});
+    ASSERT_EQ(downstream.size(), 2u);
+    for (const NozzleStation& station : downstream) {
+        EXPECT_EQ(station.status.reason, FailureReason::NOT_COMPUTED);
+    }
+}
 
 TEST_F(PropellantNozzleTests, OneFailedStationLeavesTheOtherStationsValid) {
     Gas nozzle_gas = products;

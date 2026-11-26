@@ -219,6 +219,12 @@ struct FiniteAreaChamber {
  * failure (an iteration that does not converge, a failed equilibrium solve, a frozen expansion
  * leaving the data range of a condensed species) is reported there and the failed station is
  * NaN; the solver throws only for invalid arguments and unimplemented options.
+ *
+ * When the throat is an equilibrium station (EQUILIBRIUM chemistry, or FROZEN with
+ * `frozen_NFZ` >= 1), the inlet must be at chemical equilibrium: every solve that computes the
+ * throat throws `std::invalid_argument` if re-equilibrating the inlet at its enthalpy and pressure
+ * moves its temperature by more than 1e-5 relative. A FROZEN nozzle with `frozen_NFZ` = 0 expands
+ * any inlet composition.
  */
 class Nozzle {
     public:
@@ -272,10 +278,12 @@ class Nozzle {
     /**
      * Solve the sonic throat by isentropic expansion from the inlet state.
      *
-     * @param abstol Tolerance on |1 - 1/M^2| at the throat [-].
-     * @return the throat; `NOT_CONVERGED` if the iteration does not converge in 5 iterations.
+     * @param abstol Tolerance on |1 - 1/M^2| at the throat [-]. The default is CEA's.
+     * @return the throat; `NOT_CONVERGED` if the iteration does not converge in 10 iterations.
+     * @throws std::invalid_argument if the throat is an equilibrium station and the inlet is not
+     * at chemical equilibrium.
      */
-    ThroatCondition solve_throat_conditions(double abstol = 4e-4);
+    ThroatCondition solve_throat_conditions(double abstol = 4e-5);
 
     /**
      * Solve expansion stations from an already solved throat.
@@ -439,6 +447,12 @@ class Nozzle {
 
     /** Throat area per mass flow rate [m^2 s/kg], from the throat state and velocity. */
     static double throat_area_per_mdot(const ThroatCondition& throat);
+
+    /**
+     * Throw `std::invalid_argument` unless the inlet is at chemical equilibrium, judged by the
+     * temperature change of an HP re-equilibration. Leaves the gas at the inlet state.
+     */
+    void require_equilibrium_inlet();
 
     /** True when station `station` is in equilibrium, from `NozzleOptions::frozen_NFZ`. */
     bool is_equilibrium_station(int station) const;

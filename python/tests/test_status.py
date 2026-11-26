@@ -236,7 +236,9 @@ def test_detonation_solver_is_lazy_and_failures_are_in_the_result(h2o2_yaml):
 
 
 def test_nozzle_results_carry_status_per_station(h2o2_yaml):
-    nozzle = goddard.Nozzle(h2o2_gas(h2o2_yaml, "H2O:1", 3500.0, 70 * BAR))
+    gas = h2o2_gas(h2o2_yaml, "H2O:1", 3500.0, 70 * BAR)
+    gas.equilibrate_TP(3500.0, 70 * BAR)  # an equilibrium throat needs an equilibrium inlet
+    nozzle = goddard.Nozzle(gas)
     results = nozzle.solve_ratios(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0, 10.0])
     assert results.status.ok and results.throat.status.ok
     assert all(station.status.ok for station in results.expansions)
@@ -249,16 +251,39 @@ def test_nozzle_results_carry_status_per_station(h2o2_yaml):
         nozzle.solve(goddard.ExpansionType.PRESSURE_RATIO, 0.5)
 
 
-def test_failed_throat_makes_every_station_not_computed(h2o2_yaml):
-    """Cold H2/O2 is not at equilibrium, which the equilibrium throat iteration does not tolerate."""
+def test_inlet_out_of_equilibrium_is_rejected_by_an_equilibrium_throat(h2o2_yaml):
+    """Cold H2/O2 is not at equilibrium, so an equilibrium throat cannot expand from it."""
     gas = h2o2_gas(h2o2_yaml, "H2:2, O2:1", 300.0, 70 * BAR)
-    results = goddard.Nozzle(gas).solve_ratios(
-        goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0, 10.0])
-    assert results.throat.status.reason == FailureReason.NOT_CONVERGED
+    with pytest.raises(ValueError, match="chemical equilibrium"):
+        goddard.Nozzle(gas).solve_ratios(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0])
+
+
+def test_failed_throat_makes_every_station_not_computed():
+    """Liquid alumina just above its 2327 K melting point, frozen from the chamber on.
+
+    The frozen throat is colder than the lower bound of the AL2O3(L) data, which a frozen
+    expansion cannot represent.
+    """
+    data_dir = find_data_dir()
+    products = Gas.from_elements(os.path.join(data_dir, "nasa9_gas.yaml"), "products",
+                                 ["N", "H", "Cl", "O", "Al"],
+                                 condensed_file=os.path.join(data_dir, "nasa9_condensed.yaml"),
+                                 condensed_species={"AL2O3(a)", "AL2O3(L)"})
+    propellant = goddard.reactant_gas(os.path.join(data_dir, "nasa9_reactants.yaml"),
+                                      {"NH4CLO4(I)": 0.8, "AL(cr)": 0.2}, 298.15, basis="mass")
+    amounts = dict(zip(propellant.element_names, propellant.element_moles))
+    element_moles = np.array([amounts.get(name, 0.0) for name in products.element_names])
+    products.set_element_moles(element_moles, 2350.0, 70 * BAR)
+    products.equilibrate_TP(2350.0, 70 * BAR)
+    assert products.has_condensed_phases
+
+    nozzle = goddard.Nozzle(products, goddard.frozen_nozzle(frozen_NFZ=0))
+    results = nozzle.solve_ratios(goddard.ExpansionType.SUPERSONIC_AREA_RATIO, [5.0, 10.0])
+    assert results.throat.status.reason == FailureReason.OUT_OF_DATA_RANGE
     assert math.isnan(results.throat.velocity)
     assert [station.status.reason for station in results.expansions] == [FailureReason.NOT_COMPUTED] * 2
     assert all(math.isnan(station.mach) for station in results.expansions)
-    assert results.status.reason == FailureReason.NOT_CONVERGED
+    assert results.status.reason == FailureReason.OUT_OF_DATA_RANGE
 
 
 def test_finite_area_chamber_status_and_choked_flux(h2o2_yaml):

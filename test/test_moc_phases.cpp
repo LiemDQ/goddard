@@ -240,6 +240,7 @@ protected:
         auto thermo = gas->thermo();
         // H2/O2 combustion products
         thermo->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        thermo->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };
@@ -383,6 +384,7 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts;
     nozzle_opts.chemistry = GasChemistry::FROZEN;
     Nozzle nozzle_1d(Gas(gas), nozzle_opts);
@@ -411,6 +413,7 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts;
     Nozzle nozzle_1d(Gas(gas), nozzle_opts);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
@@ -437,6 +440,7 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
 
     // Reset gas state
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;
@@ -464,6 +468,7 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
 
     // Reset gas state for equilibrium run
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;

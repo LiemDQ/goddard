@@ -50,8 +50,8 @@ struct RocketPerformance {
 /**
  * Rocket performance from the stagnation, throat and exit states.
  *
- * c* = P_0 / (rho_t a_t), with a_t the throat speed of sound; the exit velocity follows from
- * the enthalpy drop h_0 - h_e, the area ratio from mass conservation, and CF = u_e / c*.
+ * c* = P_0 / (rho_t u_t); the throat and exit velocities follow from the enthalpy drops
+ * h_0 - h_t and h_0 - h_e, the area ratio from mass conservation, and CF = u_e / c*.
  *
  * @param stagnation Stagnation state the nozzle expands from (the chamber of an infinite-area
  * combustor).

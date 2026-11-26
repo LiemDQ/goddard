@@ -187,6 +187,7 @@ protected:
     void SetUp() override {
         gas = Cantera::newSolution("h2o2.yaml", "ohmech");
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };

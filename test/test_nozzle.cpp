@@ -679,34 +679,28 @@ TEST_F(NozzleTests, FrozenStationBeyondTheLastStationThrows) {
     EXPECT_THROW(nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, {5.0, 10.0}), std::invalid_argument);
 }
 
-TEST_F(NozzleTests, ThroatOfAnInletOutOfEquilibriumFailsAndStationsAreNotComputed) {
-    // Cold H2/O2 at 70 bar is far from equilibrium, which the equilibrium throat iteration
-    // does not tolerate. The failure is in the result; nothing is thrown.
+TEST_F(NozzleTests, EquilibriumThroatRejectsAnInletOutOfEquilibrium) {
+    // Cold H2/O2 at 70 bar is far from equilibrium. An equilibrium throat would expand from the
+    // entropy of a state that is not on the equilibrium surface, so the inlet is rejected.
     gas->thermo()->setState_TPX(300.0, 70.0e5, "H2:2, O2:1");
-    Nozzle nozzle(*gas, options);
-    const NozzleResults results = nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0);
 
-    EXPECT_TRUE(failed_with(results.throat.status, FailureReason::NOT_CONVERGED));
-    EXPECT_TRUE(std::isnan(results.throat.velocity));
-    ASSERT_EQ(results.expansions.size(), 1u);
-    const NozzleStation& exit = results.expansions.front();
-    EXPECT_EQ(exit.status.reason, FailureReason::NOT_COMPUTED);
-    EXPECT_NE(exit.status.message.find(results.throat.status.message), std::string::npos)
-        << "NOT_COMPUTED must repeat the upstream message: " << exit.status.message;
-    EXPECT_TRUE(std::isnan(exit.mach));
-    EXPECT_TRUE(std::isnan(exit.area_ratio));
-    EXPECT_TRUE(exit.state.empty());
+    Nozzle equilibrium_nozzle(*gas, options);
+    EXPECT_THROW(equilibrium_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, 10.0),
+                 std::invalid_argument);
 
-    EXPECT_FALSE(results.status.ok());
-    EXPECT_EQ(results.first_failure().reason, FailureReason::NOT_CONVERGED);
+    NozzleOptions frozen_after_throat;
+    frozen_after_throat.chemistry = GasChemistry::FROZEN;
+    frozen_after_throat.frozen_NFZ = 1;   // the throat is still an equilibrium station
+    Nozzle frozen_after_throat_nozzle(*gas, frozen_after_throat);
+    EXPECT_THROW(frozen_after_throat_nozzle.solve_throat_conditions(), std::invalid_argument);
 
-    // Stations solved from the failed throat are not computed either
-    const std::vector<NozzleStation> downstream = nozzle.solve_stations(
-        results.throat, ExpansionType::SUPERSONIC_AREA_RATIO, {3.0, 6.0});
-    ASSERT_EQ(downstream.size(), 2u);
-    for (const NozzleStation& station : downstream) {
-        EXPECT_EQ(station.status.reason, FailureReason::NOT_COMPUTED);
-    }
+    // Frozen from the chamber on, any composition is a valid inlet.
+    NozzleOptions frozen_from_chamber;
+    frozen_from_chamber.chemistry = GasChemistry::FROZEN;
+    frozen_from_chamber.frozen_NFZ = 0;
+    Nozzle frozen_nozzle(*gas, frozen_from_chamber);
+    const NozzleResults results = frozen_nozzle.solve(ExpansionType::PRESSURE_RATIO, 2.5);
+    EXPECT_TRUE(is_ok(results.status)) << results.first_failure().message;
 }
 
 TEST_F(NozzleTests, SuccessfulSolveHasAnOkStatusEverywhere) {

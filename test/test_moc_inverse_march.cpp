@@ -505,6 +505,7 @@ protected:
     void SetUp() override {
         gas = Cantera::newSolution("h2o2.yaml", "ohmech");
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };
@@ -526,6 +527,8 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
         opts.nozzle_profile = profile;
 
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
         MocNozzle nozzle(Gas(gas), opts);
         return nozzle.solve();
     };
@@ -544,6 +547,7 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     // 1-D reference at the same area ratio, same ordering as MocFrozenTest.AxiFrozenVs1D /
     // AxiEquilibriumVs1D / AxiFrozenVsEquilibriumDiffers (test_moc_phases.cpp).
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts_frozen;
     nozzle_opts_frozen.chemistry = GasChemistry::FROZEN;
     Nozzle nozzle_1d_frozen(Gas(gas), nozzle_opts_frozen);
@@ -553,6 +557,8 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
         const double mach_1d_frozen = result_1d_frozen.expansions[0].mach;
 
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts_equil;
     Nozzle nozzle_1d_equil(Gas(gas), nozzle_opts_equil);
     auto result_1d_equil = nozzle_1d_equil.solve(

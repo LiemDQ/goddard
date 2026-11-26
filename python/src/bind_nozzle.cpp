@@ -38,7 +38,7 @@ void bind_nozzle(nb::module_& m) {
              "profile"_a, "num_stations"_a = 50, DOC(Goddard, Nozzle, solve, 3))
         .def("solve_throat_conditions",
              &Goddard::Nozzle::solve_throat_conditions,
-             "abstol"_a = 4e-4, DOC(Goddard, Nozzle, solve_throat_conditions))
+             "abstol"_a = 4e-5, DOC(Goddard, Nozzle, solve_throat_conditions))
         .def("solve_stations",
              nb::overload_cast<const Goddard::ThroatCondition&, Goddard::ExpansionType,
                  const std::vector<double>&>(&Goddard::Nozzle::solve_stations),

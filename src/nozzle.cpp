@@ -433,7 +433,7 @@ FiniteAreaChamber Nozzle::finite_area_chamber_or_throw(const std::vector<double>
             m_gas.restore_state(injector_state);
             m_gas.equilibrate_HP(h_injector, P_stagnation);
             set_inlet_state(m_gas.save_state());
-            throat = throat_conditions_or_throw(4e-4);
+            throat = throat_conditions_or_throw(4e-5);
             if (contraction_mode) {
                 break;
             }
@@ -508,12 +508,32 @@ void Nozzle::reset_state(){
 ThroatCondition Nozzle::solve_throat_conditions(double abstol) {
     ThroatCondition condition;
     SolveStatus status = capture_failure("throat", [&] {
+        if (is_equilibrium_station(1)) {
+            require_equilibrium_inlet();
+        }
         condition = throat_conditions_or_throw(abstol);
     });
     if (!status.ok()) {
         condition = ThroatCondition::failed(std::move(status));
     }
     return condition;
+}
+
+void Nozzle::require_equilibrium_inlet() {
+    m_gas.restore_state(m_inlet_state);
+    const double inlet_temperature = m_gas.temperature();
+    m_gas.equilibrate_HP(m_gas.enthalpy_mass(), m_gas.pressure());
+    const double equilibrium_temperature = m_gas.temperature();
+    m_gas.restore_state(m_inlet_state);
+
+    const double rtol = 1e-5;
+    if (std::abs(equilibrium_temperature - inlet_temperature) > rtol * inlet_temperature) {
+        throw std::invalid_argument(std::format(
+            "Nozzle: the throat is an equilibrium station, so the inlet must be at chemical "
+            "equilibrium, but re-equilibrating it at its enthalpy and pressure moves its "
+            "temperature from {:.6g} K to {:.6g} K. Equilibrate the inlet first, or use FROZEN "
+            "chemistry with frozen_NFZ = 0.", inlet_temperature, equilibrium_temperature));
+    }
 }
 
 ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
@@ -528,7 +548,7 @@ ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
     double gamma_s = m_gas.gamma_s(m_station_model);
     double P_throat = P_inlet / std::pow((gamma_s+1)/2,gamma_s/(gamma_s-1));
 
-    const int max_iters = 5;
+    const int max_iters = 10;
     int iter = 0;
     double Mach = 1.0; //throat mach number is 1 by definition
     double residual = 1.0;
@@ -537,9 +557,7 @@ ThroatCondition Nozzle::throat_conditions_or_throw(double abstol) {
         if (iter >= max_iters){
             throw ConvergenceError(std::format(
                 "the throat iteration did not reach Mach 1 (last Mach number {:.6g}, at P = {:.6g} Pa "
-                "for an inlet pressure of {:.6g} Pa).{}", Mach, P_throat, P_inlet,
-                is_equilibrium ? " With EQUILIBRIUM chemistry the inlet state must itself be at "
-                                 "chemical equilibrium." : ""),
+                "for an inlet pressure of {:.6g} Pa).", Mach, P_throat, P_inlet),
                 iter, abstol, residual);
         }
         P_throat = P_throat * (1 + gamma_s * Mach* Mach)/(1+ gamma_s);

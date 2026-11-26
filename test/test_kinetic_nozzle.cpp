@@ -167,14 +167,16 @@ TEST_F(KineticNozzleTests, GasConstructorUsesThroatModelFromOptions) {
 
 TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
     // The inlet_state overload must expand from the supplied state, not from the Gas's
-    // current state. A colder inlet (same composition, 3000 K instead of the ~3500 K chamber)
-    // gives a colder throat, equal to that of a Nozzle started from the same state.
+    // current state. A colder inlet (3000 K instead of the ~3500 K chamber)
+    // gives a colder throat, equal to that of a Nozzle started from the same state. Both are
+    // equilibrium states, as an equilibrium throat requires.
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle default_nozzle(Gas(*s_gas), opts);
     double T_throat_current = temperature_of(default_nozzle.solve_throat_conditions().state);
 
     s_gas->thermo()->restoreState(s_inlet_state);
     s_gas->thermo()->setState_TP(3000.0, s_gas->thermo()->pressure());
+    s_gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     std::vector<double> cold_state(s_gas->thermo()->stateSize());
     s_gas->thermo()->saveState(cold_state);
     s_gas->thermo()->restoreState(s_inlet_state);

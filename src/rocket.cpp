@@ -17,12 +17,16 @@ RocketPerformance rocket_performance(const ThermodynamicState& stagnation,
 {
     RocketPerformance performance;
     performance.pressure_ratio = stagnation.pressure / exit.pressure;
-    // c* = P_0 A_t / mdot, with mdot/A_t = rho_t a_t at the sonic throat
-    performance.cstar = stagnation.pressure / (throat.density * throat.speed_of_sound);
+    // c* = P_0 A_t / mdot, with mdot/A_t = rho_t u_t. The mass flux is stationary at the throat,
+    // so a throat solved to Mach 1 within a tolerance gives c* to second order in that tolerance;
+    // rho_t a_t would carry the Mach error to first order.
+    const double throat_velocity = std::sqrt(2.0 * (stagnation.enthalpy - throat.enthalpy));
+    const double throat_mass_flux = throat.density * throat_velocity;
+    performance.cstar = stagnation.pressure / throat_mass_flux;
     // Energy: u_e = sqrt(2 (h_0 - h_e))
     const double exit_velocity = std::sqrt(2.0 * (stagnation.enthalpy - exit.enthalpy));
-    // Mass: rho u is constant times area, so Ae/At = rho_t a_t / (rho_e u_e)
-    performance.area_ratio = (throat.density * throat.speed_of_sound) / (exit.density * exit_velocity);
+    // Mass: rho u is constant times area, so Ae/At = rho_t u_t / (rho_e u_e)
+    performance.area_ratio = throat_mass_flux / (exit.density * exit_velocity);
     // Thrust coefficient at optimum expansion
     performance.CF = exit_velocity / performance.cstar;
     performance.isp = exit_velocity;
