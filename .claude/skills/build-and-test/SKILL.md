@@ -39,12 +39,14 @@ pixi run ctest-fast               # skips tests labelled "slow" (condensed-phase
 ## Python
 
 ```bash
-pixi run -e test test-python        # reinstalls the package, then runs all Python tests
-pixi run -e test test-python-fast   # reinstalls, then skips tests marked "slow"
+pixi run -e test test-python                 # reinstalls the package, then runs the Python tests
+pixi run -e test test-python-fast            # reinstalls, then skips tests marked "slow"
+pixi run -e test test-python-comprehensive   # reinstalls, then runs only the "comprehensive" sweep
 ```
 
-- Both tasks depend on `pip-install`, so the tests never import a stale `_core`. Run `pip-install` alone after changing bindings if you import `goddard` outside the tests.
+- All three tasks depend on `pip-install`, so the tests never import a stale `_core`. Run `pip-install` alone after changing bindings if you import `goddard` outside the tests.
 - Mark long-running Python tests with `pytest.mark.slow` (see `test_condensed_cea.py`).
+- Tests marked `pytest.mark.comprehensive` (the propellant sweep in `test_propellant_cea.py`, about 7 minutes) are deselected unless pytest gets `--comprehensive`: `test-python` and CI leave them out. Run `test-python-comprehensive` before a release and after changing the equilibrium, rocket or nozzle solvers, the data files or the Cantera version. New coverage sweeps belong under this marker.
 - Call the `cea` oracle in a forked child process (see `run_isolated` in `test_condensed_cea.py`): a Fortran `STOP` kills the interpreter. Other `cea` gotchas are in `.claude/skills/test-creation/pycea.md`.
 
 ## Before committing

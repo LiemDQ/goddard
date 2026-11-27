@@ -23,7 +23,9 @@ CEA's rocket solver is not a reliable oracle everywhere (see "Known defects of t
 equilibrium exits are also checked against CEA's plain TP equilibrium, which does not depend on
 its rocket solver.
 
-Tests are skipped automatically if the `cea` package is not installed.
+Tests are skipped automatically if the `cea` package is not installed. The sweep takes several
+minutes, so it is marked comprehensive and runs only with `--comprehensive`
+(`pixi run -e test test-python-comprehensive`).
 """
 from dataclasses import dataclass, replace
 from importlib.metadata import version
@@ -38,7 +40,7 @@ from conftest import assert_close_rel
 from test_condensed_cea import (BAR, NASA9_CONDENSED, NASA9_GAS, NASA9_REACTANTS,
                                 run_isolated, split_product_names)
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.comprehensive]
 
 
 @dataclass(frozen=True)

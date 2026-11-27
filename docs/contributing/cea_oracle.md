@@ -1,6 +1,6 @@
 # CEA as a test oracle
 
-Goddard's comparison tests use NASA's `cea` Python package (3.3.4, in the `test` pixi environment) as the reference. CEA is not correct everywhere, and some of its failures are silent. This page lists the defects found so far, how the tests detect them, and how they work around them. `python/tests/test_propellant_cea.py` is the main user.
+Goddard's comparison tests use NASA's `cea` Python package (3.3.4, in the `test` pixi environment) as the reference. CEA is not correct everywhere, and some of its failures are silent. This page lists the defects found so far, how the tests detect them, and how they work around them. `python/tests/test_propellant_cea.py` is the main user. That sweep takes several minutes and is left out of the default test run and CI; run it with `pixi run -e test test-python-comprehensive`.
 
 ## Known defects of the oracle
 

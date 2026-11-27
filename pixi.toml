@@ -33,6 +33,13 @@ depends-on = ["pip-install"]
 cmd = "pytest python/tests/ -m 'not slow'"
 depends-on = ["pip-install"]
 
+# Only the tests marked "comprehensive" (the propellant sweep against CEA, several minutes), which
+# the other Python test tasks and CI leave out. Run it before a release and after changes to the
+# equilibrium, rocket or nozzle solvers, the data files or the Cantera version.
+[tasks.test-python-comprehensive]
+cmd = "pytest python/tests/ --comprehensive -m comprehensive"
+depends-on = ["pip-install"]
+
 [tasks.setup-worktree]
 args = [{arg = "name"}, {arg = "base", default = "HEAD"}]
 cmd = "bash scripts/setup_worktree.sh {{ name }} {{ base }}"

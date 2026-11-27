@@ -123,6 +123,8 @@ pixi run -e test pip-install
 
 # Run Python tests
 pixi run -e test test-python
+# Run the propellant sweep against CEA (marker "comprehensive", left out of test-python and CI)
+pixi run -e test test-python-comprehensive
 ```
 
 ## Data Files Structure

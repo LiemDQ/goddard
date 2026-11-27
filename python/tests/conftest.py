@@ -11,10 +11,29 @@ import pytest
 import goddard
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--comprehensive", action="store_true", default=False,
+        help="also run the tests marked comprehensive (the propellant sweep against CEA)")
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "slow: long-running test (condensed-phase CEA comparisons); deselect with -m 'not slow'")
+    config.addinivalue_line(
+        "markers",
+        "comprehensive: coverage sweep run only with --comprehensive "
+        "(pixi task test-python-comprehensive)")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--comprehensive"):
+        return
+    deselected = [item for item in items if item.get_closest_marker("comprehensive")]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = [item for item in items if not item.get_closest_marker("comprehensive")]
 
 # ---------------------------------------------------------------------------
 # Data directory
