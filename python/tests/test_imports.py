@@ -13,7 +13,6 @@ def test_import_enums():
     assert CombustorType.INFINITE_AREA is not None
     assert CombustorType.FINITE_MASS_FLUX is not None
     assert CombustorType.FINITE_CONTRACTION_RATIO is not None
-    assert CombustorType.NONE is not None
 
     assert GasChemistry.FROZEN is not None
     assert GasChemistry.EQUILIBRIUM is not None
@@ -24,28 +23,18 @@ def test_import_enums():
     assert ExpansionType.PRESSURE_RATIO is not None
 
 
-def test_import_station_type():
-    from goddard import StationType
-
-    assert StationType.CHAMBER is not None
-    assert StationType.STAGNATION is not None
-    assert StationType.COMBUSTION_END is not None
-    assert StationType.THROAT is not None
-    assert StationType.EXIT is not None
-
-
 def test_import_structs():
     from goddard import (
         CombustorOptions, NozzleOptions, ThroatCondition,
-        NozzleResult, NozzleResults, FiniteAreaChamber, RocketCaseParameters,
-        ChemicalParameters, ThermodynamicState, RocketPerformance,
-        RocketState, ExpansionProperties, EquilibriumDerivatives,
+        NozzleStation, NozzleResults, FiniteAreaChamber, RocketPoint, RocketResult,
+        ThermodynamicState, RocketPerformance, ExpansionProperties, EquilibriumDerivatives,
+        CompositionModel,
     )
 
 
 def test_import_classes():
     from goddard import (
-        RocketProblem, RocketProblemResults, ThermoArray,
+        RocketSolver, RocketResults, ThermoArray,
         Combustor, Nozzle, Gas, MocNozzle, ShockSolver
     )
 
@@ -77,7 +66,7 @@ def test_import_shocks():
 def test_perfect_gas_normal_shock():
     from goddard import normal_shock
     r = normal_shock(2.0, 1.4)
-    assert r.valid
+    assert r.status.ok
     assert r.mach_out < 1.0
     assert r.static_pressure_ratio > 1.0
 
@@ -85,7 +74,7 @@ def test_perfect_gas_normal_shock():
 def test_perfect_gas_reflected_shock():
     from goddard import reflected_shock, normal_shock
     r = reflected_shock(2.0, 1.4)
-    assert r.valid
+    assert r.status.ok
     assert r.incident.static_pressure_ratio == normal_shock(2.0, 1.4).static_pressure_ratio
     # The reflected shock is weaker than the incident one but still a shock
     assert 1.0 < r.reflected.mach_in < 2.0
@@ -93,31 +82,34 @@ def test_perfect_gas_reflected_shock():
 
 def test_perfect_gas_max_deflection():
     import math
-    from goddard import oblique_shock_max_deflection, oblique_shock_from_deflection
+    from goddard import FailureReason, oblique_shock_max_deflection, oblique_shock_from_deflection
     # NACA 1135 chart 2: theta_max = 22.97 deg at M = 2, gamma = 1.4
     theta_max = oblique_shock_max_deflection(2.0, 1.4)
     assert abs(math.degrees(theta_max) - 22.97) < 0.01
-    assert not oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4).valid
+    detached = oblique_shock_from_deflection(2.0, theta_max + 1e-3, 1.4)
+    assert not detached.status.ok
+    assert detached.status.reason == FailureReason.NO_SOLUTION
+    assert math.isnan(detached.beta)
 
 
-def test_nozzle_options_new_fields():
-    from goddard import NozzleOptions, SolverOptions
-    opts = NozzleOptions()
-    assert opts.dt_max == 1e-6
-    assert opts.dx_max == 1e-3
-    assert opts.max_steps == 100000
-    opts.solver = SolverOptions(abstol=1e-8)
-    assert opts.solver.abstol == 1e-8
+def test_nozzle_options_fields():
+    from goddard import NozzleOptions, GasChemistry
+    opts = NozzleOptions(frozen_NFZ=1, chemistry=GasChemistry.FROZEN)
+    assert opts.frozen_NFZ == 1
+    assert opts.chemistry == GasChemistry.FROZEN
 
 
 def test_import_errors():
-    from goddard import ConvergenceError
-    assert issubclass(ConvergenceError, Exception)
+    from goddard import ConvergenceError, SolveError, SolveStatus, FailureReason
+    assert issubclass(SolveError, RuntimeError)
+    assert issubclass(ConvergenceError, SolveError)
+    assert SolveStatus is not None
+    assert FailureReason.NOT_COMPUTED is not None
 
 
 def test_import_convenience():
     from goddard import (
-        OF_ratio, supersonic_ratio, subsonic_ratio, pressure_ratio,
+        rocket_performance, rocket_report,
         infinite_area_combustor, finite_mass_flux_combustor,
         finite_contraction_ratio_combustor,
         equilibrium_nozzle, frozen_nozzle, from_cantera,
@@ -129,9 +121,7 @@ def test_combustor_options_construction():
 
     opts = CombustorOptions()
     opts.type = CombustorType.INFINITE_AREA
-    opts.pressures = [1e6, 2e6]
     assert opts.type == CombustorType.INFINITE_AREA
-    assert opts.pressures == [1e6, 2e6]
 
 
 def test_combustor_options_process():
@@ -145,36 +135,38 @@ def test_combustor_options_process():
 
 
 def test_nozzle_options_construction():
-    from goddard import NozzleOptions, GasChemistry, ExpansionType
+    from goddard import NozzleOptions, GasChemistry
 
     opts = NozzleOptions()
     opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
-    opts.expansion_ratios = [3.0, 5.0, 10.0]
     assert opts.chemistry == GasChemistry.EQUILIBRIUM
-    assert opts.expansion_ratios == [3.0, 5.0, 10.0]
 
 
-def test_convenience_of_ratio():
-    from goddard import OF_ratio
-    assert OF_ratio(2.0, 3.0, 4.0) == [2.0, 3.0, 4.0]
+def test_nozzle_helpers_always_return_options():
+    from goddard import equilibrium_nozzle, frozen_nozzle, NozzleOptions, GasChemistry
+    assert isinstance(equilibrium_nozzle(), NozzleOptions)
+    assert equilibrium_nozzle().chemistry == GasChemistry.EQUILIBRIUM
+    assert frozen_nozzle().chemistry == GasChemistry.FROZEN
+    assert frozen_nozzle(frozen_NFZ=1).frozen_NFZ == 1
 
 
-def test_convenience_supersonic_ratio():
-    from goddard import supersonic_ratio, ExpansionType, GasChemistry
+def test_rocket_point_construction():
+    from goddard import RocketPoint, ExpansionType
 
-    opts = supersonic_ratio(3.0, 5.0, 10.0)
-    assert opts.expansion_type == ExpansionType.SUPERSONIC_AREA_RATIO
-    assert opts.chemistry == GasChemistry.EQUILIBRIUM
-    assert opts.expansion_ratios == [3.0, 5.0, 10.0]
+    point = RocketPoint(mixture_ratio=6.0, chamber_pressure=1e6, expansion_ratios=[3.0, 5.0, 10.0],
+                        label="demo")
+    assert point.expansion_type == ExpansionType.SUPERSONIC_AREA_RATIO
+    assert point.mixture_ratio == 6.0
+    assert point.chamber_pressure == 1e6
+    assert point.expansion_ratios == [3.0, 5.0, 10.0]
+    assert point.label == "demo"
 
 
 def test_convenience_combustor():
     from goddard import infinite_area_combustor, CombustorType
 
-    opts = infinite_area_combustor([1e6])
+    opts = infinite_area_combustor()
     assert opts.type == CombustorType.INFINITE_AREA
-    assert opts.pressures == [1e6]
 
 
 def test_import_condensed_api():
@@ -204,15 +196,17 @@ def test_import_detonations():
 
 
 def test_perfect_gas_detonation():
-    from goddard import chapman_jouguet_detonation, detonation, DetonationBranch
+    from goddard import FailureReason, chapman_jouguet_detonation, detonation, DetonationBranch
     # M_CJ = sqrt(H) + sqrt(H + 1), H = (gamma^2 - 1) Q/(2 gamma); Q is chosen so that H = 4.
     gamma = 1.4
     Q = 2.0 * gamma * 4.0 / (gamma * gamma - 1.0)
     cj = chapman_jouguet_detonation(gamma, Q)
-    assert cj.valid
+    assert cj.status.ok
     assert abs(cj.mach_in - (2.0 + 5.0**0.5)) < 1e-12
     assert abs(cj.mach_out - 1.0) < 1e-12
     strong = detonation(1.5, gamma, Q, DetonationBranch.OVERDRIVEN)
     weak = detonation(1.5, gamma, Q, DetonationBranch.UNDERDRIVEN)
     assert strong.mach_out < 1.0 < weak.mach_out
-    assert not detonation(0.9, gamma, Q).valid
+    slow = detonation(0.9, gamma, Q)
+    assert not slow.status.ok
+    assert slow.status.reason == FailureReason.NO_SOLUTION

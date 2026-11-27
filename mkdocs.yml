@@ -97,16 +97,19 @@ nav:
       - Numerical Algorithms: theory/numerics.md 
   - Tutorials:
       - Getting Started: tutorials/getting_started.md
+      - Handling Failures: tutorials/handling_failures.md
   - Examples:
       - Basic Rocket: examples/basic_rocket.ipynb
   - API Reference:
       - Gas: api/gas.md
       - Combustor: api/combustor.md
       - Nozzle: api/nozzle.md
+      - Rocket: api/rocket.md
       - Method of Characteristics: api/moc.md
       - Kinetic Nozzle: api/kinetic_nozzle.md
       - Shocks: api/shocks.md
       - Detonations: api/detonations.md
+      - Solve Status and Errors: api/status.md
       - Convenience Functions: api/convenience.md
   - Contributing:
       - Docstring Style Guide: contributing/docstring_style.md

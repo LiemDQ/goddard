@@ -6,7 +6,7 @@
 
 ::: goddard.NozzleOptions
 
-::: goddard.NozzleResult
+::: goddard.NozzleStation
 
 ::: goddard.NozzleResults
 

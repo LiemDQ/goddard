@@ -15,6 +15,7 @@
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/profile.hpp"
 
+#include <numbers>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -66,7 +67,7 @@ MocOptions build_options(const Config& c) {
 
     if (c.mode == "minlength") {
         o.mode = MocMode::DESIGN_MIN_LENGTH;
-        o.theta_max = c.half_angle * M_PI / 180.0;
+        o.theta_max = c.half_angle * std::numbers::pi / 180.0;
         return o;
     }
     if (c.mode == "rao") {
@@ -82,7 +83,7 @@ MocOptions build_options(const Config& c) {
     const double profile_arg =
         (c.flow == "planar") ? c.area_ratio * c.area_ratio : c.area_ratio;
     o.nozzle_profile =
-        NozzleProfile::generate_conical_nozzle(profile_arg, c.r_arc, 1.0, c.half_angle, 60);
+        NozzleProfile::generate_conical_nozzle(profile_arg, c.r_arc, 1.0, c.half_angle * std::numbers::pi / 180.0, 60);
     return o;
 }
 
@@ -119,7 +120,7 @@ void write_row(std::ostream& os, const Config& c, const MocResult& r) {
        << c.n << ',' << num(c.r_arc) << ',' << num(c.shift) << ',' << num(c.length_frac)
        << ',' << num(c.gamma) << ','
        << start_line_name(d.start_line_used) << ','
-       << (r.converged ? 1 : 0) << ',' << to_string(r.failure.code) << ','
+       << (r.status.ok() ? 1 : 0) << ',' << to_string(r.failure.code) << ','
        << num(r.failure.x) << ',' << num(r.failure.y) << ',' << r.failure.kernel_pass << ','
        << num(r.exit_mach) << ',' << num(r.exit_coverage) << ','
        << (r.reached_exit_plane ? 1 : 0) << ',' << num(r.area_ratio) << ','

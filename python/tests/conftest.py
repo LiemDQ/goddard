@@ -26,7 +26,7 @@ def find_data_dir() -> str:
     project_root = os.path.dirname(os.path.dirname(here))
     data_dir = os.path.join(project_root, "data")
     if not os.path.isdir(data_dir):
-        pytest.skip(f"Data directory not found at {data_dir}")
+        pytest.skip(f"Data directory not found at {data_dir}", allow_module_level=True)
     return data_dir
 
 
@@ -75,6 +75,9 @@ class ComparisonTolerances:
     entropy_rel: float = 1e-2           # 1%
     molecular_weight_rel: float = 1e-3  # 0.1%
     gamma_rel: float = 1e-2             # 1%
+    # Equilibrium cp includes the heat of the shifting reactions, which doubles it in a
+    # dissociated chamber; observed error against CEA on the H2/O2 cases is below 0.25%.
+    cp_rel: float = 1e-2                # 1%
     sound_speed_rel: float = 1e-2       # 1%
     thermo_deriv_rel: float = 5e-2      # 5%
     mass_fraction_abs: float = 5e-3     # absolute (relaxed: different thermo databases)
@@ -106,35 +109,34 @@ def cantera_save_state(yaml_path: str, phase_name: str,
     return [sol.T, sol.density] + list(sol.Y)
 
 
-def build_goddard_problem(case: RocketTestCase):
-    """Build a Goddard RocketProblem from a RocketTestCase specification."""
+def solve_goddard_case(case: RocketTestCase):
+    """Solve a RocketTestCase with the Goddard RocketSolver.
+
+    Returns:
+        The RocketResult of the single operating point of the case.
+    """
     import goddard
 
-    data_dir = find_data_dir()
-    yaml_path = os.path.join(data_dir, case.thermo_file)
-
-    chem_params = goddard.ChemicalParameters()
-    chem_params.thermo_file = yaml_path
-    chem_params.species = case.species
-    chem_params.cantera_fuel_state = goddard.PhaseSpecification(
-        case.fuel.temperature, 101325.0, case.fuel.cantera_composition) 
-    chem_params.cantera_oxidizer_state = goddard.PhaseSpecification(
-        case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition)
-    chem_params.OF_ratios = [case.of_ratio]
-
-    case_params = goddard.RocketCaseParameters()
-    case_params.name = case.name
-    case_params.problem_type = "rocket"
-    case_params.combustor_options = goddard.infinite_area_combustor(
-        [case.chamber_pressure_bar * 1e5])  # bar -> Pa
+    yaml_path = os.path.join(find_data_dir(), case.thermo_file)
+    products = goddard.Gas(yaml_path, case.phase_name, species=case.species)
 
     if case.nozzle_chemistry == "equilibrium":
-        case_params.nozzle_options = goddard.equilibrium_nozzle(*case.area_ratios)
+        nozzle = goddard.equilibrium_nozzle()
     else:
-        case_params.nozzle_options = goddard.frozen_nozzle(
-            *case.area_ratios, frozen_NFZ=case.frozen_NFZ)
+        nozzle = goddard.frozen_nozzle(frozen_NFZ=case.frozen_NFZ)
 
-    return goddard.RocketProblem(chem_params, [case_params], case.phase_name)
+    point = goddard.RocketPoint(
+        fuel=goddard.PhaseSpecification(
+            case.fuel.temperature, 101325.0, case.fuel.cantera_composition),
+        oxidizer=goddard.PhaseSpecification(
+            case.oxidizer.temperature, 101325.0, case.oxidizer.cantera_composition),
+        mixture_ratio=case.of_ratio,
+        chamber_pressure=case.chamber_pressure_bar * 1e5,  # bar -> Pa
+        combustor=goddard.infinite_area_combustor(),
+        nozzle=nozzle,
+        expansion_ratios=list(case.area_ratios),
+        label=case.name)
+    return goddard.RocketSolver(products).solve(point)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +206,8 @@ def compare_thermo_states(goddard_state, cea_solution, cea_station_idx: int,
                           tol: ComparisonTolerances = None, label: str = ""):
     """Compare a Goddard ThermoStateInfo against a CEA solution at a station.
 
-    Checks temperature, pressure, molecular weight, gamma_s, and speed of sound.
+    Checks temperature, pressure, molecular weight, cp, gamma_s, and speed of sound. cp is
+    compared with CEA's cp of the station, which is equilibrium or frozen as the station is.
     """
     if tol is None:
         tol = ComparisonTolerances()
@@ -224,6 +227,11 @@ def compare_thermo_states(goddard_state, cea_solution, cea_station_idx: int,
     assert_close_rel(goddard_state.molecular_weight,
                      cea_solution.M[cea_station_idx],
                      tol.molecular_weight_rel, f"{prefix}molecular_weight")
+
+    # Specific heat in the station's composition model (Goddard J/(kg.K), CEA kJ/(kg.K))
+    assert_close_rel(goddard_state.cp / 1e3,
+                     cea_solution.cp[cea_station_idx],
+                     tol.cp_rel, f"{prefix}cp")
 
     # Isentropic exponent
     assert_close_rel(goddard_state.gamma_s,

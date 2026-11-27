@@ -107,10 +107,10 @@ nb::class_<Goddard::Gas>(m, "Gas", DOC(Goddard, Gas))
 pybind11_mkdoc assigns a suffix to each overload in declaration order:
 
 ```cpp
-// First overload  -> DOC(Goddard, Gas, isenthalpic_velocity)
-double isenthalpic_velocity(double H_stagnation) const;
-// Second overload -> DOC(Goddard, Gas, isenthalpic_velocity, 2)
-double isenthalpic_velocity() const;
+// First overload  -> DOC(Goddard, Gas, set_OF_ratio)
+void set_OF_ratio(double OF, const std::string& fuel_comp, const std::string& ox_comp, ...);
+// Second overload -> DOC(Goddard, Gas, set_OF_ratio, 2)
+void set_OF_ratio(double OF, const Composition& fuel_comp, const Composition& ox_comp, ...);
 ```
 
 ### Keep argument annotations
@@ -124,12 +124,23 @@ for keyword-argument support. These are orthogonal to `DOC()`:
 //   ^^^^^^^^^^^^  still required
 ```
 
-### Fallback behavior
+### Regenerating `goddard_docstrings.h`
+
+`python/src/goddard_docstrings.h` is committed, so every build, including the
+release packages, embeds the docstrings without needing libclang. After changing
+a Doxygen comment in a public header, regenerate it and commit the result:
+
+```bash
+pixi run -e docs docs-compile
+git add python/src/goddard_docstrings.h
+```
+
+CI fails when the committed header differs from the regenerated one.
 
 When `goddard_BUILD_DOCSTRINGS=OFF` (the default outside the `docs` pixi
-environment), `DOC(...)` expands to `""`. The binding compiles normally; Python
-methods just have empty docstrings. This keeps the build working without
-libclang.
+environment), the committed header is used as is. Only if it is missing does
+the build write a stub in which `DOC(...)` expands to `""`; the bindings then
+compile with empty docstrings.
 
 ---
 
@@ -139,8 +150,7 @@ Functions in `python/goddard/convenience.py` and other pure-Python modules use
 **Google-style** docstrings. mkdocstrings auto-detects this format:
 
 ```python
-def gas_from_yaml(yaml_file, phase_name="", species=None,
-                  chemistry=GasChemistry.FROZEN):
+def gas_from_yaml(yaml_file, phase_name="", species=None):
     """Create a Gas from a YAML thermodynamic data file.
 
     Args:
@@ -149,7 +159,6 @@ def gas_from_yaml(yaml_file, phase_name="", species=None,
             first phase found.
         species: Optional list of species names to include. If None, all
             species in the phase are used.
-        chemistry: GasChemistry mode for derived property calculations.
 
     Returns:
         Gas object initialized from the YAML data.

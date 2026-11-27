@@ -12,6 +12,11 @@ namespace Goddard {
  */
 class Gas;
 
+/**
+ * Derivatives of the equilibrium composition with respect to log T and log P (Gordon & McBride,
+ * RP-1311 eqs. 2.56-2.66). pi_i = -lambda_i/(R T), with lambda_i the Lagrange multiplier of the
+ * balance of element i.
+ */
 struct EquilibriumDerivatives {
     /** (d pi_i / d log T)_P [-], one entry per element of the gas phase. */
     Eigen::ArrayXd dpi_dlogT_P;
@@ -42,16 +47,21 @@ struct EquilibriumDerivatives {
     bool pinned_transition = false;
 };
 
+/**
+ * Thermodynamic derivatives that govern an isentropic expansion, per kg of mixture. Computed at
+ * equilibrium (`equilibrium_properties`) or at frozen composition (`frozen_properties`); the
+ * `frozen_*` fields are at frozen composition in both cases.
+ */
 struct ExpansionProperties {
     /** (d log V / d log T)_P [-]. */
-    double dlogV_dlogT_P = 0.0;
+    double dlV_dlT_P = 0.0;
     /** (d log V / d log P)_T [-]. */
-    double dlogV_dlogP_T = 0.0;
-    /** Equilibrium constant-pressure specific heat [J/(kg.K)]. */
+    double dlV_dlP_T = 0.0;
+    /** Constant-pressure specific heat [J/(kg.K)], equilibrium or frozen as computed. */
     double spec_heat_p = 0.0;
     /** Isentropic exponent -(d log P / d log V)_s [-]. */
     double gamma_s = 0.0;
-    /** Equilibrium constant-volume specific heat [J/(kg.K)]. */
+    /** Constant-volume specific heat [J/(kg.K)], equilibrium or frozen as computed. */
     double spec_heat_v = 0.0;
     /** Moles of gas per kg of mixture [kmol/kg] (CEA's 1/M). */
     double gas_moles = 0.0;
@@ -108,12 +118,22 @@ double get_equilibrium_gamma(const Cantera::ThermoPhase& gas);
  * At a pinned phase transition (`Gas::at_phase_transition()` with both polymorphs present) the
  * two polymorphs share one element row, so they are merged into a single condensed unknown and
  * only the pressure block is solved. The temperature derivatives are then undefined and are
- * reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlogV_dlogT_P` are infinite, and
- * `gamma_s = -1 / dlogV_dlogP_T`.
+ * reported as NaN, `spec_heat_p`, `spec_heat_v` and `dlV_dlT_P` are infinite, and
+ * `gamma_s = -1 / dlV_dlP_T`.
  * @{
  */
+/**
+ * Equilibrium composition derivatives of the mixture at its current state (RP-1311 eqs.
+ * 2.56-2.66), condensed species included.
+ */
 EquilibriumDerivatives get_thermo_equilibrium_derivatives(const Gas& gas);
+/** Equilibrium expansion properties of the mixture from already solved `derivatives`. */
 ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas, const EquilibriumDerivatives& derivatives);
+/**
+ * Equilibrium expansion properties of the mixture at its current state: volume derivatives,
+ * specific heats, `gamma_s` and speed of sound, condensed species included. At a pinned phase
+ * transition the specific heats and `dlV_dlT_P` are infinite and `gamma_s = -1 / dlV_dlP_T`.
+ */
 ExpansionProperties get_thermo_equilibrium_properties(const Gas& gas);
 /**
  * Frozen-composition expansion properties: gas composition and condensed amounts are held fixed,

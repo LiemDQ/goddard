@@ -92,7 +92,7 @@ $$
 
 The guess at $M = f M_{CJ}$ takes the + root for the overdriven branch and the − root for the under-driven one. Pressure comes from the Rayleigh line, $P_2/P_1 = 1 + (\rho_1u_1^2/P_1)\,s$, and temperature from the ideal-gas law with the molar mass of the CJ products. The guess is exact at $f = 1$ and separates the branches as $\sqrt{f - 1}$, like the true roots.
 
-After the solve, the Mach number of the products is checked against 1 to confirm the requested branch. Very close to $f = 1$ the two roots are closer than the solver can separate, and the solver throws `ConvergenceError` rather than return the other root. For stoichiometric H2/O2 this happens below about $f = 1 + 10^{-5}$.
+After the solve, the Mach number of the products is checked against 1 to confirm the requested branch. Very close to $f = 1$ the two roots are closer than the solver can separate, and the solve fails with reason `NOT_CONVERGED` rather than return the other root. For stoichiometric H2/O2 this happens below about $f = 1 + 10^{-5}$.
 
 Above the CJ speed, an equilibrium normal shock computed by `ShockSolver` is the overdriven detonation. The shock solver reaches it from the frozen shock.
 

@@ -1,3 +1,5 @@
+#include <format>
+#include "cantera/thermo/ThermoFactory.h"
 #include "goddard/utils.hpp"
 #include "goddard/speciate.hpp"
 #include "goddard/condensed.hpp"
@@ -5,6 +7,7 @@
 #include "goddard/gas.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/newton.hpp"
+#include "goddard/solve_guard.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -13,45 +16,78 @@
 
 namespace Goddard {
 
-Gas::Gas(std::shared_ptr<Cantera::Solution> gas, GasChemistry chem)
-    : chemistry(chem), m_sol(std::move(gas))
-{
-    set_current_state_as_reference();
-}
+Gas::Gas(std::shared_ptr<Cantera::Solution> gas)
+    : m_sol(std::move(gas))
+{}
 
 Gas::Gas(std::shared_ptr<Cantera::Solution> gas,
-         std::shared_ptr<CondensedPhaseSet> condensed,
-         GasChemistry chem)
-    : chemistry(chem), m_sol(std::move(gas)), m_condensed(std::move(condensed))
-{
-    set_current_state_as_reference();
-}
+         std::shared_ptr<CondensedPhaseSet> condensed)
+    : m_sol(std::move(gas)), m_condensed(std::move(condensed))
+{}
 
-Gas::Gas(const Cantera::Solution& gas, GasChemistry chem)
-    : Gas(gas.clone(), chem) 
-{
-    set_current_state_as_reference();
-}
+Gas::Gas(const Cantera::Solution& gas)
+    : Gas(gas.clone())
+{}
 
-Gas::Gas(Cantera::Solution&& gas, GasChemistry chem)
-    : chemistry(chem), m_sol(gas.shared_from_this()) 
-{
-    set_current_state_as_reference();
-}
+Gas::Gas(Cantera::Solution&& gas)
+    : m_sol(gas.shared_from_this())
+{}
 
 Gas::Gas(const std::string& infile, 
-        const std::string& phase_name,
-        GasChemistry chem) 
-    : chemistry(chem), m_sol(Cantera::newSolution(infile, phase_name)) 
-{
-    set_current_state_as_reference();
+        const std::string& phase_name)
+    : m_sol(translate_backend_usage_errors(
+        [&] { return std::format("Gas: cannot load phase '{}' from '{}'", phase_name, infile); },
+        [&] { return Cantera::newSolution(infile, phase_name); }))
+{}
+
+namespace {
+
+/**
+ * Independent copy of a gas-phase `Solution` that keeps the atomic weights of its phase.
+ *
+ * `Solution::clone` rebuilds the phase from its parameters, which name the elements but carry no
+ * weights: a phase that took its weights from the `elements` section of a data file (the NASA9
+ * files carry CEA's) would come back with Cantera's default ones. Here the phase is rebuilt with
+ * its own weights, and the kinetics and transport are cloned onto it as `Solution::clone` does.
+ */
+std::shared_ptr<Cantera::Solution> clone_solution(Cantera::Solution& solution) {
+    const Cantera::ThermoPhase& thermo = *solution.thermo();
+    if (solution.kinetics() && solution.kinetics()->nPhases() > 1) {
+        // A phase with adjacent phases (an interface) is not a Goddard gas; keep Cantera's clone.
+        return solution.clone();
+    }
+    std::vector<Cantera::AnyMap> elements;
+    for (size_t m = 0; m < thermo.nElements(); m++) {
+        Cantera::AnyMap element;
+        element["symbol"] = thermo.elementName(m);
+        element["atomic-weight"] = thermo.atomicWeight(m);
+        element["atomic-number"] = thermo.atomicNumber(m);
+        element["entropy298"] = thermo.entropyElement298(m);
+        elements.push_back(std::move(element));
+    }
+    std::vector<Cantera::AnyMap> species;
+    for (const std::string& name : thermo.speciesNames()) {
+        species.push_back(thermo.species(name)->parameters(&thermo));
+    }
+    Cantera::AnyMap root;
+    root["elements"] = elements;
+    root["species"] = species;
+    Cantera::AnyMap phase = thermo.parameters();
+    phase.applyUnits();
+    root.applyUnits();
+
+    std::shared_ptr<Cantera::Solution> copy = Cantera::Solution::create();
+    copy->setThermo(Cantera::newThermo(phase, root));
+    if (solution.kinetics()) {
+        copy->setKinetics(solution.kinetics()->clone({copy->thermo()}));
+    }
+    if (solution.transport()) {
+        copy->setTransport(solution.transport()->clone(copy->thermo()));
+    }
+    return copy;
 }
 
-Gas::Gas(double gamma) : m_gamma(gamma)
-{
-    chemistry = GasChemistry::PERFECT_GAS;
-    set_current_state_as_reference();
-}
+} // namespace
 
 Gas Gas::clone() const {
     Gas copy = *this;
@@ -59,14 +95,14 @@ Gas Gas::clone() const {
         copy.m_condensed = m_condensed->clone();
     }
     if (m_sol) {
-        copy.m_sol = m_sol->clone();
+        copy.m_sol = clone_solution(*m_sol);
         copy.restore_state(save_state());
     }
     return copy;
 }
 
-Gas Gas::create(const std::string& filename, const std::string& phase_name, GasChemistry chemistry) {
-    return Gas(filename, phase_name, chemistry);
+Gas Gas::create(const std::string& filename, const std::string& phase_name) {
+    return Gas(filename, phase_name);
 }
 
 namespace {
@@ -96,74 +132,101 @@ void adapt_phase_node_to_data(Cantera::AnyMap& phase_node, const Cantera::AnyMap
 Gas Gas::create_from_elements(
     const std::string& infile,
     const std::string& name,
-    const std::vector<std::string>& elements,
-    GasChemistry chemistry)
+    const std::vector<std::string>& elements)
 {
-    Cantera::AnyMap root_node = load_root_node(infile);
-    Cantera::AnyMap phase_node = create_speciated_phase_node(name, elements);
-    adapt_phase_node_to_data(phase_node, root_node);
-    return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
+    return translate_backend_usage_errors(
+        [&] { return std::format("Gas::create_from_elements: cannot build phase '{}' from '{}'", name, infile); },
+        [&] {
+            Cantera::AnyMap root_node = load_root_node(infile);
+            Cantera::AnyMap phase_node = create_speciated_phase_node(name, elements);
+            adapt_phase_node_to_data(phase_node, root_node);
+            return Gas(Cantera::newSolution(phase_node, root_node));
+        });
 }
 
 Gas Gas::create_from_species(
     const std::string& infile,
     const std::string& name,
-    const std::vector<std::string>& species,
-    GasChemistry chemistry)
+    const std::vector<std::string>& species)
 {
-    Cantera::AnyMap root_node = load_root_node(infile);
-    Cantera::AnyMap phase_node = create_phase_node(name, species);
-    adapt_phase_node_to_data(phase_node, root_node);
-    return Gas(Cantera::newSolution(phase_node, root_node), chemistry);
+    return translate_backend_usage_errors(
+        [&] { return std::format("Gas::create_from_species: cannot build phase '{}' from '{}'", name, infile); },
+        [&] {
+            Cantera::AnyMap root_node = load_root_node(infile);
+            // File order, so that the species indices do not depend on the order of `species`.
+            const std::vector<std::string> ordered = species_in_file_order(root_node, species);
+            Cantera::AnyMap phase_node = create_phase_node(name, ordered);
+            list_file_elements(phase_node, root_node, ordered);
+            adapt_phase_node_to_data(phase_node, root_node);
+            return Gas(Cantera::newSolution(phase_node, root_node));
+        });
 }
 
 // State setters
 void Gas::set_state_TD(double T, double D) {
-    thermo()->setState_TD(T,D);
+    translate_backend_errors([&] { return std::format("Gas::set_state_TD(T = {:.6g} K, D = {:.6g} kg/m^3)", T, D); },
+        [&] { thermo()->setState_TD(T, D); });
 }
 
 void Gas::set_state_TP(double T, double P) {
-    thermo()->setState_TP(T, P);
+    translate_backend_errors([&] { return std::format("Gas::set_state_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
+        [&] { thermo()->setState_TP(T, P); });
 }
 
+// A composition given by species name fails on a name the phase does not have, which is a bad
+// argument; the state itself is then set as in `set_state_TP`.
 void Gas::set_state_TPX(double T, double P, const std::string& composition) {
-    thermo()->setState_TPX(T, P, composition);
+    translate_backend_usage_errors("Gas::set_state_TPX",
+        [&] { thermo()->setMoleFractionsByName(composition); });
+    set_state_TP(T, P);
 }
 
 void Gas::set_state_TPX(double T, double P, const Composition& composition) {
-    thermo()->setState_TPX(T, P, composition);
+    translate_backend_usage_errors("Gas::set_state_TPX",
+        [&] { thermo()->setMoleFractionsByName(composition); });
+    set_state_TP(T, P);
 }
 
 void Gas::set_state_TPX(double T, double P, const double* composition) {
-    thermo()->setState_TPX(T, P, composition);
+    translate_backend_errors([&] { return std::format("Gas::set_state_TPX(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
+        [&] { thermo()->setState_TPX(T, P, composition); });
 }
 
 void Gas::set_state_TPY(double T, double P, const std::string& composition) {
-    thermo()->setState_TPY(T, P, composition);
+    translate_backend_usage_errors("Gas::set_state_TPY",
+        [&] { thermo()->setMassFractionsByName(composition); });
+    set_state_TP(T, P);
 }
 
 void Gas::set_state_TPY(double T, double P, const Composition& composition) {
-    thermo()->setState_TPY(T, P, composition);
+    translate_backend_usage_errors("Gas::set_state_TPY",
+        [&] { thermo()->setMassFractionsByName(composition); });
+    set_state_TP(T, P);
 }
 
 void Gas::set_state_TPY(double T, double P, const double* composition) {
-    thermo()->setState_TPY(T, P, composition);
+    translate_backend_errors([&] { return std::format("Gas::set_state_TPY(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
+        [&] { thermo()->setState_TPY(T, P, composition); });
 }
 
 void Gas::set_state_HP(double H, double P) {
     if (!has_condensed_candidates()) {
-        thermo()->setState_HP(H, P);
+        translate_backend_errors([&] { return std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
+            [&] { thermo()->setState_HP(H, P); });
         return;
     }
-    solve_frozen_XP(EquilibriumProperty::ENTHALPY, H, P);
+    translate_backend_errors([&] { return std::format("Gas::set_state_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
+        [&] { solve_frozen_XP(EquilibriumProperty::ENTHALPY, H, P); });
 }
 
 void Gas::set_state_SP(double S, double P) {
     if (!has_condensed_candidates()) {
-        thermo()->setState_SP(S, P);
+        translate_backend_errors([&] { return std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
+            [&] { thermo()->setState_SP(S, P); });
         return;
     }
-    solve_frozen_XP(EquilibriumProperty::ENTROPY, S, P);
+    translate_backend_errors([&] { return std::format("Gas::set_state_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
+        [&] { solve_frozen_XP(EquilibriumProperty::ENTROPY, S, P); });
 }
 
 void Gas::set_state_UV(double U, double V) {
@@ -172,7 +235,8 @@ void Gas::set_state_UV(double U, double V) {
             "Gas::set_state_UV: constant internal energy and volume with condensed species is not "
             "implemented.");
     }
-    thermo()->setState_UV(U,V);
+    translate_backend_errors([&] { return std::format("Gas::set_state_UV(U = {:.6g} J/kg, V = {:.6g} m^3/kg)", U, V); },
+        [&] { thermo()->setState_UV(U, V); });
 }
 
 // 
@@ -233,7 +297,7 @@ size_t Gas::state_size() const {
     return cantera_size + n_condensed;
 }
 
-ThermodynamicState Gas::snapshot() const {
+ThermodynamicState Gas::snapshot(CompositionModel model) const {
     auto t = thermo();
 
     ThermodynamicState info;
@@ -245,24 +309,20 @@ ThermodynamicState Gas::snapshot() const {
     info.internal_energy = info.enthalpy - info.pressure / info.density;
     info.gibbs = info.enthalpy - info.temperature * info.entropy;
     info.molecular_weight = molecular_weight();
-    info.gamma_s = gamma_s();
-    info.stagnation_enthalpy = m_H_stagnation;
-    
-    auto props = expansion_properties();
-    info.dlV_dlP_T = props.dlogV_dlogP_T;
-    info.dlV_dlT_P = props.dlogV_dlogT_P;
-    info.speed_of_sound = speed_of_sound();
+    info.stagnation_enthalpy = NaN; // set by the solver that knows the flow
+
+    const ExpansionProperties props = expansion_properties(model);
+    info.composition_model = model;
+    info.gamma_s = props.gamma_s;
+    info.dlV_dlP_T = props.dlV_dlP_T;
+    info.dlV_dlT_P = props.dlV_dlT_P;
+    info.speed_of_sound = gas_sonic_velocity(info.temperature, info.molecular_weight, props.gamma_s);
     info.mixture_molecular_weight = mixture_molecular_weight();
     info.gas_mass_fraction = gas_mass_fraction();
-    // A frozen composition cannot shift across a transition, so the flag follows the chemistry
-    // mode rather than the bare state.
+    // A frozen composition cannot shift across a transition, so the flag follows the composition
+    // model rather than the bare state.
     info.pinned_transition = props.pinned_transition;
-    if (props.pinned_transition) {
-        info.cp = 0.0; // following CEA convention
-    }
-    else {
-        info.cp = cp_mass();
-    }
+    info.cp = props.pinned_transition ? 0.0 : props.spec_heat_p; // 0 following CEA convention
 
     // Composition: mass fractions of the whole mixture, gas species first.
     const std::vector<double> fractions = mixture_mass_fractions();
@@ -362,39 +422,32 @@ double Gas::gamma() const {
     return cp_mass() / cv_mass();
 }
 
-double Gas::gamma_s() const {
-    switch (chemistry) {
-        case GasChemistry::PERFECT_GAS: {
-            if (has_cantera_sln()) {
-                return cp_mass() / cv_mass();
-            }
-            else return m_gamma;
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::KINETIC:
+double Gas::gamma_s(CompositionModel model) const {
+    switch (model) {
+        case CompositionModel::FROZEN:
             return cp_mass() / cv_mass();
-        case GasChemistry::EQUILIBRIUM:
+        case CompositionModel::EQUILIBRIUM:
             return get_thermo_equilibrium_properties(*this).gamma_s;
     }
     return cp_mass() / cv_mass(); // unreachable
 }
 
-double Gas::speed_of_sound() const {
-    return gas_sonic_velocity(temperature(), molecular_weight(), gamma_s());
+double Gas::speed_of_sound(CompositionModel model) const {
+    return gas_sonic_velocity(temperature(), molecular_weight(), gamma_s(model));
 }
 
 double Gas::stagnation_enthalpy(double velocity) const {
     return enthalpy_mass() + velocity * velocity / 2.0;
 }
 
-double Gas::stagnation_pressure(double velocity) const {
+double Gas::stagnation_pressure(double velocity, CompositionModel model) const {
     // Newton iteration on h(s, P0) = h + v^2/2. (dh/dP)_s is the specific volume 1/rho of the
     // mixture, for frozen composition and for a mixture held at equilibrium alike.
     Gas work = clone();
     const double h_stagnation = stagnation_enthalpy(velocity);
     const double entropy = entropy_mass();
     // The frozen sound speed gives the initial guess: the current state need not be at
-    // equilibrium when chemistry is EQUILIBRIUM.
+    // equilibrium when `model` is EQUILIBRIUM.
     const double gamma_frozen = gamma();
     const double mach_frozen = velocity / gas_sonic_velocity(temperature(), molecular_weight(), gamma_frozen);
     const double P_guess = perfect_gas_stagnation_pressure(pressure(), mach_frozen, gamma_frozen);
@@ -402,16 +455,14 @@ double Gas::stagnation_pressure(double velocity) const {
     // Cantera's SP equilibrium solve leaves temperature noise of ~1e-8 relative, which puts a
     // floor of ~3e-7 under the relative pressure step, so the equilibrium tolerance is looser.
     NewtonOptions options;
-    options.step_reltol = (chemistry == GasChemistry::EQUILIBRIUM) ? 1e-6 : 1e-9;
+    options.step_reltol = (model == CompositionModel::EQUILIBRIUM) ? 1e-6 : 1e-9;
     options.max_iterations = 51;
     const NewtonResult result = newton_solve(P_guess, [&](double P_stagnation) {
-        switch (chemistry) {
-            case GasChemistry::EQUILIBRIUM:
+        switch (model) {
+            case CompositionModel::EQUILIBRIUM:
                 work.equilibrate_SP(entropy, P_stagnation);
                 break;
-            case GasChemistry::PERFECT_GAS:
-            case GasChemistry::FROZEN:
-            case GasChemistry::KINETIC:
+            case CompositionModel::FROZEN:
                 work.set_state_SP(entropy, P_stagnation);
                 break;
         }
@@ -429,30 +480,17 @@ double Gas::isenthalpic_velocity(double H_stagnation) const {
     return std::sqrt(2.0 * (H_stagnation - enthalpy_mass()));
 }
 
-double Gas::isenthalpic_velocity() const {
-    return isenthalpic_velocity(m_H_stagnation);
-}
-
 double Gas::area_per_mdot(double velocity) const {
     return temperature() * Cantera::GasConstant
         / (pressure() * velocity * molecular_weight());
 }
 
-double Gas::mach(double velocity) const {
-    return velocity / speed_of_sound();
+double Gas::mach(double velocity, CompositionModel model) const {
+    return velocity / speed_of_sound(model);
 }
 
-double Gas::cstar() const {
-    return Goddard::cstar(gamma_s(), temperature(), molecular_weight());
-}
-
-double Gas::isp() const {
-    return isenthalpic_velocity();
-}
-
-double Gas::ivac() const {
-    double exit_velocity = isp();
-    return exit_velocity + temperature()*Cantera::GasConstant/(exit_velocity * molecular_weight());
+double Gas::cstar(CompositionModel model) const {
+    return Goddard::cstar(gamma_s(model), temperature(), molecular_weight());
 }
 
 // Mixture properties
@@ -461,14 +499,16 @@ double Gas::fuel_fraction(
     const std::string& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->mixtureFraction(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::fuel_fraction",
+        [&] { return thermo()->mixtureFraction(fuel_comp, ox_comp, basis); });
 }
 double Gas::fuel_fraction(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->mixtureFraction(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::fuel_fraction",
+        [&] { return thermo()->mixtureFraction(fuel_comp, ox_comp, basis); });
 }
 
 double Gas::equivalence_ratio() const {
@@ -480,14 +520,16 @@ double Gas::equivalence_ratio(
     const std::string& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::equivalence_ratio",
+        [&] { return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis); });
 }
 double Gas::equivalence_ratio(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::equivalence_ratio",
+        [&] { return thermo()->equivalenceRatio(fuel_comp, ox_comp, basis); });
 }
 
 double Gas::stoich_OF_ratio(
@@ -495,14 +537,16 @@ double Gas::stoich_OF_ratio(
     const std::string& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::stoich_OF_ratio",
+        [&] { return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis); });
 }
 double Gas::stoich_OF_ratio(
     const Composition& fuel_comp, 
     const Composition& ox_comp,
     Cantera::ThermoBasis basis) const 
 {
-    return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis);
+    return translate_backend_usage_errors("Gas::stoich_OF_ratio",
+        [&] { return thermo()->stoichAirFuelRatio(fuel_comp, ox_comp, basis); });
 }
 
 void Gas::set_fuel_fraction(
@@ -511,8 +555,8 @@ void Gas::set_fuel_fraction(
     const std::string& ox_comp,
     Cantera::ThermoBasis basis)
 {
-    thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_fuel_fraction",
+        [&] { thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis); });
 }
 void Gas::set_fuel_fraction(
     double fuel_frac,
@@ -520,8 +564,8 @@ void Gas::set_fuel_fraction(
     const Composition& ox_comp,
     Cantera::ThermoBasis basis)
 {
-    thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_fuel_fraction",
+        [&] { thermo()->setMixtureFraction(fuel_frac, fuel_comp, ox_comp, basis); });
 }
 
 void Gas::set_equivalence_ratio(
@@ -530,8 +574,8 @@ void Gas::set_equivalence_ratio(
     const std::string& ox_comp,
     Cantera::ThermoBasis basis)
 {
-    thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_equivalence_ratio",
+        [&] { thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis); });
 }
 void Gas::set_equivalence_ratio(
     double phi,
@@ -539,8 +583,8 @@ void Gas::set_equivalence_ratio(
     const Composition& ox_comp,
     Cantera::ThermoBasis basis)
 {
-    thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_equivalence_ratio",
+        [&] { thermo()->setEquivalenceRatio(phi, fuel_comp, ox_comp, basis); });
 }
 
 void Gas::set_OF_ratio(
@@ -550,8 +594,8 @@ void Gas::set_OF_ratio(
     Cantera::ThermoBasis basis)
 {
     double frac = 1.0/(OF+1.0);
-    thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_OF_ratio",
+        [&] { thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis); });
 }
 void Gas::set_OF_ratio(
     double OF,
@@ -560,27 +604,18 @@ void Gas::set_OF_ratio(
     Cantera::ThermoBasis basis)
 {
     double frac = 1.0/(OF+1.0);
-    thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis);
-    set_current_state_as_reference();
+    translate_backend_usage_errors("Gas::set_OF_ratio",
+        [&] { thermo()->setMixtureFraction(frac, fuel_comp, ox_comp, basis); });
 }
 
 
 // Expansion properties
 
-ExpansionProperties Gas::expansion_properties() const {
-    switch (chemistry) {
-        case GasChemistry::EQUILIBRIUM:
+ExpansionProperties Gas::expansion_properties(CompositionModel model) const {
+    switch (model) {
+        case CompositionModel::EQUILIBRIUM:
             return get_thermo_equilibrium_properties(*this);
-        case GasChemistry::PERFECT_GAS: {
-            if (!has_cantera_sln()) return {1.0, -1.0, 0.0, m_gamma};
-            else {
-                double cp = cp_mass();
-                double g = cp / cv_mass();
-                return {1.0, -1.0, cp, g};
-            }
-        }
-        case GasChemistry::FROZEN:
-        case GasChemistry::KINETIC: {
+        case CompositionModel::FROZEN: {
             double cp = cp_mass();
             double g = cp / cv_mass();
             return {1.0, -1.0, cp, g};
@@ -590,8 +625,15 @@ ExpansionProperties Gas::expansion_properties() const {
 }
 
 void Gas::equilibrate(const std::string& XY, const std::string& solver) {
+    validate_equilibrium_request(XY, solver);
     if (!has_condensed_candidates()) {
-        thermo()->equilibrate(XY, solver);
+        // The message names the state the solve started from, which a failed solve may change.
+        const double start_temperature = temperature();
+        const double start_pressure = pressure();
+        translate_backend_errors(
+            [&] { return std::format("Gas::equilibrate('{}', '{}') from T = {:.6g} K, P = {:.6g} Pa", XY, solver,
+                        start_temperature, start_pressure); },
+            [&] { thermo()->equilibrate(XY, solver); });
         return;
     }
 
@@ -618,6 +660,46 @@ void Gas::equilibrate(const std::string& XY, const std::string& solver) {
 }
 
 int Gas::last_equilibrium_solve_count() const { return m_equilibrium_solve_count; }
+
+std::optional<std::string> Gas::check_temperature_range() const {
+    const double T = temperature();
+    // The present species farthest outside its range, by relative distance from the range.
+    size_t worst = Cantera::npos;
+    double worst_distance = 0.0;
+    for (size_t k = 0; k < thermo()->nSpecies(); k++) {
+        if (thermo()->moleFraction(k) < trace_mole_fraction) {
+            continue;
+        }
+        const double T_min = thermo()->minTemp(k);
+        const double T_max = thermo()->maxTemp(k);
+        const double distance = T < T_min ? (T_min - T) / T_min
+                              : T > T_max ? (T - T_max) / T_max
+                                          : 0.0;
+        if (distance > worst_distance) {
+            worst = k;
+            worst_distance = distance;
+        }
+    }
+    if (worst == Cantera::npos) {
+        return std::nullopt;
+    }
+    const std::string description = std::format(
+        "T = {:.6g} K is outside the thermodynamic data range of gas species '{}' ({:.6g} - "
+        "{:.6g} K, mole fraction {:.3g})", T, thermo()->speciesName(worst),
+        thermo()->minTemp(worst), thermo()->maxTemp(worst), thermo()->moleFraction(worst));
+    if (worst_distance > range_margin) {
+        throw SolveError(FailureReason::OUT_OF_DATA_RANGE, std::format(
+            "{}, by more than {:g}%: its properties cannot be extrapolated that far.",
+            description, 100.0 * range_margin));
+    }
+    return description + "; its properties are extrapolated.";
+}
+
+void check_reported_state(const Gas& gas, SolveStatus& status) {
+    if (std::optional<std::string> warning = gas.check_temperature_range()) {
+        status.warnings.push_back(std::move(*warning));
+    }
+}
 
 namespace {
 
@@ -665,40 +747,50 @@ size_t basis_species_for_element(const Cantera::ThermoPhase& gas, size_t m) {
 void Gas::equilibrate_TP(double T, double P) {
     m_equilibrium_solve_count = 0;
     if (has_condensed_candidates()) {
-        solve_multiphase_TP(T, P, {});
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); },
+            [&] { solve_multiphase_TP(T, P, {}); });
         return;
     }
-    thermo()->setState_TP(T, P);
-    thermo()->equilibrate("TP", "gibbs");
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_TP(T = {:.6g} K, P = {:.6g} Pa)", T, P); }, [&] {
+        thermo()->setState_TP(T, P);
+        thermo()->equilibrate("TP", "gibbs");
+    });
 }
 
 void Gas::equilibrate_HP(double H, double P) {
     if (has_condensed_candidates()) {
-        solve_multiphase_XP(EquilibriumProperty::ENTHALPY, H, P);
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); },
+            [&] { solve_multiphase_XP(EquilibriumProperty::ENTHALPY, H, P); });
         return;
     }
     m_equilibrium_solve_count = 0;
     const std::vector<double> start_state = save_state();
-    thermo()->setState_HP(H, P);
-    try {
-        thermo()->equilibrate("HP", "gibbs");
-    } catch (const Cantera::CanteraError&) {
-        // "gibbs" tests its enthalpy residual relative to H, so it fails when the target enthalpy
-        // is close to zero, e.g. gaseous H2/O2 reactants at 298.15 K. "vcs" does not.
-        restore_state(start_state);
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_HP(H = {:.6g} J/kg, P = {:.6g} Pa)", H, P); }, [&] {
         thermo()->setState_HP(H, P);
-        thermo()->equilibrate("HP", "vcs");
-    }
+        try {
+            thermo()->equilibrate("HP", "gibbs");
+        } catch (const Cantera::CanteraError&) {
+            // "gibbs" tests its enthalpy residual relative to H, so it fails when the target
+            // enthalpy is close to zero, e.g. gaseous H2/O2 reactants at 298.15 K. "vcs" does not.
+            restore_state(start_state);
+            thermo()->setState_HP(H, P);
+            thermo()->equilibrate("HP", "vcs");
+        }
+    });
 }
 
 void Gas::equilibrate_SP(double S, double P) {
     if (has_condensed_candidates()) {
-        solve_multiphase_XP(EquilibriumProperty::ENTROPY, S, P);
+        translate_backend_errors([&] { return std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
+            [&] { solve_multiphase_XP(EquilibriumProperty::ENTROPY, S, P); });
         return;
     }
     m_equilibrium_solve_count = 0;
-    thermo()->setState_SP(S, P);
-    thermo()->equilibrate("SP", "gibbs");
+    translate_backend_errors([&] { return std::format("Gas::equilibrate_SP(S = {:.6g} J/(kg.K), P = {:.6g} Pa)", S, P); },
+        [&] {
+            thermo()->setState_SP(S, P);
+            thermo()->equilibrate("SP", "gibbs");
+        });
 }
 
 void Gas::set_element_moles(const Eigen::ArrayXd& element_moles, double T, double P) {
@@ -717,16 +809,16 @@ void Gas::set_element_moles(const Eigen::ArrayXd& element_moles, double T, doubl
         }
         const size_t j = basis_species_for_element(*gas, m);
         if (j == Cantera::npos) {
-            throw FmtError(
+            throw std::invalid_argument(std::format(
                 "Gas::set_element_moles: the phase contains no species made up of element '{}' "
                 "alone, so no basis composition can be formed.",
-                gas->elementName(m));
+                gas->elementName(m)));
         }
         moles(static_cast<long>(j)) += element_moles(static_cast<long>(m)) / gas->nAtoms(j, m);
     }
 
     // setState_TPX normalizes, so only the composition ratios of `moles` survive.
-    gas->setState_TPX(T, P, moles.data());
+    set_state_TPX(T, P, moles.data());
 
     if (m_condensed) {
         std::fill(m_condensed->moles.begin(), m_condensed->moles.end(), 0.0);
@@ -737,22 +829,26 @@ void Gas::set_element_moles(const Eigen::ArrayXd& element_moles, double T, doubl
 // Condensed species
 
 void Gas::add_condensed_species(const std::string& infile, const std::vector<std::string>& names) {
-    Cantera::AnyMap root_node = load_root_node(infile);
-    if (m_condensed) {
-        m_condensed->add_species(root_node, names, *thermo());
-    } else {
-        m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
-    }
+    translate_backend_usage_errors("Gas::add_condensed_species", [&] {
+        Cantera::AnyMap root_node = load_root_node(infile);
+        if (m_condensed) {
+            m_condensed->add_species(root_node, names, *thermo());
+        } else {
+            m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
+        }
+    });
 }
 
 void Gas::add_all_condensed_species(const std::string& infile) {
-    Cantera::AnyMap root_node = load_root_node(infile);
-    std::vector<std::string> names = CondensedPhaseSet::compatible_species(root_node, *thermo());
-    if (m_condensed) {
-        m_condensed->add_species(root_node, names, *thermo());
-    } else {
-        m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
-    }
+    translate_backend_usage_errors("Gas::add_all_condensed_species", [&] {
+        Cantera::AnyMap root_node = load_root_node(infile);
+        std::vector<std::string> names = CondensedPhaseSet::compatible_species(root_node, *thermo());
+        if (m_condensed) {
+            m_condensed->add_species(root_node, names, *thermo());
+        } else {
+            m_condensed = std::make_shared<CondensedPhaseSet>(root_node, names, *thermo());
+        }
+    });
 }
 
 bool Gas::has_condensed_candidates() const {
@@ -1000,26 +1096,6 @@ Eigen::ArrayXd Gas::element_moles() const {
     return amounts;
 }
 
-
-// Reference state
-
-void Gas::set_stagnation_enthalpy(double H) { m_H_stagnation = H; }
-double Gas::get_stagnation_enthalpy() const { return m_H_stagnation; }
-void Gas::set_reference_entropy(double S) { m_S0 = S; }
-double Gas::get_reference_entropy() const { return m_S0; }
-
-void Gas::set_current_state_as_reference() {
-    if (m_sol) {
-        // Mixture values: a stagnation enthalpy taken from the gas phase alone would leave the
-        // condensed products out of the energy balance of every expansion that uses it.
-        m_H_stagnation = enthalpy_mass();
-        m_S0 = entropy_mass();
-    }
-    else {
-        m_H_stagnation = 1.0;
-        m_S0 = 1.0;
-    }
-}
 
 // Accessors
 

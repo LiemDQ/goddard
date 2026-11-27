@@ -1,3 +1,4 @@
+#include <numbers>
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -59,10 +60,10 @@ void MocInitialization::set_state_from_critical_velocity_ratio(
     }
 
     // For a real gas the M*<->M algebra is not available in closed form, but its defining
-    // relation is: a* is the throat speed of sound, so V follows directly and the
-    // PrandtlMeyerTable can be looked up by velocity.
+    // relation is: a* is the throat speed of sound, so V/a0 = M* a*/a0 follows directly and
+    // the PrandtlMeyerTable can be looked up by velocity.
     throw_if_thermo_error(
-        m_thermo->set_state_from_V(pt, m_star * throat.speed_of_sound),
+        m_thermo->set_state_from_V(pt, m_star * throat.speed_of_sound / m_thermo->V_ref()),
         "Transonic start line (critical velocity ratio, real gas)");
 }
 
@@ -273,10 +274,9 @@ std::vector<CharacteristicPoint> MocInitialization::initialize_centered_expansio
     points.reserve(num_points);
 
     CharacteristicPoint sonic_point;
-    sonic_point.temperature = 1.0; // should be 1.0 by definition
-    sonic_point.pressure = 1.0;
+    throw_if_thermo_error(m_thermo->set_state_from_mach(sonic_point, 1.0),
+        "Centered expansion (sonic point)");
     sonic_point.cantera_state = throat.state;
-    sonic_point.mach = 1.0; // by definition
     sonic_point.theta = 0.0; // by definition
     sonic_point.nu = 0.0;
     sonic_point.x = 0.0;
@@ -325,7 +325,9 @@ double MocInitialization::KL_dzdx(double, double gamma) const {
 }
 
 double MocInitialization::KL_R() const {
-    return geometry.downstream_wall_curvature_radius/geometry.throat_radius;
+    // NozzleGeometry::downstream_wall_curvature_radius is already a multiple of the throat
+    // radius, which is the curvature ratio R = R_c / r_t the series is expanded in.
+    return geometry.downstream_wall_curvature_radius;
 }
 
 double MocInitialization::KL_u1(double r, double z) const {
@@ -526,14 +528,14 @@ double start_line_mass_flow_error(
         // V dot n over the segment, where n is the downstream normal (dy, -dx)/|ds|; the
         // |ds| cancels against the area element, leaving the bare differences.
         const double normal_flux = std::cos(theta_avg) * dy - std::sin(theta_avg) * dx;
-        const double area_weight = axisymmetric ? (2.0 * M_PI * y_avg) : 1.0;
+        const double area_weight = axisymmetric ? (2.0 * std::numbers::pi * y_avg) : 1.0;
         mdot += flux * normal_flux * area_weight;
     }
 
     // 1-D critical mass flow through the throat, in the same normalization. The
     // axisymmetric case is the full disc; the planar case is the half-height the solver
     // actually meshes.
-    const double throat_area = axisymmetric ? (M_PI * r_throat * r_throat) : r_throat;
+    const double throat_area = axisymmetric ? (std::numbers::pi * r_throat * r_throat) : r_throat;
     const double mdot_reference = mass_flux(1.0) * throat_area;
     if (!(std::abs(mdot_reference) > 0.0)) return std::numeric_limits<double>::quiet_NaN();
 
@@ -602,12 +604,12 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
         if (ctx.options.mode != MocMode::ANALYSIS && ctx.options.mode != MocMode::DESIGN_RAO) return;
         const NozzleProfile& wall = ctx.wall;
         if (wall.size() < 2) {
-            throw std::runtime_error(
+            throw std::invalid_argument(
                 "Centered-fan initialization requires a wall profile with at least 2 points.");
         }
         init_options.theta_max = wall.max_theta();
         if (init_options.theta_max <= 0.0) {
-            throw std::runtime_error(
+            throw std::invalid_argument(
                 "Wall profile must have a positive expansion angle for centered-fan initialization.");
         }
     };
@@ -792,12 +794,10 @@ MocInitDiagnostics measure_start_line(const StartLine& line, const MocSolveConte
 
     // The shift's natural scale. The transonic region's axial extent goes as
     // sqrt(r_throat * R_curvature), so the same absolute shift is a different fraction of
-    // it at every throat curvature.
-    if (ctx.options.geometry.downstream_wall_curvature_radius > 0.0 &&
-        ctx.options.geometry.throat_radius > 0.0)
-    {
-        const double R = ctx.options.geometry.downstream_wall_curvature_radius
-                       / ctx.options.geometry.throat_radius;
+    // it at every throat curvature. Both the shift and R (the curvature radius as a multiple
+    // of the throat radius) are in throat radii.
+    if (ctx.options.geometry.downstream_wall_curvature_radius > 0.0) {
+        const double R = ctx.options.geometry.downstream_wall_curvature_radius;
         diag.shift_over_transonic_length = ctx.options.initial_line_axial_shift / std::sqrt(R);
     }
 

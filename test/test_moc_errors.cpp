@@ -4,15 +4,21 @@
 #include "goddard/moc_unit_processes.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
+#include "goddard/error.hpp"
+#include "status_test_helpers.hpp"
 #include "cantera/core.h"
+#include <numbers>
 #include <cmath>
 #include <limits>
 #include <string>
+#include <vector>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
+using Goddard::test_helpers::is_ok;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 namespace {
 
@@ -27,9 +33,39 @@ CharacteristicPoint make_valid_point() {
     return pt;
 }
 
+/**
+ * `MocResult::status` and `MocResult::failure` describe the same outcome: the status is ok exactly
+ * when the code is NONE, a failed status names the code and carries the failure message and the
+ * stage, and `status.warnings` are the "Warning: " entries of `messages` without the prefix.
+ */
+void expect_status_agrees_with_failure(const MocResult& result) {
+    EXPECT_EQ(result.status.ok(), result.failure.code == MocErrorCode::NONE);
+    if (result.status.ok()) {
+        EXPECT_TRUE(result.status.message.empty());
+        EXPECT_TRUE(result.status.stage.empty());
+    } else {
+        EXPECT_NE(result.status.message.find(std::string(to_string(result.failure.code))), std::string::npos)
+            << result.status.message;
+        EXPECT_NE(result.status.message.find(result.failure.message), std::string::npos)
+            << result.status.message;
+        const std::string expected_stage = result.failure.kernel_pass < 0
+            ? std::string("MoC initialization")
+            : "MoC march, pass " + std::to_string(result.failure.kernel_pass);
+        EXPECT_EQ(result.status.stage, expected_stage);
+    }
+    std::vector<std::string> expected_warnings;
+    const std::string prefix = "Warning: ";
+    for (const std::string& message : result.messages) {
+        if (message.rfind(prefix, 0) == 0) {
+            expected_warnings.push_back(message.substr(prefix.size()));
+        }
+    }
+    EXPECT_EQ(result.status.warnings, expected_warnings);
+}
+
 // Every point that actually entered the net via a unit process must
 // independently pass the validity check -- this is the invariant that makes
-// converged == true trustworthy. The one exception is CharacteristicNet's
+// status.ok() trustworthy. The one exception is CharacteristicNet's
 // throat-lip seed point (CharacteristicNet::seed_wall_point, used to anchor
 // the wall march for a centered-fan initial data line): it owns no
 // characteristic chain (both membership optionals empty) and is not the
@@ -115,7 +151,7 @@ TEST(CheckPointValidity, NonFiniteMuDetected) {
 
 // ============================================================
 // Regression: representative previously-passing configurations must still
-// report converged == true with an all-NONE failure record, and every point
+// report status.ok() with an all-NONE failure record, and every point
 // that entered the net must independently pass check_point_validity.
 // ============================================================
 
@@ -137,8 +173,9 @@ TEST(MocErrorsRegression, AndersonMinLengthConverges) {
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(is_ok(result.status));
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
+    expect_status_agrees_with_failure(result);
     EXPECT_NEAR(result.exit_mach, 2.4, 0.01)
         << "Exit Mach should match Anderson Table 11.1 (nu_exit = 2*theta_max)";
 
@@ -150,6 +187,7 @@ protected:
     void SetUp() override {
         gas = Cantera::newSolution("h2o2.yaml", "ohmech");
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };
@@ -163,11 +201,11 @@ TEST_F(MocErrorsFrozenTest, BasicFrozenCaseConverges) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
 
     expect_all_points_valid(result, opts.solver_options.abstol);
@@ -182,14 +220,32 @@ TEST_F(MocErrorsFrozenTest, BasicEquilibriumCaseConverges) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); });
 
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
     EXPECT_EQ(result.failure.code, MocErrorCode::NONE);
 
     expect_all_points_valid(result, opts.solver_options.abstol);
+}
+
+TEST_F(MocErrorsFrozenTest, GasWithPerfectGasChemistryThrows) {
+    MocOptions opts;
+    opts.mode = MocMode::DESIGN_MIN_LENGTH;
+    opts.theta_max = 15.0 * DEG;
+    opts.num_characteristics = 7;
+
+    // PERFECT_GAS uses options.gamma: a Gas given with it would be ignored.
+    opts.chemistry = GasChemistry::PERFECT_GAS;
+    EXPECT_THROW(MocNozzle(Gas(gas), opts), std::invalid_argument);
+    EXPECT_NO_THROW(MocNozzle{opts});
+
+    // options is public, so solve() checks again.
+    opts.chemistry = GasChemistry::FROZEN;
+    MocNozzle nozzle(Gas(gas), opts);
+    nozzle.options.chemistry = GasChemistry::PERFECT_GAS;
+    EXPECT_THROW(nozzle.solve(), std::invalid_argument);
 }
 
 TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
@@ -216,8 +272,7 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
     RecordProperty("exit_coverage", std::to_string(result.exit_coverage));
     RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
-    EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
-        << "converged and failure.code disagree: " << result.failure.message;
+    expect_status_agrees_with_failure(result);
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.area_ratio, 1.0);
 
@@ -227,7 +282,7 @@ TEST(MocErrorsRegression, DesignRaoLeavesNoInvalidPoints) {
 // ============================================================
 // Failure honesty: a configuration known to trigger huge marching steps (and,
 // before this phase, a silently-laundered Prandtl-Meyer inversion failure)
-// must report converged == false with a specific error code, must never
+// must report a failed status with a specific error code, must never
 // throw, and -- the load-bearing assertion -- must never leave a NaN in the
 // net.
 // ============================================================
@@ -240,7 +295,7 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     // apply the wall-consistency correction and converge; tightening the threshold to
     // 0.01 rad rejects it instead, and a forced MocStartLine::KLIEGEL_LEVINE does not
     // fall back to the centered fan (unlike AUTO), so solve() must report
-    // converged == false with MocErrorCode::INITIALIZATION_FAILED, without throwing.
+    // a failed status with MocErrorCode::INITIALIZATION_FAILED, without throwing.
     MocOptions opts;
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
     opts.kl_max_wall_angle_error = 0.01;
@@ -252,16 +307,19 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
     opts.geometry.throat_radius = 1.0;
     // downstream_wall_curvature_radius left at its positive default (0.382):
     // build_start_line() takes the Kliegel-Levine transonic path.
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0 * DEG, 60);
 
     MocNozzle nozzle(opts);
     MocResult result;
     ASSERT_NO_THROW({ result = nozzle.solve(); })
         << "solve() must never throw for a numerical/convergence failure";
 
-    EXPECT_FALSE(result.converged);
     EXPECT_NE(result.failure.code, MocErrorCode::NONE)
         << "A non-converging solve must carry a specific, non-NONE error code";
+    EXPECT_EQ(result.failure.code, MocErrorCode::INITIALIZATION_FAILED);
+    EXPECT_TRUE(failed_with(result.status, FailureReason::NOT_CONVERGED, "INITIALIZATION_FAILED"));
+    EXPECT_EQ(result.status.stage, "MoC initialization");
+    expect_status_agrees_with_failure(result);
 
     // The laundering path this phase closes: a PM-inversion or table-lookup
     // failure must never flow into mach_to_mu()/corrector-step averaging and
@@ -277,4 +335,129 @@ TEST(MocErrorsFailureHonesty, AxisymmetricConicalAnalysisReportsFailureHonestly)
         EXPECT_TRUE(std::isfinite(pt.mu)) << "mu is non-finite";
     }
     expect_all_points_valid(result, opts.solver_options.abstol);
+}
+
+// A failed solve carries no scalar summary of a nozzle it did not finish: the exit Mach number,
+// length and area ratio are NaN and the exit plane is empty, so a script cannot mistake them for
+// results. The partial record (messages, diagnostics, the net as far as it got) is still there.
+TEST(MocErrorsFailureHonesty, FailedSolveHasNaNScalarsAndNoThrustCoefficient) {
+    MocOptions opts;
+    opts.start_line = MocStartLine::KLIEGEL_LEVINE;
+    opts.kl_max_wall_angle_error = 0.01;
+    opts.flow_type = MocFlowKind::AXISYMMETRIC;
+    opts.chemistry = GasChemistry::PERFECT_GAS;
+    opts.mode = MocMode::ANALYSIS;
+    opts.gamma = 1.4;
+    opts.num_characteristics = 8;
+    opts.geometry.throat_radius = 1.0;
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(8.0, 0.382, 1.0, 15.0 * DEG, 60);
+
+    MocNozzle nozzle(opts);
+    const MocResult result = nozzle.solve();
+    ASSERT_FALSE(result.status.ok());
+
+    EXPECT_TRUE(std::isnan(result.exit_mach));
+    EXPECT_TRUE(std::isnan(result.nozzle_length));
+    EXPECT_TRUE(std::isnan(result.area_ratio));
+    EXPECT_TRUE(result.exit_plane.y.empty());
+    EXPECT_NE(result.failure.code, MocErrorCode::NONE);
+
+    for (MocFlowKind flow : {MocFlowKind::PLANAR, MocFlowKind::AXISYMMETRIC}) {
+        ThrustCoefficient cf;
+        ASSERT_NO_THROW({ cf = compute_thrust_coefficient(result, flow, 0.1); });
+        EXPECT_TRUE(failed_with(cf.status, FailureReason::NOT_COMPUTED, "MoC initialization"));
+        EXPECT_TRUE(std::isnan(cf.Cf));
+        EXPECT_TRUE(std::isnan(cf.Cf_vacuum));
+        EXPECT_TRUE(std::isnan(cf.momentum_thrust));
+        EXPECT_TRUE(std::isnan(cf.pressure_thrust));
+    }
+}
+
+// Options that stand for planned features are rejected rather than silently ignored.
+TEST(MocOptionsValidation, PlaceholderOptionsAreNotImplemented) {
+    MocOptions base;
+    base.flow_type = MocFlowKind::PLANAR;
+    base.chemistry = GasChemistry::PERFECT_GAS;
+    base.mode = MocMode::DESIGN_MIN_LENGTH;
+    base.theta_max = 15.0 * DEG;
+    EXPECT_NO_THROW(validate_moc_options(base));
+
+    MocOptions centerline = base;
+    centerline.mode = MocMode::DESIGN_CENTERLINE;
+    EXPECT_THROW(validate_moc_options(centerline), NotImplementedError);
+
+    MocOptions exit_mach = base;
+    exit_mach.exit_mach = 2.0;
+    EXPECT_THROW(validate_moc_options(exit_mach), NotImplementedError);
+    EXPECT_THROW({ MocNozzle nozzle(exit_mach); }, NotImplementedError);
+
+    MocOptions upstream = base;
+    upstream.geometry.upstream_wall_curvature_radius = 2.0;
+    EXPECT_THROW(validate_moc_options(upstream), NotImplementedError);
+}
+
+// Real-gas chemistry without a Gas is a usage error, not undefined behaviour.
+TEST(MocOptionsValidation, RealGasChemistryWithoutGasThrows) {
+    MocOptions options;
+    options.flow_type = MocFlowKind::PLANAR;
+    options.chemistry = GasChemistry::FROZEN;
+    options.mode = MocMode::DESIGN_MIN_LENGTH;
+    options.theta_max = 15.0 * DEG;
+    EXPECT_THROW(MocNozzle{options}, std::invalid_argument);
+
+    // options is public, so solve() checks again.
+    options.chemistry = GasChemistry::PERFECT_GAS;
+    MocNozzle nozzle(options);
+    nozzle.options.chemistry = GasChemistry::FROZEN;
+    EXPECT_THROW(nozzle.solve(), std::invalid_argument);
+}
+
+// A cool H2O-rich stagnation state, 700 K and 30 bar. A frozen planar minimum-length design to
+// theta_max = 40 deg ends at about 165 K, a little below the 200 K lower end of the H2 and O2
+// data in h2o2.yaml; to 50 deg it would reach far below it.
+class MocDataRangeTest : public ::testing::Test {
+protected:
+    static Gas cool_gas() {
+        Gas gas(Cantera::newSolution("h2o2.yaml", "ohmech"));
+        gas.set_state_TPX(700.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas.equilibrate_TP(700.0, 3e6);
+        return gas;
+    }
+    static MocOptions design(double theta_max) {
+        MocOptions opts;
+        opts.flow_type = MocFlowKind::PLANAR;
+        opts.chemistry = GasChemistry::FROZEN;
+        opts.mode = MocMode::DESIGN_MIN_LENGTH;
+        opts.theta_max = theta_max;
+        opts.num_characteristics = 7;
+        return opts;
+    }
+};
+
+TEST_F(MocDataRangeTest, FlowALittleOutsideTheDataWarns) {
+    MocNozzle nozzle(cool_gas(), design(40.0 * DEG));
+    const MocResult result = nozzle.solve();
+    ASSERT_TRUE(is_ok(result.status));
+    ASSERT_EQ(result.status.warnings.size(), 1u);
+    EXPECT_NE(result.status.warnings[0].find("highest Mach number"), std::string::npos)
+        << result.status.warnings[0];
+}
+
+TEST_F(MocDataRangeTest, FlowFarOutsideTheDataFails) {
+    MocNozzle nozzle(cool_gas(), design(50.0 * DEG));
+    const MocResult result = nozzle.solve();
+    EXPECT_TRUE(failed_with(result.status, FailureReason::OUT_OF_DATA_RANGE, "expansion table ends"));
+    EXPECT_EQ(result.failure.code, MocErrorCode::TABLE_RANGE_EXCEEDED);
+    EXPECT_TRUE(std::isnan(result.exit_mach));
+}
+
+TEST_F(MocDataRangeTest, SecondSolveStartsFromTheStagnationState) {
+    // Building the expansion table moves the solver's gas; the next solve must not start there
+    MocNozzle nozzle(cool_gas(), design(30.0 * DEG));
+    const MocResult first = nozzle.solve();
+    const MocResult second = nozzle.solve();
+    ASSERT_TRUE(is_ok(first.status));
+    ASSERT_TRUE(is_ok(second.status));
+    EXPECT_EQ(second.stagnation_temperature, first.stagnation_temperature);
+    EXPECT_EQ(second.exit_mach, first.exit_mach);
 }

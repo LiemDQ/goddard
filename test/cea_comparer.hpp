@@ -4,7 +4,7 @@
 #include <string>
 
 #include "cea_loader.hpp"
-#include "goddard/problem.hpp"
+#include "goddard/rocket.hpp"
 
 /**
  * CEA Test Utilities - helper functions for comparing Goddard vs CEA results

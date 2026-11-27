@@ -186,8 +186,8 @@ TEST_F(PropertyTests, equilibriumPropertiesAreCorrect) {
     auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
     Goddard::ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
-    EXPECT_NEAR(props.dlogV_dlogT_P, expected_props.dlogV_dlogT_P, max_fp_error(expected_props.dlogV_dlogT_P));
-    EXPECT_NEAR(props.dlogV_dlogP_T, expected_props.dlogV_dlogP_T, max_fp_error(expected_props.dlogV_dlogP_T));
+    EXPECT_NEAR(props.dlV_dlT_P, expected_props.dlV_dlT_P, max_fp_error(expected_props.dlV_dlT_P));
+    EXPECT_NEAR(props.dlV_dlP_T, expected_props.dlV_dlP_T, max_fp_error(expected_props.dlV_dlP_T));
     EXPECT_NEAR(props.spec_heat_p, expected_props.spec_heat_p, max_fp_error(expected_props.spec_heat_p));
     EXPECT_NEAR(props.gamma_s, expected_props.gamma_s, max_fp_error(expected_props.gamma_s));
 }
@@ -197,8 +197,8 @@ TEST_F(PropertyTests, equilibriumPropertiesAreCorrectAfterEquilibrium) {
     auto derivs = Goddard::get_thermo_equilibrium_derivatives(*sln->thermo());
     Goddard::ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(*sln->thermo(), derivs);
     
-    EXPECT_NEAR(props.dlogV_dlogT_P, expected_eq_props.dlogV_dlogT_P, max_fp_error(expected_eq_props.dlogV_dlogT_P));
-    EXPECT_NEAR(props.dlogV_dlogP_T, expected_eq_props.dlogV_dlogP_T, max_fp_error(expected_eq_props.dlogV_dlogP_T));
+    EXPECT_NEAR(props.dlV_dlT_P, expected_eq_props.dlV_dlT_P, max_fp_error(expected_eq_props.dlV_dlT_P));
+    EXPECT_NEAR(props.dlV_dlP_T, expected_eq_props.dlV_dlP_T, max_fp_error(expected_eq_props.dlV_dlP_T));
     EXPECT_NEAR(props.spec_heat_p, expected_eq_props.spec_heat_p, max_fp_error(expected_eq_props.spec_heat_p));
     EXPECT_NEAR(props.gamma_s, expected_eq_props.gamma_s, max_fp_error(expected_eq_props.gamma_s));
 }
@@ -220,8 +220,8 @@ constexpr double FD_STEP = 1e-4;
 /** Central-difference reference values for the equilibrium expansion properties. */
 struct FiniteDifferences {
     double spec_heat_p = 0.0;
-    double dlogV_dlogT_P = 0.0;
-    double dlogV_dlogP_T = 0.0;
+    double dlV_dlT_P = 0.0;
+    double dlV_dlP_T = 0.0;
     double gamma_s = 0.0;
 };
 
@@ -277,10 +277,10 @@ FiniteDifferences finite_differences(const Gas& base) {
     FiniteDifferences differences;
     differences.spec_heat_p = (mixture_enthalpy(hot) - mixture_enthalpy(cold))
         / (hot.temperature() - cold.temperature());
-    differences.dlogV_dlogT_P =
+    differences.dlV_dlT_P =
         std::log(mixture_specific_volume(hot) / mixture_specific_volume(cold))
         / std::log(hot.temperature() / cold.temperature());
-    differences.dlogV_dlogP_T =
+    differences.dlV_dlP_T =
         std::log(mixture_specific_volume(compressed) / mixture_specific_volume(expanded))
         / std::log(compressed.pressure() / expanded.pressure());
     differences.gamma_s =
@@ -296,10 +296,10 @@ void expect_matches_finite_differences(const Gas& gas, double reltol = 1e-4) {
 
     EXPECT_NEAR(props.spec_heat_p, differences.spec_heat_p,
                 reltol * std::abs(differences.spec_heat_p)) << "cp_e [J/(kg.K)]";
-    EXPECT_NEAR(props.dlogV_dlogT_P, differences.dlogV_dlogT_P,
-                reltol * std::abs(differences.dlogV_dlogT_P)) << "(dlnV/dlnT)_P";
-    EXPECT_NEAR(props.dlogV_dlogP_T, differences.dlogV_dlogP_T,
-                reltol * std::abs(differences.dlogV_dlogP_T)) << "(dlnV/dlnP)_T";
+    EXPECT_NEAR(props.dlV_dlT_P, differences.dlV_dlT_P,
+                reltol * std::abs(differences.dlV_dlT_P)) << "(dlnV/dlnT)_P";
+    EXPECT_NEAR(props.dlV_dlP_T, differences.dlV_dlP_T,
+                reltol * std::abs(differences.dlV_dlP_T)) << "(dlnV/dlnP)_T";
     EXPECT_NEAR(props.gamma_s, differences.gamma_s,
                 reltol * std::abs(differences.gamma_s)) << "gamma_s";
 }
@@ -309,8 +309,7 @@ Gas make_methane_oxygen_gas(double T, double P) {
     // A CEA-style product list rather than every C/H/O species of the database: with all of them
     // offered, `MultiPhaseEquil` does not converge at this rich, cool state.
     Gas gas = Gas::create_from_species(
-        NASA9_GAS, "gas", {"CH4", "CO", "CO2", "H", "H2", "H2O", "O", "O2", "OH", "C"},
-        GasChemistry::EQUILIBRIUM);
+        NASA9_GAS, "gas", {"CH4", "CO", "CO2", "H", "H2", "H2O", "O", "O2", "OH", "C"});
     gas.set_state_TPX(T, P, Composition{{"CH4", (1.0 / 1.5) / 16.04246},
                                         {"O2", (0.5 / 1.5) / 31.9988}});
     gas.add_condensed_species(NASA9_CONDENSED, {"C(gr)", "H2O(L)", "H2O(cr)"});
@@ -319,7 +318,7 @@ Gas make_methane_oxygen_gas(double T, double P) {
 
 /** H2/O2 in a 100:60 molar ratio, cold enough for the product water to condense. */
 Gas make_hydrogen_oxygen_gas(double T, double P) {
-    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"H", "O"}, GasChemistry::EQUILIBRIUM);
+    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"H", "O"});
     gas.set_state_TPX(T, P, Composition{{"H2", 100.0}, {"O2", 60.0}});
     gas.add_condensed_species(NASA9_CONDENSED, {"H2O(L)", "H2O(cr)"});
     return gas;
@@ -330,8 +329,7 @@ Gas make_hydrogen_oxygen_gas(double T, double P) {
  * Molar masses [kg/kmol] are those of the elemental formulas above.
  */
 Gas make_ap_aluminium_gas(double T, double P, const std::vector<std::string>& condensed) {
-    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"N", "H", "Cl", "O", "C", "Al"},
-                                        GasChemistry::EQUILIBRIUM);
+    Gas gas = Gas::create_from_elements(NASA9_GAS, "gas", {"N", "H", "Cl", "O", "C", "Al"});
 
     const double perchlorate = 0.72 / 117.48906;
     const double binder = 0.10 / 14.39543;
@@ -486,12 +484,12 @@ TEST(CondensedEquilibriumTests, PinnedAluminaTransitionMergesThePolymorphPair) {
     EXPECT_TRUE(props.pinned_transition);
     EXPECT_TRUE(std::isinf(props.spec_heat_p));
     EXPECT_TRUE(std::isinf(props.spec_heat_v));
-    EXPECT_TRUE(std::isinf(props.dlogV_dlogT_P));
+    EXPECT_TRUE(std::isinf(props.dlV_dlT_P));
     EXPECT_TRUE(std::isfinite(props.gamma_s));
     EXPECT_GT(props.gamma_s, 0.0);
-    EXPECT_DOUBLE_EQ(props.gamma_s, -1.0 / props.dlogV_dlogP_T);
-    EXPECT_NEAR(props.gamma_s, -1.0 / reference.dlogV_dlogP_T,
-                1e-10 * std::abs(reference.dlogV_dlogP_T));
+    EXPECT_DOUBLE_EQ(props.gamma_s, -1.0 / props.dlV_dlP_T);
+    EXPECT_NEAR(props.gamma_s, -1.0 / reference.dlV_dlP_T,
+                1e-10 * std::abs(reference.dlV_dlP_T));
     EXPECT_GT(props.speed_of_sound, 0.0);
 }
 
@@ -513,30 +511,30 @@ TEST(CondensedEquilibriumTests, MixtureOverloadsReduceToTheGasOnlyOnes) {
         Goddard::get_thermo_equilibrium_properties(*gas.thermo());
     EXPECT_DOUBLE_EQ(props.spec_heat_p, expected.spec_heat_p);
     EXPECT_DOUBLE_EQ(props.gamma_s, expected.gamma_s);
-    EXPECT_DOUBLE_EQ(props.dlogV_dlogT_P, expected.dlogV_dlogT_P);
-    EXPECT_DOUBLE_EQ(props.dlogV_dlogP_T, expected.dlogV_dlogP_T);
+    EXPECT_DOUBLE_EQ(props.dlV_dlT_P, expected.dlV_dlT_P);
+    EXPECT_DOUBLE_EQ(props.dlV_dlP_T, expected.dlV_dlP_T);
     EXPECT_DOUBLE_EQ(props.total_moles, props.gas_moles);
     EXPECT_DOUBLE_EQ(gas.gas_mass_fraction(), 1.0);
 }
 
 TEST_F(PropertyTests, GasOverloadReproducesTheGoldenValues) {
-    Gas gas(sln, GasChemistry::EQUILIBRIUM);
+    Gas gas(sln);
     const ExpansionProperties props = Goddard::get_thermo_equilibrium_properties(gas);
 
-    EXPECT_NEAR(props.dlogV_dlogT_P, expected_props.dlogV_dlogT_P,
-                max_fp_error(expected_props.dlogV_dlogT_P));
-    EXPECT_NEAR(props.dlogV_dlogP_T, expected_props.dlogV_dlogP_T,
-                max_fp_error(expected_props.dlogV_dlogP_T));
+    EXPECT_NEAR(props.dlV_dlT_P, expected_props.dlV_dlT_P,
+                max_fp_error(expected_props.dlV_dlT_P));
+    EXPECT_NEAR(props.dlV_dlP_T, expected_props.dlV_dlP_T,
+                max_fp_error(expected_props.dlV_dlP_T));
     EXPECT_NEAR(props.spec_heat_p, expected_props.spec_heat_p,
                 max_fp_error(expected_props.spec_heat_p));
     EXPECT_NEAR(props.gamma_s, expected_props.gamma_s, max_fp_error(expected_props.gamma_s));
 
     sln->thermo()->equilibrate("HP", "gibbs");
     const ExpansionProperties eq_props = Goddard::get_thermo_equilibrium_properties(gas);
-    EXPECT_NEAR(eq_props.dlogV_dlogT_P, expected_eq_props.dlogV_dlogT_P,
-                max_fp_error(expected_eq_props.dlogV_dlogT_P));
-    EXPECT_NEAR(eq_props.dlogV_dlogP_T, expected_eq_props.dlogV_dlogP_T,
-                max_fp_error(expected_eq_props.dlogV_dlogP_T));
+    EXPECT_NEAR(eq_props.dlV_dlT_P, expected_eq_props.dlV_dlT_P,
+                max_fp_error(expected_eq_props.dlV_dlT_P));
+    EXPECT_NEAR(eq_props.dlV_dlP_T, expected_eq_props.dlV_dlP_T,
+                max_fp_error(expected_eq_props.dlV_dlP_T));
     EXPECT_NEAR(eq_props.spec_heat_p, expected_eq_props.spec_heat_p,
                 max_fp_error(expected_eq_props.spec_heat_p));
     EXPECT_NEAR(eq_props.gamma_s, expected_eq_props.gamma_s,
@@ -544,7 +542,7 @@ TEST_F(PropertyTests, GasOverloadReproducesTheGoldenValues) {
 }
 
 TEST_F(DerivativeTests, GasOverloadReproducesTheGoldenDerivatives) {
-    Gas gas(sln, GasChemistry::EQUILIBRIUM);
+    Gas gas(sln);
     const EquilibriumDerivatives derivs = Goddard::get_thermo_equilibrium_derivatives(gas);
 
     Eigen::ArrayXd exp_dpi_dlogT_P(n_elements);

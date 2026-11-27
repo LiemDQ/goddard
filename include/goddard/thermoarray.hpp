@@ -1,104 +1,114 @@
-#pragma once 
+#pragma once
 
-#include "cantera/core.h"
-#include "cantera/base/SolutionArray.h"
-#include "cantera/base/AnyMap.h"
 #include "eigen3/Eigen/Dense"
-#include <memory>
+#include <functional>
 #include <string>
 #include <vector>
+
+#include "goddard/chemistry.hpp"
+#include "goddard/gas.hpp"
+#include "goddard/status.hpp"
+#include "goddard/thermo.hpp"
 
 // NOLINTBEGIN(readability-identifier-naming)
 namespace Goddard {
 
-class Gas;
-class CondensedPhaseSet;
-
 /**
- * @brief Wrapper around `Cantera::SolutionArray` with a higher-level API for 
- * broadcasting thermodynamic operations.
- * Supports up to 3D arrays.
- * 
- * If the third dimension is used, it is assumed to be used to set a composition. 
- * 
-*/
+ * @brief Array of thermodynamic states of one `Gas`, with one to three dimensions.
+ *
+ * Each entry is a `Gas` state vector (`Gas::save_state`), condensed amounts included, and its
+ * properties are evaluated through a private clone of the `Gas` the array was built from. Every
+ * property is therefore the mixture property `Gas` reports, condensed phases included.
+ *
+ * Entries are stored in row-major order, last index fastest, as numpy stores an array: the entry
+ * at indices (i, j, k) of an array with shape (n0, n1, n2) is at flat location
+ * `(i * n1 + j) * n2 + k` (see `flat_index`). The property getters return one value per entry in
+ * this order.
+ *
+ * Every entry carries the status of the last solve that wrote it. A failed entry has no state:
+ * its properties are NaN and its state accessors throw its status as `SolveError`.
+ *
+ * Copying a `ThermoArray` copies its states.
+ */
 class ThermoArray {
 	public:
 	/**
-	 * NOTE: `ThermoArray` is a straightforward extension of Cantera' `SolutionArray`. The most efficient
-	 * solution, in terms of performance and repeated code, would be to make it a derived class of `SolutionArray`.
-	 * Unfortunately, as of 2025-04-19 all of `SolutionArray`'s constructors are private, which makes it impossible to
-	 * inherit from. The only way to construct a `SolutionArray` class is to call the `create` method.
-	 * 
-	 * The alternative for now is to implement `ThermoArray` as a wrapper class that contains a pointer to a `SolutionArray`.
+	 * Create an array with the given shape, every entry in the current state of `gas`.
 	 *
-	 * Entries are stored with the first dimension varying fastest: the entry at indices (i, j, k) of an array with
-	 * shape (n0, n1, n2) is at flat location `i + j*n0 + k*n0*n1` (see `flat_index`).
+	 * The array evaluates its entries through its own clone of `gas`, so later changes to `gas`
+	 * do not affect it.
 	 *
-	 * The array holds its own copy of the `Solution` passed to the constructor, so changes to that `Solution` made
-	 * elsewhere (e.g. through a `Gas` or `Nozzle` sharing it) do not affect the stored states. Copies of a
-	 * `ThermoArray` share the same storage.
-	 */
-	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, int len, const Cantera::AnyMap& meta={});
-	/**
-	 * Create an array with the given shape. Every entry is initialized to the current state of `sol`.
-	 * An empty `shape` leaves the shape unset; the first setter call then sets it.
-	 */
-	ThermoArray(const std::shared_ptr<Cantera::Solution>& sol, const std::vector<long>& shape);
-
-	/**
-	 * Create an array from a `Gas`, carrying over its candidate condensed species.
-	 *
-	 * The array stores its own clone of the gas's condensed species set, so the candidate list and
-	 * the phase objects are independent of the `Gas` it was built from. Every entry additionally
-	 * carries its own amount of each candidate, initialized to the amounts of `gas`.
+	 * @param gas Phase, species set and candidate condensed species of the entries.
+	 * @param shape Extent of each dimension: one to three non-negative values.
+	 * @throws std::invalid_argument if `shape` has no or more than three dimensions, or a
+	 * negative extent.
 	 */
 	ThermoArray(const Gas& gas, const std::vector<long>& shape);
 
-	static std::shared_ptr<ThermoArray> create(const std::shared_ptr<Cantera::Solution>& sol, int size=0, const Cantera::AnyMap& meta={}) {
-		return std::shared_ptr<ThermoArray>(new ThermoArray(sol, size, meta));
-	}
-
-	void reshape(const std::vector<long>& shape);
-	inline std::vector<long> shape() const {return m_states->apiShape();}
-
-	//Size of ThermoArray (number of entries)
-	inline int size() const {return m_states->size();}
-	inline int ndim() const {return m_states->apiNdim();}
-	inline bool is_shape_set() const {return m_shape_is_set;}
+	/** Extent of each dimension [-]. */
+	const std::vector<long>& shape() const {return m_shape;}
+	/** Number of entries [-]. */
+	int size() const {return static_cast<int>(m_statuses.size());}
+	/** Number of dimensions, 1 to 3 [-]. */
+	int ndim() const {return static_cast<int>(m_shape.size());}
 
 	/**
-	 * Flat storage location of the entry at indices (i, j, k). Indices beyond the array's number of
-	 * dimensions must be zero.
+	 * Change the shape, keeping the entries in storage order.
+	 *
+	 * @throws std::invalid_argument if `shape` is not a valid shape (see the constructor) or
+	 * does not have `size()` entries.
+	 */
+	void reshape(const std::vector<long>& shape);
+
+	/**
+	 * Flat storage location of the entry at indices (i, j, k). Indices beyond the array's number
+	 * of dimensions must be zero.
+	 *
+	 * @throws std::out_of_range if an index is outside its dimension.
 	 */
 	int flat_index(long i, long j = 0, long k = 0) const;
 
+	/**
+	 * Flat storage location of the entry at `indices`, one index per dimension.
+	 *
+	 * @throws std::invalid_argument if `indices` does not have `ndim()` entries.
+	 * @throws std::out_of_range if an index is outside its dimension.
+	 */
+	int flat_index(const std::vector<long>& indices) const;
+
+	/** Names of the gas-phase species, in the order of the composition getters. */
+	std::vector<std::string> species_names() const;
 	/** Number of candidate condensed species carried by the array. Zero for a gas-only array. */
 	size_t num_condensed() const;
-
 	/** Names of the candidate condensed species, in candidate order. */
 	std::vector<std::string> condensed_species_names() const;
 
 	/**
-	 * State vector of the entry at flat location `loc`: the Cantera state of the gas phase followed
-	 * by one entry per candidate condensed species (kmol per kg of mixture), exactly as
-	 * `Gas::save_state()` lays it out.
+	 * State vector of the entry at flat location `loc`, laid out as `Gas::save_state()`: the
+	 * Cantera state of the gas phase followed by one entry per candidate condensed species
+	 * (kmol per kg of mixture).
+	 *
+	 * @throws SolveError with the entry's status if the entry failed (see `status_at`).
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	std::vector<double> get_state(int loc) const;
 
 	/**
-	 * Set the entry at flat location `loc` from a state vector of the same phase.
-	 *
-	 * Accepts either the extended length returned by `get_state()` or the bare Cantera state
-	 * length, in which case the condensed amounts of that entry are set to zero.
+	 * Set the entry at flat location `loc` from a state vector of the array's `Gas`, and mark it
+	 * ok. Accepts the lengths `Gas::restore_state` accepts; the bare Cantera state length sets
+	 * the condensed amounts to zero.
 	 *
 	 * @throws std::invalid_argument if the vector has neither length.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	void set_state(int loc, const std::vector<double>& state);
 
 	/**
 	 * Amounts of the candidate condensed species at flat location `loc` [kmol per kg of mixture],
 	 * in candidate order. Empty for a gas-only array.
+	 *
+	 * @throws SolveError with the entry's status if the entry failed.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	std::vector<double> get_condensed_moles(int loc) const;
 
@@ -107,181 +117,209 @@ class ThermoArray {
 	 * [kmol per kg of mixture].
 	 *
 	 * @throws std::invalid_argument if `moles` does not have one entry per candidate.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
 	void set_condensed_moles(int loc, const std::vector<double>& moles);
 
 	/**
-	 * Property getters. The result has shape (n0, 1) for a 1-D array and (n0, n1) for 2-D and 3-D arrays,
-	 * where element (i, j) is the entry at `flat_index(i, j, slice)`. `slice` selects the index along the third
-	 * dimension and must be 0 for arrays with fewer than 3 dimensions.
+	 * Independent `Gas` in the state of the entry at flat location `loc`.
+	 *
+	 * @throws SolveError with the entry's status if the entry failed.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
-	Eigen::ArrayXXd temperature(int slice = 0) const;
-	Eigen::ArrayXXd pressure(int slice = 0) const;
-	Eigen::ArrayXXd internal_energy_mass(int slice = 0) const;
-	Eigen::ArrayXXd internal_energy_mole(int slice = 0) const;
-	Eigen::ArrayXXd enthalpy_mass(int slice = 0) const;
-	Eigen::ArrayXXd enthalpy_mole(int slice = 0) const;
-	Eigen::ArrayXXd entropy_mass(int slice = 0) const;
-	Eigen::ArrayXXd entropy_mole(int slice = 0) const;
-	Eigen::ArrayXXd mean_molecular_weight(int slice = 0) const;
-
+	Gas gas_at(int loc) const;
 
 	/**
-	 * Equilibrate every entry, holding the two properties named by `XY` constant.
+	 * `Gas::snapshot` of the entry at flat location `loc`.
 	 *
-	 * When the array carries condensed species each location is equilibrated through a `Gas` built
-	 * on the array's phase and candidate set, so the condensed amounts take part and are written
-	 * back; `rtol` and `max_steps` are forwarded to the Gibbs solver and the remaining arguments
-	 * are ignored.
-	 *
-	 * @throws std::invalid_argument if `solver` is "vcs" and the array carries condensed species.
+	 * @param loc Flat location.
+	 * @param model Composition model of the derived properties.
+	 * @throws SolveError with the entry's status if the entry failed.
+	 * @throws std::out_of_range if `loc` is not a location of the array.
 	 */
-	void equilibrate(const std::string& XY, 
-		const std::string& solver="auto", 
-		double rtol=1e-6,
-		int max_steps=50000,
-		int max_iter=100,
-		int estimate_equil=0,
-		int log_level=0);
-
-	/** Thermodynamic state methods
-		TODO: Possibly enable dynamic resizing of the array based on the arguments
-		provided to the method
-	*/
+	ThermodynamicState snapshot(int loc, CompositionModel model) const;
 
 	/**
-	 * @brief Set the temperature and density of the array.
+	 * Evaluate `property` on the `Gas` of every entry, in storage order. Failed entries are NaN.
+	 * The `Gas` passed to `property` is the array's private evaluator in the entry's state; it
+	 * must not be kept.
 	 */
+	Eigen::ArrayXd evaluate(const std::function<double(const Gas&)>& property) const;
+
+	/**
+	 * @name Property getters
+	 * One value per entry in storage order (see `flat_index`), NaN for a failed entry. Each is
+	 * the `Gas` property of the same name: a mixture property, per kg of gas plus condensed
+	 * phases.
+	 * @{
+	 */
+	/** Temperature [K]. */
+	Eigen::ArrayXd temperature() const;
+	/** Pressure [Pa]. */
+	Eigen::ArrayXd pressure() const;
+	/** Density [kg/m^3]. */
+	Eigen::ArrayXd density() const;
+	/** Specific enthalpy [J/kg]. */
+	Eigen::ArrayXd enthalpy_mass() const;
+	/** Specific entropy [J/(kg.K)]. */
+	Eigen::ArrayXd entropy_mass() const;
+	/** Specific internal energy [J/kg], h - P/rho. */
+	Eigen::ArrayXd internal_energy_mass() const;
+	/** Frozen constant-pressure specific heat [J/(kg.K)]. */
+	Eigen::ArrayXd cp_mass() const;
+	/** Frozen constant-volume specific heat [J/(kg.K)]. */
+	Eigen::ArrayXd cv_mass() const;
+	/** Molecular weight [kg/kmol], CEA's "M" (see `Gas::molecular_weight`). */
+	Eigen::ArrayXd molecular_weight() const;
+	/** Mixture molecular weight [kg/kmol], CEA's "MW" (see `Gas::mixture_molecular_weight`). */
+	Eigen::ArrayXd mixture_molecular_weight() const;
+	/** Mass fraction of the gas phase [-]. */
+	Eigen::ArrayXd gas_mass_fraction() const;
+	/** Isentropic exponent [-] in `model` (see `Gas::gamma_s`). */
+	Eigen::ArrayXd gamma_s(CompositionModel model) const;
+	/** Speed of sound [m/s] in `model` (see `Gas::speed_of_sound`). */
+	Eigen::ArrayXd speed_of_sound(CompositionModel model) const;
+	/** @} */
+
+	/**
+	 * Mole fractions of the gas-phase species [-]: one row per entry in storage order, one column
+	 * per species of `species_names`. A failed entry's row is NaN.
+	 */
+	Eigen::ArrayXXd mole_fractions() const;
+	/** Mass fractions of the gas-phase species [-]; laid out as `mole_fractions`. */
+	Eigen::ArrayXXd mass_fractions() const;
+	/**
+	 * Mass fractions of the whole mixture [-] (see `Gas::mixture_mass_fractions`): one row per
+	 * entry, one column per gas species followed by one per candidate condensed species.
+	 */
+	Eigen::ArrayXXd mixture_mass_fractions() const;
+
+	/**
+	 * Outcome of the most recent solve at flat location `loc`: ok for an entry that was set
+	 * directly or equilibrated successfully.
+	 *
+	 * @throws std::out_of_range if `loc` is not a location of the array.
+	 */
+	const SolveStatus& status_at(int loc) const;
+
+	/**
+	 * Outcome over the whole array: ok when every entry is, otherwise the status of the first
+	 * failed entry (in storage order), whose message also gives the number of failed entries.
+	 */
+	SolveStatus status() const;
+
+	/** Number of entries whose solve failed [-]. */
+	int num_failed() const;
+
+	/** Whether each entry is ok, one value per entry in storage order. */
+	Eigen::Array<bool, Eigen::Dynamic, 1> ok() const;
+
+	/**
+	 * Record the outcome of a solve at flat location `loc`. Used by the solvers that fill the
+	 * array entry by entry; `set_state` and the bulk setters reset an entry to ok.
+	 *
+	 * @throws std::out_of_range if `loc` is not a location of the array.
+	 */
+	void set_status(int loc, SolveStatus status);
+
+	/**
+	 * Equilibrate every entry with `Gas::equilibrate`, holding the two properties named by `XY`
+	 * constant. The solver settings are the `equilibrium_options` of the `Gas` the array was
+	 * built from.
+	 *
+	 * An entry whose equilibrium solve fails keeps the state it had before the call and records
+	 * the failure (see `status_at`); the other entries are unaffected. Nothing is thrown for a
+	 * failed solve.
+	 *
+	 * @throws std::invalid_argument for an `XY` or `solver` that `Gas::equilibrate` rejects.
+	 * @throws NotImplementedError for a property pair `Gas::equilibrate` does not support with
+	 * the array's condensed species.
+	 */
+	void equilibrate(const std::string& XY, const std::string& solver = "auto");
+
+	/**
+	 * Equilibrate again the entries whose last solve failed, e.g. with another solver. Entries
+	 * that are ok are left alone. See `equilibrate` for the arguments.
+	 *
+	 * @return Number of entries still failed [-].
+	 */
+	int retry_failed(const std::string& XY, const std::string& solver = "auto");
+
+	/**
+	 * @name Bulk setters
+	 * The two-variable setters need a 2-D array of shape (len(var1), len(var2)) and set the
+	 * entry (i, j) from (var1[i], var2[j]). The setters with a composition need a 3-D array of
+	 * shape (len(var1), len(var2), rows of the composition matrix) and set the entry (i, j, k)
+	 * from (var1[i], var2[j]) and row k, whose columns are the species of `species_names`.
+	 * A setter that takes no composition keeps each entry's composition and condensed amounts.
+	 *
+	 * Each setter resets the status of every entry it writes to ok. A state the thermodynamic
+	 * backend rejects (e.g. a nonpositive temperature) throws `SolveError`: the entries set before
+	 * it are written and ok, and the entry that was rejected and those after it keep their
+	 * previous state and status.
+	 *
+	 * @throws std::length_error if the array's shape does not match the arguments.
+	 * @{
+	 */
+	/** Temperature [K] and density [kg/m^3]. */
 	void TD(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ds);
-
-	/**
-	 * @brief Set the enthalpy and pressure of the array.
-	 */
+	/** Temperature [K] and specific volume [m^3/kg]. */
 	void TV(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Vs);
-
-	/**
-	 * @brief Set the temperature and pressure of the array.
-	 */
+	/** Temperature [K] and pressure [Pa]. */
 	void TP(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps);
-	/**
-	 * @brief Set the temperature, pressure, and mole fractions of the array. 
-	 * The mole fraction matrix columns should represent species and 
-	 * the rows should represent distinct compositions. 
-	 * */	
+	/** Temperature [K], pressure [Pa] and mole fractions [-]. */
 	void TPX(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
+	/** Temperature [K], pressure [Pa] and mass fractions [-]. */
 	void TPY(const Eigen::ArrayXd& Ts, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
-
-	/**
-	 * @brief Set the enthalpy and pressure of the array.
-	 */
+	/** Specific enthalpy [J/kg] and pressure [Pa]. */
 	void HP(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps);
-
-	/**
-	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
-	 * The mole fraction matrix columns should represent species and 
-	 * the rows should represent distinct compositions. 
-	 * */
+	/** Specific enthalpy [J/kg], pressure [Pa] and mole fractions [-]. */
 	void HPX(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
+	/** Specific enthalpy [J/kg], pressure [Pa] and mass fractions [-]. */
 	void HPY(const Eigen::ArrayXd& Hs, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
-
-	/**
-	 * @brief Set the entropy and pressure of the array.
-	 */
+	/** Specific entropy [J/(kg.K)] and pressure [Pa]. */
 	void SP(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps);
-
-	/**
-	 * @brief Set the enthalpy, pressure, and mole fractions of the array. 
-	 * The mole fraction matrix columns should represent species and 
-	 * the rows should represent distinct compositions. 
-	 * */
+	/** Specific entropy [J/(kg.K)], pressure [Pa] and mole fractions [-]. */
 	void SPX(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& xs);
+	/** Specific entropy [J/(kg.K)], pressure [Pa] and mass fractions [-]. */
 	void SPY(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Ps, const Eigen::ArrayXXd& ys);
-
-	/**
-	 * @brief Set the entropy and the enthalpy of the array.
-	 */
+	/** Specific entropy [J/(kg.K)] and specific enthalpy [J/kg]. */
 	void SH(const Eigen::ArrayXd& Ss, const Eigen::ArrayXd& Hs);
-
-	/**
-	 * Set the internal energy and the volume of the array.
-	 */
+	/** Specific internal energy [J/kg] and specific volume [m^3/kg]. */
 	void UV(const Eigen::ArrayXd& Us, const Eigen::ArrayXd& Vs);
-	
+	/** @} */
 
 	private:
-	void check_dimensionality(size_t len, size_t dim);
-	void check_ndim(int expected_ndim);
+	/** How a bulk setter writes the evaluator's state from one entry's values. */
+	enum class CompositionInput { NONE, MOLE, MASS };
 
+	void check_location(int loc) const;
+	/** Put the evaluator in the state of the entry at `loc`, whatever its status. */
+	void load(int loc) const;
+	/** "entry (i, j, k)" for flat location `loc`, with as many indices as dimensions. */
+	std::string entry_label(int loc) const;
+	/** Equilibrate the entry at `loc`; on failure keep its state and record the failure. */
+	void equilibrate_location(int loc, const std::string& XY, const std::string& solver);
+	/** Check that the array has `extents` as its shape. */
+	void check_shape(const std::vector<long>& extents, const std::string& setter) const;
 	/**
-	 * @brief retrieve thermodynamic state values from SolutionArray.
+	 * Broadcast `set(v1, v2)` over a 2-D array, or over a 3-D array with the rows of
+	 * `compositions` set first as `composition` says.
 	 */
-	Eigen::ArrayXXd retrieve_thermo_data(double (Cantera::ThermoPhase::*f)(void) const, int slice = 0) const;
-	
-	
-	void update_states(void (Cantera::ThermoPhase::*f)(double, double), 
-		const Eigen::ArrayXd& var1,
-		const Eigen::ArrayXd& var2);
+	void broadcast(const std::string& setter, const Eigen::ArrayXd& var1, const Eigen::ArrayXd& var2,
+		const Eigen::ArrayXXd* compositions, CompositionInput composition,
+		const std::function<void(double, double)>& set);
+	Eigen::ArrayXXd composition_rows(size_t columns,
+		const std::function<std::vector<double>(const Gas&)>& fractions) const;
 
-	void update_states(void (Cantera::ThermoPhase::*f)(double, double, double), 
-		const Eigen::ArrayXd& var1,
-		const Eigen::ArrayXd& var2,
-		double tol = 1e-9);
-
-	void update_states_with_mole_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
-		const Eigen::ArrayXd& var1,
-		const Eigen::ArrayXd& var2, 
-		const Eigen::ArrayXXd& var3,
-		double tol = 1e-9);
-		
-	void update_states_with_mass_composition(void (Cantera::ThermoPhase::*f)(double, double, double), 
-		const Eigen::ArrayXd& var1,
-		const Eigen::ArrayXd& var2,
-		const Eigen::ArrayXXd& var3,
-		double tol = 1e-9);
-
-	void update_states_with_composition(void (Cantera::ThermoPhase::*f)(double, double, const double*),
-		const Eigen::ArrayXd& var1,
-		const Eigen::ArrayXd& var2,
-		const Eigen::ArrayXXd& var3);
-	
-
-
-	/**
-	 * @brief Updates thermodynamic state by broadcasting a function `f` with values in `var1` and `var2`. 
-	 * 
-	 * This template function is defined in the source file because it is a private method that is only used 
-	 * within the same source file.
-	 */
-	template <typename Func>
-	void _update_states(Func&& f, const Eigen::ArrayXd& arr1, const Eigen::ArrayXd& arr2);
-
-	template <typename Func>
-	void _update_states_with_composition(Func&& f, const Eigen::ArrayXd& arr1, const Eigen::ArrayXd& arr2, const Eigen::ArrayXXd& arr3);
-	
-	/**
-	 * @brief Create a copy of the underlying solution that the array is derived from.
-	 * 
-	 */
-	std::shared_ptr<Cantera::Solution> copy_original_solution();
-	
-
-	// Private copy of the constructor's Solution, used by `m_states` as its working state.
-	//
-	// Invariant: the state of `m_solution` always equals the stored state at the SolutionArray's buffered
-	// location. Cantera 3.2's `SolutionArray::getState`/`setLoc` skip restoring the stored state when asked for
-	// the buffered location (Cantera issue #2067, fixed after 3.2.0), so they return whatever state the Solution
-	// holds. Keeping the Solution private and leaving it equal to the buffered entry after every operation makes
-	// those calls correct. Every method that changes the Solution's state must write it back with
-	// `updateState` at the location it loaded.
-	std::shared_ptr<Cantera::Solution> m_solution;
-	std::shared_ptr<Cantera::SolutionArray> m_states;
-	// Candidate condensed species carried over from the `Gas` the array was built from; null for a
-	// gas-only array. `Cantera::SolutionArray` has no room for them, so the amounts live in a side
-	// table of `size() * num_condensed()` entries, location major: the amount of candidate `k` at
-	// flat location `loc` is `m_condensed_moles[loc * num_condensed() + k]`.
-	std::shared_ptr<CondensedPhaseSet> m_condensed;
-	std::vector<double> m_condensed_moles;
-	bool m_shape_is_set = false;
+	std::vector<long> m_shape;
+	// Evaluator: a private clone of the constructor's `Gas`. Every operation loads the state of
+	// the entry it reads or writes first, so the evaluator's own state carries no meaning.
+	mutable Gas m_gas;
+	// State vector of each entry (`Gas::save_state` layout), in storage order.
+	std::vector<std::vector<double>> m_states;
+	// Outcome of the last solve at each entry.
+	std::vector<SolveStatus> m_statuses;
 };
 
 }

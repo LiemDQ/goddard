@@ -9,7 +9,12 @@ namespace Goddard {
 
 /** How a characteristic chain stopped being marched. */
 enum class ChainTermination {
-    NOT_TERMINATED, WALL, AXIS
+    /// Not terminated at a boundary: still active, or stopped when the march ended.
+    NOT_TERMINATED,
+    /// Ended on the nozzle wall.
+    WALL,
+    /// Ended on the axis (centerline).
+    AXIS
 };
 
 /**
@@ -119,6 +124,9 @@ class CharacteristicNet {
      */
     CharacteristicPoint& leading_axis_point();
     const CharacteristicPoint& leading_axis_point() const;
+
+    // ---- Construction API for the marching kernels. Not bound to Python, where the net is
+    // read-only; it keeps the chain bookkeeping consistent only when used as the kernels do. ----
 
     /** Add a point and its membership to list of points, and
      * appends it to its member characteristic chains. 

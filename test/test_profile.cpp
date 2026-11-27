@@ -1,5 +1,6 @@
 #include "goddard/profile.hpp"
 #include "goddard/numerics.hpp"
+#include <numbers>
 #include <cmath>
 #include <stdexcept>
 #include "gtest/gtest.h"
@@ -7,7 +8,7 @@
 using namespace Goddard;
 
 namespace {
-constexpr double DEG = M_PI / 180.0;
+constexpr double DEG = std::numbers::pi / 180.0;
 
 // area_ratio^2 recovered from radius_at(x_max()) should match the requested
 // area ratio (r_exit/r_throat)^2, since generation always sets r_throat=1.0
@@ -34,27 +35,27 @@ bool all_finite_over_profile(const NozzleProfile& profile, int n_samples) {
 // ============================================================
 
 TEST(ConicalNozzleValidationTest, InvalidAngleThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 0.0, 50), std::invalid_argument);
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 90.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 0.0 * DEG, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, std::numbers::pi / 2.0, 50), std::invalid_argument);
 }
 
 TEST(ConicalNozzleValidationTest, InvalidAreaRatioThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(1.0, 0.0, 1.0, 15.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(1.0, 0.0, 1.0, 15.0 * DEG, 50), std::invalid_argument);
 }
 
 TEST(ConicalNozzleValidationTest, InvalidThroatRadiusThrows) {
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 0.0, 15.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, 0.0, 0.0, 15.0 * DEG, 50), std::invalid_argument);
 }
 
 TEST(ConicalNozzleValidationTest, InvalidExpansionCurveRadiusThrows) {
     // r_expansion_curve is a radius (in throat radii) and must be non-negative;
     // 0 is the valid sharp-corner case, so only negative values should throw.
-    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, -1.0, 1.0, 15.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_conical_nozzle(20.0, -1.0, 1.0, 15.0 * DEG, 50), std::invalid_argument);
 }
 
 TEST(BezierNozzleValidationTest, InvalidLengthFracThrows) {
-    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.0, 50), std::invalid_argument);
-    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 1.01, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.0, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 1.01, 50), std::invalid_argument);
 }
 
 TEST(BezierNozzleValidationTest, LengthFracOfExactlyOneIsValid) {
@@ -62,16 +63,16 @@ TEST(BezierNozzleValidationTest, LengthFracOfExactlyOneIsValid) {
     // not throw -- regression for a boundary mismatch with generate_Rao_TOP_nozzle,
     // which itself allows length_frac up to and including 1.0.
     NozzleProfile profile;
-    EXPECT_NO_THROW(profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 1.0, 50));
+    EXPECT_NO_THROW(profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 1.0, 50));
     EXPECT_GT(profile.size(), 0u);
 }
 
 TEST(BezierNozzleValidationTest, InvalidAreaRatioThrows) {
-    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(1.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(1.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50), std::invalid_argument);
 }
 
 TEST(BezierNozzleValidationTest, InvalidThroatRadiusThrows) {
-    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 0.0, 0.8, 50), std::invalid_argument);
+    EXPECT_THROW(NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 0.0, 0.8, 50), std::invalid_argument);
 }
 
 TEST(RaoTopNozzleValidationTest, InvalidLengthFracThrows) {
@@ -93,14 +94,14 @@ TEST(RaoTopNozzleValidationTest, InvalidThroatRadiusThrows) {
 // ============================================================
 
 TEST(ConicalNozzleTest, XCoordinatesMonotonicIncreasing) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0 * DEG, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GT(profile.at(i).first, profile.at(i - 1).first) << "at index " << i;
     }
 }
 
 TEST(ConicalNozzleTest, RadiusNonDecreasing) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0 * DEG, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GE(profile.at(i).second, profile.at(i - 1).second) << "at index " << i;
     }
@@ -110,12 +111,12 @@ TEST(ConicalNozzleTest, AreaRatioMatchesRequested) {
     // Regression for Bug 6: NozzleProfile::find_index used to always throw for a
     // query at or beyond the last point, breaking radius_at(x_max()) exactly.
     double area_ratio = 20.0;
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(area_ratio, 0.0, 1.0, 15.0 * DEG, 50);
     EXPECT_NEAR(recovered_area_ratio(profile, 1.0), area_ratio, max_fp_error(area_ratio, 1e-9, 1e-9));
 }
 
 TEST(ConicalNozzleTest, HalfAngleMatchesSpecifiedAngle) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0, 50);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(20.0, 0.0, 1.0, 15.0 * DEG, 50);
     EXPECT_NEAR(profile.max_theta(), 15.0 * DEG, 1e-9);
 }
 
@@ -129,7 +130,7 @@ TEST(ConicalNozzleTest, ThroatArcLeavesTangentToConicalSection) {
     // Geometry independently verified by hand and by debug_probes/profile_check.cpp:
     // the arc's last point (index n_points/2 - 1 = 4) is (0.098869, 1.013016),
     // and the exit (index 9) is (3.782342, 2.000000).
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0, 10);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 0.382, 1.0, 15.0 * DEG, 10);
 
     ASSERT_EQ(profile.size(), 10u);
 
@@ -159,14 +160,14 @@ TEST(ConicalNozzleTest, ThroatArcLeavesTangentToConicalSection) {
 TEST(BezierNozzleTest, XCoordinatesMonotonicIncreasing) {
     // Regression for Bug 1 (tan(15) treated as radians): pre-fix, `length` came
     // out negative and the whole contour ran backwards.
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GT(profile.at(i).first, profile.at(i - 1).first) << "at index " << i;
     }
 }
 
 TEST(BezierNozzleTest, RadiusNonDecreasing) {
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         EXPECT_GE(profile.at(i).second, profile.at(i - 1).second) << "at index " << i;
     }
@@ -174,14 +175,14 @@ TEST(BezierNozzleTest, RadiusNonDecreasing) {
 
 TEST(BezierNozzleTest, AreaRatioMatchesRequested) {
     double area_ratio = 20.0;
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(area_ratio, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(area_ratio, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     EXPECT_NEAR(recovered_area_ratio(profile, 1.0), area_ratio, max_fp_error(area_ratio, 1e-9, 1e-9));
 }
 
 TEST(BezierNozzleTest, NoDuplicateOrZeroLengthSegments) {
     // Regression for Bug 3: the arc segment's last point and the Bezier segment's
     // first point used to both evaluate to exactly the same (x, r).
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     for (size_t i = 1; i < profile.size(); i++) {
         auto [x1, y1] = profile.at(i - 1);
         auto [x2, y2] = profile.at(i);
@@ -193,12 +194,12 @@ TEST(BezierNozzleTest, NoDuplicateOrZeroLengthSegments) {
 TEST(BezierNozzleTest, SlopeAndThetaAreFiniteEverywhere) {
     // Regression for Bug 3's actual symptom: the duplicate junction point caused
     // slope_at_idx to divide 0/0, producing NaN near that x.
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     EXPECT_TRUE(all_finite_over_profile(profile, 200));
 }
 
 TEST(BezierNozzleTest, WallAngleWithinPhysicalBounds) {
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, 30.0 * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     double max_theta_deg = profile.max_theta() / DEG;
     EXPECT_GT(max_theta_deg, 0.0);
     // The Rao chart's largest tabulated theta_n is 40.31 degrees, so 45 degrees
@@ -211,7 +212,7 @@ TEST(BezierNozzleTest, MaxThetaNearSpecifiedThetaN) {
     // arc/Bezier junction node measurably underestimates theta_n (~0.24 degrees
     // for this configuration) -- expected discretization behavior, not a bug.
     double theta_n = 30.0;
-    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, theta_n, 8.0, 0.382, 1.0, 0.8, 50);
+    NozzleProfile profile = NozzleProfile::generate_bezier_nozzle(20.0, theta_n * DEG, 8.0 * DEG, 0.382, 1.0, 0.8, 50);
     EXPECT_NEAR(profile.max_theta() / DEG, theta_n, 0.5);
 }
 
@@ -239,7 +240,7 @@ TEST_P(RaoTopNozzleGridPointTest, MatchesDirectBezierAtExactGridPoint) {
     RaoGridPoint p = GetParam();
     NozzleProfile rao_profile = NozzleProfile::generate_Rao_TOP_nozzle(p.area_ratio, 1.0, p.length_frac, 50);
     NozzleProfile direct_profile = NozzleProfile::generate_bezier_nozzle(
-        p.area_ratio, p.theta_n, p.theta_e, 0.382, 1.0, p.length_frac, 50);
+        p.area_ratio, p.theta_n * DEG, p.theta_e * DEG, 0.382, 1.0, p.length_frac, 50);
 
     ASSERT_EQ(rao_profile.size(), direct_profile.size());
     for (size_t i = 0; i < rao_profile.size(); i++) {

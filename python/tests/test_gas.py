@@ -22,14 +22,14 @@ def h2o2_yaml():
 def gas(h2o2_yaml):
     """A frozen Gas from h2o2.yaml at default state (300 K, 1 atm)."""
     from goddard import Gas, GasChemistry
-    return Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.FROZEN)
+    return Gas(h2o2_yaml, phase_name="ohmech")
 
 
 @pytest.fixture
 def eq_gas(h2o2_yaml):
     """An equilibrium Gas from h2o2.yaml."""
     from goddard import Gas, GasChemistry
-    return Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    return Gas(h2o2_yaml, phase_name="ohmech")
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +45,37 @@ def test_yaml_construction_with_species(h2o2_yaml):
     from goddard import Gas, GasChemistry
     # Must include all species referenced by the phase definition
     species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"}
-    g = Gas(h2o2_yaml, phase_name="ohmech", species=species,
-            chemistry=GasChemistry.FROZEN)
+    g = Gas(h2o2_yaml, phase_name="ohmech", species=species)
     assert g.temperature > 0
+
+
+def test_species_order_follows_file_not_set(h2o2_yaml):
+    """Species indices must not depend on the iteration order of the species set."""
+    ct = pytest.importorskip("cantera")
+    from goddard import Gas
+
+    names = ["H2", "O2", "H2O", "OH", "H"]
+    forward = set()
+    for name in names:
+        forward.add(name)
+    backward = set()
+    for name in reversed(names):
+        backward.add(name)
+    assert forward == backward
+
+    file_order = [sp.name for sp in ct.Species.list_from_file(h2o2_yaml)
+                  if sp.name in forward]
+    assert len(file_order) == len(names)
+
+    for species in (forward, backward):
+        g = Gas(h2o2_yaml, phase_name="gas", species=species)
+        assert list(g.species_names) == file_order
+
+
+def test_unknown_species_raises(h2o2_yaml):
+    from goddard import Gas
+    with pytest.raises(ValueError, match="NOT_A_SPECIES"):
+        Gas(h2o2_yaml, phase_name="gas", species={"H2", "NOT_A_SPECIES"})
 
 
 # ---------------------------------------------------------------------------
@@ -167,15 +195,6 @@ def test_isenthalpic_velocity_explicit(gas):
     assert abs(v - 500.0) < 1.0
 
 
-def test_isenthalpic_velocity_stored(gas):
-    gas.set_state_TP(1000.0, 1e5)
-    h = gas.enthalpy_mass
-    H0 = h + 0.5 * 500.0**2
-    gas.stagnation_enthalpy_ref = H0
-    v = gas.isenthalpic_velocity()
-    assert abs(v - 500.0) < 1.0
-
-
 # ---------------------------------------------------------------------------
 # Expansion properties and equilibrium
 # ---------------------------------------------------------------------------
@@ -211,40 +230,36 @@ def test_snapshot(gas):
 
 
 # ---------------------------------------------------------------------------
-# Solution accessor
-# ---------------------------------------------------------------------------
-
-def test_solution_property(gas):
-    from goddard import SolutionHandle
-    sol = gas.solution
-    assert sol is not None
-
-
-# ---------------------------------------------------------------------------
 # Chemistry
 # ---------------------------------------------------------------------------
 
-def test_chemistry_read_write(gas):
-    from goddard import GasChemistry
-    assert gas.chemistry == GasChemistry.FROZEN
-    gas.chemistry = GasChemistry.EQUILIBRIUM
-    assert gas.chemistry == GasChemistry.EQUILIBRIUM
+def test_frozen_and_equilibrium_properties(gas):
+    """Properties are frozen; the equilibrium ones let the composition shift."""
+    from goddard import CompositionModel, equilibrium_properties
+    gas.set_state_TPX(3500.0, 1e6, "H2:2, O2:1")
+    gas.equilibrate("TP")
 
+    # Frozen: cp/cv, and a^2 = gamma R T / M.
+    assert gas.gamma_s == pytest.approx(gas.cp_mass / gas.cv_mass, rel=1e-12)
+    assert gas.speed_of_sound == pytest.approx(
+        math.sqrt(gas.gamma_s * 8314.46261815324 * gas.temperature / gas.mean_molecular_weight),
+        rel=1e-9)
+    # Equilibrium: the shifting-equilibrium derivatives of equilibrium_properties.
+    assert gas.equilibrium_gamma_s == pytest.approx(equilibrium_properties(gas).gamma_s, rel=1e-12)
+    assert gas.equilibrium_speed_of_sound == pytest.approx(
+        equilibrium_properties(gas).speed_of_sound, rel=1e-9)
+    # Recombination absorbs part of a compression of this dissociated mixture.
+    assert gas.equilibrium_gamma_s < gas.gamma_s
 
-# ---------------------------------------------------------------------------
-# Reference state properties
-# ---------------------------------------------------------------------------
-
-def test_stagnation_enthalpy_ref(gas):
-    gas.stagnation_enthalpy_ref = 1e6
-    assert abs(gas.stagnation_enthalpy_ref - 1e6) < 1.0
-
-
-def test_reference_entropy(gas):
-    gas.set_state_TP(300.0, 1e5)
-    s = gas.entropy_mass
-    gas.reference_entropy = s
-    assert abs(gas.reference_entropy - s) < 1.0
+    frozen = gas.snapshot()
+    equilibrium = gas.snapshot(CompositionModel.EQUILIBRIUM)
+    assert frozen.composition_model == CompositionModel.FROZEN
+    assert equilibrium.composition_model == CompositionModel.EQUILIBRIUM
+    assert frozen.gamma_s == pytest.approx(gas.gamma_s, rel=1e-12)
+    assert equilibrium.gamma_s == pytest.approx(gas.equilibrium_gamma_s, rel=1e-12)
+    assert gas.expansion_properties(CompositionModel.EQUILIBRIUM).gamma_s == pytest.approx(
+        gas.equilibrium_gamma_s, rel=1e-12)
+    assert gas.mach(gas.equilibrium_speed_of_sound, CompositionModel.EQUILIBRIUM) == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +268,7 @@ def test_reference_entropy(gas):
 
 def test_gas_from_yaml(h2o2_yaml):
     from goddard import gas_from_yaml, GasChemistry
-    g = gas_from_yaml(h2o2_yaml, phase_name="ohmech",
-                      chemistry=GasChemistry.FROZEN)
+    g = gas_from_yaml(h2o2_yaml, phase_name="ohmech")
     assert g.temperature > 0
     assert g.pressure > 0
 
@@ -266,17 +280,23 @@ def test_gas_from_yaml(h2o2_yaml):
 def test_nozzle_from_gas(h2o2_yaml):
     from goddard import Gas, GasChemistry, Nozzle, ExpansionType
 
-    g = Gas(h2o2_yaml, phase_name="ohmech", chemistry=GasChemistry.EQUILIBRIUM)
+    g = Gas(h2o2_yaml, phase_name="ohmech")
     g.set_state_TPX(3000.0, 2e6, "H2:2, O2:1")
     g.equilibrate("HP")
 
     nozzle = Nozzle(g)
     result = nozzle.solve(ExpansionType.SUPERSONIC_AREA_RATIO, 5.0)
-    assert result.throat.converged
     assert len(result.expansions) == 1
     # A gas-only mixture can never sit at a condensed phase transition.
     assert result.throat.pinned_transition is False
-    assert result.expansions[0].pinned_transition is False
+    assert result.expansions[0].thermo.pinned_transition is False
+
+    station = result.expansions[0]
+    assert station.area_ratio == pytest.approx(5.0, rel=1e-4)
+    assert result.throat.mach == pytest.approx(1.0, abs=1e-4)
+    assert station.mach > 1.0
+    assert station.thermo.temperature < result.throat.thermo.temperature
+    assert station.velocity == pytest.approx(station.mach * station.thermo.speed_of_sound)
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +310,27 @@ def test_from_cantera():
     ct_sol = ct.Solution("h2o2.yaml", "ohmech")
     ct_sol.TPX = 2500.0, 3e6, "H2:2, O2:1"
 
-    gas = from_cantera(ct_sol, chemistry=GasChemistry.FROZEN)
+    gas = from_cantera(ct_sol)
 
     assert abs(gas.temperature - 2500.0) < 1.0
     assert abs(gas.pressure - 3e6) < 100.0
+
+
+def test_from_cantera_warns_for_non_ideal_gas():
+    ct = pytest.importorskip("cantera")
+    from goddard import from_cantera
+
+    ct_sol = ct.Solution("h2o2.yaml", "ohmech")
+
+    class NonIdeal:
+        """The Solution's attributes, with a thermo model Goddard does not support."""
+        thermo_model = "Redlich-Kwong"
+
+        def __getattr__(self, name):
+            return getattr(ct_sol, name)
+
+    with pytest.warns(UserWarning, match="Redlich-Kwong"):
+        from_cantera(NonIdeal())
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +355,7 @@ def water_gas(nasa9_files):
     return Gas(gas_file, phase_name="products",
                species={"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2"},
                condensed_file=condensed_file,
-               condensed_species={"H2O(L)", "H2O(cr)"},
-               chemistry=GasChemistry.EQUILIBRIUM)
+               condensed_species={"H2O(L)", "H2O(cr)"})
 
 
 def test_condensed_candidates(water_gas):
@@ -404,4 +440,4 @@ def test_equilibrium_properties_of_a_gas(eq_gas):
     assert properties.spec_heat_p > frozen.spec_heat_p
     assert not properties.pinned_transition
     assert len(derivatives.dn_condensed_dlogT_P) == 0
-    assert properties.speed_of_sound == pytest.approx(eq_gas.speed_of_sound, rel=1e-9)
+    assert properties.speed_of_sound == pytest.approx(eq_gas.equilibrium_speed_of_sound, rel=1e-9)

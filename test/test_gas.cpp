@@ -1,17 +1,25 @@
 #include "goddard/gas.hpp"
+#include "goddard/speciate.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/equilibrium.hpp"
 #include "goddard/numerics.hpp"
+#include "goddard/utils.hpp"
 #include "goddard/config.h"
+#include "goddard/error.hpp"
+#include "status_test_helpers.hpp"
 
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "cantera/core.h"
 #include "gtest/gtest.h"
 
 using namespace Goddard;
+using Goddard::test_helpers::throws_solve_error;
 
 class GasTests : public ::testing::Test {
 protected:
@@ -39,29 +47,17 @@ protected:
 // Construction
 
 TEST_F(GasTests, ConstructFromSharedPtr) {
-    ASSERT_NO_THROW(Gas(sol, GasChemistry::FROZEN));
+    ASSERT_NO_THROW({ Gas gas(sol); });
 }
 
 TEST_F(GasTests, ConstructFromReference) {
-    ASSERT_NO_THROW(Gas(*sol, GasChemistry::EQUILIBRIUM));
-}
-
-// Reference state defaults
-
-TEST_F(GasTests, DefaultStagnationEnthalpy) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    EXPECT_DOUBLE_EQ(gas.get_stagnation_enthalpy(), sol->thermo()->enthalpy_mass());
-}
-
-TEST_F(GasTests, DefaultReferenceEntropy) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    EXPECT_DOUBLE_EQ(gas.get_reference_entropy(), sol->thermo()->entropy_mass());
+    ASSERT_NO_THROW({ Gas gas(*sol); });
 }
 
 // Basic properties match Cantera directly
 
 TEST_F(GasTests, BasicPropertiesMatchCantera) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     auto thermo = sol->thermo();
 
     EXPECT_DOUBLE_EQ(gas.temperature(), thermo->temperature());
@@ -77,57 +73,60 @@ TEST_F(GasTests, BasicPropertiesMatchCantera) {
 // Gamma_s
 
 TEST_F(GasTests, FrozenGammaIsCpOverCv) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     double expected = sol->thermo()->cp_mass() / sol->thermo()->cv_mass();
-    EXPECT_DOUBLE_EQ(gas.gamma_s(), expected);
+    EXPECT_DOUBLE_EQ(gas.gamma_s(CompositionModel::FROZEN), expected);
 }
 
 TEST_F(GasTests, EquilibriumGammaMatchesEquilibriumFunction) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     double expected = get_thermo_equilibrium_properties(*sol->thermo()).gamma_s;
-    EXPECT_DOUBLE_EQ(gas.gamma_s(), expected);
+    EXPECT_DOUBLE_EQ(gas.gamma_s(CompositionModel::EQUILIBRIUM), expected);
 }
 
 TEST_F(GasTests, FrozenAndEquilibriumGammaDiffer) {
-    Gas frozen(sol, GasChemistry::FROZEN);
-    Gas eq(sol, GasChemistry::EQUILIBRIUM);
+    Gas frozen(sol);
+    Gas eq(sol);
 
     // For a reactive mixture these should generally differ
-    EXPECT_NE(frozen.gamma_s(), eq.gamma_s());
+    EXPECT_NE(frozen.gamma_s(CompositionModel::FROZEN), eq.gamma_s(CompositionModel::EQUILIBRIUM));
 }
 
 // Speed of sound
 
 TEST_F(GasTests, SpeedOfSoundMatchesFreeFunction) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    double expected = gas_sonic_velocity(*sol->thermo(), gas.gamma_s());
-    EXPECT_DOUBLE_EQ(gas.speed_of_sound(), expected);
+    Gas gas(sol);
+    double expected = gas_sonic_velocity(*sol->thermo(), gas.gamma_s(CompositionModel::FROZEN));
+    EXPECT_DOUBLE_EQ(gas.speed_of_sound(CompositionModel::FROZEN), expected);
 }
 
 // Stagnation properties
 
-TEST_F(GasTests, StagnationEnthalpyMatchesFreeFunction) {
-    Gas gas(sol, GasChemistry::FROZEN);
+TEST_F(GasTests, StagnationEnthalpyAddsKineticEnergy) {
+    Gas gas(sol);
     double velocity = 500.0;
-    double expected = gas_stagnation_enthalpy(*sol->thermo(), velocity);
-    EXPECT_DOUBLE_EQ(gas.stagnation_enthalpy(velocity), expected);
+    EXPECT_DOUBLE_EQ(gas.stagnation_enthalpy(velocity), gas.enthalpy_mass() + 0.5 * velocity * velocity);
 }
 
-TEST_F(GasTests, StagnationPressureMatchesFreeFunction) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    double velocity = 500.0;
-    double expected = gas_stagnation_pressure(*sol->thermo(), velocity);
-    EXPECT_NEAR(gas.stagnation_pressure(velocity), expected,
-                max_fp_error(expected, 1e-10, 1e-6));
+TEST_F(GasTests, FrozenStagnationPressureConservesEntropyAndTotalEnthalpy) {
+    Gas gas(sol);
+    const double velocity = 500.0;
+    const double P_stagnation = gas.stagnation_pressure(velocity, CompositionModel::FROZEN);
+    EXPECT_GT(P_stagnation, gas.pressure());
+
+    Gas stagnation = gas.clone();
+    stagnation.set_state_SP(gas.entropy_mass(), P_stagnation);
+    // A 1e-9 relative pressure step gives an enthalpy error of ~1e-9 * P/rho, well under 1e-3 J/kg.
+    EXPECT_NEAR(stagnation.enthalpy_mass(), gas.stagnation_enthalpy(velocity), 1e-3);
 }
 
 TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) {
     // The fixture state is at equilibrium. Decelerating it isentropically with shifting
     // equilibrium must reach the stagnation enthalpy h + v^2/2 at the returned pressure.
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     const double velocity = 1500.0;
     const double P_static = gas.pressure();
-    const double P_stagnation = gas.stagnation_pressure(velocity);
+    const double P_stagnation = gas.stagnation_pressure(velocity, CompositionModel::EQUILIBRIUM);
 
     EXPECT_DOUBLE_EQ(gas.pressure(), P_static) << "stagnation_pressure must not modify the state";
 
@@ -139,50 +138,36 @@ TEST_F(GasTests, EquilibriumStagnationPressureConservesEntropyAndTotalEnthalpy) 
 
     // Recombination during compression releases heat, so the equilibrium and frozen
     // stagnation pressures of this dissociated mixture differ well beyond solver tolerance.
-    Gas frozen(sol, GasChemistry::FROZEN);
-    const double P_stagnation_frozen = frozen.stagnation_pressure(velocity);
+    Gas frozen(sol);
+    const double P_stagnation_frozen = frozen.stagnation_pressure(velocity, CompositionModel::FROZEN);
     EXPECT_GT(std::abs(P_stagnation - P_stagnation_frozen) / P_stagnation_frozen, 1e-4);
 }
 
-TEST_F(GasTests, IsenthalpicVelocityMatchesFreeFunction) {
-    Gas gas(sol, GasChemistry::FROZEN);
+TEST_F(GasTests, IsenthalpicVelocityFromEnthalpyDrop) {
+    Gas gas(sol);
     double H_stag = gas.enthalpy_mass() + 100000.0;
-    double expected = gas_isenthalpic_velocity(*sol->thermo(), H_stag);
-    EXPECT_DOUBLE_EQ(gas.isenthalpic_velocity(H_stag), expected);
-}
-
-TEST_F(GasTests, IsenthalpicVelocityNoArgUsesStoredEnthalpy) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    // At construction, H_stag = enthalpy_mass, so velocity should be ~0
-    // (within floating point precision of sqrt(2*(H - H)) = sqrt(0))
-    EXPECT_NEAR(gas.isenthalpic_velocity(), 0.0, 1e-6);
-
-    // Set a higher stagnation enthalpy and verify it uses the stored value
-    double H_stag = gas.enthalpy_mass() + 100000.0;
-    gas.set_stagnation_enthalpy(H_stag);
-    double expected = gas_isenthalpic_velocity(*sol->thermo(), H_stag);
-    EXPECT_DOUBLE_EQ(gas.isenthalpic_velocity(), expected);
+    EXPECT_NEAR(gas.isenthalpic_velocity(H_stag), std::sqrt(2.0 * 100000.0), 1e-9);
 }
 
 // Expansion properties
 
 TEST_F(GasTests, EquilibriumExpansionPropertiesMatchFunction) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
+    Gas gas(sol);
     auto expected = get_thermo_equilibrium_properties(*sol->thermo());
-    auto result = gas.expansion_properties();
+    auto result = gas.expansion_properties(CompositionModel::EQUILIBRIUM);
 
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogT_P, expected.dlogV_dlogT_P);
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogP_T, expected.dlogV_dlogP_T);
+    EXPECT_DOUBLE_EQ(result.dlV_dlT_P, expected.dlV_dlT_P);
+    EXPECT_DOUBLE_EQ(result.dlV_dlP_T, expected.dlV_dlP_T);
     EXPECT_DOUBLE_EQ(result.spec_heat_p, expected.spec_heat_p);
     EXPECT_DOUBLE_EQ(result.gamma_s, expected.gamma_s);
 }
 
 TEST_F(GasTests, FrozenExpansionPropertiesAreIdealGas) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    auto result = gas.expansion_properties();
+    Gas gas(sol);
+    auto result = gas.expansion_properties(CompositionModel::FROZEN);
 
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogT_P, 1.0);
-    EXPECT_DOUBLE_EQ(result.dlogV_dlogP_T, -1.0);
+    EXPECT_DOUBLE_EQ(result.dlV_dlT_P, 1.0);
+    EXPECT_DOUBLE_EQ(result.dlV_dlP_T, -1.0);
     EXPECT_DOUBLE_EQ(result.spec_heat_p, sol->thermo()->cp_mass());
     EXPECT_DOUBLE_EQ(result.gamma_s, sol->thermo()->cp_mass() / sol->thermo()->cv_mass());
 }
@@ -190,8 +175,8 @@ TEST_F(GasTests, FrozenExpansionPropertiesAreIdealGas) {
 // Snapshot
 
 TEST_F(GasTests, SnapshotPopulatesAllFields) {
-    Gas gas(sol, GasChemistry::FROZEN);
-    auto info = gas.snapshot();
+    Gas gas(sol);
+    auto info = gas.snapshot(CompositionModel::FROZEN);
 
     EXPECT_DOUBLE_EQ(info.temperature, gas.temperature());
     EXPECT_DOUBLE_EQ(info.pressure, gas.pressure());
@@ -200,16 +185,44 @@ TEST_F(GasTests, SnapshotPopulatesAllFields) {
     EXPECT_DOUBLE_EQ(info.entropy, gas.entropy_mass());
     EXPECT_DOUBLE_EQ(info.molecular_weight, gas.molecular_weight());
     EXPECT_DOUBLE_EQ(info.cp, gas.cp_mass());
-    EXPECT_DOUBLE_EQ(info.gamma_s, gas.gamma_s());
-    EXPECT_DOUBLE_EQ(info.speed_of_sound, gas.speed_of_sound());
-    EXPECT_DOUBLE_EQ(info.stagnation_enthalpy, gas.get_stagnation_enthalpy());
+    EXPECT_DOUBLE_EQ(info.gamma_s, gas.gamma_s(CompositionModel::FROZEN));
+    EXPECT_DOUBLE_EQ(info.speed_of_sound, gas.speed_of_sound(CompositionModel::FROZEN));
+    EXPECT_TRUE(std::isnan(info.stagnation_enthalpy)) << "a bare Gas has no flow to stagnate";
     EXPECT_FALSE(info.composition.empty());
+}
+
+TEST_F(GasTests, EquilibriumSnapshotUsesShiftingEquilibriumDerivatives) {
+    Gas gas(sol);
+    const ThermodynamicState frozen = gas.snapshot(CompositionModel::FROZEN);
+    const ThermodynamicState equilibrium = gas.snapshot(CompositionModel::EQUILIBRIUM);
+    const ExpansionProperties expected = get_thermo_equilibrium_properties(gas);
+
+    EXPECT_EQ(frozen.composition_model, CompositionModel::FROZEN);
+    EXPECT_EQ(equilibrium.composition_model, CompositionModel::EQUILIBRIUM);
+    EXPECT_DOUBLE_EQ(equilibrium.gamma_s, expected.gamma_s);
+    EXPECT_DOUBLE_EQ(equilibrium.dlV_dlP_T, expected.dlV_dlP_T);
+    EXPECT_DOUBLE_EQ(equilibrium.dlV_dlT_P, expected.dlV_dlT_P);
+    // a^2 = gamma_s R T / M, with the equilibrium gamma_s
+    EXPECT_NEAR(equilibrium.speed_of_sound, gas.speed_of_sound(CompositionModel::EQUILIBRIUM),
+                1e-12 * equilibrium.speed_of_sound);
+    // Recombination absorbs part of a compression, so the dissociated mixture is softer at
+    // equilibrium than at frozen composition.
+    EXPECT_LT(equilibrium.gamma_s, frozen.gamma_s);
+    EXPECT_LT(equilibrium.speed_of_sound, frozen.speed_of_sound);
+    // cp follows the composition model: the equilibrium value adds the heat of the shifting
+    // reactions to the frozen cp_mass.
+    EXPECT_DOUBLE_EQ(frozen.cp, gas.cp_mass());
+    EXPECT_DOUBLE_EQ(equilibrium.cp, expected.spec_heat_p);
+    EXPECT_GT(equilibrium.cp, frozen.cp);
+    // The state itself does not depend on the composition model.
+    EXPECT_DOUBLE_EQ(equilibrium.temperature, frozen.temperature);
+    EXPECT_DOUBLE_EQ(equilibrium.enthalpy, frozen.enthalpy);
 }
 
 // Save/restore roundtrip
 
 TEST_F(GasTests, SaveRestoreRoundtrip) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
 
     std::vector<double> state;
     gas.copy_state(state);
@@ -226,19 +239,8 @@ TEST_F(GasTests, SaveRestoreRoundtrip) {
 
 // Copy semantics
 
-TEST_F(GasTests, PerfectGasCopyPreservesGamma) {
-    Gas gas(1.4);
-    Gas copied(gas); // NOLINT(performance-unnecessary-copy-initialization): the copy is under test
-    EXPECT_DOUBLE_EQ(copied.gamma_s(), 1.4);
-
-    Gas assigned(1.2);
-    assigned = gas;
-    EXPECT_DOUBLE_EQ(assigned.gamma_s(), 1.4);
-    EXPECT_EQ(assigned.chemistry, GasChemistry::PERFECT_GAS);
-}
-
 TEST_F(GasTests, CopySharesSolution) {
-    Gas gas(sol, GasChemistry::FROZEN);
+    Gas gas(sol);
     Gas copied = gas;
     EXPECT_EQ(copied.solution(), gas.solution());
 
@@ -247,13 +249,9 @@ TEST_F(GasTests, CopySharesSolution) {
 }
 
 TEST_F(GasTests, CloneIsIndependentDeepCopy) {
-    Gas gas(sol, GasChemistry::EQUILIBRIUM);
-    gas.set_stagnation_enthalpy(1.234e6);
-    gas.set_reference_entropy(5.678e3);
-
+    Gas gas(sol);
     Gas cloned = gas.clone();
     EXPECT_NE(cloned.solution(), gas.solution());
-    EXPECT_EQ(cloned.chemistry, GasChemistry::EQUILIBRIUM);
     EXPECT_DOUBLE_EQ(cloned.temperature(), gas.temperature());
     EXPECT_DOUBLE_EQ(cloned.pressure(), gas.pressure());
     std::vector<double> X_original = gas.mole_fractions();
@@ -262,19 +260,124 @@ TEST_F(GasTests, CloneIsIndependentDeepCopy) {
     for (size_t i = 0; i < X_original.size(); i++) {
         EXPECT_DOUBLE_EQ(X_cloned[i], X_original[i]);
     }
-    EXPECT_DOUBLE_EQ(cloned.get_stagnation_enthalpy(), 1.234e6);
-    EXPECT_DOUBLE_EQ(cloned.get_reference_entropy(), 5.678e3);
 
     double T_original = gas.temperature();
     cloned.set_state_TP(1000.0, 1e5);
     EXPECT_DOUBLE_EQ(gas.temperature(), T_original);
 }
 
-TEST_F(GasTests, ClonePerfectGas) {
-    Gas gas(1.3);
-    Gas cloned = gas.clone();
-    EXPECT_FALSE(cloned.has_cantera_sln());
-    EXPECT_DOUBLE_EQ(cloned.gamma_s(), 1.3);
+// Temperature range of the gas species data
+
+namespace {
+
+/**
+ * Two constant-cp species with different temperature ranges: WIDE (200 - 6000 K) and NARROW
+ * (1000 - 6000 K).
+ */
+Gas two_range_gas() {
+    const Cantera::AnyMap root = Cantera::AnyMap::fromYamlString(R"(
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [H, O]
+  species: [WIDE, NARROW]
+  state: {T: 1500.0, P: 1 atm}
+species:
+- name: WIDE
+  composition: {H: 2}
+  thermo: {model: constant-cp, T0: 298.15, h0: 0.0, s0: 130.7 J/mol/K, cp0: 29.0 J/mol/K,
+           T-min: 200.0, T-max: 6000.0}
+- name: NARROW
+  composition: {H: 2, O: 1}
+  thermo: {model: constant-cp, T0: 298.15, h0: -241.8 kJ/mol, s0: 188.8 J/mol/K,
+           cp0: 33.6 J/mol/K, T-min: 1000.0, T-max: 6000.0}
+)");
+    return Gas(Cantera::newSolution(root["phases"].getMapWhere("name", "gas"), root));
+}
+
+} // namespace
+
+TEST(GasTemperatureRangeTests, InsideEveryRangeHasNoWarning) {
+    Gas gas = two_range_gas();
+    gas.set_state_TPX(1500.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_FALSE(gas.check_temperature_range().has_value());
+}
+
+TEST(GasTemperatureRangeTests, WithinTheMarginOutsideARangeWarnsAndNamesTheSpecies) {
+    Gas gas = two_range_gas();
+    // 10% below the lower end of NARROW
+    gas.set_state_TPX(900.0, 1.0e5, "WIDE:1, NARROW:1");
+    const std::optional<std::string> warning = gas.check_temperature_range();
+    ASSERT_TRUE(warning.has_value());
+    const std::string text = warning.value_or("");
+    EXPECT_NE(text.find("'NARROW'"), std::string::npos) << text;
+    EXPECT_NE(text.find("extrapolated"), std::string::npos) << text;
+
+    // 10% above the upper end of both
+    gas.set_state_TPX(6600.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(gas.check_temperature_range().has_value());
+}
+
+TEST(GasTemperatureRangeTests, BeyondTheMarginFails) {
+    Gas gas = two_range_gas();
+    // 30% below the lower end of NARROW, inside the range of WIDE
+    gas.set_state_TPX(700.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.check_temperature_range(); },
+                                   FailureReason::OUT_OF_DATA_RANGE, "'NARROW'"));
+    // 25% above the upper end of both
+    gas.set_state_TPX(7500.0, 1.0e5, "WIDE:1, NARROW:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.check_temperature_range(); },
+                                   FailureReason::OUT_OF_DATA_RANGE));
+}
+
+TEST(GasTemperatureRangeTests, TraceSpeciesAreIgnored) {
+    Gas gas = two_range_gas();
+    // NARROW is far outside its range but below the trace mole fraction
+    gas.set_state_TPX(700.0, 1.0e5, "WIDE:1, NARROW:1e-6");
+    ASSERT_LT(gas.mole_fractions()[1], Gas::trace_mole_fraction);
+    EXPECT_FALSE(gas.check_temperature_range().has_value());
+}
+
+// Atomic weights of the NASA9 data: CEA's, from the elements section of the files
+
+TEST(GasAtomicWeightTests, NasaPhasesUseTheAtomicWeightsOfCea) {
+    const std::string gas_file = std::string(DATA_DIR) + "/nasa9_gas.yaml";
+    // Cantera's default table has H = 1.008 and O = 15.999
+    const auto expect_cea_weights = [](const Gas& gas, const std::string& how) {
+        EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("H")), 1.00794) << how;
+        EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("O")), 15.9994) << how;
+    };
+    const Gas water = Gas::create_from_species(gas_file, "gas", {"H2", "O2", "H2O"});
+    expect_cea_weights(water, "species");
+    // Cantera's own Solution::clone drops the weights of the file
+    expect_cea_weights(water.clone(), "clone");
+    expect_cea_weights(Gas::create_from_elements(gas_file, "gas", {"H", "O"}), "elements");
+    expect_cea_weights(Gas::create_from_species(std::string(DATA_DIR) + "/nasa9_reactants.yaml",
+                                                "reactants", {"H2(L)", "O2(L)"}), "reactants");
+
+    // The element order is the one Cantera gives the same species when the phase lists none
+    const std::vector<std::string> species{"O2", "H2O", "CO2", "N2", "CH4"};
+    Cantera::AnyMap root = load_root_node(gas_file);
+    Cantera::AnyMap node = create_phase_node("gas", species_in_file_order(root, species));
+    for (const char* key : {"kinetics", "reactions", "transport"}) {
+        node.erase(key);
+    }
+    const auto reference = Cantera::newSolution(node, root);
+    EXPECT_EQ(Gas::create_from_species(gas_file, "gas", species).element_names(),
+              reference->thermo()->elementNames());
+    EXPECT_EQ(reference->thermo()->atomicWeight(reference->thermo()->elementIndex("H")), 1.008);
+
+    Gas carbon = Gas::create_from_species(gas_file, "gas", {"CO", "CO2", "O2"});
+    carbon.add_condensed_species(std::string(DATA_DIR) + "/nasa9_condensed.yaml", {"C(gr)"});
+    carbon.set_condensed_moles({1e-3});  // the molar masses are those of present species
+    ASSERT_EQ(carbon.condensed_molar_masses().size(), 1);
+    EXPECT_EQ(carbon.condensed_molar_masses()(0), 12.0107);
+    EXPECT_EQ(carbon.clone().condensed_molar_masses()(0), 12.0107);
+}
+
+TEST(GasAtomicWeightTests, FileWithoutElementsKeepsCanteraWeights) {
+    const Gas gas = Gas::create_from_species("h2o2.yaml", "gas", {"H2", "O2", "H2O"});
+    EXPECT_EQ(gas.thermo()->atomicWeight(gas.thermo()->elementIndex("H")), 1.008);
 }
 
 // Element bookkeeping and reactant streams
@@ -350,4 +453,75 @@ TEST_F(ReactantGasTests, AssignedEnthalpyReactantIsTemperatureIndependent) {
     const double h_reference = fuel.enthalpy_mass();
     fuel.set_state_TPX(500.0, Cantera::OneAtm, "RP-1:1");
     EXPECT_NEAR(fuel.enthalpy_mass(), h_reference, 1e-9 * std::abs(h_reference));
+}
+
+// Species sets arrive unordered (Python passes a set), so the phase must not take their iteration
+// order: species indices would then differ between runs and processes.
+TEST(GasSpeciesOrderTests, CreateFromSpeciesUsesFileOrder) {
+    const std::string infile = "h2o2.yaml";
+    const std::vector<std::string> forward{"H2", "O2", "H2O", "OH", "H"};
+    const std::vector<std::string> reverse(forward.rbegin(), forward.rend());
+
+    // Expected: the requested species in the order of the file's `species` section.
+    const std::unordered_set<std::string> requested(forward.begin(), forward.end());
+    const Cantera::AnyMap root_node = load_root_node(infile);
+    std::vector<std::string> file_order;
+    for (const Cantera::AnyMap& node : root_node.at("species").asVector<Cantera::AnyMap>()) {
+        if (requested.count(node.at("name").asString())) {
+            file_order.push_back(node.at("name").asString());
+        }
+    }
+    ASSERT_EQ(file_order.size(), forward.size());
+    ASSERT_NE(file_order, forward) << "the request must not already be in file order";
+
+    // Sets built by inserting in different orders, as a binding would receive them.
+    const std::unordered_set<std::string> set_forward(forward.begin(), forward.end());
+    const std::unordered_set<std::string> set_reverse(reverse.begin(), reverse.end());
+
+    const std::vector<std::string> from_set_forward(set_forward.begin(), set_forward.end());
+    const std::vector<std::string> from_set_reverse(set_reverse.begin(), set_reverse.end());
+
+    const std::vector<std::vector<std::string>> requests{
+        forward, reverse, from_set_forward, from_set_reverse};
+    for (const std::vector<std::string>& request : requests) {
+        Gas gas = Gas::create_from_species(infile, "gas", request);
+        EXPECT_EQ(gas.species_names(), file_order);
+    }
+}
+
+TEST(GasSpeciesOrderTests, CreateFromSpeciesRejectsUnknownSpecies) {
+    EXPECT_THROW(Gas::create_from_species("h2o2.yaml", "gas", {"H2", "NOT_A_SPECIES"}),
+                 std::invalid_argument);
+}
+
+// ---- Errors of the thermodynamic backend never reach the caller ----
+
+TEST(GasBackendErrors, UnknownSpeciesInACompositionIsAnInvalidArgument) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    EXPECT_THROW(gas.set_state_TPX(300.0, 1.0e5, "H2:1, NOT_A_SPECIES:1"), std::invalid_argument);
+    EXPECT_THROW(gas.set_state_TPX(300.0, 1.0e5, Composition{{"NOT_A_SPECIES", 1.0}}), std::invalid_argument);
+}
+
+TEST(GasBackendErrors, MissingFileOrPhaseIsAnInvalidArgument) {
+    EXPECT_THROW(Gas::create("no_such_file.yaml", "gas"), std::invalid_argument);
+    EXPECT_THROW(Gas("no_such_file.yaml", "gas"), std::invalid_argument);
+    EXPECT_THROW(Gas::create("h2o2.yaml", "no_such_phase"), std::invalid_argument);
+    EXPECT_THROW(Gas("h2o2.yaml", "no_such_phase"), std::invalid_argument);
+}
+
+TEST(GasBackendErrors, StateTheBackendRejectsIsASolveErrorNamingTheCall) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    gas.set_state_TPX(300.0, 1.0e5, "H2:1, O2:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(0.0, 1.0e5); },
+                                   FailureReason::THERMO_FAILURE, "Gas::set_state_TP(T = 0 K, P = 100000 Pa)"));
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(-300.0, 1.0e5); }, FailureReason::THERMO_FAILURE));
+    EXPECT_TRUE(throws_solve_error([&] { gas.set_state_TP(300.0, -1.0); }, FailureReason::THERMO_FAILURE));
+}
+
+TEST(GasBackendErrors, EquilibriumThatCannotBeSolvedIsASolveError) {
+    Gas gas = Gas::create("h2o2.yaml", "ohmech");
+    // 1e5 K is far outside the range of the NASA polynomials: no temperature matches
+    gas.set_state_TPX(1.0e5, 1.0e5, "H2:2, O2:1");
+    EXPECT_TRUE(throws_solve_error([&] { gas.equilibrate_HP(gas.enthalpy_mass(), gas.pressure()); },
+                                   FailureReason::THERMO_FAILURE));
 }

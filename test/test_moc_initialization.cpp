@@ -39,7 +39,6 @@ namespace {
 
 ThroatCondition make_perfect_gas_throat(double gamma) {
     return ThroatCondition{
-        .converged = true,
         .speed_of_sound = 1.0,
         .H_stagnation = 1.0,
         .P_inlet = 1.0,
@@ -48,6 +47,9 @@ ThroatCondition make_perfect_gas_throat(double gamma) {
         .dlV_dlP_T = -1.0,
         .dlV_dlT_P = 1.0,
         .state = {},
+        .pinned_transition = false,
+        .thermo = {},
+        .status = {},
     };
 }
 
@@ -498,7 +500,7 @@ TEST(KliegelLevineInitialization, WallEndTangentToContour) {
     const double gamma = 1.4;
     const double R = 0.382;
     const int n = 31;
-    NozzleProfile wall = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+    NozzleProfile wall = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0 * std::numbers::pi / 180.0, 60);
 
     NozzleGeometry geom;
     geom.throat_radius = 1.0;
@@ -539,7 +541,7 @@ TEST(KliegelLevineInitialization, AutoFallsBackToFanBelowThreshold) {
     opts.start_line = MocStartLine::AUTO;
     opts.kl_max_wall_angle_error = 0.01; // well under the ~0.145 rad raw miss at R=0.382
     opts.geometry.downstream_wall_curvature_radius = R;
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0 * std::numbers::pi / 180.0, 60);
 
     MocNozzle solver(opts);
     MocResult result;
@@ -562,12 +564,13 @@ TEST(KliegelLevineInitialization, ForcedSeriesFailsHonestlyBelowThreshold) {
     opts.start_line = MocStartLine::KLIEGEL_LEVINE;
     opts.kl_max_wall_angle_error = 0.01;
     opts.geometry.downstream_wall_curvature_radius = R;
-    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0, 60);
+    opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(4.0, R, 1.0, 15.0 * std::numbers::pi / 180.0, 60);
 
     MocNozzle solver(opts);
     MocResult result;
     ASSERT_NO_THROW({ result = solver.solve(); });
 
-    EXPECT_FALSE(result.converged);
     EXPECT_EQ(result.failure.code, MocErrorCode::INITIALIZATION_FAILED);
+    EXPECT_EQ(result.status.reason, FailureReason::NOT_CONVERGED);
+    EXPECT_EQ(result.status.stage, "MoC initialization");
 }

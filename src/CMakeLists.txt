@@ -16,10 +16,9 @@ add_library(
   speciate.cpp
   nozzle.cpp
   gas_dynamics.cpp
-  numerics.cpp
-  problem.cpp
+  rocket.cpp
+  rocket_report.cpp
   format.cpp
-  rocket_results.cpp
   prandtlmeyer.cpp
   characteristics.cpp
   characteristic_net.cpp

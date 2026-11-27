@@ -11,6 +11,7 @@ std::string format_fixed(double value, int width, int precision);
 /// Format a number in CEA engineering notation.
 /// CEA uses: "9.0033 0" for 9.0033e0, "1.4339-1" for 1.4339e-1.
 /// Mantissa has 4 decimal places; exponent is space+digit (positive) or -digit (negative).
+/// NaN and infinities print as "nan", "inf" and "-inf".
 std::string format_cea_engineering(double value, int width);
 
 /// Format a mass fraction value (5 decimal places, right-aligned).

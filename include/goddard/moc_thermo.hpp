@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+
 #include "goddard/chemistry.hpp"
 #include "goddard/characteristics.hpp"
 #include "goddard/moc.hpp"   // MocErrorCode
@@ -13,17 +15,25 @@ struct ThroatCondition;
  * The isentrope every point of a MoC solve lies on: state as a function of nu, Mach or
  * velocity, for either a perfect gas or a tabulated frozen/equilibrium real gas.
  *
+ * Points are nondimensional: pressure P/P0, temperature T/T0 and velocity V/a0, all relative
+ * to the stagnation state.
+ *
  * The single thermodynamic dispatch shared by initialization, both kernels, and every unit
  * process. Failure is reported as a MocErrorCode return rather than by throwing, so a caller
  * can attach point/pass context before surfacing a MocFailure. Immutable once built.
  */
 class MocThermo {
 public:
-    /** Perfect gas with constant gamma; T and P normalized by stagnation values (T_ref = P_ref = 1). */
+    /** Perfect gas with constant gamma. */
     static MocThermo perfect_gas(double gamma);
     /**
      * Frozen or equilibrium real gas: builds the Prandtl-Meyer table from the throat state.
-     * `gas` is left at the throat state on return.
+     * `gas` must be at the stagnation state on entry, which sets `T_ref`, `P_ref` and `V_ref`,
+     * and is left at it on return.
+     *
+     * The table ends before the first state far outside the temperature range of the species
+     * data (`Gas::check_temperature_range()` fails there; see `table_end()`), so that a point
+     * beyond it fails as a lookup outside the table.
      */
     static MocThermo tabulated(Gas& gas, GasChemistry chemistry, const ThroatCondition& throat);
 
@@ -31,10 +41,20 @@ public:
     GasChemistry chemistry() const;
     double gamma() const;                     ///< Perfect gas only: the constant gamma.
     const PrandtlMeyerTable& table() const;    ///< Real gas only.
-    /** Real gas only: throat temperature (K) that table T is normalized against by set_pressure_temperature_from_table. */
+    /**
+     * Why the table ends before the pressure ratio it was built to: the failure of the range
+     * check at the first state dropped. Empty when the table is complete.
+     */
+    const std::string& table_end() const;
+    /** Stagnation temperature T0 [K] that point temperatures are divided by; 1 for a perfect gas. */
     double T_ref() const;
-    /** Real gas only: throat pressure (Pa) that table P is normalized against by set_pressure_temperature_from_table. */
+    /** Stagnation pressure P0 [Pa] that point pressures are divided by; 1 for a perfect gas. */
     double P_ref() const;
+    /**
+     * Stagnation speed of sound a0 [m/s], in the chemistry's composition model, that point
+     * velocities are divided by; 1 for a perfect gas.
+     */
+    double V_ref() const;
 
     // Convenience accessors; not called by the kernels themselves, which go through the
     // set_state_from_* chokepoints below.
@@ -52,15 +72,17 @@ public:
     MocErrorCode set_state_from_nu(CharacteristicPoint& point, double nu, double mach_guess = 0.0) const;
     /** Set `point`'s full state from a Mach number. */
     MocErrorCode set_state_from_mach(CharacteristicPoint& point, double mach) const;
-    /** Set `point`'s full state from a velocity (m/s for real gas; Mach number for perfect gas). */
+    /** Set `point`'s full state from a velocity V/a0 [-]. */
     MocErrorCode set_state_from_V(CharacteristicPoint& point, double V) const;
 
 private:
     GasChemistry m_chemistry = GasChemistry::PERFECT_GAS;
     double m_gamma = 1.4;
     PrandtlMeyerTable m_table;
+    std::string m_table_end;
     double m_T_ref = 1.0;
     double m_P_ref = 1.0;
+    double m_V_ref = 1.0;
 
     // Sets point.temperature/point.pressure from the isentropic stagnation relations
     // (perfect gas only; FROZEN/EQUILIBRIUM points go through set_pressure_temperature_from_table).

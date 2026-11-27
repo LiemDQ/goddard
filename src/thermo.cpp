@@ -1,65 +1,45 @@
 #include "cantera/base/stringUtils.h"
 #include "goddard/thermo.hpp"
 #include "goddard/error.hpp"
+#include "goddard/solve_guard.hpp"
+
+#include <limits>
 
 namespace Goddard {
 
-size_t ThermodynamicState::state_size() const {
-    return 2 + composition.size();
-}
-
-std::vector<double> ThermodynamicState::to_mole_vector(Cantera::ThermoPhase& thermo) const {
-    std::vector<double> out(state_size());
-
-    thermo.setState_TPX(temperature, pressure, composition);
-    thermo.saveState(out);
-
-    return out;
-}
-
-std::vector<double> ThermodynamicState::to_vector() const {
-    std::vector<double> out(state_size());
-
-    out[0] = temperature;
-    out[1] = density;
-    size_t i = 2;
-    for (const auto& species: composition) {
-        if (i >= out.size())
-            throw std::runtime_error("Size of output vector was misspecified.");
-        out[i] = species.second;
-        i++;
-    }
-    return out;
+ThermodynamicState ThermodynamicState::undefined() {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    ThermodynamicState state;
+    state.pressure = nan;
+    state.temperature = nan;
+    state.density = nan;
+    state.enthalpy = nan;
+    state.internal_energy = nan;
+    state.gibbs = nan;
+    state.entropy = nan;
+    state.molecular_weight = nan;
+    state.cp = nan;
+    state.gamma_s = nan;
+    state.dlV_dlP_T = nan;
+    state.dlV_dlT_P = nan;
+    state.speed_of_sound = nan;
+    state.stagnation_enthalpy = nan;
+    state.mixture_molecular_weight = nan;
+    state.gas_mass_fraction = nan;
+    return state;
 }
 
 // -- PhaseSpecification --
 
-PhaseSpecification::PhaseSpecification(double temperature, double pressure, const std::string& comp) 
-: T(temperature), P(pressure), composition(Cantera::parseCompString(comp))
+PhaseSpecification::PhaseSpecification(double temperature, double pressure, const std::string& comp)
+: T(temperature), P(pressure),
+  composition(translate_backend_usage_errors("PhaseSpecification::PhaseSpecification",
+      [&] { return Cantera::parseCompString(comp); }))
 {}
 
 PhaseSpecification::PhaseSpecification(double temperature, double pressure, const Composition& comp) 
 : T(temperature), P(pressure), composition(comp)
 {}
-
-
-std::vector<double> PhaseSpecification::to_vector(Cantera::ThermoPhase& thermo) const {
-    std::vector<double> out(thermo.stateSize());
-
-    thermo.setState_TPX(T, P, composition);
-    thermo.saveState(out);
-
-    return out;
-}
-
-std::vector<double> PhaseSpecification::to_mass_vector(Cantera::ThermoPhase& thermo) const {
-    std::vector<double> out(thermo.stateSize());
-
-    thermo.setState_TPY(T, P, composition);
-    thermo.saveState(out);
-
-    return out;
-}
 
 
 } //namespace goddard

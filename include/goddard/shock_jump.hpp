@@ -33,32 +33,32 @@ struct ShockJump {
     double density_ratio;
 };
 
-/** Shock result with `valid = false` and every other field set to -1. */
-ShockResult invalid_shock();
+/** Shock result with the given failed status and every other field NaN. */
+ShockResult failed_shock(SolveStatus status);
 
 /**
  * Solve the jump conditions by Newton's method in x = (ln P_down/P_up, ln T_down/T_up),
  * NASA RP-1311 Part I, chapters 7 and 8.
  *
- * `gas` holds the upstream state on entry and the downstream state on exit. `gas.chemistry`
- * selects frozen or equilibrium downstream properties; the derivations are in
- * instructions/shocks.md and instructions/detonations.md.
+ * `gas` holds the upstream state on entry and the downstream state on exit. `model` selects
+ * frozen or equilibrium downstream properties; the derivations are in docs/theory/shocks.md and
+ * docs/theory/detonations.md.
  *
  * @param velocity u1 for INCIDENT, the particle velocity u_p of gas 2 for REFLECTED, ignored for
  * CHAPMAN_JOUGUET [m/s]
- * @throws std::invalid_argument for CHAPMAN_JOUGUET with chemistry other than EQUILIBRIUM
+ * @param model composition model of the downstream gas
+ * @throws std::invalid_argument for CHAPMAN_JOUGUET with a FROZEN model
  * @throws ConvergenceError if the iteration does not converge
  */
-ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity,
+ShockJump solve_shock_jump(Gas& gas, JumpCondition condition, double velocity, CompositionModel model,
                            double pressure_ratio_guess, double temperature_ratio_guess,
                            const SolverOptions& opts);
 
 /**
  * Solve a shock jump with the given chemistry. EQUILIBRIUM first solves the frozen jump and
- * uses it as the initial guess (instructions/shocks.md, section 1).
+ * uses it as the initial guess (docs/theory/shocks.md, "Normal shock relations for real gases").
  *
- * `gas` holds the upstream state on entry and the downstream state on exit, with
- * `gas.chemistry` set to `chemistry`.
+ * `gas` holds the upstream state on entry and the downstream state on exit.
  */
 ShockJump solve_shock_jump_with_chemistry(Gas& gas, JumpCondition condition, double velocity,
                                           GasChemistry chemistry,
@@ -66,7 +66,7 @@ ShockJump solve_shock_jump_with_chemistry(Gas& gas, JumpCondition condition, dou
                                           const SolverOptions& opts);
 
 /** Frozen sound speed of the gas at its current state [m/s]. */
-double frozen_sound_speed(Gas& gas);
+double frozen_sound_speed(const Gas& gas);
 
 /**
  * Jump across an incident normal shock, without stagnation quantities. `gas` holds state 1 on
@@ -79,20 +79,26 @@ ShockJump incident_jump(Gas& gas, double u1, GasChemistry chemistry, const Solve
  *
  * State 1 is taken as given, so its sound speed and stagnation pressure are frozen ones. For an
  * oblique shock, `u_tangential` enters only the stagnation pressures.
+ *
+ * @return the shock; a `NO_SOLUTION` result, with `gas` left at state 1, if `u_normal` is below
+ * the frozen sound speed of state 1
+ * @throws ConvergenceError if the jump conditions cannot be solved
  */
 ShockResult incident_shock(Gas& gas, double u_normal, double u_tangential,
                            GasChemistry chemistry, const SolverOptions& opts);
 
 /**
- * Shock reflected from a closed end. `gas` holds state 2 on entry, with `gas.chemistry` the
- * chemistry of the incident wave, and state 5 on exit.
+ * Shock reflected from a closed end. `gas` holds state 2 on entry and state 5 on exit.
  *
  * In the reflected-shock frame gas 2 enters at u_p + W_R and gas 5 leaves at W_R, where
  * W_R = u_p/(rho5/rho2 - 1) is the reflected shock speed.
  *
  * @param particle_velocity lab-frame velocity u_p of gas 2 [m/s]
+ * @param incident_chemistry chemistry of state 2, for its sound speed and stagnation pressure
+ * @param chemistry chemistry of the reflected shock and state 5
  */
-ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity, GasChemistry chemistry,
+ShockResult reflected_shock_from_state2(Gas& gas, double particle_velocity,
+                                        GasChemistry incident_chemistry, GasChemistry chemistry,
                                         double pressure_ratio_guess, double temperature_ratio_guess,
                                         const SolverOptions& opts);
 

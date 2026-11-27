@@ -1,13 +1,14 @@
 #include "goddard/moc.hpp"
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/profile.hpp"
+#include <numbers>
 #include <cmath>
 #include <string>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // Helper: create a MocNozzle configured for axisymmetric perfect-gas Rao design.
 // downstream_wall_curvature_radius is left at its default (0.382, positive), so
@@ -45,10 +46,10 @@ TEST(MocDesignRao, BasicSolveReachesRecordedCoverage) {
     RecordProperty("failure_code", std::string(to_string(result.failure.code)));
 
     // Honesty: converged and "no failure code" must agree, whichever way they go.
-    EXPECT_EQ(result.converged, result.failure.code == MocErrorCode::NONE)
+    EXPECT_EQ(result.status.ok(), result.failure.code == MocErrorCode::NONE)
         << "converged and failure.code disagree: " << result.failure.message;
 
-    ASSERT_TRUE(result.converged) << to_string(result.failure.code)
+    ASSERT_TRUE(result.status.ok()) << to_string(result.failure.code)
         << " -- " << result.failure.message;
     EXPECT_TRUE(result.reached_exit_plane);
     EXPECT_GT(result.exit_mach, 1.0);
@@ -80,10 +81,10 @@ NozzleProfile conical_nozzle_matching_length(double area_ratio, double target_le
     double lo_deg = 1.0, hi_deg = 45.0;
     for (int i = 0; i < 60; i++) {
         const double mid_deg = 0.5 * (lo_deg + hi_deg);
-        NozzleProfile p = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, mid_deg, n_points);
+        NozzleProfile p = NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, mid_deg * DEG, n_points);
         if (p.length() > target_length) lo_deg = mid_deg; else hi_deg = mid_deg;
     }
-    return NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 0.5 * (lo_deg + hi_deg), n_points);
+    return NozzleProfile::generate_conical_nozzle(area_ratio, 0.382, 1.0, 0.5 * (lo_deg + hi_deg) * DEG, n_points);
 }
 
 } // namespace
@@ -96,7 +97,7 @@ TEST(MocDesignRao, CfExceedsConicalOfSameLengthAndAreaRatio) {
                     + "_Lf" + std::to_string(lf) + "_g" + std::to_string(gamma);
 
                 MocResult rao = make_rao_solver(gamma, ar, lf, 31).solve();
-                ASSERT_TRUE(rao.converged) << tag << ": " << to_string(rao.failure.code)
+                ASSERT_TRUE(rao.status.ok()) << tag << ": " << to_string(rao.failure.code)
                     << " -- " << rao.failure.message;
                 EXPECT_TRUE(rao.reached_exit_plane) << tag;
 
@@ -128,7 +129,7 @@ TEST(MocDesignRao, CfExceedsConicalOfSameLengthAndAreaRatio) {
                 // (test_moc_convergence.cpp). MocMode::ANALYSIS always uses the inverse march.
 
                 MocResult cone_result = MocNozzle(cone_opts).solve();
-                ASSERT_TRUE(cone_result.converged) << tag << " (comparison cone): "
+                ASSERT_TRUE(cone_result.status.ok()) << tag << " (comparison cone): "
                     << to_string(cone_result.failure.code) << " -- " << cone_result.failure.message;
                 EXPECT_TRUE(cone_result.reached_exit_plane) << tag << " (comparison cone)";
 

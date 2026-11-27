@@ -1,9 +1,11 @@
 #include "goddard/kinetic_nozzle.hpp"
 #include "goddard/nozzle.hpp"
 #include "goddard/gas.hpp"
+#include <limits>
 #include "goddard/profile.hpp"
 #include "goddard/global.hpp"
 #include "goddard/numerics.hpp"
+#include "status_test_helpers.hpp"
 #include "cantera/core.h"
 #include "gtest/gtest.h"
 
@@ -13,6 +15,7 @@
 #include <iostream>
 
 using namespace Goddard;
+using Goddard::test_helpers::failed_with;
 
 // Build a simple conical diverging profile from throat (x=0) to exit.
 // Only the diverging section is needed since KineticNozzle starts at x_min.
@@ -44,11 +47,12 @@ protected:
 
         // Conical profile: throat r=0.01 m at x=0, exit r=0.01414 m at x=0.1 m
         // Area ratio at exit = (0.01414/0.01)^2 ≈ 2.0
-        s_profile = make_conical_profile(0.01, 0.01414, 0.1, 100);
+        // The profile is expressed in throat radii, with s_throat_radius setting the scale.
+        s_profile = make_conical_profile(0.01, 0.01414, 0.1, 100).scaled(1.0/s_throat_radius);
         double length = s_profile.x_max() - s_profile.x_min();
         int min_steps = 20000;
 
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
         s_results = nozzle.solve(1e-6, length/min_steps, 100000);
     }
 
@@ -61,12 +65,19 @@ protected:
         check_interval = std::max(s_results.stations.size()/num_checks,1ul);
     }
     
+    // Temperature [K] of a saved Cantera state; leaves s_gas in that state.
+    static double temperature_of(const std::vector<double>& state) {
+        s_gas->thermo()->restoreState(state);
+        return s_gas->thermo()->temperature();
+    }
+
     size_t check_interval = 1;
     NozzleOptions opts;
     static std::shared_ptr<Cantera::Solution> s_gas;
     static std::vector<double> s_inlet_state;
     static NozzleProfile s_profile;
     static KineticNozzleResults s_results;
+    static constexpr double s_throat_radius = 0.01; // m
     static constexpr double s_mdot = 1.0; // kg/s — scale-invariant for physics tests
 };
 
@@ -81,43 +92,156 @@ KineticNozzleResults KineticNozzleTests::s_results;
 
 TEST_F(KineticNozzleTests, EquilibriumThroatModelConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts);
     });
 }
 
 TEST_F(KineticNozzleTests, FrozenThroatModelConstructs) {
     opts.chemistry = GasChemistry::FROZEN;
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts);
     });
 }
 
 TEST_F(KineticNozzleTests, ExplicitInletStateConstructs) {
     ASSERT_NO_THROW({
-        KineticNozzle nozzle(*s_gas, s_profile, s_mdot, s_inlet_state, opts);
+        KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, s_inlet_state, opts);
     });
+}
+
+TEST_F(KineticNozzleTests, ThroatRadiusAndProfileScaleAreValidated) {
+    for (double bad_radius : {0.0, -0.01, std::numeric_limits<double>::quiet_NaN()}) {
+        EXPECT_THROW(KineticNozzle(*s_gas, s_profile, bad_radius, s_mdot), std::invalid_argument);
+    }
+    // A profile in metres (throat radius 0.01) is not in throat radii
+    NozzleProfile profile_in_metres = s_profile.scaled(s_throat_radius);
+    EXPECT_THROW(KineticNozzle(*s_gas, profile_in_metres, s_throat_radius, s_mdot),
+                 std::invalid_argument);
 }
 
 TEST_F(KineticNozzleTests, KineticThroatModelThrows) {
     // GasChemistry::KINETIC is not a valid throat model for KineticNozzle
     opts.chemistry = GasChemistry::KINETIC;
     EXPECT_THROW(
-        { KineticNozzle nozzle(*s_gas, s_profile, s_mdot, opts); },
+        { KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot, opts); },
         std::invalid_argument);
+}
+
+TEST_F(KineticNozzleTests, GasConstructorKineticThroatModelThrows) {
+    // The Gas constructors must forward the options to the throat Nozzle, which rejects KINETIC.
+    opts.chemistry = GasChemistry::KINETIC;
+    Gas gas(*s_gas);
+    EXPECT_THROW(
+        { KineticNozzle nozzle(gas, s_profile, s_throat_radius, s_mdot, opts); },
+        std::invalid_argument);
+    EXPECT_THROW(
+        { KineticNozzle nozzle(gas, s_profile, s_throat_radius, s_mdot, s_inlet_state, opts); },
+        std::invalid_argument);
+}
+
+TEST_F(KineticNozzleTests, GasConstructorUsesThroatModelFromOptions) {
+    // The Gas constructor must honour options.chemistry: its throat equals the throat of a
+    // Nozzle with the same options, and the frozen throat is colder than the equilibrium one,
+    // because equilibrium recombination between chamber and throat releases heat.
+    std::vector<double> throat_temperatures;
+    for (GasChemistry throat_model : {GasChemistry::EQUILIBRIUM, GasChemistry::FROZEN}) {
+        opts.chemistry = throat_model;
+        s_gas->thermo()->restoreState(s_inlet_state);
+        Nozzle reference(Gas(*s_gas), opts);
+        double T_reference = temperature_of(reference.solve_throat_conditions().state);
+
+        s_gas->thermo()->restoreState(s_inlet_state);
+        KineticNozzle nozzle(Gas(*s_gas), s_profile, s_throat_radius, s_mdot, opts);
+        // One step is enough: only the throat is checked.
+        KineticNozzleResults results = nozzle.solve(1e-6, 0.1, 1);
+        double T_throat = temperature_of(results.throat.state);
+
+        EXPECT_NEAR(T_throat, T_reference, max_fp_error(T_reference, 1e-10, 1e-8))
+            << "KineticNozzle(Gas) throat must match Nozzle with the same throat model";
+        throat_temperatures.push_back(T_throat);
+    }
+    EXPECT_GT(throat_temperatures[0], throat_temperatures[1] + 1.0)
+        << "Equilibrium throat T (" << throat_temperatures[0]
+        << " K) must exceed frozen throat T (" << throat_temperatures[1] << " K)";
+}
+
+TEST_F(KineticNozzleTests, GasConstructorUsesSuppliedInletState) {
+    // The inlet_state overload must expand from the supplied state, not from the Gas's
+    // current state. A colder inlet (3000 K instead of the ~3500 K chamber)
+    // gives a colder throat, equal to that of a Nozzle started from the same state. Both are
+    // equilibrium states, as an equilibrium throat requires.
+    s_gas->thermo()->restoreState(s_inlet_state);
+    Nozzle default_nozzle(Gas(*s_gas), opts);
+    double T_throat_current = temperature_of(default_nozzle.solve_throat_conditions().state);
+
+    s_gas->thermo()->restoreState(s_inlet_state);
+    s_gas->thermo()->setState_TP(3000.0, s_gas->thermo()->pressure());
+    s_gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
+    std::vector<double> cold_state(s_gas->thermo()->stateSize());
+    s_gas->thermo()->saveState(cold_state);
+    s_gas->thermo()->restoreState(s_inlet_state);
+
+    Nozzle cold_reference(Gas(*s_gas), cold_state, opts);
+    double T_throat_reference = temperature_of(cold_reference.solve_throat_conditions().state);
+
+    // The Gas holds the chamber state; only the supplied state is cold.
+    s_gas->thermo()->restoreState(s_inlet_state);
+    KineticNozzle nozzle(Gas(*s_gas), s_profile, s_throat_radius, s_mdot, cold_state, opts);
+    KineticNozzleResults results = nozzle.solve(1e-6, 0.1, 1);
+    double T_throat = temperature_of(results.throat.state);
+
+    EXPECT_NEAR(T_throat, T_throat_reference, max_fp_error(T_throat_reference, 1e-10, 1e-8))
+        << "Throat must follow from the supplied inlet state";
+    EXPECT_LT(T_throat, T_throat_current - 100.0)
+        << "A 500 K colder inlet must give a clearly colder throat than the Gas's own state";
 }
 
 // ---------------------------------------------------------------------------
 // Throat conditions
 // ---------------------------------------------------------------------------
 
-TEST_F(KineticNozzleTests, ThroatConverges) {
-    EXPECT_TRUE(s_results.throat.converged)
-        << "Throat conditions must converge for a well-posed inlet state";
-}
-
 TEST_F(KineticNozzleTests, SolveReturnsStations) {
     ASSERT_GT(s_results.stations.size(), 0u)
         << "Solve must produce at least one station";
+}
+
+TEST_F(KineticNozzleTests, FullSolveReachesExit) {
+    // The fixture allows 100000 steps for ~20000 steps of dx_max, so the integration must end
+    // exactly at the exit of the profile.
+    ASSERT_GT(s_results.stations.size(), 0u);
+    EXPECT_TRUE(s_results.status.ok()) << s_results.status.describe();
+    EXPECT_EQ(s_results.stations.back().x, s_profile.x_max())
+        << "The last step must land on the exit, not a rounding error short of it";
+}
+
+TEST_F(KineticNozzleTests, StepLimitedSolveIsIncompleteAndKeepsTheStationsSolved) {
+    // Stopping at max_steps must be reported rather than returned as if complete, and the part
+    // of the nozzle that was integrated stays valid.
+    const int max_steps = 3;
+    double length = s_profile.x_max() - s_profile.x_min();
+    KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
+    KineticNozzleResults truncated = nozzle.solve(1e-6, length/20000, max_steps);
+
+    EXPECT_TRUE(failed_with(truncated.status, FailureReason::INCOMPLETE, "max_steps"));
+    EXPECT_EQ(truncated.stations.size(), static_cast<size_t>(max_steps));
+    ASSERT_FALSE(truncated.stations.empty());
+    EXPECT_LT(truncated.stations.back().x, s_profile.x_max());
+    EXPECT_LT(truncated.stations.size(), s_results.stations.size());
+    for (const KineticNozzleStation& station : truncated.stations) {
+        EXPECT_TRUE(std::isfinite(station.x));
+        EXPECT_TRUE(std::isfinite(station.velocity));
+        EXPECT_TRUE(std::isfinite(station.thermo.temperature));
+    }
+    // The throat is solved before the integration starts and is not affected by the stop
+    EXPECT_TRUE(truncated.throat.status.ok());
+}
+
+TEST_F(KineticNozzleTests, NonpositiveStepArgumentsAreRejected) {
+    KineticNozzle nozzle(*s_gas, s_profile, s_throat_radius, s_mdot);
+    EXPECT_THROW(nozzle.solve(0.0, 1e-4, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(-1e-6, 1e-4, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(1e-6, 0.0, 100), std::invalid_argument);
+    EXPECT_THROW(nozzle.solve(1e-6, 1e-4, 0), std::invalid_argument);
 }
 
 TEST_F(KineticNozzleTests, FirstStationMachIsApproximatelyOne) {
@@ -136,7 +260,6 @@ TEST_F(KineticNozzleTests, StagnationEnthalpyConservedAtEveryStation) {
     // First law (adiabatic, steady): H0 = h + u²/2 = const.
     // Tolerance 1% relative: Strang splitting is O(dt²); accumulated error
     // over ~1000 steps with dt=1e-6 and u~1500 m/s is well within 1%.
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     double H0 = s_results.throat.H_stagnation;
@@ -148,7 +271,7 @@ TEST_F(KineticNozzleTests, StagnationEnthalpyConservedAtEveryStation) {
         double H0_station = h + 0.5 * station.velocity * station.velocity;
         EXPECT_NEAR(H0_station, H0, max_fp_error(H0, 1e-2, 1.0))
             << "Stagnation enthalpy not conserved at station " << i
-            << " (x=" << station.x << " m)";
+            << " (x=" << station.x << " throat radii)";
     }
 }
 
@@ -251,7 +374,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     //
     // Reference: kinetic_nozzle_reference.md §7.1
 
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     // Get kinetic exit temperature and area ratio
@@ -264,7 +386,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double T_equilibrium = s_gas->thermo()->temperature();
 
@@ -273,7 +394,6 @@ TEST_F(KineticNozzleTests, KineticTemperatureBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double T_frozen = s_gas->thermo()->temperature();
 
@@ -293,7 +413,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     // additional enthalpy, which in the nozzle converts to higher exit velocity.
     // Exit velocity: v = sqrt(2*(H0-h)), and h_frozen > h_equilibrium because the
     // frozen composition retains dissociation energy in chemical bonds.
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     double v_kinetic = s_results.stations.back().velocity;
@@ -303,7 +422,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double v_eq = std::sqrt(2.0 * (H0 - s_gas->thermo()->enthalpy_mass()));
 
@@ -312,7 +430,6 @@ TEST_F(KineticNozzleTests, KineticExitVelocityBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double v_frz = std::sqrt(2.0 * (H0 - s_gas->thermo()->enthalpy_mass()));
 
@@ -329,7 +446,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     // additional enthalpy, which in the nozzle converts to higher temperature 
     // & therefore pressure.
     
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     const auto& exit_result = s_results.stations.back(); 
@@ -343,7 +459,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double P_eq = s_gas->thermo()->pressure();
 
@@ -352,7 +467,6 @@ TEST_F(KineticNozzleTests, ExitPressureBoundedByFrozenAndEquilibrium) {
     frozen_opts.chemistry = GasChemistry::FROZEN;
     Nozzle frz_nozzle(*s_gas, frozen_opts);
     NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(frz_results.expansions.front().converged);
     s_gas->thermo()->restoreState(frz_results.expansions.front().state);
     double P_frz = s_gas->thermo()->pressure();
 
@@ -373,8 +487,8 @@ TEST_F(KineticNozzleTests, GammaUsedIsFrozenCpOverCv) {
     // physically correct because acoustic timescales are much shorter than
     // chemical timescales (see §5 of reference).
     s_gas->thermo()->restoreState(s_inlet_state);
-    Gas frozen_gas(*s_gas, GasChemistry::FROZEN);
-    double gamma_frozen = frozen_gas.gamma_s();
+    Gas frozen_gas(*s_gas);
+    double gamma_frozen = frozen_gas.gamma_s(CompositionModel::FROZEN);
 
     NozzleOptions frozen_opts;
     frozen_opts.chemistry = GasChemistry::FROZEN;
@@ -425,17 +539,25 @@ TEST_F(KineticNozzleTests, DamkohlerMinIsMinimumOfNonZeroEntries) {
     }
 }
 
-TEST_F(KineticNozzleTests, FreezingSpeciesIndexIsValid) {
-    // min_Da_species must be a valid species index
+TEST_F(KineticNozzleTests, FreezingSpeciesIsAProductSpecies) {
     ASSERT_GT(s_results.stations.size(), 0u);
 
-    int n_species = static_cast<int>(s_gas->thermo()->nSpecies());
     for (size_t i = 0; i < s_results.stations.size(); i += check_interval) {
-        EXPECT_GE(s_results.stations[i].min_Da_species, 0)
-            << "min_Da_species must be non-negative at station " << i;
-        EXPECT_LT(s_results.stations[i].min_Da_species, n_species)
-            << "min_Da_species out of range at station " << i;
+        const KineticNozzleStation& station = s_results.stations[i];
+        ASSERT_FALSE(station.min_Da_species.empty()) << "station " << i;
+        const size_t k = s_gas->thermo()->speciesIndex(station.min_Da_species);
+        ASSERT_NE(k, Cantera::npos) << "unknown species " << station.min_Da_species;
+        EXPECT_DOUBLE_EQ(station.damkohler[k], station.Da_min) << "station " << i;
     }
+}
+
+TEST_F(KineticNozzleTests, StationThermoMatchesState) {
+    ASSERT_GT(s_results.stations.size(), 0u);
+    const KineticNozzleStation& exit_station = s_results.stations.back();
+    s_gas->thermo()->restoreState(exit_station.state);
+    EXPECT_DOUBLE_EQ(exit_station.thermo.temperature, s_gas->thermo()->temperature());
+    EXPECT_DOUBLE_EQ(exit_station.thermo.pressure, s_gas->thermo()->pressure());
+    EXPECT_NEAR(exit_station.mach, exit_station.velocity / exit_station.thermo.speed_of_sound, 1e-12);
 }
 
 TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
@@ -443,7 +565,6 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     // its equilibrium counterpart.
     ASSERT_GT(s_results.stations.size(), 0u);
 
-    ASSERT_TRUE(s_results.throat.converged);
     ASSERT_GT(s_results.stations.size(), 0u);
 
     const auto& exit_result = s_results.stations.back(); 
@@ -456,7 +577,6 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
     s_gas->thermo()->restoreState(s_inlet_state);
     Nozzle eq_nozzle(*s_gas, opts);
     NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    ASSERT_TRUE(eq_results.expansions.front().converged);
     s_gas->thermo()->restoreState(eq_results.expansions.front().state);
     double S_eq = s_gas->thermo()->entropy_mass();
 
@@ -465,54 +585,32 @@ TEST_F(KineticNozzleTests, EntropyIsStableOrIncreasing) {
         << "Exit entropy >= equiilibrium exit entropy";
 }
 
-// ---------------------------------------------------------------------------
-// Temporary diagnostic (will remove)
-// ---------------------------------------------------------------------------
-TEST_F(KineticNozzleTests, DiagnosticBoundingValues) {
-    ASSERT_TRUE(s_results.throat.converged);
-    const auto& exit_station = s_results.stations.back();
-    s_gas->thermo()->restoreState(exit_station.state);
-    double T_kinetic = s_gas->thermo()->temperature();
-    double exit_ar = exit_station.area_ratio;
-    double H0 = s_results.throat.H_stagnation;
-    double H0_check = s_gas->thermo()->enthalpy_mass() + 0.5*exit_station.velocity*exit_station.velocity;
+TEST(KineticNozzleDataRangeTests, StationFarOutsideTheDataStopsTheIntegration) {
+    // From a cool H2O-rich inlet (700 K, 30 bar) an expansion to an area ratio of 100 cools the
+    // flow far below the 200 K lower end of the H2 and O2 data in h2o2.yaml. The phase has the
+    // species of h2o2.yaml without its reactions, which this test does not need.
+    const Cantera::AnyMap root = Cantera::AnyMap::fromYamlString(R"(
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [O, H, Ar, N]
+  species: [{h2o2.yaml/species: all}]
+  kinetics: gas
+  reactions: none
+  state: {T: 300.0, P: 1 atm}
+)");
+    Gas gas(Cantera::newSolution(root["phases"].getMapWhere("name", "gas"), root));
+    gas.set_state_TPX(700.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas.equilibrate_TP(700.0, 3e6);
+    const double throat_radius = 0.01;
+    NozzleProfile profile = make_conical_profile(throat_radius, 10.0 * throat_radius, 2.0, 100)
+                                .scaled(1.0 / throat_radius);
+    KineticNozzle nozzle(gas, profile, throat_radius, 1.0);
+    const KineticNozzleResults results = nozzle.solve(1e-6, 0.01, 100000);
 
-    s_gas->thermo()->restoreState(s_inlet_state);
-    Nozzle eq_nozzle(*s_gas, opts);
-    NozzleResults eq_results = eq_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    double T_equilibrium = 0, v_eq = 0;
-    if (eq_results.expansions.front().converged) {
-        s_gas->thermo()->restoreState(eq_results.expansions.front().state);
-        T_equilibrium = s_gas->thermo()->temperature();
-        v_eq = std::sqrt(2.0*(H0 - s_gas->thermo()->enthalpy_mass()));
-    }
-
-    s_gas->thermo()->restoreState(s_inlet_state);
-    NozzleOptions frozen_opts;
-    frozen_opts.chemistry = GasChemistry::FROZEN;
-    Nozzle frz_nozzle(*s_gas, frozen_opts);
-    NozzleResults frz_results = frz_nozzle.solve(ExpansionType::SUPERSONIC_AREA_RATIO, exit_ar);
-    double T_frozen = 0, v_frz = 0;
-    if (frz_results.expansions.front().converged) {
-        s_gas->thermo()->restoreState(frz_results.expansions.front().state);
-        T_frozen = s_gas->thermo()->temperature();
-        v_frz = std::sqrt(2.0*(H0 - s_gas->thermo()->enthalpy_mass()));
-    }
-
-    std::cout << "\n=== Bounding Diagnostic ===\n"
-              << "Exit A/At: " << exit_ar << "\n"
-              << "H0 (throat): " << H0 << " J/kg\n"
-              << "H0 (check at exit): " << H0_check << " J/kg\n"
-              << "Stations total: " << s_results.stations.size() << "\n"
-              << "T_frozen:      " << T_frozen << " K, v_frozen: " << v_frz << " m/s\n"
-              << "T_kinetic:     " << T_kinetic << " K, v_kinetic: " << exit_station.velocity << " m/s\n"
-              << "T_equilibrium: " << T_equilibrium << " K, v_eq: " << v_eq << " m/s\n"
-              << "Eq throat T: ";
-    s_gas->thermo()->restoreState(eq_results.throat.state);
-    std::cout << s_gas->thermo()->temperature() << " K\n"
-              << "Kinetic throat T: ";
-    s_gas->thermo()->restoreState(s_results.throat.state);
-    std::cout << s_gas->thermo()->temperature() << " K\n"
-              << "===========================\n";
-    SUCCEED();
+    EXPECT_TRUE(failed_with(results.status, FailureReason::OUT_OF_DATA_RANGE, "by more than 20%"));
+    // The stations before the stop are kept, and none of them is far outside the data
+    ASSERT_FALSE(results.stations.empty());
+    EXPECT_GT(results.stations.back().thermo.temperature, 0.8 * 200.0);
+    EXPECT_LT(results.stations.back().x, profile.x_max());
 }

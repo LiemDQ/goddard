@@ -1,7 +1,14 @@
 """Convenience factory functions for building Goddard problems."""
 
+from __future__ import annotations
+
 import math
 import os
+import warnings
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+import numpy as np
 
 from goddard._core import (
     CombustionProcess,
@@ -10,72 +17,29 @@ from goddard._core import (
     Gas,
     GasChemistry,
     NozzleOptions,
-    ExpansionType,
-    create_solution,
     MocFlowKind,
+    MocLogLevel,
     MocMode,
     MocOptions,
+    MocResult,
+    MocStartLine,
+    NozzleGeometry,
     NozzleProfile,
     MocNozzle,
 )
 
 
-def OF_ratio(*ratios):
-    """Create a list of O/F ratios.
-
-    Example:
-        OF_ratio(2.0, 2.5, 3.0, 3.5, 4.0)
-    """
-    return list(ratios)
-
-
-def supersonic_ratio(*ratios):
-    """Create NozzleOptions for supersonic area ratio expansion.
-
-    Example:
-        supersonic_ratio(3.0, 5.0, 10.0, 15.0)
-    """
-    opts = NozzleOptions()
-    opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
-    opts.expansion_ratios = list(ratios)
-    return opts
-
-
-def subsonic_ratio(*ratios):
-    """Create NozzleOptions for subsonic area ratio expansion."""
-    opts = NozzleOptions()
-    opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.SUBSONIC_AREA_RATIO
-    opts.expansion_ratios = list(ratios)
-    return opts
-
-
-def pressure_ratio(*ratios):
-    """Create NozzleOptions for pressure ratio expansion."""
-    opts = NozzleOptions()
-    opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.PRESSURE_RATIO
-    opts.expansion_ratios = list(ratios)
-    return opts
-
-
-def infinite_area_combustor(pressures=None, process=CombustionProcess.ISOBARIC):
-    """Create CombustorOptions for infinite area combustor.
+def infinite_area_combustor(*, process: CombustionProcess = CombustionProcess.ISOBARIC
+                            ) -> CombustorOptions:
+    """Create CombustorOptions for an infinite-area combustor.
 
     Args:
-        pressures: List of pressures [Pa]. Chamber pressures for isobaric combustion,
-            initial reactant pressures for isochoric combustion. Defaults to empty list.
         process: CombustionProcess, isobaric (HP) or isochoric (UV). Defaults to ISOBARIC.
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.INFINITE_AREA
-    opts.pressures = pressures or []
-    opts.process = process
-    return opts
+    return CombustorOptions(type=CombustorType.INFINITE_AREA, process=process)
 
 
-def finite_mass_flux_combustor(mass_flux, pressures=None):
+def finite_mass_flux_combustor(mass_flux: float) -> CombustorOptions:
     """Create CombustorOptions for a finite-area combustor driven by mass flux.
 
     The chamber area follows from the requested mass flux through the momentum balance
@@ -83,73 +47,40 @@ def finite_mass_flux_combustor(mass_flux, pressures=None):
 
     Args:
         mass_flux: Mass flux through the chamber, mdot/A_c [kg/(m^2 s)].
-        pressures: List of injector-face pressures [Pa].
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.FINITE_MASS_FLUX
-    opts.mass_flux = mass_flux
-    opts.pressures = pressures or []
-    return opts
+    return CombustorOptions(type=CombustorType.FINITE_MASS_FLUX, mass_flux=mass_flux)
 
 
-def finite_contraction_ratio_combustor(contraction_ratio, pressures=None):
+def finite_contraction_ratio_combustor(contraction_ratio: float) -> CombustorOptions:
     """Create CombustorOptions for a finite-area combustor driven by contraction ratio.
 
     Isobaric combustion only (`CombustionProcess.ISOBARIC`).
 
     Args:
         contraction_ratio: Chamber contraction ratio, A_c/A_t [-], greater than 1.
-        pressures: List of injector-face pressures [Pa].
     """
-    opts = CombustorOptions()
-    opts.type = CombustorType.FINITE_CONTRACTION_RATIO
-    opts.contraction_ratio = contraction_ratio
-    opts.pressures = pressures or []
-    return opts
+    return CombustorOptions(type=CombustorType.FINITE_CONTRACTION_RATIO,
+                            contraction_ratio=contraction_ratio)
 
 
-def equilibrium_nozzle(*ratios):
-    """Create NozzleOptions for equilibrium chemistry nozzle with supersonic
-    area ratio expansion.
+def equilibrium_nozzle() -> NozzleOptions:
+    """Create NozzleOptions for an equilibrium expansion."""
+    return NozzleOptions(chemistry=GasChemistry.EQUILIBRIUM)
+
+
+def frozen_nozzle(*, frozen_NFZ: int = 0) -> NozzleOptions:
+    """Create NozzleOptions for an expansion frozen at a station.
 
     Args:
-        *ratios: Expansion ratios. If empty, returns bare GasChemistry.
-
-    Returns:
-        NozzleOptions if ratios provided, GasChemistry.EQUILIBRIUM otherwise.
+        frozen_NFZ: Freezing station, 0-based: 0 is the chamber (the default,
+            and CEA's default freezing point), 1 the throat, 2 onward the exit
+            stations. CEA's nfz is frozen_NFZ + 1 for an infinite-area combustor.
     """
-    if not ratios:
-        return GasChemistry.EQUILIBRIUM
-    opts = NozzleOptions()
-    opts.chemistry = GasChemistry.EQUILIBRIUM
-    opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
-    opts.expansion_ratios = list(ratios)
-    return opts
+    return NozzleOptions(chemistry=GasChemistry.FROZEN, frozen_NFZ=frozen_NFZ)
 
-
-def frozen_nozzle(*ratios, frozen_NFZ=1):
-    """Create NozzleOptions for frozen chemistry nozzle with supersonic
-    area ratio expansion.
-
-    Args:
-        *ratios: Expansion ratios. If empty, returns bare GasChemistry.
-        frozen_NFZ: Frozen flow station number.
-
-    Returns:
-        NozzleOptions if ratios provided, GasChemistry.FROZEN otherwise.
-    """
-    if not ratios:
-        return GasChemistry.FROZEN
-    opts = NozzleOptions()
-    opts.chemistry = GasChemistry.FROZEN
-    opts.expansion_type = ExpansionType.SUPERSONIC_AREA_RATIO
-    opts.expansion_ratios = list(ratios)
-    opts.frozen_NFZ = frozen_NFZ
-    return opts
-
-
-def conical_nozzle(area_ratio, *, r_expansion_curve=0.382, r_throat=1.0,
-                   angle_deg=15.0, n_points=50):
+def conical_nozzle(area_ratio: float, *, r_expansion_curve: float = 0.382,
+                   r_throat: float = 1.0, theta_n: float = math.radians(15.0),
+                   n_points: int = 50) -> NozzleProfile:
     """Generate a conical nozzle contour.
 
     Args:
@@ -157,7 +88,7 @@ def conical_nozzle(area_ratio, *, r_expansion_curve=0.382, r_throat=1.0,
         r_expansion_curve: Radius of curvature of the throat expansion arc, in the
             same length units as ``r_throat``. Zero gives a sharp throat corner.
         r_throat: Throat radius, in length units.
-        angle_deg: Conical expansion half-angle, in degrees.
+        theta_n: Conical expansion half-angle, in radians.
         n_points: Number of points in the contour.
 
     Returns:
@@ -165,10 +96,11 @@ def conical_nozzle(area_ratio, *, r_expansion_curve=0.382, r_throat=1.0,
     """
     return NozzleProfile.conical(
         area_ratio=area_ratio, r_expansion_curve=r_expansion_curve,
-        r_throat=r_throat, angle_deg=angle_deg, n_points=n_points)
+        r_throat=r_throat, theta_n=theta_n, n_points=n_points)
 
 
-def rao_nozzle(area_ratio, *, r_throat=1.0, length_frac=0.8, n_points=50):
+def rao_nozzle(area_ratio: float, *, r_throat: float = 1.0, length_frac: float = 0.8,
+               n_points: int = 50) -> NozzleProfile:
     """Generate a thrust-optimized parabolic (Rao TOP) nozzle contour.
 
     Args:
@@ -187,15 +119,15 @@ def rao_nozzle(area_ratio, *, r_throat=1.0, length_frac=0.8, n_points=50):
         length_frac=length_frac, n_points=n_points)
 
 
-def bezier_nozzle(area_ratio, theta_n_deg, theta_e_deg, *,
-                  r_expansion_curve=0.382, r_throat=1.0, length_frac=0.8,
-                  n_points=50):
+def bezier_nozzle(area_ratio: float, theta_n: float, theta_e: float, *,
+                  r_expansion_curve: float = 0.382, r_throat: float = 1.0,
+                  length_frac: float = 0.8, n_points: int = 50) -> NozzleProfile:
     """Generate a parabolic nozzle contour parametrized by Bezier curves.
 
     Args:
         area_ratio: Exit area divided by throat area.
-        theta_n_deg: Maximum wall angle from the centerline, in degrees.
-        theta_e_deg: Wall angle at the nozzle exit, in degrees.
+        theta_n: Maximum wall angle from the centerline, in radians.
+        theta_e: Wall angle at the nozzle exit, in radians.
         r_expansion_curve: Radius of curvature of the expansion region, as a
             fraction of the throat radius.
         r_throat: Throat radius, in length units.
@@ -206,46 +138,51 @@ def bezier_nozzle(area_ratio, theta_n_deg, theta_e_deg, *,
         NozzleProfile.
     """
     return NozzleProfile.bezier(
-        area_ratio=area_ratio, theta_n_deg=theta_n_deg, theta_e_deg=theta_e_deg,
+        area_ratio=area_ratio, theta_n=theta_n, theta_e=theta_e,
         r_expansion_curve=r_expansion_curve, r_throat=r_throat,
         length_frac=length_frac, n_points=n_points)
 
 
-def _build_nozzle(opts, gas, solution):
-    """Pick the MocNozzle constructor matching the supplied gas description."""
+def _default_moc_chemistry(chemistry: GasChemistry | None, gas: Gas | None) -> GasChemistry:
+    """The chemistry given, else FROZEN with a ``gas`` and PERFECT_GAS without one."""
+    if chemistry is not None:
+        return chemistry
+    return GasChemistry.PERFECT_GAS if gas is None else GasChemistry.FROZEN
+
+
+def _build_nozzle(opts: MocOptions, gas: Gas | None) -> MocNozzle:
+    """Build a MocNozzle from ``gas``, or a perfect-gas one when ``gas`` is None."""
     if gas is not None:
         return MocNozzle(gas, opts)
-    if solution is not None:
-        return MocNozzle(solution, opts)
     return MocNozzle(opts)
 
 
-def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
-               flow_type=None, chemistry=None, throat_radius=1.0,
-               exit_mach=None, geometry=None, log_level=None,
-               gas=None, solution=None):
+def moc_design(theta_max: float, *, num_characteristics: int = 10, gamma: float = 1.4,
+               flow_type: MocFlowKind | None = None, chemistry: GasChemistry | None = None,
+               throat_radius: float = 1.0, geometry: NozzleGeometry | None = None,
+               log_level: MocLogLevel | None = None, gas: Gas | None = None) -> MocResult:
     """Design a minimum-length nozzle using the Method of Characteristics.
 
     Args:
-        theta_max_deg: Maximum wall angle in degrees.
+        theta_max: Maximum wall angle, in radians.
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
-        exit_mach: Target exit Mach number, if the design is Mach-driven.
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
+        throat_radius: Throat radius, used when ``geometry`` is not given. Sets the
+            length unit of the result: the designed contour and every other length
+            are returned in it.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
-        gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     opts = MocOptions()
     opts.flow_type = flow_type
@@ -253,23 +190,23 @@ def moc_design(theta_max_deg, *, num_characteristics=10, gamma=1.4,
     opts.mode = MocMode.DESIGN_MIN_LENGTH
     opts.num_characteristics = num_characteristics
     opts.gamma = gamma
-    opts.theta_max = math.radians(theta_max_deg)
+    opts.theta_max = theta_max
     if geometry is not None:
         opts.geometry = geometry
     else:
         opts.geometry.throat_radius = throat_radius
-    if exit_mach is not None:
-        opts.exit_mach = exit_mach
     if log_level is not None:
         opts.log_level = log_level
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
-def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
-                   gamma=1.4, flow_type=None, chemistry=None, throat_radius=1.0,
-                   geometry=None, log_level=None, start_line=None,
-                   gas=None, solution=None):
+def moc_rao_design(expansion_ratio: float, *, length_frac: float = 0.8,
+                   num_characteristics: int = 10, gamma: float = 1.4,
+                   flow_type: MocFlowKind | None = None, chemistry: GasChemistry | None = None,
+                   throat_radius: float = 1.0, geometry: NozzleGeometry | None = None,
+                   log_level: MocLogLevel | None = None, start_line: MocStartLine | None = None,
+                   gas: Gas | None = None) -> MocResult:
     """Design a Rao thrust-optimized nozzle using the Method of Characteristics.
 
     The solver generates the Rao contour from ``expansion_ratio`` and
@@ -281,24 +218,25 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to AXISYMMETRIC, the mode Rao contours are for).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
+        throat_radius: Throat radius, used when ``geometry`` is not given. The Rao
+            contour is generated for this throat, and every length in the result is in
+            its unit.
         geometry: A NozzleGeometry, overriding ``throat_radius``, ``expansion_ratio``
             and ``length_frac``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``).
-        gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.AXISYMMETRIC
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     opts = MocOptions()
     opts.flow_type = flow_type
@@ -317,38 +255,42 @@ def moc_rao_design(expansion_ratio, *, length_frac=0.8, num_characteristics=10,
     if start_line is not None:
         opts.start_line = start_line
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
-def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
-                 flow_type=None, chemistry=None, throat_radius=1.0,
-                 geometry=None, log_level=None, start_line=None,
-                 gas=None, solution=None):
+def moc_analysis(profile: NozzleProfile | str | os.PathLike[str], *,
+                 num_characteristics: int = 10, gamma: float = 1.4,
+                 flow_type: MocFlowKind | None = None, chemistry: GasChemistry | None = None,
+                 throat_radius: float = 1.0, geometry: NozzleGeometry | None = None,
+                 log_level: MocLogLevel | None = None, start_line: MocStartLine | None = None,
+                 gas: Gas | None = None) -> MocResult:
     """Analyse an existing nozzle contour using the Method of Characteristics.
 
     Args:
-        profile: NozzleProfile object, or a path (str or os.PathLike) to a CSV file.
+        profile: NozzleProfile object, or a path (str or os.PathLike) to a CSV file,
+            in the same length unit as ``throat_radius``, with its throat at x = 0.
         num_characteristics: Number of C+ characteristics from expansion fan.
         gamma: Ratio of specific heats (used for PERFECT_GAS chemistry only).
         flow_type: MocFlowKind (defaults to PLANAR).
-        chemistry: GasChemistry (defaults to PERFECT_GAS).
-        throat_radius: Throat radius, used when ``geometry`` is not given.
+        chemistry: GasChemistry (defaults to FROZEN when ``gas`` is given, else
+            PERFECT_GAS). PERFECT_GAS with a ``gas`` raises ValueError.
+        throat_radius: Throat radius, used when ``geometry`` is not given. Must equal
+            the contour's smallest radius (within 1e-3 relative); every length in the
+            result is in its unit.
         geometry: A NozzleGeometry, overriding ``throat_radius``.
         log_level: MocLogLevel; pass ``MocLogLevel.DEBUG`` for a kernel trace.
         start_line: MocStartLine; defaults to MocOptions' own AUTO (Kliegel-Levine
             unless the series misses the wall angle by more than
             ``kl_max_wall_angle_error``, or the contour's downstream curvature
             radius requests a centered fan).
-        gas: A Gas for chemistry-based calculations.
-        solution: A SolutionHandle, as an alternative to ``gas``.
+        gas: The Gas for FROZEN or EQUILIBRIUM chemistry, at its stagnation state.
 
     Returns:
         MocResult from the solver.
     """
     if flow_type is None:
         flow_type = MocFlowKind.PLANAR
-    if chemistry is None:
-        chemistry = GasChemistry.PERFECT_GAS
+    chemistry = _default_moc_chemistry(chemistry, gas)
 
     if isinstance(profile, (str, os.PathLike)):
         profile = NozzleProfile.load_csv(os.fspath(profile))
@@ -369,10 +311,10 @@ def moc_analysis(profile, *, num_characteristics=10, gamma=1.4,
     if start_line is not None:
         opts.start_line = start_line
 
-    return _build_nozzle(opts, gas, solution).solve()
+    return _build_nozzle(opts, gas).solve()
 
 
-def pass_diagnostics_table(result):
+def pass_diagnostics_table(result: MocResult) -> dict[str, np.ndarray]:
     """Columnarize a result's per-pass marching-front diagnostics.
 
     Turns ``result.pass_diagnostics`` -- a list of MocPassDiagnostics -- into a dict
@@ -387,8 +329,6 @@ def pass_diagnostics_table(result):
         front_axis_x, front_wall_x, front_axis_spacing, front_wall_spacing,
         step_dx, step_limiter.
     """
-    import numpy as np
-
     fields = ("pass_index", "front_points", "min_spacing", "max_spacing",
               "mean_spacing", "front_axis_x", "front_wall_x",
               "front_axis_spacing", "front_wall_spacing", "step_dx",
@@ -400,26 +340,31 @@ def pass_diagnostics_table(result):
     }
 
 
-def from_cantera(ct_solution, chemistry=GasChemistry.FROZEN):
+def from_cantera(ct_solution: Any) -> Gas:
     """Create a Gas from a Python cantera.Solution object.
 
-    Reconstructs the thermodynamic state by extracting the source file,
-    species, and state from the Python Cantera object and creating a new
-    internal C++ Solution with the same configuration.
+    The Gas is rebuilt from the Solution's source file, phase name and species, and set to its
+    temperature, pressure and mole fractions. Only that much carries over: the Gas uses the
+    phase as it is defined in the source file, so changes made to the Solution after loading it
+    (its thermo or kinetics model, added species or reactions) are lost, and condensed phases
+    and the Gas reference state are not taken from it. A UserWarning is emitted when the
+    Solution is not an ideal gas, since Goddard treats the phase as one.
 
     Args:
-        ct_solution: A cantera.Solution Python object.
-        chemistry: GasChemistry mode for the Gas (default: FROZEN).
+        ct_solution: A cantera.Solution Python object loaded from a YAML file.
 
     Returns:
         Gas object with state synchronized from the input Cantera solution.
     """
+    thermo_model = getattr(ct_solution, "thermo_model", "ideal-gas")
+    if thermo_model != "ideal-gas":
+        warnings.warn(f"from_cantera: the Solution's thermo model is {thermo_model!r}; Goddard "
+                      "treats the phase as an ideal gas.", UserWarning, stacklevel=2)
     source = ct_solution.source
     species_names = set(ct_solution.species_names)
     name = ct_solution.name
 
-    gas = Gas(source, phase_name=name, species=species_names,
-              chemistry=chemistry)
+    gas = Gas(source, phase_name=name, species=species_names)
 
     T = ct_solution.T
     P = ct_solution.P
@@ -432,24 +377,24 @@ def from_cantera(ct_solution, chemistry=GasChemistry.FROZEN):
     return gas
 
 
-def gas_from_yaml(yaml_file, phase_name="", species=None,
-                  chemistry=GasChemistry.FROZEN):
+def gas_from_yaml(yaml_file: str, phase_name: str = "",
+                  species: Iterable[str] | None = None) -> Gas:
     """Create a Gas from a YAML thermodynamic data file.
 
     Args:
         yaml_file: Path to a Cantera YAML thermodynamic data file.
         phase_name: Name of the phase in the YAML file (default: "").
         species: Set of species names to include (default: all).
-        chemistry: GasChemistry mode (default: FROZEN).
 
     Returns:
         Gas object.
     """
     return Gas(yaml_file, phase_name=phase_name,
-               species=species or set(), chemistry=chemistry)
+               species=set(species) if species is not None else set())
 
 
-def reactant_gas(file, composition, T, P=101325.0, basis="mole"):
+def reactant_gas(file: str, composition: Mapping[str, float], T: float, P: float = 101325.0,
+                 basis: str = "mole") -> Gas:
     """Create a reactant stream Gas from a reactant data file.
 
     A reactant stream is an ordinary Gas built from the species of a reactant database
@@ -479,7 +424,7 @@ def reactant_gas(file, composition, T, P=101325.0, basis="mole"):
     return gas
 
 
-def condensed_species(file, names=None):
+def condensed_species(file: str, names: Iterable[str] | None = None) -> dict[str, Any]:
     """Build the Gas keyword arguments that attach candidate condensed species.
 
     Args:

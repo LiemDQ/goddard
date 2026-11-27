@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include "goddard/moc.hpp"
+#include "goddard/error.hpp"
 
 namespace Goddard {
 
@@ -132,6 +133,18 @@ MocCrossings find_like_characteristic_crossings(const CharacteristicNet& net) {
 }
 
 void validate_moc_options(const MocOptions& options) {
+    // Placeholders for planned features: reject any use rather than silently ignore it.
+    if (options.mode == MocMode::DESIGN_CENTERLINE) {
+        throw NotImplementedError("MocMode::DESIGN_CENTERLINE is not implemented.");
+    }
+    if (options.exit_mach != 0.0) {
+        throw NotImplementedError(
+            "MocOptions::exit_mach is not implemented; set the design through theta_max.");
+    }
+    if (options.geometry.upstream_wall_curvature_radius != NozzleGeometry{}.upstream_wall_curvature_radius) {
+        throw NotImplementedError(
+            "NozzleGeometry::upstream_wall_curvature_radius is not implemented; leave it at its default.");
+    }
     if (options.num_characteristics < 3) {
         throw std::invalid_argument(std::format(
             "num_characteristics must be at least 3; got {}.", options.num_characteristics));
@@ -166,6 +179,26 @@ void validate_moc_options(const MocOptions& options) {
         throw std::invalid_argument(std::format(
             "max_wall_turn_per_step must be positive; got {}.", options.max_wall_turn_per_step));
     }
+    const double throat_radius = options.geometry.throat_radius;
+    if (!(throat_radius > 0.0) || !std::isfinite(throat_radius)) {
+        throw std::invalid_argument(std::format(
+            "geometry.throat_radius must be positive and finite; got {}.", throat_radius));
+    }
+    // The start lines are built at a throat of radius geometry.throat_radius, so the analysis
+    // contour has to have its throat there, in the same unit. A mismatch is almost always a
+    // contour in one unit (e.g. throat radii) with the throat radius in another.
+    if (options.mode == MocMode::ANALYSIS && options.nozzle_profile.size() > 0) {
+        const std::vector<double>& wall_y = options.nozzle_profile.y;
+        const double contour_throat = *std::min_element(wall_y.begin(), wall_y.end());
+        constexpr double throat_match_reltol = 1e-3;
+        if (!(std::abs(contour_throat - throat_radius) <= throat_match_reltol * throat_radius)) {
+            throw std::invalid_argument(std::format(
+                "The analysis contour's smallest radius is {}, but geometry.throat_radius is {}: "
+                "nozzle_profile must be in the same length unit as geometry.throat_radius, with "
+                "its throat equal to it (within a relative {}).",
+                contour_throat, throat_radius, throat_match_reltol));
+        }
+    }
 }
 
 ThrustCoefficient compute_thrust_coefficient(
@@ -173,11 +206,19 @@ ThrustCoefficient compute_thrust_coefficient(
     MocFlowKind flow_type,
     double ambient_pressure_ratio)
 {
+    if (!result.status.ok()) {
+        ThrustCoefficient not_computed;
+        not_computed.status = SolveStatus::not_computed(result.status);
+        return not_computed;
+    }
+
     const auto& ep = result.exit_plane;
     size_t n = ep.y.size();
 
     if (n < 2) {
-        return {0.0, 0.0, 0.0, 0.0};
+        throw std::invalid_argument(std::format(
+            "compute_thrust_coefficient needs at least 2 exit-plane points, got {}; "
+            "the MoC solve likely failed before reaching the exit.", n));
     }
 
     double momentum_integral = 0.0;
@@ -216,18 +257,20 @@ ThrustCoefficient compute_thrust_coefficient(
         }
     }
 
-    // Normalize by throat area (p0 * A_throat)
-    // Nondimensional: p0 = 1, y_throat = 1.
-    // Planar: F = 2*integral (symmetry), A_throat = 2*y_t = 2.0  =>  Cf = integral
-    // Axisymmetric: F = 2*pi*integral(f*y*dy), A_throat = pi*y_t^2 = pi
-    //   => Cf = 2*integral(f*y*dy). The integrand already includes the 2*y factor.
-    double Cf_momentum = momentum_integral;
-    double Cf_pressure = pressure_integral;
+    // Normalize by throat area (p0 * A_throat), with p0 = 1 (pressures are p/p0) and y_t the
+    // throat radius the exit-plane stations are expressed in.
+    // Planar: F = 2*integral (symmetry), A_throat = 2*y_t  =>  Cf = integral / y_t
+    // Axisymmetric: F = 2*pi*integral(f*y*dy), A_throat = pi*y_t^2
+    //   => Cf = 2*integral(f*y*dy) / y_t^2. The integrand already includes the 2*y factor.
+    const double y_t = (result.throat_radius > 0.0) ? result.throat_radius : 1.0;
+    const double throat_area = (flow_type == MocFlowKind::PLANAR) ? y_t : y_t * y_t;
+    double Cf_momentum = momentum_integral / throat_area;
+    double Cf_pressure = pressure_integral / throat_area;
 
     double Cf_vacuum = Cf_momentum + Cf_pressure;
     double Cf = Cf_vacuum - ambient_pressure_ratio * result.area_ratio;
 
-    return {Cf_vacuum, Cf, Cf_momentum, Cf_pressure};
+    return {Cf_vacuum, Cf, Cf_momentum, Cf_pressure, {}};
 }
 
 

@@ -19,11 +19,6 @@ double mach_from_prandtl_meyer(double nu, double gamma,
                                 int max_iter = 20);
 
 /**
- * Generalized Prandtl-Meyer angle for a non-calorically perfect gas.
- */
-double frozen_prandtl_meyer(Cantera::ThermoPhase& thermo, double mach);
-
-/**
  * Table of thermodynamic data for Prandtl-Meyer expansion fans
  */
 class PrandtlMeyerTable {
@@ -61,6 +56,9 @@ public:
         size_t num_points = 500);
     
     bool is_built() const { return built; }
+
+    /** Keep the first `num_points` points of the table and drop the rest. */
+    void truncate(size_t num_points);
 
     bool is_equilibrium() const { return equil; }
 

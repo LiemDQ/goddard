@@ -1,5 +1,8 @@
 """Smoke tests for MoC bindings — no solver calls, just imports and construction."""
 import inspect
+import math
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -33,7 +36,8 @@ def test_import_moc_enums():
 
 
 def test_import_moc_marching_enums():
-    from goddard import MocStepLimiter, MocStartLine
+    from goddard import MocStartLine
+    from goddard.moc_diagnostics import MocStepLimiter
 
     assert MocStepLimiter.NONE is not None
     assert MocStepLimiter.CFL is not None
@@ -49,21 +53,32 @@ def test_import_moc_marching_enums():
 def test_import_moc_structs():
     from goddard import (
         NozzleGeometry, NozzleProfile, MocOptions,
-        CharacteristicPoint, CharacteristicNet, ChainMetadata, PointMembership,
-        ExitPlane, MocResult, MocFailure, MocPassDiagnostics, MocInitDiagnostics,
-        MocFrontShear, MocCrossings, ThrustCoefficient,
+        CharacteristicPoint, CharacteristicNet,
+        ExitPlane, MocResult, MocFailure, MocCrossings, ThrustCoefficient,
+    )
+    from goddard.moc_diagnostics import (
+        ChainMetadata, PointMembership, MocPassDiagnostics, MocInitDiagnostics, MocFrontShear,
     )
 
     assert MocInitDiagnostics is not None
     assert MocFrontShear is not None
 
 
+def test_diagnostics_are_not_top_level():
+    import goddard
+    for name in ("MocPassDiagnostics", "MocInitDiagnostics", "MocFrontShear", "MocStepLimiter",
+                 "ChainMetadata", "PointMembership", "summarize_front_shear",
+                 "pass_diagnostics_table"):
+        assert not hasattr(goddard, name), name
+        assert hasattr(goddard.moc_diagnostics, name), name
+
+
 def test_import_moc_class():
     from goddard import (
         MocNozzle, compute_thrust_coefficient,
         find_like_characteristic_crossings, validate_moc_options,
-        summarize_front_shear,
     )
+    from goddard.moc_diagnostics import summarize_front_shear
 
     assert summarize_front_shear is not None
 
@@ -71,8 +86,9 @@ def test_import_moc_class():
 def test_import_convenience_moc():
     from goddard import (
         moc_design, moc_rao_design, moc_analysis,
-        conical_nozzle, rao_nozzle, bezier_nozzle, pass_diagnostics_table,
+        conical_nozzle, rao_nozzle, bezier_nozzle,
     )
+    from goddard.moc_diagnostics import pass_diagnostics_table
 
 
 def test_import_plotting_without_matplotlib_at_import_time():
@@ -81,6 +97,11 @@ def test_import_plotting_without_matplotlib_at_import_time():
 
     assert hasattr(plotting, "plot_characteristic_net")
     assert hasattr(plotting, "plot_field")
+
+    # A fresh interpreter, so matplotlib imported by earlier tests doesn't hide a regression.
+    code = "import sys, goddard; sys.exit('matplotlib' in sys.modules)"
+    completed = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert completed.returncode == 0, f"import goddard imported matplotlib\n{completed.stderr}"
 
 
 def test_nozzle_geometry_construction():
@@ -161,7 +182,6 @@ def test_moc_options_defaults():
     assert opts.mode == MocMode.DESIGN_MIN_LENGTH
     assert opts.num_characteristics == 10
     assert opts.gamma == pytest.approx(1.4)
-    assert opts.solver_options.reltol == pytest.approx(1e-5)
     assert opts.solver_options.abstol == pytest.approx(1e-10)
     assert opts.theta_max == pytest.approx(0.0)
     assert opts.exit_mach == pytest.approx(0.0)
@@ -243,33 +263,35 @@ def test_moc_options_marching_kwargs():
     assert opts.start_line == MocStartLine.CENTERED_FAN
 
 
-def test_characteristic_net_fronts_default_empty():
-    from goddard import CharacteristicNet
+def test_result_types_are_not_constructible():
+    """Results come from the solver; their types have no Python constructor."""
+    from goddard import CharacteristicNet, MocResult
+    from goddard.moc_diagnostics import MocPassDiagnostics
 
-    net = CharacteristicNet()
-    assert net.fronts == []
-
-
-def test_moc_pass_diagnostics_step_fields_default():
-    from goddard import MocPassDiagnostics, MocStepLimiter
-
-    diag = MocPassDiagnostics()
-    assert diag.step_dx == pytest.approx(0.0)
-    assert diag.step_limiter == MocStepLimiter.NONE
+    for cls in (CharacteristicNet, MocResult, MocPassDiagnostics):
+        with pytest.raises(TypeError):
+            cls()
 
 
-def test_moc_result_min_theta_and_init_diagnostics_defaults():
-    from goddard import MocResult, MocStartLine
+def test_min_length_design_records_no_fronts():
+    """The chain ladder of a minimum-length design keeps its characteristics in chains."""
+    from goddard import moc_design, MocStartLine
 
-    result = MocResult()
-    assert result.min_theta == pytest.approx(0.0)
-    assert result.min_theta_x == pytest.approx(0.0)
-    assert result.min_theta_y == pytest.approx(0.0)
+    result = moc_design(math.radians(15.0))
+    assert result.net.fronts == []
+    assert len(result.net.chains) > 0
+    assert result.init_diagnostics.start_line_used != MocStartLine.AUTO
 
-    diagnostics = result.init_diagnostics
-    assert diagnostics.wall_bc_residual == pytest.approx(0.0)
-    assert diagnostics.kplus_wall_end == pytest.approx(0.0)
-    assert diagnostics.start_line_used == MocStartLine.AUTO
+
+def test_analysis_pass_diagnostics_have_steps():
+    from goddard import moc_analysis, conical_nozzle, MocFlowKind
+    from goddard.moc_diagnostics import MocStepLimiter
+
+    result = moc_analysis(conical_nozzle(4.0), flow_type=MocFlowKind.AXISYMMETRIC)
+    assert len(result.pass_diagnostics) > 0
+    steps = [d for d in result.pass_diagnostics if d.step_limiter != MocStepLimiter.NONE]
+    assert steps
+    assert all(d.step_dx > 0.0 for d in steps)
 
 
 def test_convenience_moc_functions_accept_start_line():
@@ -286,3 +308,17 @@ def test_import_plot_fronts():
 
     assert hasattr(plotting, "plot_fronts")
     assert "plot_fronts" in plotting.__all__
+
+
+def test_unimplemented_moc_options_raise():
+    from goddard import MocNozzle, MocOptions, MocMode
+
+    opts = MocOptions(theta_max=0.3)
+    opts.exit_mach = 2.0
+    with pytest.raises(NotImplementedError):
+        MocNozzle(opts)
+
+    opts = MocOptions(theta_max=0.3)
+    opts.mode = MocMode.DESIGN_CENTERLINE
+    with pytest.raises(NotImplementedError):
+        MocNozzle(opts)

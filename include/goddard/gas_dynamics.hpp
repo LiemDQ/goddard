@@ -3,29 +3,11 @@
 #include <limits>
 #include "eigen3/Eigen/Dense"
 #include "cantera/core.h"
-#include "goddard/thermoarray.hpp"
 namespace Goddard {
-
-/**
- * @brief Gas flow velocity assuming isenthalpic expansion.
- */
-double gas_isenthalpic_velocity(const Cantera::ThermoPhase& gas, double H_stagnation);
-
-Eigen::ArrayXXd gas_isenthalpic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& H_stagnation);
-
-double gas_stagnation_enthalpy(const Cantera::ThermoPhase& gas, double velocity);
-
-Eigen::ArrayXXd gas_stagnation_enthalpy(const ThermoArray& gas, const Eigen::ArrayXXd& velocity);
 
 double perfect_gas_stagnation_pressure(double P, double mach, double gamma);
 
-Eigen::ArrayXXd perfect_gas_stagnation_pressure(const Eigen::ArrayXXd& P, const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma);
-
-double gas_stagnation_pressure(const Cantera::ThermoPhase& gas, double velocity);
-
 double stagnation_factor(double mach, double gamma);
-
-Eigen::ArrayXXd stagnation_factor(const Eigen::ArrayXXd& mach, const Eigen::ArrayXXd& gamma);
 
 inline double mach_to_mu(double mach) {
     // unfortunately trig functions aren't constexpr until C++26.
@@ -76,22 +58,6 @@ inline double critical_velocity_ratio_from_mach(double mach, double gamma) {
  */
 double gas_sonic_velocity(const Cantera::ThermoPhase& gas, double gamma);
 double gas_sonic_velocity(double temperature, double molar_mass, double gamma);
-Eigen::ArrayXXd gas_sonic_velocity(const ThermoArray& gas, const Eigen::ArrayXXd& gamma);
-
-
-/**
- * @brief Area per unit mass flow rate. Equation 6.12 in NASA CEA Report Part I.
- */
-double area_per_mdot(const Cantera::ThermoPhase& gas, double velocity);
-
-Eigen::ArrayXXd area_per_mdot(const ThermoArray& gas, const Eigen::ArrayXXd& velocity);
-
-
-double isp(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
-
-double ivac(const Cantera::ThermoPhase& gas, double gamma, double enthalpy);
-
-double mach(const Cantera::ThermoPhase& gas, double H_stag, double gamma);
 
 /**
  * For a perfect gas, calculates the area ratio for a given Mach number 
@@ -122,11 +88,6 @@ double mach_from_area_ratio(double area_ratio, double gamma, bool supersonic);
  * @return P_inj / P_inf [-].
  */
 double finite_area_pressure_loss(double mach, double gamma);
-/**
- * @brief Calculate thrust coefficient.
- */
-double C_F(double gamma, double pressure_ratio, double area_ratio);
-
 /**
  * @brief Calculate the characteristic combustion velocity (c*)
  */

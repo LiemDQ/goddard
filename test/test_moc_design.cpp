@@ -2,13 +2,14 @@
 #include "goddard/moc_nozzle.hpp"
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
+#include <numbers>
 #include <cmath>
 #include <vector>
 #include "gtest/gtest.h"
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // ============================================================
 // Reference data structures for textbook validation

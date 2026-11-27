@@ -9,9 +9,17 @@ partway still carries a net worth looking at, and seeing where the march stopped
 is usually the whole point of plotting it.
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Any
+
 import numpy as np
 
-from goddard._core import CharacteristicFamily, CharacteristicNet
+from goddard._core import CharacteristicFamily, CharacteristicNet, MocResult, NozzleProfile
+
+# matplotlib is optional and imported lazily, so its Axes type is spelled `Any` here.
+Axes = Any
 
 
 __all__ = [
@@ -47,7 +55,7 @@ def _as_net(result_or_net):
     return result_or_net.net
 
 
-def fan_apex_index(net):
+def fan_apex_index(net: CharacteristicNet) -> int | None:
     """Index of the throat lip a minimum-length design's expansion fan is centered on.
 
     Minimum-length design seeds every characteristic of the fan at one point -- the sharp
@@ -100,9 +108,11 @@ def _fan_ray_origins(net, apex):
     return sorted(origins)
 
 
-def plot_characteristic_net(result_or_net, ax=None, *, families=None, wall=True,
-                            axis=True, linewidth=0.5, plus_color="tab:blue",
-                            minus_color="tab:red", wall_color="k", fan_rays=True):
+def plot_characteristic_net(result_or_net: MocResult | CharacteristicNet, ax: Axes | None = None,
+                            *, families: Iterable[CharacteristicFamily] | None = None,
+                            wall: bool = True, axis: bool = True, linewidth: float = 0.5,
+                            plus_color: str = "tab:blue", minus_color: str = "tab:red",
+                            wall_color: str = "k", fan_rays: bool = True) -> Axes:
     """Draw the characteristic mesh: every C+ and C- line in the net.
 
     Analysis and Rao-design solves (the reference-plane march) prescribe a
@@ -229,7 +239,10 @@ def _ray_front_intersection(px, py, angle, fx, fy):
     return ax_[i] + ui * ex[i], ay_[i] + ui * ey[i], i, ui
 
 
-def trace_characteristics(result_or_net, *, families=None, every=1, seed_start_front=True):
+def trace_characteristics(result_or_net: MocResult | CharacteristicNet, *,
+                          families: Iterable[CharacteristicFamily] | None = None,
+                          every: int = 1, seed_start_front: bool = True
+                          ) -> list[tuple[CharacteristicFamily, np.ndarray]]:
     """Reconstruct characteristic lines from an inverse-march net.
 
     Analysis and Rao-design solves march reference planes rather than pairing
@@ -325,10 +338,13 @@ def trace_characteristics(result_or_net, *, families=None, every=1, seed_start_f
     return traced
 
 
-def plot_traced_characteristics(result_or_net, ax=None, *, families=None, every=1,
-                                seed_start_front=True, linewidth=0.5,
-                                plus_color="tab:blue", minus_color="tab:red",
-                                wall=True, axis=True, wall_color="k"):
+def plot_traced_characteristics(result_or_net: MocResult | CharacteristicNet,
+                                ax: Axes | None = None, *,
+                                families: Iterable[CharacteristicFamily] | None = None,
+                                every: int = 1, seed_start_front: bool = True,
+                                linewidth: float = 0.5, plus_color: str = "tab:blue",
+                                minus_color: str = "tab:red", wall: bool = True,
+                                axis: bool = True, wall_color: str = "k") -> Axes:
     """Draw characteristic lines reconstructed from an inverse-march net.
 
     The counterpart of :func:`plot_characteristic_net` for analysis and Rao-design solves,
@@ -384,7 +400,8 @@ def plot_traced_characteristics(result_or_net, ax=None, *, families=None, every=
     return ax
 
 
-def plot_fronts(result_or_net, ax=None, *, every=1, **kwargs):
+def plot_fronts(result_or_net: MocResult | CharacteristicNet, ax: Axes | None = None, *,
+                every: int = 1, **kwargs: Any) -> Axes:
     """Draw every marching front of an inverse-march net as one polyline each.
 
     Meaningful for analysis and Rao-design solves (the reference-plane march),
@@ -421,7 +438,7 @@ def plot_fronts(result_or_net, ax=None, *, every=1, **kwargs):
     return ax
 
 
-def mesh_node_mask(net):
+def mesh_node_mask(net: CharacteristicNet) -> np.ndarray:
     """Boolean mask selecting the net points that are genuine solution nodes.
 
     A minimum-length design net (the chain ladder) carries a few points that were
@@ -459,8 +476,10 @@ def mesh_node_mask(net):
     )
 
 
-def plot_field(result_or_net, ax=None, *, field="mach", levels=30, cmap="viridis",
-               colorbar=True, wall=True, mesh_nodes_only=True):
+def plot_field(result_or_net: MocResult | CharacteristicNet, ax: Axes | None = None, *,
+               field: str = "mach", levels: int = 30, cmap: str = "viridis",
+               colorbar: bool = True, wall: bool = True,
+               mesh_nodes_only: bool = True) -> Axes:
     """Contour a flow quantity over the net's scattered points.
 
     Args:
@@ -507,7 +526,8 @@ def plot_field(result_or_net, ax=None, *, field="mach", levels=30, cmap="viridis
     return ax
 
 
-def plot_profile(profile, ax=None, *, mirror=False, label=None, **kwargs):
+def plot_profile(profile: NozzleProfile, ax: Axes | None = None, *, mirror: bool = False,
+                 label: str | None = None, **kwargs: Any) -> Axes:
     """Draw a nozzle wall contour.
 
     Args:
@@ -540,7 +560,8 @@ def plot_profile(profile, ax=None, *, mirror=False, label=None, **kwargs):
     return ax
 
 
-def plot_exit_plane(result, ax=None, *, field="mach", **kwargs):
+def plot_exit_plane(result: MocResult, ax: Axes | None = None, *, field: str = "mach",
+                    **kwargs: Any) -> Axes:
     """Plot a flow quantity across the exit plane, against radial station.
 
     Args:
@@ -565,7 +586,7 @@ def plot_exit_plane(result, ax=None, *, field="mach", **kwargs):
     return ax
 
 
-def plot_front_diagnostics(result, axes=None):
+def plot_front_diagnostics(result: MocResult, axes: Any = None) -> Any:
     """Plot the marching front's per-pass geometry history.
 
     Three stacked panels: point spacing (min/mean/max), the axial step size, and

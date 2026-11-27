@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 #include <string>
@@ -26,8 +27,7 @@ public:
      * @note The created `Gas` will reference the same `Solution` object pointed to
      * by the `shared_ptr`.  
      */
-    explicit Gas(std::shared_ptr<Cantera::Solution> gas,
-                 GasChemistry chemistry = GasChemistry::FROZEN);
+    explicit Gas(std::shared_ptr<Cantera::Solution> gas);
 
     /**
      * Create a `Gas` that carries a set of candidate condensed species.
@@ -36,38 +36,28 @@ public:
      * resulting `Gas` share both; `clone()` deep-copies both.
      */
     Gas(std::shared_ptr<Cantera::Solution> gas,
-        std::shared_ptr<CondensedPhaseSet> condensed,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        std::shared_ptr<CondensedPhaseSet> condensed);
 
 
     /**
      * @note This constructor copies the `Solution` object. 
      */
-    Gas(const Cantera::Solution& gas,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+    Gas(const Cantera::Solution& gas);
     
     /**
      * @note This constructor will reference the same `Solution` object. 
      */
-    Gas(Cantera::Solution&& gas,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+    Gas(Cantera::Solution&& gas);
 
     /**
      * Create `Gas` from input data file. 
      */
     Gas(const std::string& infile, 
-        const std::string& phase_name,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::string& phase_name);
     
     /**
-     * Create a perfect gas object from the adiabatic index.
-     */
-    Gas(double gamma);
-
-    /**
      * Create a new Gas with a deep copy of the underlying Solution object and of the condensed
-     * species set, if any. The chemistry mode and stored reference stagnation enthalpy and
-     * entropy are preserved.
+     * species set, if any.
      *
      * @note Copying a `Gas` normally is shallow: the copy references the same `Solution` and the
      * same condensed species set.
@@ -75,18 +65,35 @@ public:
     Gas clone() const;
 
     static Gas create(const std::string& infile, 
-        const std::string& phase_name,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::string& phase_name);
     
+    /**
+     * Create a `Gas` whose phase holds every species of an input file made of the given
+     * elements, as CEA selects products from reactants.
+     *
+     * @param infile Cantera YAML input file, e.g. `nasa9_gas.yaml`.
+     * @param name Name of the new phase.
+     * @param elements Element symbols, e.g. `{"H", "O"}`.
+     * @throws std::invalid_argument if the phase cannot be built from the file.
+     */
     static Gas create_from_elements(const std::string& infile,
         const std::string& name, 
-        const std::vector<std::string>& elements,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::vector<std::string>& elements);
     
+    /**
+     * Create a `Gas` whose phase holds the named species of an input file.
+     *
+     * The phase lists the species in the order of the file, whatever the order of `species`, so
+     * species indices are reproducible.
+     *
+     * @param infile Cantera YAML input file.
+     * @param name Name of the new phase.
+     * @param species Species names, matched exactly.
+     * @throws std::invalid_argument if a species is not in the file.
+     */
     static Gas create_from_species(const std::string& infile, 
         const std::string& name,
-        const std::vector<std::string>& species,
-        GasChemistry chemistry = GasChemistry::FROZEN);
+        const std::vector<std::string>& species);
 
     // State setters
     /** Set state from temperature [K] and density [kg/m^3]. */
@@ -144,9 +151,12 @@ public:
      *
      * All properties are mixture properties (per kg of gas plus condensed phases) and the
      * composition is the mixture mass fractions of `mixture_mass_fractions()`, with the condensed
-     * species appended after the gas species.
+     * species appended after the gas species. `cp`, `gamma_s`, the volume derivatives and the speed
+     * of sound are in `model`, which the result records.
+     *
+     * @param model Composition model of the derived properties.
      */
-    ThermodynamicState snapshot() const;
+    ThermodynamicState snapshot(CompositionModel model) const;
     std::string name() const;
     void set_name(const std::string& name);
 
@@ -188,7 +198,9 @@ public:
      */
     std::vector<double> mass_fractions() const;
 
+    /** Number of gas-phase species [-]. Candidate condensed species are not counted. */
     size_t num_species() const;
+    /** Names of the gas-phase species, in phase order. */
     std::vector<std::string> species_names() const;
 
     // Chemistry-aware derived properties
@@ -197,14 +209,17 @@ public:
      */
     double gamma() const;
     /**
-     * Effective ratio of specific heats used for compressible-flow calculations.
+     * Isentropic exponent -(d log P / d log V)_s [-] at the current state.
      *
-     * The result depends on the active GasChemistry mode: PERFECT_GAS uses cp/cv,
-     * FROZEN holds composition fixed, EQUILIBRIUM accounts for shifting equilibrium.
+     * @param model FROZEN gives cp/cv; EQUILIBRIUM lets the composition shift with the state.
      */
-    double gamma_s() const;
-    /** Speed of sound [m/s] at the current state, consistent with gamma_s(). */
-    double speed_of_sound() const;
+    double gamma_s(CompositionModel model) const;
+    /**
+     * Speed of sound [m/s] at the current state, consistent with `gamma_s(model)`.
+     *
+     * @param model Composition model of the sound speed.
+     */
+    double speed_of_sound(CompositionModel model) const;
     /**
      * Stagnation (total) enthalpy h0 = h + v^2/2.
      * @param velocity flow velocity [m/s]
@@ -214,14 +229,14 @@ public:
     /**
      * Stagnation pressure obtained by isentropic deceleration from the current state.
      *
-     * The deceleration follows the active GasChemistry mode: EQUILIBRIUM re-equilibrates the
-     * mixture at constant entropy, and every other mode holds the composition fixed. The current
-     * state is not modified.
+     * EQUILIBRIUM re-equilibrates the mixture at constant entropy during the deceleration, and
+     * FROZEN holds the composition fixed. The current state is not modified.
      *
      * @param velocity flow velocity [m/s]
+     * @param model Composition model of the deceleration.
      * @return stagnation pressure [Pa]
      */
-    double stagnation_pressure(double velocity) const;
+    double stagnation_pressure(double velocity, CompositionModel model) const;
     /**
      * Velocity that produces a given stagnation enthalpy from the current static state.
      * @param H_stagnation target stagnation enthalpy [J/kg]
@@ -229,22 +244,32 @@ public:
      */
     double isenthalpic_velocity(double H_stagnation) const;
     /**
-     * Velocity computed from the stored reference stagnation enthalpy
-     * (see set_stagnation_enthalpy()).
-     * @return velocity [m/s]
+     * Nozzle area per unit mass flow rate at the current state, RT/(P M u) (RP-1311 eq. 6.12).
+     * @param velocity flow velocity [m/s]
+     * @return area per mass flow rate [m^2 s/kg]
      */
-    double isenthalpic_velocity() const;
     double area_per_mdot(double velocity) const;
     /**
      * Mach number at the current state for a given velocity.
      * @param velocity flow velocity [m/s]
+     * @param model Composition model of the sound speed.
      */
-    double mach(double velocity) const;
-    double cstar() const;
-    double isp() const;
-    double ivac() const;
+    double mach(double velocity, CompositionModel model) const;
+    /**
+     * Characteristic velocity from the perfect-gas formula, using the current temperature,
+     * molecular weight and `gamma_s(model)`. This is an estimate: the c* of a rocket case is the
+     * one in `RocketPerformance`, computed from the throat mass flux.
+     * @param model Composition model of gamma_s.
+     * @return c* [m/s]
+     */
+    double cstar(CompositionModel model) const;
 
     // Mixture properties
+    /**
+     * Fuel fraction of the current mixture, as a blend of the given fuel and oxidizer
+     * compositions [-].
+     * @param basis molar (default) or mass basis of the compositions and of the result.
+     */
     double fuel_fraction(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -254,7 +279,9 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /** Equivalence ratio of the current mixture, from its element composition [-]. */
     double equivalence_ratio() const;
+    /** Equivalence ratio of the current mixture as a blend of the given fuel and oxidizer [-]. */
     double equivalence_ratio(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -264,6 +291,7 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /** Stoichiometric oxidizer-to-fuel ratio of the given fuel and oxidizer [-]. */
     double stoich_OF_ratio(
         const std::string& fuel_comp, 
         const std::string& ox_comp,
@@ -273,6 +301,10 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar) const;
     
+    /**
+     * Set the composition from a fuel fraction, an equivalence ratio or an O/F ratio, keeping
+     * temperature and pressure.
+     */
     void set_fuel_fraction(
         double fuel_frac,
         const std::string& fuel_comp, 
@@ -284,6 +316,10 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
 
+    /**
+     * Set the composition from an equivalence ratio phi [-] of the given fuel and oxidizer,
+     * keeping temperature and pressure.
+     */
     void set_equivalence_ratio(
         double phi,
         const std::string& fuel_comp, 
@@ -295,6 +331,10 @@ public:
         const Composition& ox_comp,
         Cantera::ThermoBasis basis = Cantera::ThermoBasis::molar);
 
+    /**
+     * Set the composition from an oxidizer-to-fuel mass ratio O/F [-] of the given fuel and
+     * oxidizer, keeping temperature and pressure.
+     */
     void set_OF_ratio(
         double OF,
         const std::string& fuel_comp, 
@@ -309,10 +349,13 @@ public:
 
     // Expansion properties
     /**
-     * Compute expansion-related thermodynamic derivatives at the current state:
-     * gamma_s, dlnV/dlnT|_P, dlnV/dlnP|_T, and cp.
+     * Expansion-related thermodynamic derivatives at the current state: gamma_s, dlnV/dlnT|_P,
+     * dlnV/dlnP|_T, and cp. EQUILIBRIUM returns `get_thermo_equilibrium_properties`, with every
+     * field set. FROZEN sets only these four fields; `get_frozen_properties` sets them all.
+     *
+     * @param model Composition model of the derivatives.
      */
-    ExpansionProperties expansion_properties() const;
+    ExpansionProperties expansion_properties(CompositionModel model) const;
     /**
      * Equilibrate the gas mixture, holding two thermodynamic properties constant.
      *
@@ -322,8 +365,10 @@ public:
      * With candidate condensed species attached the call is routed to `equilibrate_TP()`,
      * `equilibrate_HP()` or `equilibrate_SP()` with the current value of the held properties.
      *
-     * @throws std::invalid_argument if `solver` is "vcs", which gives wrong answers with condensed
-     * phases, or if `XY` is not one of "TP", "HP", "SP", "UV".
+     * @throws std::invalid_argument if `XY` is not one of "TP", "TV", "HP", "SP", "SV" or "UV",
+     * if `solver` is not "auto", "element_potential", "gibbs" or "vcs", or if `solver` is "vcs"
+     * with condensed candidates attached (it gives wrong answers with condensed phases), or if
+     * `XY` is not one of "TP", "HP", "SP", "UV" with condensed candidates attached.
      * @throws NotImplementedError for "UV" with condensed candidates attached.
      */
     void equilibrate(const std::string& XY, const std::string& solver = "gibbs");
@@ -335,7 +380,7 @@ public:
      * gas phase and the candidates whose thermodynamic data covers `T`. Amounts of candidates that
      * have left their data range are first moved to the in-range polymorph of their group.
      *
-     * @throws FmtError if a condensed species is present and no polymorph of its group has data at
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if a condensed species is present and no polymorph of its group has data at
      * `T`.
      * @throws ConvergenceError if the solve fails after all restart strategies.
      */
@@ -365,6 +410,27 @@ public:
     int last_equilibrium_solve_count() const;
 
     /**
+     * Check the temperature against the thermodynamic data ranges of the gas species present.
+     *
+     * A species counts as present when its mole fraction in the gas phase is at least
+     * `trace_mole_fraction` (5e-6, CEA's threshold for listing a species). Outside a species'
+     * range its properties are extrapolated from the polynomial fit: a little outside, the
+     * result is usable, and this returns a warning; far outside, it is not. Condensed species
+     * have their own range rule (see `equilibrate_TP()`).
+     *
+     * @return A warning naming the species and its range when the temperature is outside the
+     * range of a present species but within the margin; empty when it is inside every range.
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if the temperature is more than
+     * `range_margin` (20%) below the lowest temperature, or above the highest temperature, of
+     * the range of a present species.
+     */
+    std::optional<std::string> check_temperature_range() const;
+    /// Mole fraction [-] below which a gas species is ignored by `check_temperature_range()`.
+    static constexpr double trace_mole_fraction = 5e-6;
+    /// Relative distance [-] outside a data range beyond which `check_temperature_range()` fails.
+    static constexpr double range_margin = 0.2;
+
+    /**
      * Set the composition from elemental amounts, without equilibrating.
      *
      * The state becomes a "basis" composition holding the requested elements: each element is
@@ -377,7 +443,7 @@ public:
      * @param T Temperature [K] of the resulting state.
      * @param P Pressure [Pa] of the resulting state.
      *
-     * @throws FmtError if the phase contains no single-element species for one of the requested
+     * @throws std::invalid_argument if the phase contains no single-element species for one of the requested
      * elements.
      * @note All condensed amounts are set to zero and any pinned transition is cleared, so the
      * requested element amounts are carried entirely by the gas phase.
@@ -402,7 +468,7 @@ public:
      *
      * @param infile Cantera YAML data file containing the species.
      * @param names Species names, matching the data file exactly.
-     * @throws FmtError if a name is absent from the file, or if a species contains an element
+     * @throws std::invalid_argument if a name is absent from the file, or if a species contains an element
      * the gas phase does not have.
      */
     void add_condensed_species(const std::string& infile, const std::vector<std::string>& names);
@@ -497,29 +563,6 @@ public:
     EquilibriumOptions equilibrium_options;
 
 
-    // Reference state
-    /**
-     * Set the stored reference stagnation enthalpy [J/kg].
-     *
-     * The reference value is used by isenthalpic_velocity() and other stagnation
-     * helpers and must be set explicitly. It does not change when the
-     * thermodynamic state of `Gas` changes.
-     */
-    void set_stagnation_enthalpy(double H);
-    /**
-     * Get the stored reference stagnation enthalpy [J/kg].
-     *
-     * See set_stagnation_enthalpy() for the semantics of the reference value.
-     */
-    double get_stagnation_enthalpy() const;
-    /** Set the stored reference specific entropy [J/(kg.K)]. */
-    void set_reference_entropy(double S);
-    /** Get the stored reference specific entropy [J/(kg.K)]. */
-    double get_reference_entropy() const;
-    
-
-    void set_current_state_as_reference();
-
     // Access to underlying Cantera objects
     /** Underlying Cantera Solution handle. Pass to solver constructors that accept one. */
     std::shared_ptr<Cantera::Solution> solution() const;
@@ -539,14 +582,7 @@ public:
         return m_sol != nullptr;
     }
 
-    GasChemistry chemistry;
-
 private:
-    // `ThermoArray` stores a clone of the condensed species set of the `Gas` it is built from.
-    // `CondensedPhaseSet` is an implementation detail, so it is reached through friendship rather
-    // than through a public accessor.
-    friend class ThermoArray;
-
     /**
      * One constant-temperature, constant-pressure multiphase Gibbs minimization.
      *
@@ -578,7 +614,7 @@ private:
      * Newton iteration on temperature for the frozen `set_state_HP`/`set_state_SP` problems with
      * condensed phases present: composition and condensed amounts are held fixed.
      *
-     * @throws FmtError if the solution lies outside the temperature range of a present condensed
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if the solution lies outside the temperature range of a present condensed
      * species, as CEA reports for a frozen expansion.
      */
     void solve_frozen_XP(EquilibriumProperty property, double target, double P);
@@ -586,9 +622,6 @@ private:
     std::shared_ptr<Cantera::Solution> m_sol;
     /** Candidate condensed species and their amounts. Null means the `Gas` is gas-only. */
     std::shared_ptr<CondensedPhaseSet> m_condensed;
-    double m_H_stagnation = 0.0;
-    double m_S0 = 0.0;
-    double m_gamma = 0.0;
     /** Constant-T, constant-P solves used by the most recent `equilibrate_*` call. */
     int m_equilibrium_solve_count = 0;
 

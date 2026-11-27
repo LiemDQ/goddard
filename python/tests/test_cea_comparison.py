@@ -15,7 +15,7 @@ from conftest import (
     find_data_dir,
     RocketTestCase,
     ComparisonTolerances,
-    build_goddard_problem,
+    solve_goddard_case,
     solve_cea_problem,
     compare_thermo_states,
     assert_close_rel,
@@ -130,9 +130,8 @@ def discover_cea_stations(cea_sol, area_ratios=None):
 @pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
 def test_chamber_state(case: RocketTestCase):
     """Compare chamber thermodynamic state between Goddard and CEA."""
-    problem = build_goddard_problem(case)
-    results = problem.solve()
-    chamber = results.chamber(0, case.name).thermo
+    result = solve_goddard_case(case)
+    chamber = result.chamber.thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -143,9 +142,8 @@ def test_chamber_state(case: RocketTestCase):
 @pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_throat_state(case: RocketTestCase):
     """Compare throat thermodynamic state between Goddard and CEA."""
-    problem = build_goddard_problem(case)
-    results = problem.solve()
-    throat = results.throat(0, case.name).thermo
+    result = solve_goddard_case(case)
+    throat = result.throat.thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -157,9 +155,8 @@ def test_throat_state(case: RocketTestCase):
 @pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_exit_states(case: RocketTestCase):
     """Compare exit/expansion thermodynamic states between Goddard and CEA."""
-    problem = build_goddard_problem(case)
-    results = problem.solve()
-    exits = [s.thermo for s in results.exits(0, case.name)]
+    result = solve_goddard_case(case)
+    exits = [s.thermo for s in result.exits]
     assert len(exits) == len(case.area_ratios), (
         f"Expected {len(case.area_ratios)} exit states, got {len(exits)}")
 
@@ -181,16 +178,15 @@ def test_exit_states(case: RocketTestCase):
 
 @pytest.mark.parametrize("case", EXPANSION_CASES, ids=lambda c: c.name)
 def test_performance(case: RocketTestCase):
-    """Compare every field of RocketProblemResults.performance() against CEA.
+    """Compare every field of RocketResult.performance against CEA.
 
     Both specific impulses are velocities [m/s] in both codes. CEA's
     `coefficient_of_thrust` is exactly `Isp / c_star` at every station (checked below), the
     same matched-nozzle definition Goddard uses, so CF compares directly with no pressure term
     to account for.
     """
-    problem = build_goddard_problem(case)
-    results = problem.solve()
-    assert len(results.exits(0, case.name)) == len(case.area_ratios)
+    result = solve_goddard_case(case)
+    assert len(result.exits) == len(case.area_ratios)
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -201,7 +197,7 @@ def test_performance(case: RocketTestCase):
     for i, requested_area_ratio in enumerate(case.area_ratios):
         cea_idx = stations["exits"][i]
         label = f"exit[{i}] AR={requested_area_ratio}"
-        performance = results.performance(0, i, case.name)
+        performance = result.performance[i]
 
         # CEA's own CF definition, confirmed station by station.
         cea_cf = cea_sol.coefficient_of_thrust[cea_idx]
@@ -226,10 +222,8 @@ def test_performance(case: RocketTestCase):
         assert_close_rel(performance.CF, cea_cf, tol.cf_rel, f"{label} CF")
 
         # The static entry point, fed the station states directly, must give the same numbers.
-        direct = goddard.RocketProblemResults.calculate_performance(
-            results.chamber(0, case.name).thermo,
-            results.throat(0, case.name).thermo,
-            results.exits(0, case.name)[i].thermo)
+        direct = goddard.rocket_performance(
+            result.stagnation.thermo, result.throat.thermo, result.exits[i].thermo)
         for field in ("pressure_ratio", "area_ratio", "mach_number", "cstar", "CF",
                       "isp", "ivac"):
             assert getattr(direct, field) == pytest.approx(
@@ -243,9 +237,8 @@ def test_performance(case: RocketTestCase):
 @pytest.mark.parametrize("case", DEFAULT_CASES, ids=lambda c: c.name)
 def test_chamber_composition(case: RocketTestCase):
     """Compare chamber species mass fractions between Goddard and CEA."""
-    problem = build_goddard_problem(case)
-    results = problem.solve()
-    chamber = results.chamber(0, case.name).thermo
+    result = solve_goddard_case(case)
+    chamber = result.chamber.thermo
 
     cea_sol = solve_cea_problem(case)
     stations = discover_cea_stations(cea_sol, case.area_ratios)
@@ -299,10 +292,9 @@ def test_isochoric_combustion_matches_cea(of_ratio, initial_pressure_pa):
     solver.solve(solution, cea.UV, u_reactants / cea.R, specific_volume, weights)
     assert solution.converged
 
-    gas.restore_state(burnt.get_state(0))
-    gas.chemistry = GasChemistry.EQUILIBRIUM
+    gas.restore_state(burnt.get_state((0, 0, 0)))
     # Tighter than ComparisonTolerances: gas-phase H2/O2 needs no cross-database allowance.
     assert_close_rel(gas.temperature, solution.T, 3e-3, "UV temperature")
     assert_close_rel(gas.pressure, solution.P * 1e5, 3e-3, "UV pressure")
     assert_close_rel(gas.mean_molecular_weight, solution.M, 1e-3, "UV molecular weight")
-    assert_close_rel(gas.gamma_s, solution.gamma_s, 3e-3, "UV gamma_s")
+    assert_close_rel(gas.equilibrium_gamma_s, solution.gamma_s, 3e-3, "UV gamma_s")

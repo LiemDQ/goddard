@@ -22,38 +22,66 @@ inline double ideal_gas_D_to_P(double D, double T, double molar_mass) {
 }
 
 /**
- * @brief Get the pressure of an ideal gas from its density, temperature, and molar mass. 
- * 
+ * @brief Get the density of an ideal gas from its pressure, temperature, and molar mass.
+ *
  * @param P pressure in Pa
  * @param T temperature in K
  * @param molar_mass molar mass in kg/kmol
- * 
- * @returns Density in kg/kmol 
+ *
+ * @returns Density in kg/m3
  */
 inline double ideal_gas_P_to_D(double P, double T, double molar_mass) {
     return P*molar_mass/(T*Cantera::GasConstant);
 }
 
 /**
- * Convenience class containing relevant thermodynamic results
+ * Snapshot of the thermodynamic state of a mixture (see `Gas::snapshot`).
+ *
+ * Specific quantities are per kg of mixture (gas plus condensed phases). `cp`, `gamma_s`,
+ * `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound` are in `composition_model`: equilibrium or
+ * frozen.
  */
 class ThermodynamicState {
 public:
+    /// Pressure [Pa].
     double pressure;
+    /// Temperature [K].
     double temperature;
+    /// Mixture density [kg/m^3].
     double density;
+    /// Specific enthalpy [J/kg].
     double enthalpy;
+    /// Specific internal energy [J/kg], h - P/rho.
     double internal_energy;
+    /// Specific Gibbs energy [J/kg], h - T s.
     double gibbs;
+    /// Specific entropy [J/(kg.K)].
     double entropy;
+    /// Molecular weight [kg/kmol], CEA's "M" = 1/n with n the moles of gas per kg of mixture.
     double molecular_weight;
+    /**
+     * Constant-pressure specific heat [J/(kg.K)] in `composition_model`: `Gas::cp_mass` when
+     * frozen, the equilibrium specific heat (including the heat of reaction) when equilibrium.
+     * 0 at a pinned phase transition, where the equilibrium value is infinite, as CEA prints.
+     */
     double cp;
+    /// Isentropic exponent -(d log P / d log V)_s [-].
     double gamma_s;
+    /// (d log V / d log P)_T [-].
     double dlV_dlP_T;
+    /// (d log V / d log T)_P [-].
     double dlV_dlT_P;
+    /// Speed of sound [m/s].
     double speed_of_sound;
+    /** Composition model of `cp`, `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P` and `speed_of_sound`. */
+    CompositionModel composition_model = CompositionModel::FROZEN;
+    /// Stagnation enthalpy [J/kg] the flow velocity is measured from.
     double stagnation_enthalpy;
-    Composition composition; // stored as mass fractions
+    /**
+     * Mass fractions of the mixture [-] by species name, condensed species included. Species
+     * with a zero fraction are omitted.
+     */
+    Composition composition;
     /**
      * Mixture molecular weight [kg/kmol], CEA's "MW": one kg of mixture divided by the moles of
      * gas *plus* condensed species it holds. Equal to `molecular_weight` (CEA's "M" = 1/n, which
@@ -69,32 +97,47 @@ public:
      */
     bool pinned_transition = false;
 
-    size_t state_size() const;
     /**
-     * Outputs a raw vector suitable for use with Cantera objects. 
+     * State with every numeric field NaN and an empty composition: the state of a station whose
+     * solve failed.
      */
-    std::vector<double> to_vector() const;
-    std::vector<double> to_mole_vector(Cantera::ThermoPhase& sln) const;
+    static ThermodynamicState undefined();
 };
 
 
 /**
- * Convenience class for initializing a thermodynamic state.
+ * Temperature, pressure and composition of a reactant stream.
  */
 class PhaseSpecification {
 public:
     PhaseSpecification() = default;
+    /**
+     * @param T Temperature [K].
+     * @param P Pressure [Pa].
+     * @param comp Mole fractions as a composition string, e.g. "H2:2, O2:1".
+     */
     PhaseSpecification(double T, double P, const std::string& comp);
+    /**
+     * @param T Temperature [K].
+     * @param P Pressure [Pa].
+     * @param comp Mole fractions by species name.
+     */
     PhaseSpecification(double T, double P, const Composition& comp);
 
 
+    /// Temperature [K].
     double T = 0.0;
+    /// Pressure [Pa].
     double P = 0.0;
+    /**
+     * Mole fractions [-] by species name; normalized when the state is set.
+     *
+     * In Python, assign a whole dict: item assignment acts on a copy.
+     */
     Composition composition = {};
 
-    std::vector<double> to_vector(Cantera::ThermoPhase& sln) const;
-    std::vector<double> to_mass_vector(Cantera::ThermoPhase& sln) const;
-    
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const PhaseSpecification&) const = default;
 };
 
 

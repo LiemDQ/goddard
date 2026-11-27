@@ -1,10 +1,12 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/operators.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/eigen/dense.h>
+#include <nanobind/ndarray.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -18,6 +20,7 @@
 #include "goddard/characteristic_net.hpp"
 #include "goddard/profile.hpp"
 #include "goddard/gas.hpp"
+#include "bind_status.hpp"
 #include "goddard_docstrings.h"
 
 namespace nb = nanobind;
@@ -34,6 +37,16 @@ Eigen::VectorXd to_array(const std::vector<double>& values) {
     Eigen::VectorXd out(static_cast<Eigen::Index>(values.size()));
     std::copy(values.begin(), values.end(), out.data());
     return out;
+}
+
+// Read-only numpy copy of a settable vector attribute: `obj.x[i] = v` would change only the
+// copy, so it raises instead of being silently lost. Assign a whole array to change it.
+using ReadOnlyArray = nb::ndarray<nb::numpy, const double, nb::ndim<1>>;
+
+ReadOnlyArray to_readonly_array(const std::vector<double>& values) {
+    auto* data = new std::vector<double>(values);
+    nb::capsule owner(data, [](void* p) noexcept { delete static_cast<std::vector<double>*>(p); });
+    return ReadOnlyArray(data->data(), {data->size()}, owner);
 }
 
 IndexArray to_index_array(const std::vector<size_t>& indices) {
@@ -98,18 +111,18 @@ void bind_moc(nb::module_& m) {
     // ---- Enums ----
 
     nb::enum_<Goddard::MocFlowKind>(m, "MocFlowKind", DOC(Goddard, MocFlowKind))
-        .value("PLANAR", Goddard::MocFlowKind::PLANAR)
-        .value("AXISYMMETRIC", Goddard::MocFlowKind::AXISYMMETRIC);
+        .value("PLANAR", Goddard::MocFlowKind::PLANAR, DOC(Goddard, MocFlowKind, PLANAR))
+        .value("AXISYMMETRIC", Goddard::MocFlowKind::AXISYMMETRIC, DOC(Goddard, MocFlowKind, AXISYMMETRIC));
 
     nb::enum_<Goddard::MocMode>(m, "MocMode", DOC(Goddard, MocMode))
-        .value("DESIGN_MIN_LENGTH", Goddard::MocMode::DESIGN_MIN_LENGTH)
-        .value("DESIGN_RAO", Goddard::MocMode::DESIGN_RAO)
-        .value("DESIGN_CENTERLINE", Goddard::MocMode::DESIGN_CENTERLINE)
-        .value("ANALYSIS", Goddard::MocMode::ANALYSIS);
+        .value("DESIGN_MIN_LENGTH", Goddard::MocMode::DESIGN_MIN_LENGTH, DOC(Goddard, MocMode, DESIGN_MIN_LENGTH))
+        .value("DESIGN_RAO", Goddard::MocMode::DESIGN_RAO, DOC(Goddard, MocMode, DESIGN_RAO))
+        .value("DESIGN_CENTERLINE", Goddard::MocMode::DESIGN_CENTERLINE, DOC(Goddard, MocMode, DESIGN_CENTERLINE))
+        .value("ANALYSIS", Goddard::MocMode::ANALYSIS, DOC(Goddard, MocMode, ANALYSIS));
 
     nb::enum_<Goddard::MocLogLevel>(m, "MocLogLevel", DOC(Goddard, MocLogLevel))
-        .value("NORMAL", Goddard::MocLogLevel::NORMAL)
-        .value("DEBUG", Goddard::MocLogLevel::DEBUG);
+        .value("NORMAL", Goddard::MocLogLevel::NORMAL, DOC(Goddard, MocLogLevel, NORMAL))
+        .value("DEBUG", Goddard::MocLogLevel::DEBUG, DOC(Goddard, MocLogLevel, DEBUG));
 
     // CharacteristicFamily and ChainTermination are top-level enums on the C++ side too
     // (characteristics.hpp / characteristic_net.hpp); bound at module scope here like every
@@ -117,24 +130,23 @@ void bind_moc(nb::module_& m) {
     // ChainMetadata would make every reference a mouthful.
     nb::enum_<Goddard::CharacteristicFamily>(m, "CharacteristicFamily",
                                              DOC(Goddard, CharacteristicFamily))
-        .value("UNSPECIFIED", Goddard::CharacteristicFamily::UNSPECIFIED)
-        .value("PLUS", Goddard::CharacteristicFamily::PLUS)
-        .value("MINUS", Goddard::CharacteristicFamily::MINUS);
+        .value("UNSPECIFIED", Goddard::CharacteristicFamily::UNSPECIFIED, DOC(Goddard, CharacteristicFamily, UNSPECIFIED))
+        .value("PLUS", Goddard::CharacteristicFamily::PLUS, DOC(Goddard, CharacteristicFamily, PLUS))
+        .value("MINUS", Goddard::CharacteristicFamily::MINUS, DOC(Goddard, CharacteristicFamily, MINUS));
 
     nb::enum_<Goddard::ChainTermination>(m, "ChainTermination", DOC(Goddard, ChainTermination))
-        .value("NOT_TERMINATED", Goddard::ChainTermination::NOT_TERMINATED)
-        .value("WALL", Goddard::ChainTermination::WALL)
-        .value("AXIS", Goddard::ChainTermination::AXIS);
+        .value("NOT_TERMINATED", Goddard::ChainTermination::NOT_TERMINATED, DOC(Goddard, ChainTermination, NOT_TERMINATED))
+        .value("WALL", Goddard::ChainTermination::WALL, DOC(Goddard, ChainTermination, WALL))
+        .value("AXIS", Goddard::ChainTermination::AXIS, DOC(Goddard, ChainTermination, AXIS));
 
     // MocErrorCode is bound in bind_enums.cpp.
 
     // ---- NozzleGeometry ----
 
-    // No nb::init<>() overload on purpose: NozzleGeometry has members without default
-    // initializers, so a bare value-initializing constructor would hand back throat_radius = 0.
-    // Routing every construction through the keyword constructor below keeps the documented
-    // defaults as the only defaults.
+    // No nb::init<>() overload on purpose: routing every construction through the keyword
+    // constructor below keeps the documented defaults visible in the generated signature.
     nb::class_<Goddard::NozzleGeometry>(m, "NozzleGeometry", DOC(Goddard, NozzleGeometry))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::NozzleGeometry* self,
                             double throat_radius,
                             double upstream_wall_curvature_radius,
@@ -151,7 +163,8 @@ void bind_moc(nb::module_& m) {
             "upstream_wall_curvature_radius"_a = 1.5,
             "downstream_wall_curvature_radius"_a = 0.382,
             "length_fraction"_a = 0.8,
-            "expansion_ratio"_a = 5.0)
+            "expansion_ratio"_a = 5.0,
+            "Create a geometry; each keyword sets the field of the same name.")
         .def_rw("throat_radius", &Goddard::NozzleGeometry::throat_radius,
                 DOC(Goddard, NozzleGeometry, throat_radius))
         .def_rw("upstream_wall_curvature_radius", &Goddard::NozzleGeometry::upstream_wall_curvature_radius,
@@ -174,7 +187,8 @@ void bind_moc(nb::module_& m) {
     // ---- NozzleProfile ----
 
     nb::class_<Goddard::NozzleProfile>(m, "NozzleProfile", DOC(Goddard, NozzleProfile))
-        .def(nb::init<>())
+        .def(nb::self == nb::self)
+        .def(nb::init<>(), "Create an empty profile.")
         .def("__init__", [](Goddard::NozzleProfile* self,
                             std::vector<double> x,
                             std::vector<double> y,
@@ -186,18 +200,19 @@ void bind_moc(nb::module_& m) {
             self->x = std::move(x);
             self->y = std::move(y);
             self->throat_index = throat_index;
-        }, "x"_a, "y"_a, "throat_index"_a = 0)
+        }, "x"_a, "y"_a, "throat_index"_a = 0,
+           "Create a profile from wall coordinates x and y (length units) and the throat index.")
 
         // ---- Coordinates ----
 
         .def_prop_rw("x",
-            [](const Goddard::NozzleProfile& self) { return to_array(self.x); },
+            [](const Goddard::NozzleProfile& self) { return to_readonly_array(self.x); },
             [](Goddard::NozzleProfile& self, std::vector<double> values) { self.x = std::move(values); },
-            DOC(Goddard, NozzleProfile, x))
+            nb::rv_policy::automatic, DOC(Goddard, NozzleProfile, x))
         .def_prop_rw("y",
-            [](const Goddard::NozzleProfile& self) { return to_array(self.y); },
+            [](const Goddard::NozzleProfile& self) { return to_readonly_array(self.y); },
             [](Goddard::NozzleProfile& self, std::vector<double> values) { self.y = std::move(values); },
-            DOC(Goddard, NozzleProfile, y))
+            nb::rv_policy::automatic, DOC(Goddard, NozzleProfile, y))
         .def_rw("throat_index", &Goddard::NozzleProfile::throat_index,
                 DOC(Goddard, NozzleProfile, throat_index))
 
@@ -246,7 +261,9 @@ void bind_moc(nb::module_& m) {
         .def("push_back", [](Goddard::NozzleProfile& self, double x, double y) {
             self.push_back({x, y});
         }, "x"_a, "y"_a, DOC(Goddard, NozzleProfile, push_back))
-        .def("__len__", &Goddard::NozzleProfile::size)
+        .def("scaled", &Goddard::NozzleProfile::scaled, "factor"_a,
+             DOC(Goddard, NozzleProfile, scaled))
+        .def("__len__", &Goddard::NozzleProfile::size, DOC(Goddard, NozzleProfile, size))
         // Defining __getitem__ is also what makes the profile iterable: Python falls back to
         // the sequence protocol, walking indices until IndexError.
         .def("__getitem__", [](const Goddard::NozzleProfile& self, Py_ssize_t index) {
@@ -258,7 +275,8 @@ void bind_moc(nb::module_& m) {
                 throw nb::index_error("NozzleProfile index out of range");
             }
             return self.at(static_cast<size_t>(index));
-        }, "index"_a)
+        }, "index"_a,
+           "Wall point (x, y) at `index`, in length units; negative indices count from the end.")
         .def("__repr__", [](const Goddard::NozzleProfile& self) {
             if (self.size() == 0) {
                 return std::string("<NozzleProfile empty>");
@@ -271,26 +289,24 @@ void bind_moc(nb::module_& m) {
 
         // ---- Contour generators ----
         //
-        // Shape angles are in degrees here, as the C++ generators define them; every other
-        // angle in the MoC API is in radians. The _deg suffix is there to keep that visible at
-        // the call site.
+        // Shape angles are in radians, like every other angle in the MoC API.
 
         .def_static("conical", &Goddard::NozzleProfile::generate_conical_nozzle,
                     "area_ratio"_a, "r_expansion_curve"_a, "r_throat"_a = 1.0,
-                    "angle_deg"_a = 15.0, "n_points"_a = 50,
+                    "theta_n"_a = 15.0 * std::numbers::pi / 180.0, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_conical_nozzle))
         .def_static("rao_top", &Goddard::NozzleProfile::generate_Rao_TOP_nozzle,
                     "area_ratio"_a, "r_throat"_a = 1.0, "length_frac"_a = 0.8,
                     "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_Rao_TOP_nozzle))
         .def_static("bezier", &Goddard::NozzleProfile::generate_bezier_nozzle,
-                    "area_ratio"_a, "theta_n_deg"_a, "theta_e_deg"_a,
+                    "area_ratio"_a, "theta_n"_a, "theta_e"_a,
                     "r_expansion_curve"_a = 0.382, "r_throat"_a = 1.0,
                     "length_frac"_a = 0.8, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_bezier_nozzle))
         .def_static("throat_expansion_curve",
                     &Goddard::NozzleProfile::generate_throat_expansion_curve,
-                    "theta_n_deg"_a, "r_expansion_curve"_a, "r_throat"_a, "n_points"_a = 50,
+                    "theta_n"_a, "r_expansion_curve"_a, "r_throat"_a, "n_points"_a = 50,
                     DOC(Goddard, NozzleProfile, generate_throat_expansion_curve))
 
         // ---- I/O ----
@@ -307,6 +323,7 @@ void bind_moc(nb::module_& m) {
     // parameters into the signature that _core.pyi and the docs site show, which a **kwargs
     // constructor would erase. Adding a field to MocOptions means editing all three places.
     nb::class_<Goddard::MocOptions>(m, "MocOptions", DOC(Goddard, MocOptions))
+        .def(nb::self == nb::self)
         .def("__init__", [](Goddard::MocOptions* self,
                             Goddard::MocFlowKind flow_type,
                             Goddard::GasChemistry chemistry,
@@ -350,7 +367,7 @@ void bind_moc(nb::module_& m) {
             "mode"_a = Goddard::MocMode::DESIGN_MIN_LENGTH,
             "num_characteristics"_a = 10,
             "gamma"_a = 1.4,
-            "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10, .reltol = 1e-5},
+            "solver_options"_a = Goddard::SolverOptions{.abstol = 1e-10},
             "geometry"_a = Goddard::NozzleGeometry{1.0, 1.5, 0.382, 0.8, 5.0},
             "theta_max"_a = 0.0,
             "exit_mach"_a = 0.0,
@@ -362,10 +379,11 @@ void bind_moc(nb::module_& m) {
             "kl_max_wall_angle_error"_a = 0.25,
             "inverse_cfl"_a = 0.8,
             "max_wall_turn_per_step"_a = 0.0175,
-            "front_tilt_decay"_a = 0.9)
-        .def_rw("flow_type", &Goddard::MocOptions::flow_type)
-        .def_rw("chemistry", &Goddard::MocOptions::chemistry)
-        .def_rw("mode", &Goddard::MocOptions::mode)
+            "front_tilt_decay"_a = 0.9,
+            "Create options; each keyword sets the field of the same name.")
+        .def_rw("flow_type", &Goddard::MocOptions::flow_type, DOC(Goddard, MocOptions, flow_type))
+        .def_rw("chemistry", &Goddard::MocOptions::chemistry, DOC(Goddard, MocOptions, chemistry))
+        .def_rw("mode", &Goddard::MocOptions::mode, DOC(Goddard, MocOptions, mode))
         .def_rw("num_characteristics", &Goddard::MocOptions::num_characteristics,
                 DOC(Goddard, MocOptions, num_characteristics))
         .def_rw("gamma", &Goddard::MocOptions::gamma, DOC(Goddard, MocOptions, gamma))
@@ -375,11 +393,11 @@ void bind_moc(nb::module_& m) {
         .def_rw("theta_max", &Goddard::MocOptions::theta_max, DOC(Goddard, MocOptions, theta_max))
         .def_rw("exit_mach", &Goddard::MocOptions::exit_mach, DOC(Goddard, MocOptions, exit_mach))
         .def_prop_rw("theta_schedule",
-            [](const Goddard::MocOptions& self) { return to_array(self.theta_schedule); },
+            [](const Goddard::MocOptions& self) { return to_readonly_array(self.theta_schedule); },
             [](Goddard::MocOptions& self, std::vector<double> values) {
                 self.theta_schedule = std::move(values);
             },
-            DOC(Goddard, MocOptions, theta_schedule))
+            nb::rv_policy::automatic, DOC(Goddard, MocOptions, theta_schedule))
         .def_rw("nozzle_profile", &Goddard::MocOptions::nozzle_profile,
                 DOC(Goddard, MocOptions, nozzle_profile))
         .def_rw("log_level", &Goddard::MocOptions::log_level, DOC(Goddard, MocOptions, log_level))
@@ -405,7 +423,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::CharacteristicPoint>(m, "CharacteristicPoint",
                                              DOC(Goddard, CharacteristicPoint))
-        .def(nb::init<>())
         .def_ro("theta", &Goddard::CharacteristicPoint::theta,
                 DOC(Goddard, CharacteristicPoint, theta))
         .def_ro("nu", &Goddard::CharacteristicPoint::nu, DOC(Goddard, CharacteristicPoint, nu))
@@ -434,28 +451,25 @@ void bind_moc(nb::module_& m) {
     // ---- Net topology ----
 
     nb::class_<Goddard::PointMembership>(m, "PointMembership", DOC(Goddard, PointMembership))
-        .def(nb::init<>())
-        .def_rw("c_plus_chain_idx", &Goddard::PointMembership::c_plus_chain_idx,
+        .def_ro("c_plus_chain_idx", &Goddard::PointMembership::c_plus_chain_idx,
                 DOC(Goddard, PointMembership, c_plus_chain_idx))
-        .def_rw("c_minus_chain_idx", &Goddard::PointMembership::c_minus_chain_idx,
+        .def_ro("c_minus_chain_idx", &Goddard::PointMembership::c_minus_chain_idx,
                 DOC(Goddard, PointMembership, c_minus_chain_idx));
 
     nb::class_<Goddard::ChainMetadata>(m, "ChainMetadata", DOC(Goddard, ChainMetadata))
-        .def(nb::init<>())
-        .def_rw("active", &Goddard::ChainMetadata::active, DOC(Goddard, ChainMetadata, active))
-        .def_rw("termination", &Goddard::ChainMetadata::termination,
+        .def_ro("active", &Goddard::ChainMetadata::active, DOC(Goddard, ChainMetadata, active))
+        .def_ro("termination", &Goddard::ChainMetadata::termination,
                 DOC(Goddard, ChainMetadata, termination))
-        .def_rw("family", &Goddard::ChainMetadata::family,
+        .def_ro("family", &Goddard::ChainMetadata::family,
                 DOC(Goddard, ChainMetadata, family))
-        .def_rw("origin_point_idx", &Goddard::ChainMetadata::origin_point_idx,
+        .def_ro("origin_point_idx", &Goddard::ChainMetadata::origin_point_idx,
                 DOC(Goddard, ChainMetadata, origin_point_idx))
-        .def_rw("latest_point_idx", &Goddard::ChainMetadata::latest_point_idx,
+        .def_ro("latest_point_idx", &Goddard::ChainMetadata::latest_point_idx,
                 DOC(Goddard, ChainMetadata, latest_point_idx));
 
     // ---- CharacteristicNet ----
 
     nb::class_<Goddard::CharacteristicNet>(m, "CharacteristicNet", DOC(Goddard, CharacteristicNet))
-        .def(nb::init<>())
         .def_ro("points", &Goddard::CharacteristicNet::points,
                 DOC(Goddard, CharacteristicNet, points))
         .def_ro("chain_metadata", &Goddard::CharacteristicNet::chain_metadata,
@@ -508,22 +522,22 @@ void bind_moc(nb::module_& m) {
         }, "Prandtl-Meyer angle at every point, in radians.")
         .def_prop_ro("mach", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::mach);
-        }, "Mach number at every point.")
+        }, "Mach number at every point [-].")
         .def_prop_ro("mu", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::mu);
         }, "Mach angle at every point, in radians.")
         .def_prop_ro("pressure", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::pressure);
-        }, "Static pressure at every point.")
+        }, "Static pressure P/P0 at every point [-].")
         .def_prop_ro("temperature", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::temperature);
-        }, "Static temperature at every point.")
+        }, "Static temperature T/T0 at every point [-].")
         .def_prop_ro("gamma_s", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::gamma_s);
-        }, "Local isentropic exponent at every point.")
+        }, "Local isentropic exponent at every point [-].")
         .def_prop_ro("V", [](const Goddard::CharacteristicNet& self) {
             return gather(self.points, &Goddard::CharacteristicPoint::V);
-        }, "Velocity at every point; m/s, or the Mach number for perfect gas.")
+        }, "Velocity V/a0 at every point [-], with a0 the stagnation speed of sound.")
 
         // ---- Boundary and chain queries ----
 
@@ -538,8 +552,10 @@ void bind_moc(nb::module_& m) {
              DOC(Goddard, CharacteristicNet, has_active_chains))
         .def("empty", &Goddard::CharacteristicNet::empty,
              DOC(Goddard, CharacteristicNet, empty))
-        .def("__bool__", [](const Goddard::CharacteristicNet& self) { return !self.empty(); })
-        .def("__len__", [](const Goddard::CharacteristicNet& self) { return self.points.size(); })
+        .def("__bool__", [](const Goddard::CharacteristicNet& self) { return !self.empty(); },
+             "True when the net holds at least one point.")
+        .def("__len__", [](const Goddard::CharacteristicNet& self) { return self.points.size(); },
+             "Number of points in the net.")
         .def("__repr__", [](const Goddard::CharacteristicNet& self) {
             return std::format("<CharacteristicNet {} points, {} chains, {} wall points>",
                                self.points.size(), self.c_chains.size(),
@@ -549,7 +565,6 @@ void bind_moc(nb::module_& m) {
     // ---- ExitPlane ----
 
     nb::class_<Goddard::ExitPlane>(m, "ExitPlane", DOC(Goddard, ExitPlane))
-        .def(nb::init<>())
         .def_prop_ro("y", [](const Goddard::ExitPlane& self) { return to_array(self.y); },
                      DOC(Goddard, ExitPlane, y))
         .def_prop_ro("mach", [](const Goddard::ExitPlane& self) { return to_array(self.mach); },
@@ -564,12 +579,12 @@ void bind_moc(nb::module_& m) {
                      DOC(Goddard, ExitPlane, gamma_s))
         .def_prop_ro("velocity", [](const Goddard::ExitPlane& self) { return to_array(self.velocity); },
                      DOC(Goddard, ExitPlane, velocity))
-        .def("__len__", [](const Goddard::ExitPlane& self) { return self.y.size(); });
+        .def("__len__", [](const Goddard::ExitPlane& self) { return self.y.size(); },
+             "Number of exit plane samples.");
 
     // ---- MocFailure ----
 
     nb::class_<Goddard::MocFailure>(m, "MocFailure", DOC(Goddard, MocFailure))
-        .def(nb::init<>())
         .def_ro("code", &Goddard::MocFailure::code, DOC(Goddard, MocFailure, code))
         .def_ro("message", &Goddard::MocFailure::message, DOC(Goddard, MocFailure, message))
         .def_ro("x", &Goddard::MocFailure::x, DOC(Goddard, MocFailure, x))
@@ -589,7 +604,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::MocPassDiagnostics>(m, "MocPassDiagnostics",
                                             DOC(Goddard, MocPassDiagnostics))
-        .def(nb::init<>())
         // `pass` is a Python keyword, so the field is renamed rather than made unreachable.
         .def_ro("pass_index", &Goddard::MocPassDiagnostics::pass,
                 DOC(Goddard, MocPassDiagnostics, pass))
@@ -622,7 +636,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocFrontShear ----
 
     nb::class_<Goddard::MocFrontShear>(m, "MocFrontShear", DOC(Goddard, MocFrontShear))
-        .def(nb::init<>())
         .def_ro("axis_growth", &Goddard::MocFrontShear::axis_growth,
                 DOC(Goddard, MocFrontShear, axis_growth))
         .def_ro("wall_growth", &Goddard::MocFrontShear::wall_growth,
@@ -644,7 +657,6 @@ void bind_moc(nb::module_& m) {
 
     nb::class_<Goddard::MocInitDiagnostics>(m, "MocInitDiagnostics",
                                             DOC(Goddard, MocInitDiagnostics))
-        .def(nb::init<>())
         .def_ro("points", &Goddard::MocInitDiagnostics::points,
                 DOC(Goddard, MocInitDiagnostics, points))
         .def_ro("wall_gap", &Goddard::MocInitDiagnostics::wall_gap,
@@ -694,7 +706,6 @@ void bind_moc(nb::module_& m) {
     // ---- MocCrossings ----
 
     nb::class_<Goddard::MocCrossings>(m, "MocCrossings", DOC(Goddard, MocCrossings))
-        .def(nb::init<>())
         .def_ro("count", &Goddard::MocCrossings::count, DOC(Goddard, MocCrossings, count))
         .def_ro("first_x", &Goddard::MocCrossings::first_x, DOC(Goddard, MocCrossings, first_x))
         .def_ro("first_y", &Goddard::MocCrossings::first_y, DOC(Goddard, MocCrossings, first_y))
@@ -711,8 +722,7 @@ void bind_moc(nb::module_& m) {
     // ---- MocResult ----
 
     nb::class_<Goddard::MocResult>(m, "MocResult", DOC(Goddard, MocResult))
-        .def(nb::init<>())
-        .def_ro("converged", &Goddard::MocResult::converged, DOC(Goddard, MocResult, converged))
+        .def_ro("status", &Goddard::MocResult::status, DOC(Goddard, MocResult, status))
         .def_ro("net", &Goddard::MocResult::net, DOC(Goddard, MocResult, net))
         .def_ro("profile", &Goddard::MocResult::profile, DOC(Goddard, MocResult, profile))
         .def_ro("messages", &Goddard::MocResult::messages, DOC(Goddard, MocResult, messages))
@@ -721,6 +731,14 @@ void bind_moc(nb::module_& m) {
         .def_ro("nozzle_length", &Goddard::MocResult::nozzle_length,
                 DOC(Goddard, MocResult, nozzle_length))
         .def_ro("area_ratio", &Goddard::MocResult::area_ratio, DOC(Goddard, MocResult, area_ratio))
+        .def_ro("throat_radius", &Goddard::MocResult::throat_radius,
+                DOC(Goddard, MocResult, throat_radius))
+        .def_ro("stagnation_pressure", &Goddard::MocResult::stagnation_pressure,
+                DOC(Goddard, MocResult, stagnation_pressure))
+        .def_ro("stagnation_temperature", &Goddard::MocResult::stagnation_temperature,
+                DOC(Goddard, MocResult, stagnation_temperature))
+        .def_ro("stagnation_sound_speed", &Goddard::MocResult::stagnation_sound_speed,
+                DOC(Goddard, MocResult, stagnation_sound_speed))
         .def_ro("pass_diagnostics", &Goddard::MocResult::pass_diagnostics,
                 DOC(Goddard, MocResult, pass_diagnostics))
         .def_ro("init_diagnostics", &Goddard::MocResult::init_diagnostics,
@@ -738,14 +756,13 @@ void bind_moc(nb::module_& m) {
         .def_ro("exit_plane", &Goddard::MocResult::exit_plane, DOC(Goddard, MocResult, exit_plane))
         .def("__repr__", [](const Goddard::MocResult& self) {
             return std::format(
-                "<MocResult converged={} exit_mach={:.4g} area_ratio={:.4g} length={:.4g}>",
-                self.converged, self.exit_mach, self.area_ratio, self.nozzle_length);
+                "<MocResult {} exit_mach={:.4g} area_ratio={:.4g} length={:.4g}>",
+                status_tag(self.status), self.exit_mach, self.area_ratio, self.nozzle_length);
         });
 
     // ---- ThrustCoefficient ----
 
     nb::class_<Goddard::ThrustCoefficient>(m, "ThrustCoefficient", DOC(Goddard, ThrustCoefficient))
-        .def(nb::init<>())
         .def_ro("Cf_vacuum", &Goddard::ThrustCoefficient::Cf_vacuum,
                 DOC(Goddard, ThrustCoefficient, Cf_vacuum))
         .def_ro("Cf", &Goddard::ThrustCoefficient::Cf, DOC(Goddard, ThrustCoefficient, Cf))
@@ -753,9 +770,11 @@ void bind_moc(nb::module_& m) {
                 DOC(Goddard, ThrustCoefficient, momentum_thrust))
         .def_ro("pressure_thrust", &Goddard::ThrustCoefficient::pressure_thrust,
                 DOC(Goddard, ThrustCoefficient, pressure_thrust))
+        .def_ro("status", &Goddard::ThrustCoefficient::status,
+                DOC(Goddard, ThrustCoefficient, status))
         .def("__repr__", [](const Goddard::ThrustCoefficient& self) {
-            return std::format("<ThrustCoefficient Cf={:.4g} Cf_vacuum={:.4g}>",
-                               self.Cf, self.Cf_vacuum);
+            return std::format("<ThrustCoefficient {} Cf={:.4g} Cf_vacuum={:.4g}>",
+                               status_tag(self.status), self.Cf, self.Cf_vacuum);
         });
 
     // ---- MocNozzle ----
@@ -763,21 +782,13 @@ void bind_moc(nb::module_& m) {
     nb::class_<Goddard::MocNozzle>(m, "MocNozzle", DOC(Goddard, MocNozzle))
         .def("__init__", [](Goddard::MocNozzle* self, Goddard::MocOptions options) {
             new (self) Goddard::MocNozzle(std::move(options));
-        }, "options"_a)
-        .def("__init__", [](Goddard::MocNozzle* self,
-                            std::shared_ptr<Cantera::Solution> sol,
-                            Goddard::MocOptions options) {
-            Goddard::Gas gas(std::move(sol), options.chemistry);
-            new (self) Goddard::MocNozzle(std::move(gas), std::move(options));
-        }, "solution"_a, "options"_a)
+        }, "options"_a, DOC(Goddard, MocNozzle, MocNozzle))
         .def("__init__", [](Goddard::MocNozzle* self,
                             Goddard::Gas& gas,
                             Goddard::MocOptions options) {
             new (self) Goddard::MocNozzle(gas, std::move(options));
-        }, "gas"_a, "options"_a)
-        .def_rw("options", &Goddard::MocNozzle::options,
-                "Solver configuration. Public and re-read by solve(), so it can be adjusted "
-                "between solves.")
+        }, "gas"_a, "options"_a, DOC(Goddard, MocNozzle, MocNozzle, 2))
+        .def_rw("options", &Goddard::MocNozzle::options, DOC(Goddard, MocNozzle, options))
         .def("solve", &Goddard::MocNozzle::solve, DOC(Goddard, MocNozzle, solve))
         .def("is_solved", &Goddard::MocNozzle::is_solved, DOC(Goddard, MocNozzle, is_solved))
         .def("__repr__", [](const Goddard::MocNozzle& self) {

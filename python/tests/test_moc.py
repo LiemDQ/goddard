@@ -36,7 +36,7 @@ def analysis_result(planar_result):
 
 
 def test_planar_perfect_gas_solve(planar_result):
-    assert planar_result.converged
+    assert planar_result.status.ok
     assert planar_result.exit_mach > 1.0
     assert planar_result.nozzle_length > 0.0
     assert planar_result.area_ratio > 1.0
@@ -45,7 +45,7 @@ def test_planar_perfect_gas_solve(planar_result):
 
 def test_result_types(planar_result):
     from goddard import CharacteristicNet, NozzleProfile, ExitPlane
-    assert isinstance(planar_result.converged, bool)
+    assert isinstance(planar_result.status.ok, bool)
     assert isinstance(planar_result.exit_mach, float)
     assert isinstance(planar_result.nozzle_length, float)
     assert isinstance(planar_result.area_ratio, float)
@@ -113,7 +113,7 @@ def test_result_diagnostic_fields_readable(planar_result, analysis_result):
     # Per-pass diagnostics are recorded by the front-marching kernel (analysis and Rao
     # design) only; the minimum-length design ladder records none.
     assert len(planar_result.pass_diagnostics) == 0
-    assert analysis_result.converged
+    assert analysis_result.status.ok
     assert len(analysis_result.pass_diagnostics) > 0
     diag = analysis_result.pass_diagnostics[0]
     # `pass` is a Python keyword, so the field is exposed as pass_index.
@@ -209,7 +209,7 @@ def test_analysis_round_trip(planar_result):
     opts.nozzle_profile = profile
 
     result = MocNozzle(opts).solve()
-    assert result.converged
+    assert result.status.ok
     # Analysis should reproduce design Mach within 5%
     assert result.exit_mach == pytest.approx(design_mach, rel=0.05)
 
@@ -235,44 +235,44 @@ def test_thrust_coefficient_ambient(planar_result):
 def test_convenience_moc_design():
     from goddard import moc_design
 
-    result = moc_design(15.0)
-    assert result.converged
+    result = moc_design(math.radians(15.0))
+    assert result.status.ok
     assert result.exit_mach > 1.0
 
 
 def test_convenience_moc_analysis():
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
-    assert design.converged
+    design = moc_design(math.radians(15.0))
+    assert design.status.ok
 
     result = moc_analysis(design.profile)
-    assert result.converged
+    assert result.status.ok
 
 
 def test_convenience_analysis_from_csv(tmp_path):
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
+    design = moc_design(math.radians(15.0))
     csv_path = str(tmp_path / "wall.csv")
     design.profile.save_csv(csv_path)
 
     result = moc_analysis(csv_path)
-    assert result.converged
+    assert result.status.ok
 
 
 def test_convenience_axisymmetric():
     from goddard import moc_design, MocFlowKind
 
-    result = moc_design(15.0, flow_type=MocFlowKind.AXISYMMETRIC)
-    assert result.converged
+    result = moc_design(math.radians(15.0), flow_type=MocFlowKind.AXISYMMETRIC)
+    assert result.status.ok
     assert result.exit_mach > 1.0
 
 
 def test_convenience_analysis_from_pathlib(tmp_path):
     from goddard import moc_design, moc_analysis
 
-    design = moc_design(15.0)
+    design = moc_design(math.radians(15.0))
     csv_path = tmp_path / "wall.csv"
     design.profile.save_csv(str(csv_path))
 
@@ -295,7 +295,7 @@ AREA_RATIO = 8.0
 @pytest.mark.parametrize("factory,args", [
     ("conical_nozzle", (AREA_RATIO,)),
     ("rao_nozzle", (AREA_RATIO,)),
-    ("bezier_nozzle", (AREA_RATIO, 30.0, 8.0)),
+    ("bezier_nozzle", (AREA_RATIO, math.radians(30.0), math.radians(8.0))),
 ])
 def test_generated_contours(factory, args):
     import goddard
@@ -313,7 +313,7 @@ def test_throat_expansion_curve():
     from goddard import NozzleProfile
 
     arc = NozzleProfile.throat_expansion_curve(
-        theta_n_deg=30.0, r_expansion_curve=0.382, r_throat=1.0)
+        theta_n=math.radians(30.0), r_expansion_curve=0.382, r_throat=1.0)
     assert len(arc) > 0
     assert np.all(np.diff(arc.x) > 0)
     assert arc.y[0] == pytest.approx(1.0)
@@ -355,7 +355,7 @@ def test_conical_axisymmetric_analysis_converges():
     profile = conical_nozzle(4.0)
     result = moc_analysis(profile, flow_type=MocFlowKind.AXISYMMETRIC, num_characteristics=15)
 
-    assert result.converged, result.failure.message
+    assert result.status.ok, result.failure.message
 
     y = np.asarray(result.exit_plane.y)
     assert len(y) > 1
@@ -366,13 +366,6 @@ def test_conical_axisymmetric_analysis_converges():
     # this configuration in the C++ sweep, tools/moc_sweep.cpp), so 1% covers roundoff.
     assert y[-1] == pytest.approx(math.sqrt(4.0), rel=1e-2)
 
-    # TODO(Package E): CharacteristicNet.fronts is a C++ field (Package B, the inverse
-    # march's per-pass front record) not yet exposed in python/src/bind_moc.cpp as of this
-    # test. Skip cleanly, keyed on the attribute's absence, so this starts enforcing the
-    # instant the binding lands rather than silently staying green forever.
-    if not hasattr(result.net, "fronts"):
-        pytest.skip("CharacteristicNet.fronts not yet bound (Package E); "
-                     "remove this skip once bind_moc.cpp exposes net.fronts")
     assert len(result.net.fronts) > 0
 
 
@@ -388,9 +381,10 @@ def test_rao_design_mode_runs():
 
 
 def test_pass_diagnostics_table():
-    from goddard import moc_design, pass_diagnostics_table
+    from goddard import moc_design
+    from goddard.moc_diagnostics import pass_diagnostics_table
 
-    table = pass_diagnostics_table(moc_design(15.0))
+    table = pass_diagnostics_table(moc_design(math.radians(15.0)))
     assert "pass_index" in table
     assert "max_spacing" in table
     lengths = {len(column) for column in table.values()}
@@ -430,3 +424,60 @@ def test_mesh_node_mask_excludes_bootstrap_points(planar_result):
     # zeros; masking it is what keeps the Mach contour from starting at 0.
     assert not mask.all()
     assert np.asarray(net.mach)[mask].min() >= 1.0
+
+
+def test_convenience_moc_with_gas_defaults_to_frozen_chemistry():
+    """A gas given without a chemistry is used, at frozen composition, not dropped for a
+    perfect gas with gamma = 1.4; PERFECT_GAS with a gas is an error instead of ignoring it."""
+    import os
+    import goddard
+    from conftest import find_data_dir
+
+    gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
+    gas.set_state_TPX(3000.0, 3e6, {"H2O": 0.8, "OH": 0.1, "H2": 0.05, "O2": 0.05})
+
+    default = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas)
+    frozen = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas,
+                                chemistry=goddard.GasChemistry.FROZEN)
+    perfect = goddard.moc_design(math.radians(15.0), num_characteristics=7)
+    assert default.status.ok
+    assert default.exit_mach == frozen.exit_mach
+    # The combustion products have frozen gamma near 1.2: for the same wall angle the
+    # minimum-length nozzle reaches a lower Mach number than for gamma = 1.4.
+    assert default.exit_mach < 0.95 * perfect.exit_mach
+
+    with pytest.raises(ValueError):
+        goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas,
+                           chemistry=goddard.GasChemistry.PERFECT_GAS)
+
+
+def test_moc_states_are_relative_to_the_stagnation_state():
+    """Every chemistry reports P/P0, T/T0 and V/a0; a real-gas result carries P0, T0 and a0."""
+    import os
+    import goddard
+    from conftest import find_data_dir
+
+    gas = goddard.Gas(os.path.join(find_data_dir(), "h2o2.yaml"), "ohmech")
+    gas.set_state_TPX(3000.0, 3e6, {"H2O": 0.8, "OH": 0.1, "H2": 0.05, "O2": 0.05})
+    real = goddard.moc_design(math.radians(15.0), num_characteristics=7, gas=gas)
+    assert real.status.ok
+    assert real.stagnation_temperature == pytest.approx(3000.0, rel=1e-12)
+    assert real.stagnation_pressure == pytest.approx(3e6, rel=1e-12)
+    assert real.stagnation_sound_speed == pytest.approx(gas.speed_of_sound, rel=1e-12)
+
+    # Dimensional exit velocity from the energy equation, u = sqrt(2 (h0 - h)), with h from
+    # the exit pressure and temperature at frozen composition.
+    ep = real.exit_plane
+    exit_gas = gas.clone()
+    exit_gas.set_state_TP(ep.temperature[0] * real.stagnation_temperature,
+                          ep.pressure[0] * real.stagnation_pressure)
+    u = math.sqrt(2.0 * (gas.enthalpy_mass - exit_gas.enthalpy_mass))
+    assert ep.velocity[0] * real.stagnation_sound_speed == pytest.approx(u, rel=1e-3)
+
+    perfect = goddard.moc_design(math.radians(15.0), num_characteristics=7)
+    assert math.isnan(perfect.stagnation_pressure)
+    gamma = 1.4
+    T_ratio = 1.0 / (1.0 + 0.5 * (gamma - 1.0) * perfect.exit_plane.mach**2)
+    np.testing.assert_allclose(perfect.exit_plane.temperature, T_ratio, rtol=1e-12)
+    np.testing.assert_allclose(perfect.exit_plane.velocity,
+                               perfect.exit_plane.mach * np.sqrt(T_ratio), rtol=1e-12)

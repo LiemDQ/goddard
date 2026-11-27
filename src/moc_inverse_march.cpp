@@ -1,6 +1,7 @@
 // Inverse (reference-plane) marching kernel for axisymmetric/planar MoC analysis and
 // Rao design: used whenever MocOptions::mode is not DESIGN_MIN_LENGTH, which uses
 // DirectMarch (moc_direct_march.cpp) instead.
+#include <numbers>
 #include <cmath>
 #include <algorithm>
 #include <format>
@@ -503,13 +504,13 @@ std::optional<MocFailure> InverseMarch::check_front_spacelike(const std::vector<
         // backward C- direction (theta - mu + pi) of both endpoints.
         const double segment_angle = std::atan2(dy, b.x - a.x);
         const double lower_bound = std::max(a.theta + a.mu, b.theta + b.mu);
-        const double upper_bound = std::min(a.theta - a.mu, b.theta - b.mu) + M_PI;
+        const double upper_bound = std::min(a.theta - a.mu, b.theta - b.mu) + std::numbers::pi;
         if (!(segment_angle > lower_bound && segment_angle < upper_bound)) {
             return MocFailure{MocErrorCode::INITIALIZATION_FAILED,
                 std::format("Inverse march: initial front segment {} (y {:.4f} to {:.4f}) is not "
                     "spacelike: its direction {:.2f} deg lies outside ({:.2f}, {:.2f}) deg.",
-                    j, a.y, b.y, segment_angle * 180.0 / M_PI,
-                    lower_bound * 180.0 / M_PI, upper_bound * 180.0 / M_PI),
+                    j, a.y, b.y, segment_angle * 180.0 / std::numbers::pi,
+                    lower_bound * 180.0 / std::numbers::pi, upper_bound * 180.0 / std::numbers::pi),
                 a.x, a.y, -1};
         }
     }

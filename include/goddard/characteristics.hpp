@@ -7,16 +7,21 @@ namespace Goddard {
 
 /** Which family a characteristic belongs to: C+ (PLUS) or C- (MINUS). */
 enum class CharacteristicFamily {
-    UNSPECIFIED, PLUS, MINUS
+    /// No family assigned, or any family where used as a filter.
+    UNSPECIFIED,
+    /// Left-running C+ characteristic, along theta + mu.
+    PLUS,
+    /// Right-running C- characteristic, along theta - mu.
+    MINUS
 };
 
 /**
  * One node of the characteristic mesh: the flow state at a point, plus the two Riemann
  * invariants carried through it.
  *
- * For perfect-gas solves the thermodynamic quantities are normalized by their stagnation
- * values and `V` holds the Mach number; for frozen and equilibrium chemistry they are
- * dimensional SI.
+ * The state is nondimensional for every chemistry: pressure, temperature and velocity are
+ * divided by the stagnation pressure P0, temperature T0 and speed of sound a0, which a real-gas
+ * MocResult reports (`stagnation_pressure`, `stagnation_temperature`, `stagnation_sound_speed`).
  *
  * Plain data: the thermodynamic state is filled in by MocThermo (see moc_thermo.hpp), not by
  * a method on this type.
@@ -24,11 +29,11 @@ enum class CharacteristicFamily {
 struct CharacteristicPoint {
     double theta;       ///< Flow angle, in radians.
     double nu;          ///< Prandtl-Meyer angle (or generalized PM function), in radians.
-    double pressure;    ///< Static pressure; Pa, or normalized by the stagnation pressure for perfect gas.
-    double temperature; ///< Static temperature; K, or normalized by the stagnation temperature for perfect gas.
+    double pressure;    ///< Static pressure P/P0 [-].
+    double temperature; ///< Static temperature T/T0 [-].
     double gamma_s;     ///< Local isentropic exponent.
     double mach;        ///< Local Mach number.
-    double V;           ///< Velocity in m/s; equal to the Mach number for perfect gas.
+    double V;           ///< Velocity V/a0 [-], with a0 the stagnation speed of sound.
     /// Mach angle asin(1/M), in radians. Sets the characteristic slopes theta +/- mu.
     double mu;
     double K_plus;      ///< Riemann invariant carried along the C+ characteristic.

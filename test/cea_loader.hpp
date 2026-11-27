@@ -7,7 +7,7 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 
-#include "goddard/problem.hpp"
+#include "goddard/rocket.hpp"
 
 /**
  * CEA test data structures for validation against NASA CEA results

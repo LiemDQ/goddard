@@ -5,6 +5,7 @@
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/nozzle.hpp"
 #include "cantera/core.h"
+#include <numbers>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -12,7 +13,7 @@
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 namespace {
 
@@ -106,7 +107,7 @@ TEST_P(InverseMarchUniformFlow, StaysUniform) {
     solver.set_front_override(front0);
     MocResult result = solver.solve();
 
-    ASSERT_TRUE(result.converged) << to_string(result.failure.code) << ": " << result.failure.message;
+    ASSERT_TRUE(result.status.ok()) << to_string(result.failure.code) << ": " << result.failure.message;
     ASSERT_GE(result.net.fronts.size(), 2u) << "march must have advanced past F_0";
 
     for (size_t f = 0; f < result.net.fronts.size(); f++) {
@@ -198,6 +199,10 @@ TEST_P(InverseMarchSourceFlow, SecondOrderConvergence) {
     for (int n : levels) {
         MocOptions opts = make_inverse_options(flow_kind, gamma, n);
         opts.nozzle_profile = profile;
+        // This contour is a cone segment with no throat on it; its narrowest radius serves
+        // as the length reference that NozzleGeometry::throat_radius must match in analysis.
+        // The march is scale invariant, so the choice only sets the internal unit.
+        opts.geometry.throat_radius = profile.y.front();
 
         std::vector<CharacteristicPoint> front0 =
             build_source_flow_front(flow, flow_kind, x_start, y_wall_start, n);
@@ -206,7 +211,7 @@ TEST_P(InverseMarchSourceFlow, SecondOrderConvergence) {
         solver.set_front_override(front0);
         MocResult result = solver.solve();
 
-        ASSERT_TRUE(result.converged) << "N=" << n << ": " << to_string(result.failure.code)
+        ASSERT_TRUE(result.status.ok()) << "N=" << n << ": " << to_string(result.failure.code)
             << " -- " << result.failure.message;
         ASSERT_FALSE(result.net.fronts.empty());
         EXPECT_NEAR(result.net.wall_x.back(), x_end, 1e-6) << "N=" << n;
@@ -267,7 +272,7 @@ TEST(InverseMarch, PlanarDesignRoundTrip) {
     int levels[2] = {16, 32};
     for (int i = 0; i < 2; i++) {
         MocResult design = solve_planar_min_length_design(gamma, theta_max, levels[i]);
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
 
         MocOptions opts = make_inverse_options(MocFlowKind::PLANAR, gamma, levels[i]);
         opts.geometry.downstream_wall_curvature_radius = -1.0; // fan start line
@@ -275,10 +280,10 @@ TEST(InverseMarch, PlanarDesignRoundTrip) {
 
         MocNozzle solver(opts);
         MocResult analysis = solver.solve();
-        ok[i] = analysis.converged;
-        EXPECT_TRUE(analysis.converged) << "N=" << levels[i] << ": "
+        ok[i] = analysis.status.ok();
+        EXPECT_TRUE(analysis.status.ok()) << "N=" << levels[i] << ": "
             << to_string(analysis.failure.code) << " -- " << analysis.failure.message;
-        if (!analysis.converged) continue;
+        if (!analysis.status.ok()) continue;
 
         err[i] = std::abs(analysis.exit_mach - expected_exit_mach);
         RecordProperty("exit_mach_error_N" + std::to_string(levels[i]), std::to_string(err[i]));
@@ -322,9 +327,9 @@ double exit_plane_mass_flow_error(const MocResult& result, double gamma, double 
         // The exit plane is a vertical cut (constant x): dx=0, so the downstream normal flux
         // reduces to cos(theta_avg)*dy (see start_line_mass_flow_error for the general form).
         const double normal_flux = std::cos(theta_avg) * dy;
-        mdot += flux * normal_flux * (2.0 * M_PI * y_avg);
+        mdot += flux * normal_flux * (2.0 * std::numbers::pi * y_avg);
     }
-    const double mdot_reference = perfect_gas_mass_flux(1.0, gamma) * (M_PI * r_throat * r_throat);
+    const double mdot_reference = perfect_gas_mass_flux(1.0, gamma) * (std::numbers::pi * r_throat * r_throat);
     return (mdot - mdot_reference) / mdot_reference;
 }
 
@@ -348,15 +353,15 @@ TEST(InverseMarch, ConicalConvergesAtCleanThroat) {
             const int n = levels[li];
             MocOptions opts = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, n);
             opts.geometry.downstream_wall_curvature_radius = 2.0; // KL start line, clean throat
-            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 2.0, 1.0, 15.0, 120);
+            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 2.0, 1.0, 15.0 * DEG, 120);
 
             MocNozzle solver(opts);
             MocResult result = solver.solve();
 
-            ok[li] = result.converged;
-            EXPECT_TRUE(result.converged) << "AR=" << ar << " N=" << n << ": "
+            ok[li] = result.status.ok();
+            EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
-            if (!result.converged) continue;
+            if (!result.status.ok()) continue;
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
 
             // Wall Mach must not decrease along the contour. The first wall point is the
@@ -414,11 +419,11 @@ TEST(InverseMarch, ConicalDefaultThroatReachesExit) {
         for (int n : {31, 61}) {
             MocOptions opts = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, n);
             opts.geometry.downstream_wall_curvature_radius = 0.382;
-            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0, 60);
+            opts.nozzle_profile = NozzleProfile::generate_conical_nozzle(ar, 0.382, 1.0, 15.0 * DEG, 60);
             MocResult result = MocNozzle(opts).solve();
-            EXPECT_TRUE(result.converged) << "AR=" << ar << " N=" << n << ": "
+            EXPECT_TRUE(result.status.ok()) << "AR=" << ar << " N=" << n << ": "
                 << to_string(result.failure.code) << " -- " << result.failure.message;
-            if (!result.converged) continue;
+            if (!result.status.ok()) continue;
             EXPECT_TRUE(result.reached_exit_plane) << "AR=" << ar << " N=" << n;
             const double mdot_err = exit_plane_mass_flow_error(result, gamma, 1.0);
             EXPECT_LT(std::abs(mdot_err), 0.02) << "AR=" << ar << " N=" << n << ": mass-flow error " << mdot_err;
@@ -457,13 +462,13 @@ TEST(InverseMarch, AxiDesignRoundTripConservesMass) {
         d.num_characteristics = levels[i];
         d.geometry.throat_radius = 1.0;
         MocResult design = MocNozzle(d).solve();
-        ASSERT_TRUE(design.converged) << "design N=" << levels[i];
+        ASSERT_TRUE(design.status.ok()) << "design N=" << levels[i];
 
         MocOptions a = make_inverse_options(MocFlowKind::AXISYMMETRIC, gamma, levels[i]);
         a.geometry.downstream_wall_curvature_radius = -1.0; // fan start line
         a.nozzle_profile = design.profile;
         MocResult analysis = MocNozzle(a).solve();
-        ASSERT_TRUE(analysis.converged) << "N=" << levels[i] << ": "
+        ASSERT_TRUE(analysis.status.ok()) << "N=" << levels[i] << ": "
             << to_string(analysis.failure.code) << " -- " << analysis.failure.message;
 
         mdot_err[i] = exit_plane_mass_flow_error(analysis, gamma, 1.0);
@@ -473,7 +478,7 @@ TEST(InverseMarch, AxiDesignRoundTripConservesMass) {
         const ExitPlane& ep = analysis.exit_plane;
         double mach_area = 0.0, area = 0.0;
         for (size_t k = 1; k < ep.y.size(); k++) {
-            const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+            const double dA = std::numbers::pi * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
             mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
             area += dA;
         }
@@ -500,12 +505,13 @@ protected:
     void SetUp() override {
         gas = Cantera::newSolution("h2o2.yaml", "ohmech");
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };
 
 TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
-    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 2.0, 1.0, 15.0, 120);
+    NozzleProfile profile = NozzleProfile::generate_conical_nozzle(4.0, 2.0, 1.0, 15.0 * DEG, 120);
 
     auto solve_with = [&](GasChemistry chemistry) {
         MocOptions opts;
@@ -521,16 +527,18 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
         opts.nozzle_profile = profile;
 
         gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
-        MocNozzle nozzle(Gas(gas, chemistry), opts);
+
+        gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
+        MocNozzle nozzle(Gas(gas), opts);
         return nozzle.solve();
     };
 
     MocResult frozen_result = solve_with(GasChemistry::FROZEN);
     MocResult equil_result = solve_with(GasChemistry::EQUILIBRIUM);
 
-    ASSERT_TRUE(frozen_result.converged) << to_string(frozen_result.failure.code)
+    ASSERT_TRUE(frozen_result.status.ok()) << to_string(frozen_result.failure.code)
         << " -- " << frozen_result.failure.message;
-    ASSERT_TRUE(equil_result.converged) << to_string(equil_result.failure.code)
+    ASSERT_TRUE(equil_result.status.ok()) << to_string(equil_result.failure.code)
         << " -- " << equil_result.failure.message;
 
     RecordProperty("frozen_exit_mach", std::to_string(frozen_result.exit_mach));
@@ -539,29 +547,24 @@ TEST_F(InverseMarchChemistrySmoke, FrozenAndEquilibriumSmoke) {
     // 1-D reference at the same area ratio, same ordering as MocFrozenTest.AxiFrozenVs1D /
     // AxiEquilibriumVs1D / AxiFrozenVsEquilibriumDiffers (test_moc_phases.cpp).
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts_frozen;
     nozzle_opts_frozen.chemistry = GasChemistry::FROZEN;
-    Nozzle nozzle_1d_frozen(Gas(gas, GasChemistry::FROZEN), nozzle_opts_frozen);
+    Nozzle nozzle_1d_frozen(Gas(gas), nozzle_opts_frozen);
     auto result_1d_frozen = nozzle_1d_frozen.solve(
         ExpansionType::SUPERSONIC_AREA_RATIO, frozen_result.area_ratio);
-    ASSERT_TRUE(result_1d_frozen.throat.converged);
     ASSERT_FALSE(result_1d_frozen.expansions.empty());
-    ASSERT_TRUE(result_1d_frozen.expansions[0].converged);
-    gas->thermo()->restoreState(result_1d_frozen.expansions[0].state);
-    const double mach_1d_frozen = Goddard::mach(
-        *gas->thermo(), result_1d_frozen.throat.H_stagnation, result_1d_frozen.expansions[0].gamma_s);
+        const double mach_1d_frozen = result_1d_frozen.expansions[0].mach;
 
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts_equil;
-    Nozzle nozzle_1d_equil(Gas(gas, GasChemistry::EQUILIBRIUM), nozzle_opts_equil);
+    Nozzle nozzle_1d_equil(Gas(gas), nozzle_opts_equil);
     auto result_1d_equil = nozzle_1d_equil.solve(
         ExpansionType::SUPERSONIC_AREA_RATIO, equil_result.area_ratio);
-    ASSERT_TRUE(result_1d_equil.throat.converged);
     ASSERT_FALSE(result_1d_equil.expansions.empty());
-    ASSERT_TRUE(result_1d_equil.expansions[0].converged);
-    gas->thermo()->restoreState(result_1d_equil.expansions[0].state);
-    const double mach_1d_equil = Goddard::mach(
-        *gas->thermo(), result_1d_equil.throat.H_stagnation, result_1d_equil.expansions[0].gamma_s);
+        const double mach_1d_equil = result_1d_equil.expansions[0].mach;
 
     RecordProperty("frozen_1d_mach", std::to_string(mach_1d_frozen));
     RecordProperty("equilibrium_1d_mach", std::to_string(mach_1d_equil));

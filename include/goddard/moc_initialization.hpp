@@ -158,7 +158,8 @@ StartLine build_start_line(const MocSolveContext& ctx, const ThroatCondition& th
  *             one).
  * @param ctx MocSolveContext (thermo dispatch, wall profile, options) the line was built for.
  * @param reference_spacing Characteristic spacing at the throat, for the normalized fields.
- * @param throat_radius Throat radius in net units, for the mass-flow reference.
+ * @param throat_radius Throat radius in net units (1 in a MocNozzle solve, which works in
+ *        throat radii), for the mass-flow reference.
  */
 MocInitDiagnostics measure_start_line(const StartLine& line, const MocSolveContext& ctx,
                                       double reference_spacing, double throat_radius);

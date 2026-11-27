@@ -2,6 +2,8 @@
 InheritParentConfig: true
 # nanobind registers types and exceptions through temporaries (nb::class_<...>(m, ...),
 # nb::exception<...>(m, ...)) whose constructors have the side effect; they are not unused objects.
+# Operators are bound as `.def(nb::self == nb::self)`, which reads as a redundant expression.
 Checks: >
   -bugprone-unused-raii,
-  -bugprone-throw-keyword-missing
+  -bugprone-throw-keyword-missing,
+  -misc-redundant-expression

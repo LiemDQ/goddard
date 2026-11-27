@@ -3,7 +3,7 @@
 #include "cea_comparer.hpp"
 
 #include "goddard/combustor.hpp"
-#include "goddard/problem.hpp"
+#include "goddard/rocket.hpp"
 #include "goddard/utils.hpp"
 #include "goddard/thermo.hpp"
 #include "goddard/config.h"
@@ -30,85 +30,37 @@ protected:
         cea_data_dir = std::string(DATA_DIR) + "/cea_results";
     }
 
-    // Helper to create ChemicalParameters from CEA conditions
-    Goddard::ChemicalParameters createChemParamsFromCEA(const CEAConditions& conditions);
-
-    // Helper to create RocketCaseParameters
-    Goddard::RocketCaseParameters createCaseParams(
-        const std::string& name,
-        const CEAConditions& conditions,
-        Goddard::GasChemistry chemistry);
+    // Solve the rocket point of the CEA conditions with the given nozzle chemistry.
+    Goddard::RocketResult solve_point(const CEAConditions& conditions,
+                                      Goddard::GasChemistry chemistry);
 
     std::shared_ptr<Cantera::Solution> fuel, oxidizer, products;
     std::unique_ptr<CEADataLoader> cea_loader;
     std::string cea_data_dir;
 };
 
-Goddard::ChemicalParameters CEAIntegrationTests::createChemParamsFromCEA(
-    const CEAConditions& conditions) {
+Goddard::RocketResult CEAIntegrationTests::solve_point(
+    const CEAConditions& conditions, Goddard::GasChemistry chemistry) {
 
-    Goddard::ChemicalParameters params;
-    params.thermo_file = std::string(DATA_DIR) + "/h2o2.yaml";
+    // Every species of h2o2.yaml's ohmech phase, including AR and N2.
+    const Goddard::Gas product_gas(std::string(DATA_DIR) + "/h2o2.yaml", "ohmech");
 
-    // Species set for H2/O2 combustion (all species from h2o2.yaml)
-    // Include AR and N2 to match the phase definition in h2o2.yaml
-    params.species = {"H2", "H", "O", "O2", "OH", "H2O", "HO2", "H2O2", "AR", "N2"};
+    // CEA conditions may specify cryogenic temperatures, which the ideal-gas reactants take as
+    // given; the CEA fuel_energy/oxidizer_energy fields hold the actual enthalpies.
+    Goddard::RocketPoint point;
+    point.fuel = Goddard::PhaseSpecification(conditions.fuel_temp, 101325.0, "H2:1");
+    point.oxidizer = Goddard::PhaseSpecification(conditions.oxidizer_temp, 101325.0, "O2:1");
+    point.mixture_ratio = conditions.of_ratio;
+    // Infinite-area combustor at the CEA pressure (psia to Pa)
+    point.chamber_pressure = conditions.pressure_psia * 6894.76;
+    point.nozzle.chemistry = chemistry;
+    point.expansion_type = Goddard::ExpansionType::SUPERSONIC_AREA_RATIO;
+    // The CEA area ratios if given, otherwise those of h2.json
+    point.expansion_ratios = conditions.area_ratios.empty()
+        ? std::vector<double>{15.0, 35.0} : conditions.area_ratios;
 
-    // Set fuel state (H2)
-    // Note: CEA conditions may specify cryogenic temps (liquid H2/O2) which
-    // aren't supported by ideal gas model. Use standard temp (298.15K) instead.
-    // The CEA fuel_energy/oxidizer_energy fields contain the actual enthalpy.
-    auto fuel_thermo = fuel->thermo();
-    double fuel_temp = conditions.fuel_temp;
-    Goddard::PhaseSpecification fuel_state{fuel_temp, 101325.0, "H2:1"};
-    params.cantera_fuel_state = fuel_state;
-    // double pressure_Pa = conditions.pressure_psia * 6894.76;
-    
-    // double fuel_MW = fuel_thermo->meanMolecularWeight();
-    // double fuel_energy = conditions.fuel_energy * 1000.0 / fuel_MW;
-    // fuel_thermo->setState_HP(fuel_energy, pressure_Pa);
-
-    // Set oxidizer state (O2)
-    auto ox_thermo = oxidizer->thermo();
-    double ox_temp = conditions.oxidizer_temp;
-    Goddard::PhaseSpecification ox_state{ox_temp, 101325.0, "O2:1"};
-    params.cantera_oxidizer_state = ox_state;
-    // double ox_MW = ox_thermo->meanMolecularWeight();
-    // double ox_energy = conditions.oxidizer_energy * 1000.0 / ox_MW;
-    // ox_thermo->setState_HP(ox_energy, pressure_Pa);
-
-    // O/F ratio from CEA conditions
-    params.OF_ratios = {conditions.of_ratio};
-
-    return params;
-}
-
-Goddard::RocketCaseParameters CEAIntegrationTests::createCaseParams(
-    const std::string& name,
-    const CEAConditions& conditions,
-    Goddard::GasChemistry chemistry) {
-
-    Goddard::RocketCaseParameters case_params;
-    case_params.name = name;
-    case_params.problem_type = "rocket";
-
-    // Combustor: infinite area at CEA pressure (convert psia to Pa)
-    case_params.combustor_options.type = Goddard::CombustorType::INFINITE_AREA;
-    case_params.combustor_options.pressures = {conditions.pressure_psia * 6894.76};
-
-    // Nozzle configuration
-    case_params.nozzle_options.chemistry = chemistry;
-    case_params.nozzle_options.expansion_type = Goddard::ExpansionType::SUPERSONIC_AREA_RATIO;
-
-    // Use area ratios from CEA if available, otherwise use default
-    if (!conditions.area_ratios.empty()) {
-        case_params.nozzle_options.expansion_ratios = conditions.area_ratios;
-    } else {
-        // Default expansion ratios matching h2.json (15.0, 35.0)
-        case_params.nozzle_options.expansion_ratios = {15.0, 35.0};
-    }
-
-    return case_params;
+    Goddard::RocketSolver solver(product_gas);
+    return solver.solve(point);
 }
 
 using namespace Goddard;
@@ -175,26 +127,10 @@ TEST_F(CEAIntegrationTests, DemonstrateWorkflow) {
 
 
 // ============================================================================
-// RocketProblem Integration Tests
-// ============================================================================
-//
-// KNOWN ISSUES identified during test development:
-// 1. problem.cpp line 68-69: M_fuel incorrectly uses cantera_oxidizer_state
-//    (should be cantera_fuel_state)
-// 2. select_species in speciate.cpp filters species from root_node but doesn't
-//    update phase species lists, causing "species not found" errors
-// 3. State vectors saved from one Solution may be incompatible when restored
-//    to a Solution created via select_species due to different state sizes/ordering
-//
-// These tests are currently skipped pending fixes to the core simulation code.
+// RocketSolver Integration Tests
 // ============================================================================
 
-TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
-    // SKIP: RocketProblem has known issues - see comments above
-    // TODO: Re-enable once problem.cpp and speciate.cpp issues are fixed
-    // GTEST_SKIP() << "RocketProblem has known issues with state handling and species selection. "
-    //              << "See comments in test file for details.";
-
+TEST_F(CEAIntegrationTests, RocketSolverChamberMatchesCEA) {
     // Load H2 CEA reference data
     std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
@@ -209,22 +145,16 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
         GTEST_SKIP() << "CEA chamber data incomplete";
     }
 
-    std::cout << "\n=== RocketProblem vs CEA Chamber Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Chamber Comparison ===" << std::endl;
     std::cout << "CEA Chamber: T=" << cea_chamber->temperature_k << "K, P="
               << cea_chamber->pressure_bar << "bar, MW=" << cea_chamber->molecular_weight
               << "g/mol" << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, GasChemistry::EQUILIBRIUM);
-    
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::EQUILIBRIUM);
 
     // Extract chamber state
-    const auto& goddard_chamber = results.chamber(0, "H2_O2_equilibrium").thermo;
+    const auto& goddard_chamber = rocket.chamber.thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -240,7 +170,7 @@ TEST_F(CEAIntegrationTests, RocketProblemChamberMatchesCEA) {
     }
 }
 
-TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
+TEST_F(CEAIntegrationTests, RocketSolverThroatMatchesCEA) {
     // Previously skipped due to state handling issues - now fixed
 
     // Load H2 CEA reference data
@@ -257,22 +187,16 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
         GTEST_SKIP() << "CEA throat data incomplete";
     }
 
-    std::cout << "\n=== RocketProblem vs CEA Throat Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Throat Comparison ===" << std::endl;
     std::cout << "CEA Throat: T=" << cea_throat->temperature_k << "K, P="
               << cea_throat->pressure_bar << "bar, Mach=" << cea_throat->mach_number
               << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, GasChemistry::EQUILIBRIUM);
-
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::EQUILIBRIUM);
 
     // Extract throat state
-    const auto& goddard_throat = results.throat(0, "H2_O2_equilibrium").thermo;
+    const auto& goddard_throat = rocket.throat.thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -287,7 +211,7 @@ TEST_F(CEAIntegrationTests, RocketProblemThroatMatchesCEA) {
     }
 }
 
-TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
+TEST_F(CEAIntegrationTests, RocketSolverExitMatchesCEA) {
     // Previously skipped due to state handling issues - now fixed
 
     // Load H2 CEA reference data
@@ -299,20 +223,14 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
     auto cea_exits = cea_result->find_exit_states();
     ASSERT_GT(cea_exits.size(), 0) << "No exit states found in CEA data";
 
-    std::cout << "\n=== RocketProblem vs CEA Exit Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Exit Comparison ===" << std::endl;
     std::cout << "CEA has " << cea_exits.size() << " exit state(s)" << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_equilibrium",
-        cea_result->conditions, GasChemistry::EQUILIBRIUM);
-
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::EQUILIBRIUM);
 
     // Extract exit states
-    auto goddard_exits = results.exits(0, "H2_O2_equilibrium");
+    const auto& goddard_exits = rocket.exits;
     std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state
@@ -338,7 +256,7 @@ TEST_F(CEAIntegrationTests, RocketProblemExitMatchesCEA) {
 }
 
 
-TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
+TEST_F(CEAIntegrationTests, FrozenRocketSolverChamberMatchesCEA) {
 
     // Load H2 CEA reference data
     std::string h2_json_path = cea_data_dir + "/h2gas.json";
@@ -354,22 +272,16 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
         GTEST_SKIP() << "CEA chamber data incomplete";
     }
 
-    std::cout << "\n=== RocketProblem vs CEA Chamber Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Chamber Comparison ===" << std::endl;
     std::cout << "CEA Chamber: T=" << cea_chamber->temperature_k << "K, P="
               << cea_chamber->pressure_bar << "bar, MW=" << cea_chamber->molecular_weight
               << "g/mol" << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, GasChemistry::FROZEN);
-    
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::FROZEN);
 
     // Extract chamber state
-    const auto& goddard_chamber = results.chamber(0, "H2_O2_frozen").thermo;
+    const auto& goddard_chamber = rocket.chamber.thermo;
 
     std::cout << "Goddard Chamber: T=" << goddard_chamber.temperature << "K, P="
               << goddard_chamber.pressure / 1e5 << "bar, MW=" << goddard_chamber.molecular_weight
@@ -386,7 +298,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemChamberMatchesCEA) {
 }
 
 
-TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
+TEST_F(CEAIntegrationTests, FrozenRocketSolverThroatMatchesCEA) {
     // Previously skipped due to state handling issues - now fixed
 
     // Load H2 CEA reference data
@@ -403,22 +315,16 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
         GTEST_SKIP() << "CEA throat data incomplete";
     }
 
-    std::cout << "\n=== RocketProblem vs CEA Throat Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Throat Comparison ===" << std::endl;
     std::cout << "CEA Throat: T=" << cea_throat->temperature_k << "K, P="
               << cea_throat->pressure_bar << "bar, Mach=" << cea_throat->mach_number
               << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, GasChemistry::FROZEN);
-
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::FROZEN);
 
     // Extract throat state
-    const auto& goddard_throat = results.throat(0, "H2_O2_frozen").thermo;
+    const auto& goddard_throat = rocket.throat.thermo;
 
     std::cout << "Goddard Throat: T=" << goddard_throat.temperature << "K, P="
               << goddard_throat.pressure / 1e5 << "bar" << std::endl;
@@ -433,7 +339,7 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemThroatMatchesCEA) {
     }
 }
 
-TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
+TEST_F(CEAIntegrationTests, FrozenRocketSolverExitMatchesCEA) {
     // Load H2 CEA reference data
     std::string h2_json_path = cea_data_dir + "/h2gas.json";
     auto cea_result = cea_loader->load_from_file(h2_json_path);
@@ -443,20 +349,14 @@ TEST_F(CEAIntegrationTests, FrozenRocketProblemExitMatchesCEA) {
     auto cea_exits = cea_result->find_frozen_exit_states();
     ASSERT_GT(cea_exits.size(), 0) << "No exit states found in CEA data";
 
-    std::cout << "\n=== RocketProblem vs CEA Exit Comparison ===" << std::endl;
+    std::cout << "\n=== RocketSolver vs CEA Exit Comparison ===" << std::endl;
     std::cout << "CEA has " << cea_exits.size() << " exit state(s)" << std::endl;
 
-    // Create RocketProblem from CEA conditions
-    auto chem_params = createChemParamsFromCEA(cea_result->conditions);
-    auto case_params = createCaseParams("H2_O2_frozen",
-        cea_result->conditions, GasChemistry::FROZEN);
-
-    // Create and solve RocketProblem
-    RocketProblem problem(chem_params, {case_params}, "ohmech");
-    auto results = problem.solve();
+    // Solve the rocket point of the CEA conditions
+    const RocketResult rocket = solve_point(cea_result->conditions, GasChemistry::FROZEN);
 
     // Extract exit states
-    auto goddard_exits = results.exits(0, "H2_O2_frozen");
+    const auto& goddard_exits = rocket.exits;
     std::cout << "Goddard has " << goddard_exits.size() << " exit state(s)" << std::endl;
 
     // Compare each exit state

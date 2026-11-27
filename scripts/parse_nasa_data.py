@@ -19,11 +19,16 @@ Generated files (written into ``data/``):
                             ``RP-1``, ``AL(cr)``, ``CH4``, ``O2``, ...) resolves from
                             one file; no equation-of-state entries
 
+Every species' thermo node carries ``reference-pressure: 100000.0`` (1 bar, CEA's
+standard state); see ``REFERENCE_PRESSURE``.
+
 Provenance of the committed data:
     source      data/nasa9.dat (CEA 2002 thermo.inp, dated 9/09/04)
     commit      ef6511352aa98964f62fdb18360cd933f37890a3
     generated   2026-09-15
+    regenerated 2026-10-05, adding reference-pressure (1 bar) to every species
     command     python scripts/parse_nasa_data.py --input data/nasa9.dat --outdir data
+                (PyYAML is required: run it in the pixi ``docs`` environment)
 
 Determinism: species are emitted in source-file order, ``yaml.safe_dump`` is called
 with ``sort_keys=False``, and floats are written with ``repr`` (shortest round-trip
@@ -91,6 +96,38 @@ UNSUPPORTED_ELEMENTS = frozenset({"RN"})
 # and a large one makes the (P - P0) * M / (rho * R * T) term it adds to the chemical
 # potential negligible: 2.8e-5 for AL2O3(L) at 70 bar and 3000 K, i.e. 0.7 J/mol.
 CONDENSED_DENSITY = 1.0e6
+
+# CEA's atomic weights [kg/kmol], by CEA element symbol, written into an `elements` section
+# of every generated file so that molecular weights, and with them every mass-basis property
+# and the element amounts of a given mixture ratio, are those of CEA. Cantera's default table
+# holds the current IUPAC values, which differ from CEA's by up to 6e-5 (H: 1.008 against
+# 1.00794): enough to move the minor species of a near-stoichiometric mixture by about 1%.
+# Read off the `cea` package (3.3.4) as the molecular weight of each element's monatomic
+# species, rounded to 9 significant digits; they are the values of CEA2's table. CEA has no
+# thorium species, so TH keeps Cantera's weight, and RN is not converted.
+CEA_ATOMIC_WEIGHTS = {
+    "AG": 107.8682, "AL": 26.981538, "AR": 39.948, "B": 10.811, "BA": 137.327,
+    "BE": 9.012182, "BR": 79.904, "C": 12.0107, "CA": 40.078, "CD": 112.411,
+    "CL": 35.453, "CO": 58.9332, "CR": 51.9961, "CS": 132.90545, "CU": 63.546,
+    "D": 2.014102, "E": 5.48579903e-4, "F": 18.9984032, "FE": 55.845, "GA": 69.723,
+    "GE": 72.64, "H": 1.00794, "HE": 4.002602, "HG": 200.59, "I": 126.90447,
+    "IN": 114.818, "K": 39.0983, "KR": 83.8, "LI": 6.941, "MG": 24.305,
+    "MN": 54.938049, "MO": 95.94, "N": 14.0067, "NA": 22.98977, "NB": 92.90638,
+    "NE": 20.1797, "NI": 58.6934, "O": 15.9994, "P": 30.973761, "PB": 207.2,
+    "RB": 85.4678, "S": 32.065, "SC": 44.95591, "SI": 28.0855, "SN": 118.71,
+    "SR": 87.62, "TA": 180.9479, "TI": 47.867, "U": 238.02891, "V": 50.9415,
+    "W": 183.84, "XE": 131.293, "ZN": 65.39, "ZR": 91.224,
+}
+
+# Reference pressure [Pa] written into every species' thermo node. CEA's thermo.inp is
+# referenced to the standard-state pressure of 1 bar; Cantera assumes 1 atm for NASA9
+# and constant-cp thermo unless told otherwise, which leaves enthalpies unchanged but
+# shifts every equilibrium constant by (1.01325)^(sum of gaseous stoichiometric
+# coefficients), so equilibria at given (T, P) come out more dissociated than CEA's.
+# Cantera rejects a phase whose species disagree on the reference pressure, so the
+# constant-cp reactants, which share an ideal-gas phase with NASA9 species when loaded
+# from nasa9_reactants.yaml, carry the same value.
+REFERENCE_PRESSURE = 1.0e5
 
 
 class Nasa9Interval:
@@ -385,6 +422,7 @@ def species_node(
         # CEA assigned-enthalpy reactant: h(T) = h_formation, cp = 0, s = 0.
         node["thermo"] = {
             "model": "constant-cp",
+            "reference-pressure": REFERENCE_PRESSURE,
             "T0": record.assigned_temperature,
             "h0": f"{format_float(record.heat_of_formation)} J/mol",
             "s0": 0.0,
@@ -395,6 +433,7 @@ def species_node(
         temperature_ranges.extend(interval.T_max for interval in record.intervals)
         node["thermo"] = {
             "model": "NASA9",
+            "reference-pressure": REFERENCE_PRESSURE,
             "temperature-ranges": temperature_ranges,
             "data": [list(interval.coefficients) for interval in record.intervals],
         }
@@ -408,13 +447,35 @@ def species_node(
     return node
 
 
-GAS_PHASE_NODE = {
-    "name": "gas",
-    "thermo": "ideal-gas",
-    "species": "all",
-    "skip-undeclared-elements": True,
-    "state": {"T": 300.0, "P": 101325.0},
-}
+def element_order(species_nodes: list[dict]) -> list[str]:
+    """Elements of the species in the order Cantera adds undeclared ones: by species, then
+    alphabetically within a species."""
+    order: list[str] = []
+    for node in species_nodes:
+        for symbol in sorted(node["composition"]):
+            if symbol not in order:
+                order.append(symbol)
+    return order
+
+
+def elements_section(species_nodes: list[dict], element_map: dict[str, str]) -> list[dict]:
+    """CEA's atomic weight of every element of the species that CEA defines."""
+    weights = {element_map[symbol]: weight for symbol, weight in CEA_ATOMIC_WEIGHTS.items()}
+    return [{"symbol": symbol, "atomic-weight": weights[symbol]}
+            for symbol in element_order(species_nodes) if symbol in weights]
+
+
+def gas_phase_node(species_nodes: list[dict]) -> dict:
+    """The phase of every gaseous product. Cantera takes a file's element definitions only for
+    the elements a phase lists, so they are listed, in the order it would add them itself."""
+    return {
+        "name": "gas",
+        "thermo": "ideal-gas",
+        "elements": element_order(species_nodes),
+        "species": "all",
+        "skip-undeclared-elements": True,
+        "state": {"T": 300.0, "P": 101325.0},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +536,15 @@ PROVENANCE = [
     "",
     "The only species dropped in the conversion are Rn and Rn+: Cantera's element",
     "table has no atomic weight for radon, which has no stable isotope.",
+    "",
+    "Every species carries reference-pressure: 100000.0 (1 bar), the standard-state",
+    "pressure of CEA's data; Cantera would otherwise assume 1 atm (regenerated with",
+    "this setting on 2026-10-05).",
+    "",
+    "The elements section holds CEA's atomic weights (H 1.00794, not Cantera's",
+    "1.008), so that molecular weights are CEA's; Th, which CEA lacks, keeps",
+    "Cantera's. A phase uses them only for the elements it lists (regenerated with",
+    "them on 2026-11-26).",
 ]
 
 CONDENSED_HEADER = [
@@ -485,11 +555,11 @@ CONDENSED_HEADER = [
     "1.0e6 kg/m^3}. Gordon & McBride neglect the volume of condensed phases",
     "altogether: the NASA9 polynomials below give the standard-state properties",
     "at 1 bar and no pressure correction is intended. Cantera's StoichSubstance",
-    "does add (P - P0) * M / (rho * R * T) to the chemical potential, so the",
-    "density is chosen large enough to make that term negligible: 2.8e-5 for",
-    "AL2O3(L) at 70 bar and 3000 K, which is 0.7 J/mol against fit uncertainties",
-    "of kilojoules per mole. The value is a numerical placeholder and must not be",
-    "read as a physical density.",
+    "does add (P - P0) * M / (rho * R * T) to the chemical potential, P0 being",
+    "the 1 bar reference pressure, so the density is chosen large enough to make",
+    "that term negligible: 2.8e-5 for AL2O3(L) at 70 bar and 3000 K, which is",
+    "0.7 J/mol against fit uncertainties of kilojoules per mole. The value is a",
+    "numerical placeholder and must not be read as a physical density.",
 ]
 
 REACTANTS_HEADER = [
@@ -534,18 +604,24 @@ def main(argv: list[str] | None = None) -> int:
     gas_products = [record for record in products if record.is_gas]
     condensed_products = [record for record in products if not record.is_gas]
 
+    gas_species = [species_node(record, element_map, False) for record in gas_products]
+    condensed_species = [species_node(record, element_map, True) for record in condensed_products]
+    reactant_species = [
+        species_node(record, element_map, False)
+        for record in reactants + gas_products + condensed_products
+    ]
     gas_document = {
-        "phases": [GAS_PHASE_NODE],
-        "species": [species_node(record, element_map, False) for record in gas_products],
+        "elements": elements_section(gas_species, element_map),
+        "phases": [gas_phase_node(gas_species)],
+        "species": gas_species,
     }
     condensed_document = {
-        "species": [species_node(record, element_map, True) for record in condensed_products]
+        "elements": elements_section(condensed_species, element_map),
+        "species": condensed_species,
     }
     reactant_document = {
-        "species": [
-            species_node(record, element_map, False)
-            for record in reactants + gas_products + condensed_products
-        ]
+        "elements": elements_section(reactant_species, element_map),
+        "species": reactant_species,
     }
 
     write_yaml(

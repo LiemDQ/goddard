@@ -10,46 +10,71 @@
 #include "goddard/combustor.hpp"
 #include "goddard/gas.hpp"
 #include "goddard/profile.hpp"
+#include "goddard/status.hpp"
 
 namespace Goddard {
 
+/** How the ratios of nozzle stations are interpreted. */
 enum class ExpansionType {
+    /// Area ratio A/A_t [-] downstream of the throat (supersonic branch).
     SUPERSONIC_AREA_RATIO,
+    /// Area ratio A/A_t [-] upstream of the throat (subsonic branch).
     SUBSONIC_AREA_RATIO,
+    /// Pressure ratio P_inlet/P [-], chamber over station pressure.
     PRESSURE_RATIO
 };
 
 
+/** Settings of a nozzle expansion. */
 struct NozzleOptions {
-    GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
-    ExpansionType expansion_type = ExpansionType::SUPERSONIC_AREA_RATIO;
-    std::vector<double> expansion_ratios;
     /**
-     * Freezing station for FROZEN chemistry [-]: 0 is the chamber, 1 the throat, and 2 onward the
-     * expansion stations in the order they are solved. The flow is in equilibrium up to and
-     * including this station and keeps its composition downstream of it. With 0 the chamber
-     * derivatives are frozen as well.
+     * Chemistry of the expansion: EQUILIBRIUM, or FROZEN downstream of station `frozen_NFZ`.
+     * `Nozzle` rejects KINETIC (use `KineticNozzle`) and does not implement PERFECT_GAS.
+     */
+    GasChemistry chemistry = GasChemistry::EQUILIBRIUM;
+    /**
+     * Freezing station for FROZEN chemistry [-], 0-based: 0 is the chamber (the default, and
+     * CEA's default freezing point), 1 the throat, and 2 onward the expansion stations in the
+     * order they are solved. The flow is in equilibrium up to and including this station and
+     * keeps its composition downstream of it. With 0 the chamber derivatives are frozen as well.
+     *
+     * For an infinite-area combustor CEA's `nfz` is `frozen_NFZ + 1`. For a finite-area
+     * combustor the count starts at the combustion end, so `nfz` is `frozen_NFZ + 3`; 1 is the
+     * throat in both cases.
+     *
+     * Must not be negative, and must not lie beyond the last station solved: the flow would then
+     * never freeze. Both are rejected with `std::invalid_argument`.
      */
     int frozen_NFZ = 0;
-    SolverOptions solver;
-    double gamma = 1.4; // used only for PERFECT_GAS
 
-    // KineticNozzle-specific (ignored by Nozzle)
-    double dt_max = 1e-6;
-    double dx_max = 1e-3;
-    int max_steps = 100000;
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const NozzleOptions&) const = default;
 };
 
 
+/**
+ * Sonic throat of an isentropic expansion from the nozzle inlet state. Thermodynamic
+ * derivatives are in the chemistry of the throat station (see `NozzleOptions::frozen_NFZ`).
+ *
+ * When the throat solve fails (`status.ok()` is false) every numeric field is NaN and `state` is
+ * empty.
+ */
 struct ThroatCondition {
-    bool converged;
-    double speed_of_sound;
-    double H_stagnation;
-    double P_inlet;
-    double S_inlet;
-    double gamma_s;
-    double dlV_dlP_T;
-    double dlV_dlT_P;
+    /// Speed of sound at the throat [m/s].
+    double speed_of_sound = NaN;
+    /// Stagnation enthalpy [J/kg]: the specific enthalpy of the inlet state.
+    double H_stagnation = NaN;
+    /// Inlet (chamber or stagnation) pressure [Pa].
+    double P_inlet = NaN;
+    /// Inlet specific entropy [J/(kg.K)], held constant through the expansion.
+    double S_inlet = NaN;
+    /// Isentropic exponent -(d log P / d log V)_s at the throat [-].
+    double gamma_s = NaN;
+    /// (d log V / d log P)_T at the throat [-].
+    double dlV_dlP_T = NaN;
+    /// (d log V / d log T)_P at the throat [-].
+    double dlV_dlT_P = NaN;
+    /// Raw state vector of the throat, for `Gas::restore_state`.
     std::vector<double> state;
     /**
      * True when the throat sits exactly at a condensed phase transition, so its temperature is
@@ -58,26 +83,85 @@ struct ThroatCondition {
      * Always false for a mixture without condensed phases.
      */
     bool pinned_transition = false;
+    /** Mixture state at the throat; see `NozzleStation::thermo`. */
+    ThermodynamicState thermo;
+    /** Flow velocity at the throat [m/s]. */
+    double velocity = 0.0;
+    /** Mach number at the throat [-]: 1 to within the throat solve's tolerance. */
+    double mach = 0.0;
+    /** Area ratio A/A_t [-]: 1 by definition. */
+    double area_ratio = 1.0;
+    /** Outcome of the throat solve. */
+    SolveStatus status;
+
+    /** Throat of a failed solve: `status` with stage "throat" unless it names one, the rest NaN. */
+    static ThroatCondition failed(SolveStatus status);
 };
 
+/**
+ * One nozzle station.
+ *
+ * When the station solve fails (`status.ok()` is false) `thermo`, `velocity`, `mach` and
+ * `area_ratio` are NaN and `state` is empty. A station downstream of a failed throat, or frozen
+ * from a station that failed, has reason `NOT_COMPUTED`.
+ */
 struct NozzleStation {
-    bool converged;
-    double gamma_s;
-    double dlV_dlP_T;
-    double dlV_dlT_P;
+    /**
+     * Mixture state at the station. `gamma_s`, `dlV_dlP_T`, `dlV_dlT_P`, `speed_of_sound` and
+     * `pinned_transition` are in the chemistry of the station: frozen downstream of the freezing
+     * station, equilibrium otherwise. `pinned_transition` is true when the station sits exactly at
+     * a condensed phase transition (see `ThroatCondition::pinned_transition`).
+     */
+    ThermodynamicState thermo;
+    /** Flow velocity [m/s], from the enthalpy drop below the stagnation enthalpy. */
+    double velocity = 0.0;
+    /** Mach number [-], from `velocity` and `thermo.speed_of_sound`. */
+    double mach = 0.0;
+    /**
+     * Area ratio A/A_t [-], from the mass flux relative to the throat. 0 for a station where the
+     * flow is at rest (the chamber of an infinite-area combustor, the injector face and the
+     * stagnation state of a finite-area one).
+     */
+    double area_ratio = 0.0;
+    /** Raw state vector, for `Gas::restore_state`. */
     std::vector<double> state;
-    /** True when the station sits at a condensed phase transition; see `ThroatCondition`. */
-    bool pinned_transition = false;
+    /** Outcome of the station solve. */
+    SolveStatus status;
+
+    /** Station of a failed solve: the given status, NaN fields and an empty `state`. */
+    static NozzleStation failed(SolveStatus status);
 };
 
+/**
+ * Result of a `Nozzle::solve`: inlet, throat and the requested stations.
+ *
+ * One failed station does not affect the others: check `status` for the solve as a whole, or the
+ * `status` of each station.
+ */
 struct NozzleResults {
     /**
      * Nozzle inlet (chamber) station. Its derivatives are in the chemistry of station 0:
      * frozen only for FROZEN chemistry with `frozen_NFZ` == 0, otherwise equilibrium.
      */
     NozzleStation inlet;
+    /// Sonic throat.
     ThroatCondition throat;
+    /// One station per requested ratio or profile point, in order.
     std::vector<NozzleStation> expansions;
+    /**
+     * Outcome of the whole solve: ok when the inlet, the throat and every station succeeded,
+     * otherwise the first failure in that order, with `stage` naming the station.
+     */
+    SolveStatus status;
+
+    /** First failure among `inlet`, `throat` and `expansions`, in that order; ok if none. */
+    SolveStatus first_failure() const;
+
+    /**
+     * Result for an inlet state that could not be computed: `inlet` carries `inlet_status`, and
+     * the throat and the `num_stations` expansion stations are `NOT_COMPUTED`.
+     */
+    static NozzleResults failed(const SolveStatus& inlet_status, std::size_t num_stations);
 };
 
 /**
@@ -86,6 +170,11 @@ struct NozzleResults {
  * The chamber has constant area A_c, and propellant enters it with no axial momentum. The flow
  * from the combustion end onward is the isentropic expansion from a hypothetical stagnation
  * state "inf" with the injector enthalpy and pressure P_inf < P_inj.
+ *
+ * When the chamber solve fails (`status.ok()` is false) the scalars are NaN, and the stagnation
+ * station, the combustion-end station and the throat, which are outputs of that one coupled
+ * solve, carry the chamber's `status`. The injector face does not depend on it and is the real
+ * station when it can be computed, otherwise it carries the chamber's `status` too.
  */
 struct FiniteAreaChamber {
     /** Injector-face station; always in equilibrium. */
@@ -97,26 +186,104 @@ struct FiniteAreaChamber {
     /** Throat solved from the stagnation state; `throat.P_inlet` is P_inf [Pa]. */
     ThroatCondition throat;
     /** Injector-face pressure P_inj [Pa]. */
-    double injector_pressure;
+    double injector_pressure = NaN;
     /** Stagnation pressure P_inf [Pa]. */
-    double stagnation_pressure;
+    double stagnation_pressure = NaN;
     /** Contraction ratio A_c/A_t [-]; solved for in mass-flux mode. */
-    double contraction_ratio;
+    double contraction_ratio = NaN;
     /** Mass flux through the chamber, mdot/A_c [kg/(m^2 s)]; derived in contraction-ratio mode. */
-    double mass_flux;
-    /** Number of momentum-balance iterations [-]. */
-    int iterations;
+    double mass_flux = NaN;
+    /** Number of momentum-balance iterations [-]; -1 if the solve failed. */
+    int iterations = -1;
+    /**
+     * Outcome of the chamber solve. A mass flux that thermally chokes the chamber gives reason
+     * `NO_SOLUTION`. `status.warnings` says when the combustion-end velocity is below the
+     * solver's resolution.
+     */
+    SolveStatus status;
+
+    /**
+     * Chamber of a failed solve: the given status, NaN scalars, and stations and throat that carry
+     * that same status (the throat keeps its stage if the status names one).
+     */
+    static FiniteAreaChamber failed(SolveStatus status);
 };
 
+/**
+ * One-dimensional isentropic nozzle expansion with equilibrium or frozen chemistry.
+ *
+ * Solves the sonic throat from the inlet (chamber) state, then stations given by area ratio,
+ * pressure ratio or a wall profile.
+ *
+ * Every solve returns a result with a `status`, and each station has its own. A numerical
+ * failure (an iteration that does not converge, a failed equilibrium solve, a frozen expansion
+ * leaving the data range of a condensed species) is reported there and the failed station is
+ * NaN; the solver throws only for invalid arguments and unimplemented options.
+ *
+ * When the throat is an equilibrium station (EQUILIBRIUM chemistry, or FROZEN with
+ * `frozen_NFZ` >= 1), the inlet must be at chemical equilibrium: every solve that computes the
+ * throat throws `std::invalid_argument` if re-equilibrating the inlet at its enthalpy and pressure
+ * moves its temperature by more than 1e-5 relative. A FROZEN nozzle with `frozen_NFZ` = 0 expands
+ * any inlet composition.
+ */
 class Nozzle {
     public:
+    /**
+     * @param gas gas at the inlet (chamber) state. The solver works on its own copy of `gas`;
+     * the caller's `Gas` is not modified.
+     * @param options chemistry, freezing station and stations to solve.
+     * @throws std::invalid_argument for KINETIC chemistry or a negative `frozen_NFZ`.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
     Nozzle(const Gas& gas, NozzleOptions options = {});
+    /**
+     * @param gas product gas; only its phase definition is used. The solver works on its own copy.
+     * @param state inlet (chamber) state vector, as returned by `Gas::save_state`.
+     * @param options chemistry, freezing station and stations to solve.
+     * @throws std::invalid_argument for KINETIC chemistry or a negative `frozen_NFZ`.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
     Nozzle(const Gas& gas, std::vector<double> state, NozzleOptions options = {});
 
+    /**
+     * Solve the throat and one station.
+     *
+     * @param expansion_type How `ratio` is interpreted.
+     * @param ratio Area ratio A/A_t [-], above 1.0001, or pressure ratio P_inlet/P [-], at
+     * least 1.
+     * @throws std::invalid_argument for a ratio outside that range, or if `frozen_NFZ` lies
+     * beyond the last station.
+     */
     NozzleResults solve(ExpansionType expansion_type, double ratio = 1.0);
+    /**
+     * Solve the throat and one station per ratio.
+     *
+     * @param expansion_type How `ratios` are interpreted.
+     * @param ratios Area ratios A/A_t [-], above 1.0001, or pressure ratios P_inlet/P [-], at
+     * least 1.
+     * @throws std::invalid_argument for a ratio outside that range, or if `frozen_NFZ` lies
+     * beyond the last station.
+     */
     NozzleResults solve(ExpansionType expansion_type, const std::vector<double>& ratios);
+    /**
+     * Solve the throat and supersonic stations along a wall profile.
+     *
+     * The first point of the profile (`x_min`) is taken as the throat, and the stations are
+     * spaced evenly in x up to the last point. The area is that of an axisymmetric nozzle.
+     *
+     * @param profile Diverging wall contour starting at the throat.
+     * @param num_stations Number of stations [-].
+     */
     NozzleResults solve(const NozzleProfile& profile, int num_stations = 50);
-    ThroatCondition solve_throat_conditions(double abstol = 4e-4);
+    /**
+     * Solve the sonic throat by isentropic expansion from the inlet state.
+     *
+     * @param abstol Tolerance on |1 - 1/M^2| at the throat [-]. The default is CEA's.
+     * @return the throat; `NOT_CONVERGED` if the iteration does not converge in 10 iterations.
+     * @throws std::invalid_argument if the throat is an equilibrium station and the inlet is not
+     * at chemical equilibrium.
+     */
+    ThroatCondition solve_throat_conditions(double abstol = 4e-5);
 
     /**
      * Solve expansion stations from an already solved throat.
@@ -124,7 +291,10 @@ class Nozzle {
      * @param throat_condition Throat of the current inlet state.
      * @param expansion_type How `ratios` are interpreted.
      * @param ratios Area ratios A/A_t [-] or pressure ratios P_inlet/P [-].
-     * @return One station per ratio, in order.
+     * @return One station per ratio, in order, each with its own status. All `NOT_COMPUTED` if
+     * `throat_condition` is a failed throat.
+     * @throws std::invalid_argument for a ratio out of range (see `validate_stations`), or if
+     * `frozen_NFZ` lies beyond the last station.
      */
     std::vector<NozzleStation> solve_stations(const ThroatCondition& throat_condition,
         ExpansionType expansion_type, const std::vector<double>& ratios);
@@ -136,7 +306,11 @@ class Nozzle {
      * @param expansion_type How `ratios` are interpreted.
      * @param ratios Area ratios A/A_t [-] or pressure ratios P_inj/P [-]. Pressure ratios are
      * taken from the injector pressure, as CEA does, not from the stagnation pressure.
-     * @return One station per ratio, in order.
+     * @return One station per ratio, in order, each with its own status. All `NOT_COMPUTED` if
+     * `chamber` is a failed chamber. A pressure ratio between 1 and P_inj/P_inf gives a station
+     * pressure above the stagnation pressure: that station fails with `NO_SOLUTION`.
+     * @throws std::invalid_argument for a ratio outside the domain of `expansion_type` (see
+     * `validate_stations`); the ratios are checked as given, before the conversion to P_inf.
      */
     std::vector<NozzleStation> solve_stations(const FiniteAreaChamber& chamber,
         ExpansionType expansion_type, const std::vector<double>& ratios);
@@ -148,7 +322,8 @@ class Nozzle {
      * P_inj = P_c + rho_c u_c^2 holds, where c is the combustion end. The chamber is always in
      * equilibrium. On return the nozzle inlet state is the stagnation state, so
      * `solve_stations(result.throat, ...)` continues the expansion, and the gas holds the
-     * stagnation state.
+     * stagnation state. If the chamber solve fails, the inlet state is the one the nozzle had
+     * before the call.
      *
      * The combustion-end velocity follows from the enthalpy drop h_inj - h_c. At very large
      * contraction ratios (Mach numbers of order 1e-3 and below) that drop is within the station
@@ -159,32 +334,61 @@ class Nozzle {
      * @param type `FINITE_CONTRACTION_RATIO` or `FINITE_MASS_FLUX`.
      * @param value Contraction ratio A_c/A_t [-] or mass flux mdot/A_c [kg/(m^2 s)].
      * @param reltol Tolerance on |1 - P_inj,calc / P_inj| [-].
-     * @return Converged chamber.
+     * @return The chamber. `NO_SOLUTION` if the mass flux thermally chokes the chamber (it
+     * exceeds the perfect-gas limit by more than 2 %, or A_c/A_t reaches 1 in the real-gas
+     * iteration); `NOT_CONVERGED` if the momentum balance does not converge.
      *
      * @throws std::invalid_argument if `type` is not a finite-area type, if the contraction
-     * ratio is not above 1, or if the mass flux thermally chokes the chamber: it exceeds the
-     * perfect-gas limit by more than 2 %, or A_c/A_t reaches 1 in the real-gas iteration.
+     * ratio is not above 1 or the mass flux is not positive.
      * @throws NotImplementedError for FROZEN chemistry with `frozen_NFZ` == 0.
-     * @throws ConvergenceError if the momentum balance does not converge.
      */
     FiniteAreaChamber solve_finite_area_chamber(const std::vector<double>& injector_state,
         CombustorType type, double value, double reltol = 1e-6);
 
+    /**
+     * Check the arguments of a station solve without solving anything.
+     *
+     * @param expansion_type How `ratios` are interpreted.
+     * @param ratios Area ratios A/A_t [-], above 1.0001, or pressure ratios P_inlet/P [-], at
+     * least 1.
+     * @throws std::invalid_argument for a ratio outside its domain or a freezing station
+     * (`NozzleOptions::frozen_NFZ`) beyond the last station. `solve` and `solve_stations` call it.
+     */
+    void validate_stations(ExpansionType expansion_type, const std::vector<double>& ratios) const;
+
+    /**
+     * Check nozzle options and station arguments without a gas or a solve: what the constructor
+     * and `validate_stations` check together.
+     *
+     * @param options Nozzle options.
+     * @param expansion_type How `ratios` are interpreted.
+     * @param ratios Station ratios; see `validate_stations`.
+     * @throws std::invalid_argument for KINETIC chemistry, a negative `frozen_NFZ`, a freezing
+     * station beyond the last station, or a ratio outside its domain.
+     * @throws NotImplementedError for PERFECT_GAS chemistry.
+     */
+    static void validate(const NozzleOptions& options, ExpansionType expansion_type,
+                         const std::vector<double>& ratios);
+
+    /** Isentropic exponent of the solver's gas at its current state [-]. */
     double get_gamma_s();
 
+    /** Restore the solver's gas to the inlet state. */
     void reset_state();
-    inline void set_inlet_state(const std::vector<double>& state) { 
-        inlet_state = state;
-        m_gas.restore_state(inlet_state);
-        m_gas.set_current_state_as_reference();
+    /** Set the inlet (chamber) state the next solve expands from. */
+    inline void set_inlet_state(const std::vector<double>& state) {
+        m_inlet_state = state;
+        m_gas.restore_state(m_inlet_state);
     }
-    inline std::vector<double> get_inlet_state() const { return inlet_state; }
-
-    std::vector<double> inlet_state;
+    /** Inlet (chamber) state vector. */
+    inline std::vector<double> get_inlet_state() const { return m_inlet_state; }
 
     private:
+    std::vector<double> m_inlet_state;
     Gas m_gas;
     NozzleOptions m_opts;
+    /** Composition model of the station being solved; set by `set_station_chemistry`. */
+    CompositionModel m_station_model = CompositionModel::EQUILIBRIUM;
 
     /*
      * Station solvers. `station` is the index of the station being solved (see
@@ -221,8 +425,8 @@ class Nozzle {
      * @param abstol Convergence tolerance on d(log T) [-].
      * @return Station temperature [K].
      *
-     * @throws FmtError if a present condensed species leaves its temperature range, as CEA
-     * reports for a frozen expansion carried too far.
+     * @throws SolveError (`OUT_OF_DATA_RANGE`) if a present condensed species leaves its
+     * temperature range, as CEA reports for a frozen expansion carried too far.
      */
     double iterate_temperature(
         const ThroatCondition& throat_condition,
@@ -231,11 +435,30 @@ class Nozzle {
         int station,
         double abstol = 0.5e-5);
 
+    /**
+     * Station at the current gas state, with derivatives `props` already solved for it.
+     *
+     * @param H_stagnation Stagnation enthalpy the velocity is measured from [J/kg].
+     * @param area_per_mdot_throat Throat area per mass flow rate [m^2 s/kg]; 0 when there is no
+     * throat yet, which leaves `area_ratio` at 0.
+     */
+    NozzleStation station_at_current_state(const ExpansionProperties& props, double H_stagnation,
+        double area_per_mdot_throat);
+
+    /** Throat area per mass flow rate [m^2 s/kg], from the throat state and velocity. */
+    static double throat_area_per_mdot(const ThroatCondition& throat);
+
+    /**
+     * Throw `std::invalid_argument` unless the inlet is at chemical equilibrium, judged by the
+     * temperature change of an HP re-equilibration. Leaves the gas at the inlet state.
+     */
+    void require_equilibrium_inlet();
+
     /** True when station `station` is in equilibrium, from `NozzleOptions::frozen_NFZ`. */
     bool is_equilibrium_station(int station) const;
 
     /**
-     * Set the gas chemistry for station `station`.
+     * Set the composition model (`m_station_model`) for station `station`.
      *
      * @return True for an equilibrium station.
      */
@@ -247,7 +470,24 @@ class Nozzle {
      */
     NozzleStation station_at_state(const std::vector<double>& state, int station);
 
-    void throw_invalid_expansion_ratio(double expansion_ratio, double min_ratio) const;
+    static void throw_invalid_expansion_ratio(double expansion_ratio, double min_ratio);
+
+    /** Throat solve proper. @throws SolveError if it fails. */
+    ThroatCondition throat_conditions_or_throw(double abstol);
+
+    /** Chamber solve proper. @throws SolveError if it fails. */
+    FiniteAreaChamber finite_area_chamber_or_throw(const std::vector<double>& injector_state,
+        bool contraction_mode, double value, double reltol);
+
+    /**
+     * Station solver without argument validation, for callers that validated the user's ratios.
+     * A pressure ratio below 1 fails its station with `NO_SOLUTION`.
+     */
+    std::vector<NozzleStation> solve_stations_unchecked(const ThroatCondition& throat_condition,
+        ExpansionType expansion_type, const std::vector<double>& ratios);
+
+    /** Inlet station, throat and overall status shared by the `solve` overloads. */
+    NozzleResults solve_inlet_and_throat();
 };
 
 } //namespace Goddard

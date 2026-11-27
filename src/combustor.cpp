@@ -1,19 +1,140 @@
+#include <format>
 #include "goddard/combustor.hpp"
 #include "goddard/thermoarray.hpp"
 #include "goddard/error.hpp"
+#include "goddard/solve_guard.hpp"
 #include "cantera/core.h"
 #include "cantera/base/stringUtils.h"
 #include <algorithm>
 #include <iterator>
 #include <utility>
 #include <iostream>
-#include <cassert>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 namespace Goddard {
+
+namespace {
+
+/**
+ * Reject a mixture ratio outside its domain: O/F and equivalence ratios must be nonnegative and a
+ * fuel fraction must lie in [0, 1].
+ */
+void validate_mixture_ratio(double value, MixtureRatioType type) {
+    bool valid = false;
+    switch (type) {
+        case MixtureRatioType::OF_RATIO:
+        case MixtureRatioType::PHI_RATIO:
+            valid = value >= 0.0;
+            break;
+        case MixtureRatioType::FUEL_FRAC:
+            valid = value >= 0.0 && value <= 1.0;
+            break;
+    }
+    if (!valid) {
+        std::ostringstream message;
+        message << "Combustor: mixture ratio " << value << " is out of range; O/F and equivalence "
+                   "ratios must be nonnegative and fuel fractions must lie in [0, 1].";
+        throw std::invalid_argument(message.str());
+    }
+}
+
+/**
+ * Throw if a row of a mole or mass fraction matrix has a negative entry. Row `i` belongs to
+ * `mixture_ratios(i)`.
+ */
+void check_nonnegative_fractions(const Eigen::ArrayXXd& fractions,
+    const Eigen::ArrayXd& mixture_ratios, const std::string& kind,
+    double recirculation_ratio = 0.0) {
+    for (long i = 0; i < fractions.rows(); i++) {
+        if ((fractions.row(i) < 0.0).any()) {
+            std::ostringstream message;
+            message << "Combustor: mixture ratio " << mixture_ratios(i);
+            if (recirculation_ratio != 0.0) {
+                message << " with recirculation ratio " << recirculation_ratio;
+            }
+            message << " gives negative " << kind << " fractions.";
+            throw std::invalid_argument(message.str());
+        }
+    }
+}
+
+/** Reject a nonpositive or non-finite temperature [K] or pressure [Pa]. */
+void require_positive(const Eigen::ArrayXd& values, const std::string& name) {
+    for (double value : values) {
+        if (!(value > 0.0) || !std::isfinite(value)) {
+            throw std::invalid_argument(std::format(
+                "Combustor: {} must be positive and finite, got {:.6g}.", name, value));
+        }
+    }
+}
+
+void require_positive(double value, const std::string& name) {
+    require_positive(Eigen::ArrayXd::Constant(1, value), name);
+}
+
+/** How a mixture ratio is called in a status, e.g. "O/F". */
+std::string mixture_ratio_label(MixtureRatioType type) {
+    switch (type) {
+        case MixtureRatioType::OF_RATIO:  return "O/F";
+        case MixtureRatioType::PHI_RATIO: return "equivalence ratio";
+        case MixtureRatioType::FUEL_FRAC: return "fuel fraction";
+    }
+    return "mixture ratio";
+}
+
+/**
+ * Name the operating point in the status of every failed entry of a (mixture ratio, pressure)
+ * array, e.g. "combustion at O/F = 6, P = 7e+06 Pa".
+ */
+void label_failed_points(ThermoArray& states, const Eigen::ArrayXd& mixture_ratios,
+    const Eigen::ArrayXd& pressures, MixtureRatioType type) {
+    if (states.num_failed() == 0) {
+        return;
+    }
+    for (long i = 0; i < mixture_ratios.size(); i++) {
+        for (long j = 0; j < pressures.size(); j++) {
+            const int loc = states.flat_index(i, j);
+            if (states.status_at(loc).ok()) {
+                continue;
+            }
+            SolveStatus status = states.status_at(loc);
+            status.stage = std::format("combustion at {} = {:.6g}, P = {:.6g} Pa",
+                mixture_ratio_label(type), mixture_ratios(i), pressures(j));
+            states.set_status(loc, std::move(status));
+        }
+    }
+}
+
+/** As `label_failed_points`, for a (temperature, pressure, mixture ratio) array. */
+void label_failed_points(ThermoArray& states, const Eigen::ArrayXd& temperatures,
+    const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios, MixtureRatioType type) {
+    if (states.num_failed() == 0) {
+        return;
+    }
+    for (long i = 0; i < temperatures.size(); i++) {
+        for (long j = 0; j < pressures.size(); j++) {
+            for (long k = 0; k < mixture_ratios.size(); k++) {
+                const int loc = states.flat_index(i, j, k);
+                if (states.status_at(loc).ok()) {
+                    continue;
+                }
+                SolveStatus status = states.status_at(loc);
+                status.stage = std::format("combustion at T = {:.6g} K, P = {:.6g} Pa, {} = {:.6g}",
+                    temperatures(i), pressures(j), mixture_ratio_label(type), mixture_ratios(k));
+                states.set_status(loc, std::move(status));
+            }
+        }
+    }
+}
+
+} // namespace
 
 // ---- BaseCombustor ----
 
-BaseCombustor::BaseCombustor(Gas gas)
-    : m_gas(std::move(gas))
+BaseCombustor::BaseCombustor(const Gas& gas)
+    : m_gas(gas.clone())
 {}
 
 void BaseCombustor::validate_options(const CombustorOptions& options) {
@@ -40,26 +161,38 @@ void BaseCombustor::validate_options(const CombustorOptions& options) {
                     "BaseCombustor: finite-area combustors do not support ISOCHORIC combustion.");
             }
             break;
-        case CombustorType::NONE:
-            throw NotImplementedError("CombustorType::NONE is not implemented.");
+    }
+}
+
+void BaseCombustor::require_nonempty(const Eigen::ArrayXd& values, const std::string& name) {
+    if (values.size() == 0) {
+        throw std::invalid_argument("Combustor: " + name + " must not be empty.");
     }
 }
 
 ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& options) {
     validate_options(options);
+    if (options.process == CombustionProcess::ISOCHORIC && states.num_condensed() > 0) {
+        throw NotImplementedError(
+            "Constant-volume combustion with candidate condensed species is not implemented.");
+    }
+    // Entries whose reactant state could not be set have nothing to equilibrate: their failure
+    // is kept, whatever the equilibrium solve makes of the placeholder state they hold.
+    std::vector<std::pair<int, SolveStatus>> reactant_failures;
+    for (int loc = 0; loc < states.size(); loc++) {
+        if (!states.status_at(loc).ok()) {
+            reactant_failures.emplace_back(loc, states.status_at(loc));
+        }
+    }
+
     switch (options.process) {
         case CombustionProcess::ISOBARIC:
-            try {
-                states.equilibrate("HP", "gibbs");
-            } catch (const Cantera::CanteraError&) {
-                if (states.num_condensed() > 0) {
-                    throw;
-                }
+            states.equilibrate("HP", "gibbs");
+            if (states.num_condensed() == 0 && states.num_failed() > 0) {
                 // "gibbs" tests its enthalpy residual relative to H and fails when the target
                 // enthalpy is close to zero (e.g. gaseous H2/O2 at 298.15 K); see
-                // `Gas::equilibrate_HP`. Locations already solved are HP equilibria, so
-                // re-solving them with "vcs" leaves them unchanged.
-                states.equilibrate("HP", "vcs");
+                // `Gas::equilibrate_HP`. "vcs" does not, and is tried on the entries that failed.
+                states.retry_failed("HP", "vcs");
             }
             break;
         case CombustionProcess::ISOCHORIC:
@@ -69,11 +202,52 @@ ThermoArray BaseCombustor::combust(ThermoArray& states, const CombustorOptions& 
             states.equilibrate("UV", "vcs");
             break;
     }
+    for (auto& [loc, status] : reactant_failures) {
+        states.set_status(loc, std::move(status));
+    }
     return states;
+}
+
+ThermoArray BaseCombustor::reactant_states(const std::vector<long>& shape) const {
+    if (m_gas.has_condensed_candidates()) {
+        // The array starts every entry from the condensed amounts of `m_gas`, which may still
+        // hold the products of an earlier solve. The reactants are all in the gas phase.
+        m_gas.set_condensed_moles(std::vector<double>(m_gas.condensed_moles().size(), 0.0));
+    }
+    return ThermoArray(m_gas, shape);
+}
+
+void BaseCombustor::set_reactant_states(ThermoArray& states, const Eigen::ArrayXXd& mass_fractions,
+    const Eigen::ArrayXd& enthalpies, const Eigen::ArrayXd& pressures) const {
+    auto thermo = m_gas.thermo();
+    // The bare gas-phase state: the reactants hold no condensed species.
+    std::vector<double> reactant_state(thermo->stateSize());
+    for (long i = 0; i < enthalpies.size(); i++) {
+        Eigen::ArrayXd row = mass_fractions.row(i);
+        for (long j = 0; j < pressures.size(); j++) {
+            const int loc = states.flat_index(i, j);
+            SolveStatus status = capture_failure("reactant state", [&] {
+                translate_backend_errors(
+                    [&] { return std::format("no reactant state has the enthalpy {:.6g} J/kg at P = {:.6g} Pa",
+                        enthalpies[i], pressures[j]); },
+                    [&] {
+                        thermo->setMassFractions(row.data());
+                        thermo->setState_HP(enthalpies[i], pressures[j]);
+                    });
+            });
+            if (!status.ok()) {
+                states.set_status(loc, std::move(status));
+                continue;
+            }
+            thermo->saveState(reactant_state);
+            states.set_state(loc, reactant_state);
+        }
+    }
 }
 
 void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
     const Composition& fuel, const Composition& oxidizer) const {
+    validate_mixture_ratio(value, type);
     switch (type) {
         case MixtureRatioType::OF_RATIO:
             m_gas.set_OF_ratio(value, fuel, oxidizer);
@@ -92,8 +266,10 @@ void BaseCombustor::set_mixture_composition(double value, MixtureRatioType type,
 Combustor::Combustor(Gas gas, const std::string& fuel_comp, const std::string& ox_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+    translate_backend_usage_errors("Combustor::Combustor", [&] {
+        m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+        m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+    });
 }
 
 Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidizer)
@@ -103,8 +279,17 @@ Combustor::Combustor(Gas gas, const Composition& fuel, const Composition& oxidiz
 
 Combustor::Combustor(Gas products, Gas fuel, Gas oxidizer)
     : BaseCombustor(std::move(products)),
-      m_fuel_gas(std::move(fuel)), m_oxidizer_gas(std::move(oxidizer))
+      m_fuel_gas(fuel.clone()), m_oxidizer_gas(oxidizer.clone())
 {}
+
+void Combustor::require_composition_reactants(const std::string& overload) const {
+    if (m_fuel_gas || m_oxidizer_gas) {
+        throw std::invalid_argument(
+            "Combustor::" + overload + " requires reactants given as product-species "
+            "compositions. This combustor was built from reactant Gas streams: use "
+            "solve(pressures, mixture_ratios).");
+    }
+}
 
 Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
     const std::vector<std::string> product_elements = m_gas.element_names();
@@ -121,9 +306,9 @@ Eigen::ArrayXd Combustor::stream_element_moles(const Gas& stream) const {
             // a stream built from a shared species list carries the elements of every listed
             // species, not only of the ones it is made of.
             if (amount > 0.0) {
-                throw FmtError(
+                throw std::invalid_argument(std::format(
                     "Combustor: reactant stream contains element '{}', which is absent from the "
-                    "product gas.", stream_elements[m]);
+                    "product gas.", stream_elements[m]));
             }
             continue;
         }
@@ -136,6 +321,7 @@ namespace {
 
 /** Mass fraction of fuel in the mixture from a mixture ratio and its interpretation. */
 double fuel_mass_fraction(double mixture_ratio, MixtureRatioType type) {
+    validate_mixture_ratio(mixture_ratio, type);
     switch (type) {
         case MixtureRatioType::OF_RATIO:
             return 1.0 / (1.0 + mixture_ratio);
@@ -154,6 +340,9 @@ double fuel_mass_fraction(double mixture_ratio, MixtureRatioType type) {
 ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
+    require_positive(pressures, "pressures");
     if (!m_fuel_gas || !m_oxidizer_gas) {
         throw NotImplementedError(
             "Combustor::solve(pressures, mixture_ratios) requires the combustor to be built from "
@@ -180,10 +369,16 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
 
     const long n_ratios = mixture_ratios.size();
     const long n_pressures = pressures.size();
+    // Validate every mixture ratio before anything is solved.
+    std::vector<double> fuel_fractions;
+    fuel_fractions.reserve(static_cast<size_t>(n_ratios));
+    for (long i = 0; i < n_ratios; i++) {
+        fuel_fractions.push_back(fuel_mass_fraction(mixture_ratios(i), options.mixture_type));
+    }
     ThermoArray combustion_states(m_gas, {n_ratios, n_pressures});
 
     for (long i = 0; i < n_ratios; i++) {
-        const double fuel_fraction = fuel_mass_fraction(mixture_ratios(i), options.mixture_type);
+        const double fuel_fraction = fuel_fractions[static_cast<size_t>(i)];
         const Eigen::ArrayXd element_moles =
             fuel_fraction * fuel_elements + (1.0 - fuel_fraction) * oxidizer_elements;
         const double enthalpy =
@@ -191,46 +386,74 @@ ThermoArray Combustor::solve(const Eigen::ArrayXd& pressures, const Eigen::Array
 
         double temperature_guess = m_gas.equilibrium_options.T_default;
         for (long j = 0; j < n_pressures; j++) {
+            const int loc = combustion_states.flat_index(i, j);
+            // An element missing from the product species is a bad argument and is not caught.
             m_gas.set_element_moles(element_moles, temperature_guess, pressures(j));
-            switch (options.process) {
-                case CombustionProcess::ISOBARIC:
-                    m_gas.equilibrate_HP(enthalpy, pressures(j));
-                    break;
-                case CombustionProcess::ISOCHORIC: {
-                    const double energy =
-                        fuel_fraction * fuel_energy + (1.0 - fuel_fraction) * oxidizer_energy;
-                    const double volume =
-                        fuel_fraction * fuel_volume + (1.0 - fuel_fraction) * oxidizer_volume;
-                    m_gas.thermo()->setState_UV(energy, volume);
-                    // See `BaseCombustor::combust` for why the UV problem uses the "vcs" solver.
-                    m_gas.equilibrate("UV", "vcs");
-                    break;
+            SolveStatus status = capture_failure("combustion", m_gas, [&] {
+                switch (options.process) {
+                    case CombustionProcess::ISOBARIC:
+                        m_gas.equilibrate_HP(enthalpy, pressures(j));
+                        break;
+                    case CombustionProcess::ISOCHORIC: {
+                        const double energy =
+                            fuel_fraction * fuel_energy + (1.0 - fuel_fraction) * oxidizer_energy;
+                        const double volume =
+                            fuel_fraction * fuel_volume + (1.0 - fuel_fraction) * oxidizer_volume;
+                        m_gas.set_state_UV(energy, volume);
+                        // See `BaseCombustor::combust` for why the UV problem uses the "vcs" solver.
+                        m_gas.equilibrate("UV", "vcs");
+                        break;
+                    }
                 }
+            });
+            if (!status.ok()) {
+                // The entry keeps its initial state; the next pressure starts cold.
+                combustion_states.set_status(loc, std::move(status));
+                temperature_guess = m_gas.equilibrium_options.T_default;
+                continue;
             }
             // Warm start of the next pressure at the same mixture ratio.
             temperature_guess = m_gas.temperature();
-            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
+            combustion_states.set_state(loc, m_gas.save_state());
+            combustion_states.set_status(loc, std::move(status));
         }
     }
 
+    label_failed_points(combustion_states, mixture_ratios, pressures, options.mixture_type);
     return combustion_states;
 }
 
 ThermoArray Combustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, const CombustorOptions& options) {
 
+    require_nonempty(temperatures, "temperatures");
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
+    require_composition_reactants("solve(temperatures, pressures, mixture_ratios)");
+    require_positive(temperatures, "temperatures");
+    require_positive(pressures, "pressures");
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type);
 
-    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
+    ThermoArray combustion_states =
+        reactant_states({temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
-    return combust(combustion_states, options);
+    combust(combustion_states, options);
+    label_failed_points(combustion_states, temperatures, pressures, mixture_ratios,
+        options.mixture_type);
+    return combustion_states;
 }
 
 ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperature,
     const Eigen::ArrayXd& pressures, const Eigen::ArrayXd& mixture_ratios,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
+    require_composition_reactants("solve(fuel_T, oxidizer_T, pressures, mixture_ratios)");
+    require_positive(fuel_temperature, "the fuel temperature");
+    require_positive(oxidizer_temperature, "the oxidizer temperature");
+    require_positive(pressures, "pressures");
     auto thermo = m_gas.thermo();
     MixtureRatioType type = options.mixture_type;
 
@@ -238,10 +461,10 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
     // Use first pressure as reference (enthalpy is P-independent for ideal gas)
     double ref_pressure = pressures[0];
 
-    thermo->setState_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
+    m_gas.set_state_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
     double fuel_enthalpy = thermo->enthalpy_mass();
 
-    thermo->setState_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
+    m_gas.set_state_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
     double oxidizer_enthalpy = thermo->enthalpy_mass();
 
     Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mixture_ratios, type);
@@ -253,23 +476,20 @@ ThermoArray Combustor::solve(double fuel_temperature, double oxidizer_temperatur
 
     for (long i = 0; i < n_compositions; i++) {
         set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        // The stream compositions are mole fractions, as in `set_mixture_composition`, and the
+        // basis argument describes them. The returned mixture fraction is a fuel mass fraction.
         double fuel_mass_frac = thermo->mixtureFraction(
-            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::molar);
         enthalpies[i] = fuel_enthalpy * fuel_mass_frac + oxidizer_enthalpy * (1.0 - fuel_mass_frac);
     }
 
-    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
+    ThermoArray combustion_states = reactant_states({n_compositions, n_pressures});
 
-    for (long i = 0; i < n_compositions; i++) {
-        Eigen::ArrayXd row = mass_fracs.row(i);
-        for (long j = 0; j < n_pressures; j++) {
-            thermo->setMassFractions(row.data());
-            thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
-        }
-    }
+    set_reactant_states(combustion_states, mass_fracs, enthalpies, pressures);
 
-    return combust(combustion_states, options);
+    combust(combustion_states, options);
+    label_failed_points(combustion_states, mixture_ratios, pressures, options.mixture_type);
+    return combustion_states;
 }
 
 Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(
@@ -290,7 +510,7 @@ Eigen::ArrayXXd Combustor::generate_mole_fraction_matrix(
         }
     }
 
-    assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
+    check_nonnegative_fractions(mole_frac_matrix, mixture_ratios, "mole");
     return mole_frac_matrix;
 }
 
@@ -312,7 +532,7 @@ Eigen::ArrayXXd Combustor::generate_mass_fraction_matrix(
         }
     }
 
-    assert((mass_frac_matrix >= 0).all() && "Mass fractions must be nonnegative");
+    check_nonnegative_fractions(mass_frac_matrix, mixture_ratios, "mass");
     return mass_frac_matrix;
 }
 
@@ -322,9 +542,11 @@ DilutedCombustor::DilutedCombustor(Gas gas, const std::string& fuel_comp,
     const std::string& ox_comp, const std::string& dilute_comp)
     : BaseCombustor(std::move(gas))
 {
-    m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
-    m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
-    m_flue_composition = Cantera::parseCompString(dilute_comp, m_gas.species_names());
+    translate_backend_usage_errors("DilutedCombustor::DilutedCombustor", [&] {
+        m_fuel_composition = Cantera::parseCompString(fuel_comp, m_gas.species_names());
+        m_oxidizer_composition = Cantera::parseCompString(ox_comp, m_gas.species_names());
+        m_flue_composition = Cantera::parseCompString(dilute_comp, m_gas.species_names());
+    });
 }
 
 DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,
@@ -336,12 +558,21 @@ DilutedCombustor::DilutedCombustor(Gas gas, const Composition& fuel,
 ThermoArray DilutedCombustor::solve(const Eigen::ArrayXd& temperatures, const Eigen::ArrayXd& pressures,
     const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio, const CombustorOptions& options) {
 
+    require_nonempty(temperatures, "temperatures");
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
+    require_positive(temperatures, "temperatures");
+    require_positive(pressures, "pressures");
     Eigen::ArrayXXd mole_fracs = generate_mole_fraction_matrix(mixture_ratios, options.mixture_type, recirculation_ratio);
 
-    ThermoArray combustion_states(m_gas.solution(), {temperatures.size(), pressures.size(), mixture_ratios.size()});
+    ThermoArray combustion_states =
+        reactant_states({temperatures.size(), pressures.size(), mixture_ratios.size()});
     combustion_states.TPX(temperatures, pressures, mole_fracs);
 
-    return combust(combustion_states, options);
+    combust(combustion_states, options);
+    label_failed_points(combustion_states, temperatures, pressures, mixture_ratios,
+        options.mixture_type);
+    return combustion_states;
 }
 
 ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_temperature,
@@ -349,6 +580,12 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
     const Eigen::ArrayXd& mixture_ratios, double recirculation_ratio,
     const CombustorOptions& options) {
 
+    require_nonempty(pressures, "pressures");
+    require_nonempty(mixture_ratios, "mixture_ratios");
+    require_positive(fuel_temperature, "the fuel temperature");
+    require_positive(oxidizer_temperature, "the oxidizer temperature");
+    require_positive(flue_temperature, "the flue gas temperature");
+    require_positive(pressures, "pressures");
     auto thermo = m_gas.thermo();
     MixtureRatioType type = options.mixture_type;
     double r = recirculation_ratio;
@@ -357,13 +594,13 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
 
     double ref_pressure = pressures[0];
 
-    thermo->setState_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
+    m_gas.set_state_TPX(fuel_temperature, ref_pressure, m_fuel_composition);
     double fuel_enthalpy = thermo->enthalpy_mass();
 
-    thermo->setState_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
+    m_gas.set_state_TPX(oxidizer_temperature, ref_pressure, m_oxidizer_composition);
     double oxidizer_enthalpy = thermo->enthalpy_mass();
 
-    thermo->setState_TPX(flue_temperature, ref_pressure, m_flue_composition);
+    m_gas.set_state_TPX(flue_temperature, ref_pressure, m_flue_composition);
     double flue_enthalpy = thermo->enthalpy_mass();
 
     Eigen::ArrayXXd mass_fracs = generate_mass_fraction_matrix(mixture_ratios, type, recirculation_ratio);
@@ -375,8 +612,9 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
     for (long i = 0; i < n_compositions; i++) {
         // Get fuel mass fraction within the fresh feed
         set_mixture_composition(mixture_ratios[i], type, m_fuel_composition, m_oxidizer_composition);
+        // Mole-fraction stream compositions; see `Combustor::solve`.
         double fuel_mass_frac_fresh = thermo->mixtureFraction(
-            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::mass);
+            m_fuel_composition, m_oxidizer_composition, Cantera::ThermoBasis::molar);
         double ox_mass_frac_fresh = 1.0 - fuel_mass_frac_fresh;
 
         enthalpies[i] = fuel_enthalpy * fuel_mass_frac_fresh * w_reactant
@@ -384,18 +622,13 @@ ThermoArray DilutedCombustor::solve(double fuel_temperature, double oxidizer_tem
                       + flue_enthalpy * w_dilution;
     }
 
-    ThermoArray combustion_states(m_gas.solution(), {n_compositions, n_pressures});
+    ThermoArray combustion_states = reactant_states({n_compositions, n_pressures});
 
-    for (long i = 0; i < n_compositions; i++) {
-        Eigen::ArrayXd row = mass_fracs.row(i);
-        for (long j = 0; j < n_pressures; j++) {
-            thermo->setMassFractions(row.data());
-            thermo->setState_HP(enthalpies[i], pressures[j]);
-            combustion_states.set_state(combustion_states.flat_index(i, j), m_gas.save_state());
-        }
-    }
+    set_reactant_states(combustion_states, mass_fracs, enthalpies, pressures);
 
-    return combust(combustion_states, options);
+    combust(combustion_states, options);
+    label_failed_points(combustion_states, mixture_ratios, pressures, options.mixture_type);
+    return combustion_states;
 }
 
 Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
@@ -408,7 +641,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
     double r = recirculation_ratio;
 
     // Get molecular weight and mole fractions for flue gas
-    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    m_gas.set_state_TPX(300.0, 101325.0, m_flue_composition);
     double mw_flue = thermo->meanMolecularWeight();
     std::vector<double> flue_mole_fracs(n_species);
     thermo->getMoleFractions(flue_mole_fracs.data());
@@ -438,7 +671,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mole_fraction_matrix(
         }
     }
 
-    assert((mole_frac_matrix >= 0).all() && "Mole fractions must be nonnegative");
+    check_nonnegative_fractions(mole_frac_matrix, mixture_ratios, "mole", recirculation_ratio);
     return mole_frac_matrix;
 }
 
@@ -454,7 +687,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(
     double w_flue = r / (1.0 + r);
 
     // Get mass fractions for flue gas
-    thermo->setState_TPX(300.0, 101325.0, m_flue_composition);
+    m_gas.set_state_TPX(300.0, 101325.0, m_flue_composition);
     std::vector<double> flue_mass_fracs(n_species);
     thermo->getMassFractions(flue_mass_fracs.data());
 
@@ -471,9 +704,7 @@ Eigen::ArrayXXd DilutedCombustor::generate_mass_fraction_matrix(
         }
     }
 
-    if (!((mass_frac_matrix >= 0).all())) {
-        throw ConvergenceError("Mass fractions must be nonnegative.");
-    }
+    check_nonnegative_fractions(mass_frac_matrix, mixture_ratios, "mass", recirculation_ratio);
 
     return mass_frac_matrix;
 }

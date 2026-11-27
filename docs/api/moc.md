@@ -4,9 +4,10 @@
 Characteristics. Supports design (minimum-length and Rao thrust-optimized) and
 analysis modes.
 
-Angles are in radians throughout, with one deliberate exception: the
-[`NozzleProfile`](#goddard.NozzleProfile) contour generators take their shape
-angles in degrees, and their parameters carry a `_deg` suffix to say so.
+Angles are in radians throughout, including the
+[`NozzleProfile`](#goddard.NozzleProfile) contour generators, the
+`conical_nozzle`/`bezier_nozzle` helpers and `moc_design`. Use `math.radians` to
+convert from degrees.
 
 ## Solver
 
@@ -60,27 +61,13 @@ facet; the reference-plane march has neither problem.
 
 ::: goddard.CharacteristicFamily
 
-::: goddard.ChainMetadata
-
 ::: goddard.ChainTermination
 
-::: goddard.PointMembership
-
-## Diagnostics
+## Failures and checks
 
 ::: goddard.MocFailure
 
 ::: goddard.MocErrorCode
-
-::: goddard.MocPassDiagnostics
-
-::: goddard.MocStepLimiter
-
-::: goddard.MocInitDiagnostics
-
-::: goddard.MocFrontShear
-
-::: goddard.summarize_front_shear
 
 ::: goddard.MocCrossings
 
@@ -91,3 +78,11 @@ facet; the reference-plane march has neither problem.
 ## Plotting
 
 ::: goddard.plotting
+
+## Solver diagnostics
+
+Per-pass front statistics, start-line diagnostics and the chain bookkeeping of the
+characteristic net live in `goddard.moc_diagnostics`. They are for studying the
+solver itself; a design or analysis needs only `MocResult`.
+
+::: goddard.moc_diagnostics

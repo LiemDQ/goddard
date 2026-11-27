@@ -3,7 +3,9 @@
 #include "goddard/prandtlmeyer.hpp"
 #include "goddard/gas_dynamics.hpp"
 #include "goddard/nozzle.hpp"
+#include "goddard/gas.hpp"
 #include "cantera/core.h"
+#include <numbers>
 #include <cmath>
 #include <fstream>
 #include <filesystem>
@@ -11,7 +13,7 @@
 
 using namespace Goddard;
 
-static constexpr double DEG = M_PI / 180.0;
+static constexpr double DEG = std::numbers::pi / 180.0;
 
 // Helper: create a MocNozzle configured for planar perfect gas
 static MocNozzle make_perfect_gas_solver(
@@ -145,7 +147,7 @@ TEST(MocPhase2, CsvRoundTrip) {
 TEST(MocPhase2, ConvergedFlagTrue) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7);
     auto result = solver.solve();
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_TRUE(result.messages.empty());
 }
 
@@ -157,7 +159,7 @@ TEST(MocPhase3, AxiPerfectGasSolves) {
     auto solver = make_perfect_gas_solver(1.4, 15.0 * DEG, 7, MocFlowKind::AXISYMMETRIC);
     auto result = solver.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -192,8 +194,8 @@ TEST(MocPhase3, AxiExitMachReasonable) {
     auto result_axi = axi.solve();
 
     // Both should produce valid results
-    EXPECT_TRUE(result_planar.converged);
-    EXPECT_TRUE(result_axi.converged);
+    EXPECT_TRUE(result_planar.status.ok());
+    EXPECT_TRUE(result_axi.status.ok());
 
     // Axisymmetric exit Mach should differ from planar
     EXPECT_NE(result_planar.exit_mach, result_axi.exit_mach);
@@ -238,6 +240,7 @@ protected:
         auto thermo = gas->thermo();
         // H2/O2 combustion products
         thermo->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+        thermo->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     }
     std::shared_ptr<Cantera::Solution> gas;
 };
@@ -251,10 +254,10 @@ TEST_F(MocFrozenTest, PlanarFrozenSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -274,7 +277,7 @@ TEST_F(MocFrozenTest, FrozenExitMachConsistent) {
     opts.num_characteristics = 5;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
     // Exit Mach should be positive and reasonable
@@ -295,10 +298,10 @@ TEST_F(MocFrozenTest, PlanarEquilibriumSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -317,10 +320,10 @@ TEST_F(MocFrozenTest, AxiFrozenSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -335,10 +338,10 @@ TEST_F(MocFrozenTest, AxiEquilibriumSolves) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
-    EXPECT_TRUE(result.converged);
+    EXPECT_TRUE(result.status.ok());
     EXPECT_GT(result.exit_mach, 1.0);
     EXPECT_GT(result.nozzle_length, 0.0);
     EXPECT_GT(result.area_ratio, 1.0);
@@ -353,7 +356,7 @@ TEST_F(MocFrozenTest, AxiFrozenMonotonicWall) {
     opts.num_characteristics = 7;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle nozzle(Gas(gas), opts);
     auto result = nozzle.solve();
 
     for (size_t i = 1; i < result.net.wall_x.size(); i++) {
@@ -375,22 +378,20 @@ TEST_F(MocFrozenTest, AxiFrozenVs1D) {
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle moc_nozzle(Gas(gas), opts);
     auto moc_result = moc_nozzle.solve();
-    ASSERT_TRUE(moc_result.converged);
+    ASSERT_TRUE(moc_result.status.ok());
 
     // Reset gas state and run 1D solver at same area ratio
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts;
     nozzle_opts.chemistry = GasChemistry::FROZEN;
-    Nozzle nozzle_1d(Gas(gas, GasChemistry::FROZEN), nozzle_opts);
+    Nozzle nozzle_1d(Gas(gas), nozzle_opts);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
-    ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
-    ASSERT_TRUE(nozzle_result.expansions[0].converged);
 
-    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+        double mach_1d = nozzle_result.expansions[0].mach;
 
     // 2D MoC vs 1D: expect within ~10% (2D effects + design mode differences)
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
@@ -406,21 +407,19 @@ TEST_F(MocFrozenTest, AxiEquilibriumVs1D) {
     opts.num_characteristics = 10;
     opts.geometry.throat_radius = 0.05;
 
-    MocNozzle moc_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle moc_nozzle(Gas(gas), opts);
     auto moc_result = moc_nozzle.solve();
-    ASSERT_TRUE(moc_result.converged);
+    ASSERT_TRUE(moc_result.status.ok());
 
     // Reset gas state and run 1D solver
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
     NozzleOptions nozzle_opts;
-    Nozzle nozzle_1d(Gas(gas, GasChemistry::EQUILIBRIUM), nozzle_opts);
+    Nozzle nozzle_1d(Gas(gas), nozzle_opts);
     auto nozzle_result = nozzle_1d.solve(ExpansionType::SUPERSONIC_AREA_RATIO, moc_result.area_ratio);
-    ASSERT_TRUE(nozzle_result.throat.converged);
     ASSERT_FALSE(nozzle_result.expansions.empty());
-    ASSERT_TRUE(nozzle_result.expansions[0].converged);
 
-    gas->thermo()->restoreState(nozzle_result.expansions[0].state);
-    double mach_1d = Goddard::mach(*gas->thermo(), nozzle_result.throat.H_stagnation, nozzle_result.expansions[0].gamma_s);
+        double mach_1d = nozzle_result.expansions[0].mach;
 
     EXPECT_NEAR(moc_result.exit_mach, mach_1d, 0.5)
         << "Axisymmetric equilibrium MoC exit Mach should be in the same ballpark as 1D";
@@ -436,19 +435,20 @@ TEST_F(MocFrozenTest, AxiFrozenVsEquilibriumDiffers) {
 
     // Frozen
     opts.chemistry = GasChemistry::FROZEN;
-    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle frozen_nozzle(Gas(gas), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle equil_nozzle(Gas(gas), opts);
     auto equil_result = equil_nozzle.solve();
 
-    EXPECT_TRUE(frozen_result.converged);
-    EXPECT_TRUE(equil_result.converged);
+    EXPECT_TRUE(frozen_result.status.ok());
+    EXPECT_TRUE(equil_result.status.ok());
     EXPECT_GT(std::abs(frozen_result.exit_mach - equil_result.exit_mach), 1e-6)
         << "Frozen and equilibrium should produce different exit Mach";
 }
@@ -463,20 +463,21 @@ TEST_F(MocFrozenTest, EquilibriumVsFrozenDiffers) {
 
     // Frozen
     opts.chemistry = GasChemistry::FROZEN;
-    MocNozzle frozen_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle frozen_nozzle(Gas(gas), opts);
     auto frozen_result = frozen_nozzle.solve();
 
     // Reset gas state for equilibrium run
     gas->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    gas->thermo()->equilibrate("TP");  // an equilibrium throat needs an equilibrium inlet
 
     // Equilibrium
     opts.chemistry = GasChemistry::EQUILIBRIUM;
-    MocNozzle equil_nozzle(Gas(gas, opts.chemistry), opts);
+    MocNozzle equil_nozzle(Gas(gas), opts);
     auto equil_result = equil_nozzle.solve();
 
     // Both should converge
-    EXPECT_TRUE(frozen_result.converged);
-    EXPECT_TRUE(equil_result.converged);
+    EXPECT_TRUE(frozen_result.status.ok());
+    EXPECT_TRUE(equil_result.status.ok());
 
     // Exit Mach should differ (equilibrium shifts composition)
     // The difference may be small for this composition, but should not be identical
@@ -495,7 +496,7 @@ TEST(MocThrust, PlanarPerfectGasVs1D) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 15);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf = compute_thrust_coefficient(result, MocFlowKind::PLANAR);
 
@@ -521,7 +522,7 @@ TEST(MocThrust, AxiPerfectGasVs1D) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 15, MocFlowKind::AXISYMMETRIC);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf = compute_thrust_coefficient(result, MocFlowKind::AXISYMMETRIC);
 
@@ -545,7 +546,7 @@ TEST(MocThrust, AmbientPressureReducesCf) {
 
     auto solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto result = solver.solve();
-    ASSERT_TRUE(result.converged);
+    ASSERT_TRUE(result.status.ok());
 
     auto cf_vac = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.0);
     auto cf_amb = compute_thrust_coefficient(result, MocFlowKind::PLANAR, 0.1);
@@ -553,6 +554,19 @@ TEST(MocThrust, AmbientPressureReducesCf) {
     EXPECT_GT(cf_vac.Cf_vacuum, cf_amb.Cf);
     EXPECT_NEAR(cf_vac.Cf_vacuum, cf_vac.Cf, 1e-15)
         << "Cf_vacuum and Cf should match when ambient=0";
+}
+
+TEST(MocThrust, RejectsExitPlaneWithFewerThanTwoPoints) {
+    MocResult result;
+    result.throat_radius = 1.0;
+    EXPECT_THROW(compute_thrust_coefficient(result, MocFlowKind::PLANAR), std::invalid_argument);
+
+    result.exit_plane.y = {0.0};
+    result.exit_plane.mach = {2.0};
+    result.exit_plane.theta = {0.0};
+    result.exit_plane.pressure = {0.1};
+    result.exit_plane.gamma_s = {1.4};
+    EXPECT_THROW(compute_thrust_coefficient(result, MocFlowKind::PLANAR), std::invalid_argument);
 }
 
 // ============================================================
@@ -572,7 +586,7 @@ TEST(MocAnalysis, PlanarRoundTrip) {
     // Step 1: Design mode (DESIGN_MIN_LENGTH always uses the chain-pairing ladder).
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 10);
     auto design_result = design_solver.solve();
-    ASSERT_TRUE(design_result.converged) << "Design did not converge: "
+    ASSERT_TRUE(design_result.status.ok()) << "Design did not converge: "
         << to_string(design_result.failure.code) << " -- "
         << design_result.failure.message;
 
@@ -587,9 +601,9 @@ TEST(MocAnalysis, PlanarRoundTrip) {
 
     MocNozzle analysis_solver(opts);
     auto analysis_result = analysis_solver.solve();
-    RecordProperty("converged", analysis_result.converged ? "true" : "false");
+    RecordProperty("converged", analysis_result.status.ok() ? "true" : "false");
 
-    ASSERT_TRUE(analysis_result.converged) << "Analysis did not converge: "
+    ASSERT_TRUE(analysis_result.status.ok()) << "Analysis did not converge: "
         << to_string(analysis_result.failure.code)
         << " -- " << analysis_result.failure.message;
     EXPECT_GT(analysis_result.exit_mach, 1.0);
@@ -635,7 +649,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     auto design_solver = make_perfect_gas_solver(gamma, theta_max, 8, MocFlowKind::AXISYMMETRIC);
     auto design_result = design_solver.solve();
-    ASSERT_TRUE(design_result.converged);
+    ASSERT_TRUE(design_result.status.ok());
 
     auto area_ratio_1d = [&](double mach) {
         const double t = (2.0 / (gamma + 1.0)) * (1.0 + 0.5 * (gamma - 1.0) * mach * mach);
@@ -663,11 +677,11 @@ TEST(MocAnalysis, AxiRoundTrip) {
 
     MocNozzle analysis_solver(opts);
     auto result = analysis_solver.solve();
-    RecordProperty("converged", result.converged ? "true" : "false");
+    RecordProperty("converged", result.status.ok() ? "true" : "false");
 
-    EXPECT_TRUE(result.converged) << "Analysis did not converge: "
+    EXPECT_TRUE(result.status.ok()) << "Analysis did not converge: "
         << to_string(result.failure.code) << " -- " << result.failure.message;
-    if (!result.converged) return;
+    if (!result.status.ok()) return;
     EXPECT_GT(result.exit_mach, 1.0);
 
     // The design's exit Mach carries a known +0.08 bias against the 1-D area-Mach
@@ -679,7 +693,7 @@ TEST(MocAnalysis, AxiRoundTrip) {
     ASSERT_GE(ep.y.size(), 2u);
     double mach_area = 0.0, area = 0.0;
     for (size_t k = 1; k < ep.y.size(); k++) {
-        const double dA = M_PI * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
+        const double dA = std::numbers::pi * (ep.y[k] * ep.y[k] - ep.y[k - 1] * ep.y[k - 1]);
         mach_area += 0.5 * (ep.mach[k] + ep.mach[k - 1]) * dA;
         area += dA;
     }
@@ -704,5 +718,64 @@ TEST(MocThrust, ExitPlaneHasGammaAndVelocity) {
             << "gamma_s should be > 1";
         EXPECT_GT(result.exit_plane.velocity[i], 0.0)
             << "velocity should be positive";
+    }
+}
+
+// ============================================================
+// Nondimensional point state: P/P0, T/T0 and V/a0 for every chemistry
+// ============================================================
+
+TEST(MocNormalization, PerfectGasPointsFollowTheIsentropicRelations) {
+    const double gamma = 1.4;
+    auto result = make_perfect_gas_solver(gamma, 15.0 * DEG, 7).solve();
+    ASSERT_TRUE(result.status.ok());
+    EXPECT_TRUE(std::isnan(result.stagnation_pressure)) << "a perfect gas has no dimensional scale";
+    EXPECT_TRUE(std::isnan(result.stagnation_temperature));
+    EXPECT_TRUE(std::isnan(result.stagnation_sound_speed));
+
+    for (const CharacteristicPoint& pt : result.net.points) {
+        // T0/T = 1 + (gamma-1)/2 M^2, P/P0 = (T/T0)^(gamma/(gamma-1)), V/a0 = M sqrt(T/T0)
+        const double T_ratio = 1.0 / (1.0 + 0.5 * (gamma - 1.0) * pt.mach * pt.mach);
+        EXPECT_NEAR(pt.temperature, T_ratio, 1e-12) << "point at x = " << pt.x << ", y = " << pt.y << ", M = " << pt.mach << ", nu = " << pt.nu << ", theta = " << pt.theta;
+        EXPECT_NEAR(pt.pressure, std::pow(T_ratio, gamma / (gamma - 1.0)), 1e-12);
+        EXPECT_NEAR(pt.V, pt.mach * std::sqrt(T_ratio), 1e-12);
+    }
+}
+
+TEST(MocNormalization, RealGasPointsAreRelativeToTheStagnationState) {
+    auto sol = Cantera::newSolution("h2o2.yaml", "ohmech");
+    sol->thermo()->setState_TPX(3000.0, 3e6, "H2O:0.8, OH:0.1, H2:0.05, O2:0.05");
+    const Gas stagnation(sol->clone());
+    const double T0 = stagnation.temperature();
+    const double P0 = stagnation.pressure();
+    const double a0 = stagnation.speed_of_sound(CompositionModel::FROZEN);
+    const double h0 = stagnation.enthalpy_mass();
+
+    MocOptions opts;
+    opts.chemistry = GasChemistry::FROZEN;
+    opts.theta_max = 15.0 * DEG;
+    opts.num_characteristics = 7;
+    opts.geometry.throat_radius = 0.05;
+    MocResult result = MocNozzle(stagnation, opts).solve();
+    ASSERT_TRUE(result.status.ok()) << result.status.message;
+
+    EXPECT_DOUBLE_EQ(result.stagnation_temperature, T0);
+    EXPECT_DOUBLE_EQ(result.stagnation_pressure, P0);
+    EXPECT_DOUBLE_EQ(result.stagnation_sound_speed, a0);
+
+    // Each point's Cantera state, scaled by the stagnation values, must reproduce the point's
+    // normalized fields, and its velocity must satisfy the energy equation h0 = h + V^2/2. The
+    // state and the fields are interpolated separately from the Prandtl-Meyer table, so they
+    // agree to its interpolation error, not to round-off; a wrong reference (the throat
+    // temperature instead of T0, say) is off by ~10%.
+    Gas point_gas = stagnation.clone();
+    ASSERT_FALSE(result.net.points.empty());
+    for (const CharacteristicPoint& pt : result.net.points) {
+        point_gas.thermo()->restoreState(pt.cantera_state);
+        EXPECT_NEAR(pt.temperature, point_gas.temperature() / T0, 1e-3 * pt.temperature);
+        EXPECT_NEAR(pt.pressure, point_gas.pressure() / P0, 1e-3 * pt.pressure);
+        const double velocity = pt.V * a0;
+        EXPECT_NEAR(0.5 * velocity * velocity, h0 - point_gas.enthalpy_mass(),
+                    1e-3 * (h0 - point_gas.enthalpy_mass()));
     }
 }

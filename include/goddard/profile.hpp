@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <numbers>
 #include <utility>
 #include <string>
 #include <array>
@@ -16,10 +17,13 @@ namespace Goddard {
  * profile built with the default `r_throat = 1.0` is expressed in throat radii.
  * 
  * Angles returned by the query methods are in **radians**; the static generators take their
- * shape angles in **degrees**, matching the convention used to tabulate them.
+ * shape angles in **radians** as well.
  * */
 class NozzleProfile {
 public:
+    /** Field-by-field equality. Doubles compare exactly, so a NaN field compares unequal. */
+    bool operator==(const NozzleProfile&) const = default;
+
     /** Axial coordinates of the wall points, ascending (length units). */
     std::vector<double> x;
     /** Wall radius (axisymmetric) or half-height (planar) at each point in `x` (length units). */
@@ -49,10 +53,8 @@ public:
      *
      * theta_at() looks up the bracketing facet [x[idx-1], x[idx]] and returns its single
      * finite-difference angle theta_at_idx(idx) unchanged for every query inside that
-     * facet, i.e. it is piecewise constant in x -- deliberately so, since it reports the
-     * angle of the facet a query point belongs to, which is what the DIRECT kernel's
-     * facet-quantized wall stepping and its invariance tests are built against. theta_at is
-     * therefore left unchanged here. A caller that samples the wall at stations finer than
+     * facet, i.e. it is piecewise constant in x: it reports the angle of the facet a query
+     * point belongs to. A caller that samples the wall at stations finer than
      * the profile's own facets (the inverse march's per-pass wall point) instead needs an
      * angle that is continuous in x, so this interpolates linearly between the same
      * theta_at_idx() vertex values across each facet rather than snapping to one of them.
@@ -126,6 +128,16 @@ public:
     /** Append a wall point, given as an (x, y) pair in length units. */
     void push_back(std::pair<double, double>&& coords);
 
+    /**
+     * Copy of this profile in another length unit: every `x` and `y` multiplied by `factor`.
+     * Angles and slopes are unchanged; `throat_index` is kept.
+     *
+     * @param factor Length scale factor, e.g. 1 / r_throat to express the profile in throat
+     * radii. Must be positive.
+     * @throws std::invalid_argument if `factor` is not positive.
+     */
+    NozzleProfile scaled(double factor) const;
+
     /** Number of points on the profile. */
     size_t size() const;
 
@@ -143,17 +155,17 @@ public:
      * at a sharp throat corner.
      * 
      * @param area_ratio Ratio of the exit area to the throat area. 
-     * @param r_expansion_curve Radius of curvature of the throat expansion arc, in the same
-     * length units as `r_throat`. Zero gives a sharp throat corner.
+     * @param r_expansion_curve Radius of curvature of the throat expansion arc, as a multiple
+     * of `r_throat`. Zero gives a sharp throat corner.
      * @param r_throat Throat radius, in length units. 
-     * @param theta_n Conical expansion angle from the centerline, in degrees.
+     * @param theta_n Conical expansion angle from the centerline, in radians.
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range, or if the
      * expansion arc alone already exceeds the exit radius.
      */
     static NozzleProfile generate_conical_nozzle(
         double area_ratio, double r_expansion_curve,
-        double r_throat = 1.0, double theta_n = 15.0, 
+        double r_throat = 1.0, double theta_n = 15.0 * std::numbers::pi / 180.0, 
         size_t n_points = 50);
 
     /**
@@ -172,7 +184,7 @@ public:
      * @param area_ratio Ratio of the exit area to the throat area. Must be at least 3.55,
      * the lower bound of Rao's tabulated data.
      * @param r_throat Throat radius, in length units. 
-     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. Must be
+     * @param length_frac Fraction of length of comparable 15-degree (0.2618 rad) conical nozzle. Must be
      * between 0.6 and 1.0.
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range.
@@ -184,12 +196,12 @@ public:
      * Generate a parabolic nozzle parametrized by Bezier curves. 
      * 
      * @param area_ratio Ratio of the exit area to the throat area.
-     * @param theta_n Maximum expansion angle from centerline, in degrees.
-     * @param theta_e Expansion angle from centerline at the nozzle exit, in degrees.
+     * @param theta_n Maximum expansion angle from centerline, in radians.
+     * @param theta_e Expansion angle from centerline at the nozzle exit, in radians.
      * @param r_expansion_curve Radius of curvature of the expansion region 
      * as a fraction of the throat radius.
      * @param r_throat Throat radius, in length units. 
-     * @param length_frac Fraction of length of comparable 15-degree conical nozzle. 
+     * @param length_frac Fraction of length of comparable 15-degree (0.2618 rad) conical nozzle. 
      * @param n_points Number of points in the profile. 
      * @throws std::invalid_argument if any argument is outside its usable range.
      */
@@ -206,7 +218,7 @@ public:
      * This is the leading segment shared by the conical and Bézier contours, useful on its own
      * as the wall geometry a method-of-characteristics solve is seeded against.
      *
-     * @param theta_n Wall angle the arc turns to, measured from the centerline, in degrees.
+     * @param theta_n Wall angle the arc turns to, measured from the centerline, in radians.
      * @param r_expansion_curve Radius of curvature of the arc, as a fraction of `r_throat`.
      * @param r_throat Throat radius, in length units.
      * @param n_points Number of points in the arc.

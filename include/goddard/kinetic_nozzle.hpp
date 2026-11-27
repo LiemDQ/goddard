@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <string>
 #include <vector>
 #include "goddard/nozzle.hpp"
 #include "goddard/gas.hpp"
@@ -7,60 +8,158 @@
 
 namespace Goddard {
 
+/** One station of a kinetic nozzle integration. */
 struct KineticNozzleStation {
+    /** Axial position [throat radii], in the length unit of the input profile. */
     double x;
+    /** Flow velocity [m/s]. */
     double velocity;
+    /** Mach number [-], with the frozen speed of sound. */
     double mach;
+    /** Area ratio A/A_t [-]. */
     double area_ratio;
-    std::vector<double> state; // Cantera thermo state
-    std::vector<double> damkohler; // per-species Damkohler
-    double Da_min; // Minimum damkohler number
-    int min_Da_species; // Index of species with lowest Damkohler
+    /** Mixture state at the station, with frozen derivatives. */
+    ThermodynamicState thermo;
+    /** Raw state vector, for `Gas::restore_state`. */
+    std::vector<double> state;
+    /** Damkohler number of each species [-]; 0 for trace species. */
+    std::vector<double> damkohler;
+    /** Smallest non-zero Damkohler number [-]. */
+    double Da_min;
+    /** Name of the species with the smallest non-zero Damkohler number; empty if there is none. */
+    std::string min_Da_species;
 };
 
+/** Result of a `KineticNozzle::solve`. */
 struct KineticNozzleResults {
+    /// Throat the integration starts from, solved with the chemistry of `NozzleOptions::chemistry`.
     ThroatCondition throat;
+    /**
+     * Stations downstream of the throat, one per integration step. Every station in the list is
+     * valid: when the solve fails partway the list ends at the last completed step.
+     */
     std::vector<KineticNozzleStation> stations;
+    /**
+     * Outcome of the solve; ok when the integration reached the exit of the profile.
+     *
+     * - `INCOMPLETE`: the integration stopped after `max_steps` steps, upstream of the exit.
+     * - `NOT_CONVERGED`: the reactor integration failed at some step, typically because the
+     *   coupled chemistry and expansion are too stiff for the step limit.
+     * - The failure of the throat solve, in which case `stations` is empty.
+     * - `NO_SOLUTION`: condensed species are present at the throat.
+     * - `OUT_OF_DATA_RANGE`: a station is far outside the temperature range of the species data
+     *   (`Gas::check_temperature_range()`).
+     *
+     * Its warnings are those of the throat and of the exit station, the coldest.
+     */
+    SolveStatus status;
 };
 
+/**
+ * Supersonic nozzle expansion with finite-rate chemistry.
+ *
+ * The throat is solved with the chemistry of `NozzleOptions::chemistry` (EQUILIBRIUM or FROZEN).
+ * From there a Lagrangian reactor is marched along the profile, its volume following the area
+ * change, and the velocity follows from the stagnation enthalpy. The first point of the profile
+ * is taken as the throat.
+ *
+ * The profile is expressed in throat radii (its throat radius is 1), like the wall contour of
+ * `MocNozzle`, and `throat_radius` [m] sets the physical scale. The reactor integration is in SI
+ * units: the solver advances x by u dt with x converted to metres, so residence times and
+ * Damkohler numbers are physical. Stations and `dx_max` are in throat radii.
+ * Condensed species are not supported.
+ */
 class KineticNozzle {
 public:
 
-    // Construct from Solution reference (builds Gas internally with FROZEN chemistry)
+    // Construct from Solution reference (builds a Gas internally)
     KineticNozzle(
         Cantera::Solution& gas,
         NozzleProfile& profile,
+        double throat_radius,
         double mass_flow_rate,
         NozzleOptions options = {});
 
     KineticNozzle(
         Cantera::Solution& gas,
         NozzleProfile& profile,
+        double throat_radius,
         double mass_flow_rate,
         std::vector<double> inlet_state,
         NozzleOptions options = {});
 
-    // Construct from Gas directly (chemistry is overridden to FROZEN internally)
+    /**
+     * @param gas gas at the inlet (chamber) state, with a reaction mechanism. The solver works on
+     * its own copy of `gas`; the caller's `Gas` is not modified.
+     * @param profile Diverging wall contour starting at the throat [throat radii]; the radius at
+     * its first point must be 1.
+     * @param throat_radius Physical throat radius [m], positive.
+     * @param mass_flow_rate Mass flow rate [kg/s].
+     * @param options Throat chemistry (EQUILIBRIUM or FROZEN).
+     * @throws std::invalid_argument for KINETIC throat chemistry, a nonpositive `throat_radius`,
+     * or a profile whose throat radius is not 1.
+     * @throws NotImplementedError if `gas` holds condensed species.
+     */
     KineticNozzle(
         const Gas& gas,
         NozzleProfile& profile,
+        double throat_radius,
         double mass_flow_rate,
         NozzleOptions options = {});
 
+    /**
+     * @param gas product gas with a reaction mechanism; only its phase definition is used. The
+     * solver works on its own copy.
+     * @param profile Diverging wall contour starting at the throat [throat radii]; the radius at
+     * its first point must be 1.
+     * @param throat_radius Physical throat radius [m], positive.
+     * @param mass_flow_rate Mass flow rate [kg/s].
+     * @param inlet_state Inlet (chamber) state vector, as returned by `Gas::save_state`.
+     * @param options Throat chemistry (EQUILIBRIUM or FROZEN).
+     * @throws std::invalid_argument for KINETIC throat chemistry, a nonpositive `throat_radius`,
+     * or a profile whose throat radius is not 1.
+     * @throws NotImplementedError if the inlet state holds condensed species.
+     */
     KineticNozzle(
         const Gas& gas,
         NozzleProfile& profile,
+        double throat_radius,
         double mass_flow_rate,
         std::vector<double> inlet_state,
         NozzleOptions options = {});
 
-    KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 1e-3, int max_steps = 100000);
+    /**
+     * Solve the throat, then integrate the finite-rate expansion from the throat to the end of
+     * the profile. Each step is limited by both `dt_max` and `dx_max`.
+     *
+     * @param dt_max Largest time step [s].
+     * @param dx_max Largest axial step [throat radii]; the default is 0.1 (1 mm for a 1 cm
+     * throat).
+     * @param max_steps Largest number of steps [-].
+     * @return The throat and the stations integrated; see `KineticNozzleResults::status` for
+     * the outcome. A failed solve keeps the stations completed before the failure.
+     * @throws std::invalid_argument for a nonpositive `dt_max`, `dx_max` or `max_steps`.
+     */
+    KineticNozzleResults solve(double dt_max = 1e-6, double dx_max = 0.1, int max_steps = 100000);
 
+    /// Wall contour [throat radii]; its first point is the throat.
     NozzleProfile profile;
+    /// Mass flow rate [kg/s].
     double mdot;
+    /// Physical throat radius [m] that scales the profile.
+    double throat_radius;
+    /// Throat chemistry (EQUILIBRIUM or FROZEN).
     NozzleOptions opts;
 
 protected:
+    /**
+     * March the reactor from the solved throat of `results` to the exit, appending a station
+     * per step.
+     *
+     * @throws SolveError if the integration fails or stops short of the exit.
+     */
+    void integrate(KineticNozzleResults& results, double dt_max, double dx_max, int max_steps);
+
     Nozzle m_throat_solver;
     std::vector<double> m_inlet_state;
     Gas m_gas;
